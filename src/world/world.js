@@ -382,7 +382,7 @@ class World {
                 const faceDepth = hsY;
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(clipLeft, blockBottom, clipWidth, 3 * hsY);
+                ctx.rect(clipLeft, blockBottom, clipWidth, 4 * hsY);
                 ctx.clip();
 
                 for (let a = aMin; a <= aMax; a++) {
@@ -397,8 +397,8 @@ class World {
                         const bvy = Math.round(b * hsY + hsY - cy);
                         const rx = Math.round(a * hs + ts - cx);
 
-                        // Only first row: diamonds straddling the block bottom
-                        if (ly > blockBottom || bvy + faceDepth < blockBottom) continue;
+                        // First two rows: diamonds straddling the block bottom + one below
+                        if (ly > blockBottom + faceDepth || bvy + faceDepth < blockBottom) continue;
 
                         // Front-left face: left→bottom vertex, dropped by faceDepth
                         ctx.fillStyle = isCB ? fLeftC : fLeftG;
