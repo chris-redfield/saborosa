@@ -62,17 +62,31 @@ class World {
         if (!this._walkableBlocks) return true;
         const bx = Math.floor(x / BLOCK_W);
         const by = Math.floor(y / BLOCK_H);
-        if (!this._walkableBlocks.has(`${bx},${by}`)) return false;
-        if (this.stage.sandColor && this.stage.checkerboard) {
-            const ox = bx * BLOCK_W;
-            const oy = by * BLOCK_H;
-            const hs = this.stage.checkerboard.tileSize / 2;
-            let aLeft = Math.ceil(ox / hs);
-            if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
-            if (x < aLeft * hs) return false;
-            if (y - oy < LAVA_W) return false;
+
+        if (this._walkableBlocks.has(`${bx},${by}`)) {
+            // On the walkable block — check visual inset edges
+            if (this.stage.sandColor && this.stage.checkerboard) {
+                const ox = bx * BLOCK_W;
+                const oy = by * BLOCK_H;
+                const hs = this.stage.checkerboard.tileSize / 2;
+                let aLeft = Math.ceil(ox / hs);
+                if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
+                if (x < aLeft * hs) return false;
+                if (y - oy < LAVA_W) return false;
+            }
+            return true;
         }
-        return true;
+
+        // Off the walkable block — check if still within depth face area below
+        if (this.stage.terrainDepth && this.stage.sandColor) {
+            const aboveBy = by - 1;
+            if (this._walkableBlocks.has(`${bx},${aboveBy}`)) {
+                const blockBottom = aboveBy * BLOCK_H + BLOCK_H;
+                if (y - blockBottom < STACK_OFFSET * 2 + 25) return true;
+            }
+        }
+
+        return false;
     }
 
     /**
