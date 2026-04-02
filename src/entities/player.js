@@ -10,6 +10,14 @@ class Player {
         this.height = 56;
         this.speed = 3;
 
+        // Isometric collision footprint (bottom portion of sprite)
+        this.colW = 48;
+        this.colH = 28; // bottom half
+        this.colOffX = 0;
+        this.colOffY = 28; // offset from top of sprite
+        this.mass = this.colW * this.colH;
+        this.pushing = false;
+
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
 
         // Direction and movement
@@ -135,15 +143,44 @@ class Player {
             this.lastDx = dx;
             this.lastDy = dy;
 
-            // Per-axis collision: try X first, then Y (allows sliding along walls)
+            // Per-axis collision with pushing
             let newX = this.x + dx;
             let newY = this.y + dy;
+            this.pushing = false;
 
             // Check X axis
             let xBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(newX, this.y, obs)) {
-                    xBlocked = true;
+                    if (obs.pushable && obs.mass < this.mass) {
+                        const pushDir = dx > 0 ? 1 : -1;
+                        const pushSpeed = obs.mass < this.mass * 0.5 ? 0.7 : 0.5;
+                        const pushDx = pushDir * Math.abs(dx) * pushSpeed;
+                        const pushNewX = obs.x + pushDx;
+                        const oCol = obs.getRect();
+
+                        let pushBlocked = false;
+                        for (const other of obstacles) {
+                            if (other === obs) continue;
+                            const offX = oCol.x - obs.x;
+                            const offY = oCol.y - obs.y;
+                            if (this._rectsOverlap(pushNewX + offX, oCol.y, oCol.width, oCol.height, other)) {
+                                pushBlocked = true;
+                                break;
+                            }
+                        }
+                        if (!pushBlocked) {
+                            obs.x = pushNewX;
+                            const r = obs.getRect();
+                            // Snap player collision edge against rock collision edge
+                            newX = dx > 0 ? r.x - this.colW - this.colOffX : r.x + r.width - this.colOffX;
+                            this.pushing = true;
+                        } else {
+                            xBlocked = true;
+                        }
+                    } else {
+                        xBlocked = true;
+                    }
                     break;
                 }
             }
@@ -153,7 +190,35 @@ class Player {
             let yBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(this.x, newY, obs)) {
-                    yBlocked = true;
+                    if (obs.pushable && obs.mass < this.mass) {
+                        const pushDir = dy > 0 ? 1 : -1;
+                        const pushSpeed = obs.mass < this.mass * 0.5 ? 0.7 : 0.5;
+                        const pushDy = pushDir * Math.abs(dy) * pushSpeed;
+                        const pushNewY = obs.y + pushDy;
+                        const oCol = obs.getRect();
+
+                        let pushBlocked = false;
+                        for (const other of obstacles) {
+                            if (other === obs) continue;
+                            const offX = oCol.x - obs.x;
+                            const offY = oCol.y - obs.y;
+                            if (this._rectsOverlap(oCol.x, pushNewY + offY, oCol.width, oCol.height, other)) {
+                                pushBlocked = true;
+                                break;
+                            }
+                        }
+                        if (!pushBlocked) {
+                            obs.y = pushNewY;
+                            const r = obs.getRect();
+                            // Snap player collision edge against rock collision edge
+                            newY = dy > 0 ? r.y - this.colH - this.colOffY : r.y + r.height - this.colOffY;
+                            this.pushing = true;
+                        } else {
+                            yBlocked = true;
+                        }
+                    } else {
+                        yBlocked = true;
+                    }
                     break;
                 }
             }
@@ -168,17 +233,27 @@ class Player {
 
     _collides(testX, testY, obstacle) {
         const r = obstacle.getRect();
-        return testX < r.x + r.width &&
-               testX + this.width > r.x &&
-               testY < r.y + r.height &&
-               testY + this.height > r.y;
+        const cx = testX + this.colOffX;
+        const cy = testY + this.colOffY;
+        return cx < r.x + r.width &&
+               cx + this.colW > r.x &&
+               cy < r.y + r.height &&
+               cy + this.colH > r.y;
+    }
+
+    _rectsOverlap(x, y, w, h, obstacle) {
+        const r = obstacle.getRect();
+        return x < r.x + r.width &&
+               x + w > r.x &&
+               y < r.y + r.height &&
+               y + h > r.y;
     }
 
     getRect() {
-        this._rect.x = this.x;
-        this._rect.y = this.y;
-        this._rect.width = this.width;
-        this._rect.height = this.height;
+        this._rect.x = this.x + this.colOffX;
+        this._rect.y = this.y + this.colOffY;
+        this._rect.width = this.colW;
+        this._rect.height = this.colH;
         return this._rect;
     }
 
@@ -235,6 +310,9 @@ class Player {
             ctx.strokeStyle = 'lime';
             ctx.lineWidth = 1;
             ctx.strokeRect(drawX, drawY, this.width, this.height);
+            // Collision footprint
+            ctx.strokeStyle = 'red';
+            ctx.strokeRect(drawX + this.colOffX, drawY + this.colOffY, this.colW, this.colH);
             ctx.fillStyle = 'lime';
             ctx.font = '10px monospace';
             const dashInfo = this.dashing ? ' DASH' : (performance.now() < this.dashTimer ? ' cd' : '');

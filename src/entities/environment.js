@@ -13,15 +13,20 @@ class Rock {
         this.pushable = true;
         this.spriteKey = `rock${type}`;
 
-        this.mass = this.width * this.height;
+        // Isometric collision footprint (bottom portion)
+        this.colW = size;
+        this.colH = Math.round(size * 0.5);
+        this.colOffX = 0;
+        this.colOffY = size - this.colH;
+        this.mass = this.colW * this.colH;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
     }
 
     getRect() {
-        this._rect.x = this.x;
-        this._rect.y = this.y;
-        this._rect.width = this.width;
-        this._rect.height = this.height;
+        this._rect.x = this.x + this.colOffX;
+        this._rect.y = this.y + this.colOffY;
+        this._rect.width = this.colW;
+        this._rect.height = this.colH;
         return this._rect;
     }
 
@@ -41,6 +46,9 @@ class Rock {
             ctx.strokeStyle = 'yellow';
             ctx.lineWidth = 1;
             ctx.strokeRect(sx, sy, this.width, this.height);
+            // Collision footprint
+            ctx.strokeStyle = 'red';
+            ctx.strokeRect(sx + this.colOffX, sy + this.colOffY, this.colW, this.colH);
         }
     }
 }

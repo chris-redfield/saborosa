@@ -587,6 +587,11 @@ class World {
             block.addEntity(new Rock(this.game, x, y, size, type));
         }
 
+        // Test: add a big rock (too heavy to push) in walkable blocks
+        if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
+            block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, 80, 1));
+        }
+
         // Add portals that belong to this block
         if (this.stage.portals) {
             for (const p of this.stage.portals) {
