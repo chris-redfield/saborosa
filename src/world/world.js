@@ -8,6 +8,7 @@
 const BLOCK_W = 1280;
 const BLOCK_H = 720;
 const LAVA_W = 40;
+const STACK_OFFSET = 19; // hsY rounded — height of one cube depth layer
 
 class WorldBlock {
     constructor(xCoord, yCoord) {
@@ -51,6 +52,27 @@ class World {
     _isWalkableBlock(bx, by) {
         if (!this._walkableBlocks) return this._isValidBlock(bx, by);
         return this._walkableBlocks.has(`${bx},${by}`);
+    }
+
+    /**
+     * Check if a world position is on walkable terrain (not sand).
+     * Accounts for diamond-aligned visual inset on sand stages.
+     */
+    isOnWalkableTerrain(x, y) {
+        if (!this._walkableBlocks) return true;
+        const bx = Math.floor(x / BLOCK_W);
+        const by = Math.floor(y / BLOCK_H);
+        if (!this._walkableBlocks.has(`${bx},${by}`)) return false;
+        if (this.stage.sandColor && this.stage.checkerboard) {
+            const ox = bx * BLOCK_W;
+            const oy = by * BLOCK_H;
+            const hs = this.stage.checkerboard.tileSize / 2;
+            let aLeft = Math.ceil(ox / hs);
+            if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
+            if (x < aLeft * hs) return false;
+            if (y - oy < LAVA_W) return false;
+        }
+        return true;
     }
 
     /**
@@ -189,6 +211,28 @@ class World {
                 continue;
             }
 
+            // Sand stages: clip walkable block to diamond-aligned boundary
+            let groundClipped = false;
+            if (this.stage.sandColor && this.stage.checkerboard) {
+                const _hs = this.stage.checkerboard.tileSize / 2;
+                const _ox = block.xCoord * BLOCK_W;
+                const _oy = block.yCoord * BLOCK_H;
+                let aLeft = Math.ceil(_ox / _hs);
+                if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
+                const alignedLeft = Math.round(aLeft * _hs - cx);
+
+                // Fill full block with sand first
+                ctx.fillStyle = this.stage.sandColor;
+                ctx.fillRect(screenX, screenY, BLOCK_W + 1, BLOCK_H + 1);
+
+                // Clip to diamond-aligned area (inset on left and top)
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(alignedLeft, screenY + LAVA_W, screenX + BLOCK_W - alignedLeft + 1, BLOCK_H - LAVA_W + 1);
+                ctx.clip();
+                groundClipped = true;
+            }
+
             // +1 overlap to prevent sub-pixel seams between blocks
             ctx.fillStyle = this.stage.groundColor;
             ctx.fillRect(screenX, screenY, BLOCK_W + 1, BLOCK_H + 1);
@@ -291,6 +335,8 @@ class World {
                 ctx.font = '14px monospace';
                 ctx.fillText(`(${block.xCoord},${block.yCoord})`, screenX + 8, screenY + 20);
             }
+
+            if (groundClipped) ctx.restore();
         }
 
         // Ground-layer entities (lava/sand)
@@ -465,10 +511,12 @@ class World {
         const ox = bx * BLOCK_W;
         const oy = by * BLOCK_H;
 
-        // Non-walkable blocks get filled entirely with sand
+        // Non-walkable blocks get filled entirely with sand (walkable, not an obstacle)
         if (!this._isWalkableBlock(bx, by)) {
             if (this.stage.sandColor) {
-                block.addEntity(new Sand(this.game, ox, oy, BLOCK_W, BLOCK_H, this.stage.sandColor));
+                const sand = new Sand(this.game, ox, oy, BLOCK_W, BLOCK_H, this.stage.sandColor);
+                sand.isObstacle = false;
+                block.addEntity(sand);
             }
             return block;
         }
@@ -537,33 +585,21 @@ class World {
         }
 
         // Add boundaries for finite stages
-        // Skip bottom/right barriers when terrainDepth handles those edges visually
         if (this.stage.type === 'finite') {
-            const useSand = !!this.stage.sandColor;
-            const hasDepth = !!this.stage.terrainDepth;
-            if (!this._isWalkableBlock(bx, by - 1)) {
-                const entity = useSand
-                    ? new Sand(this.game, ox, oy, BLOCK_W, LAVA_W, this.stage.sandColor)
-                    : new Lava(this.game, ox, oy, BLOCK_W, LAVA_W);
-                block.addEntity(entity);
-            }
-            if (!this._isWalkableBlock(bx, by + 1) && !hasDepth) {
-                const entity = useSand
-                    ? new Sand(this.game, ox, oy + BLOCK_H - LAVA_W, BLOCK_W, LAVA_W, this.stage.sandColor)
-                    : new Lava(this.game, ox, oy + BLOCK_H - LAVA_W, BLOCK_W, LAVA_W);
-                block.addEntity(entity);
-            }
-            if (!this._isWalkableBlock(bx - 1, by)) {
-                const entity = useSand
-                    ? new Sand(this.game, ox, oy, LAVA_W, BLOCK_H, this.stage.sandColor)
-                    : new Lava(this.game, ox, oy, LAVA_W, BLOCK_H);
-                block.addEntity(entity);
-            }
-            if (!this._isWalkableBlock(bx + 1, by) && !hasDepth) {
-                const entity = useSand
-                    ? new Sand(this.game, ox + BLOCK_W - LAVA_W, oy, LAVA_W, BLOCK_H, this.stage.sandColor)
-                    : new Lava(this.game, ox + BLOCK_W - LAVA_W, oy, LAVA_W, BLOCK_H);
-                block.addEntity(entity);
+            if (!this.stage.sandColor) {
+                // Lava stages: full obstacle barriers
+                if (!this._isWalkableBlock(bx, by - 1)) {
+                    block.addEntity(new Lava(this.game, ox, oy, BLOCK_W, LAVA_W));
+                }
+                if (!this._isWalkableBlock(bx, by + 1)) {
+                    block.addEntity(new Lava(this.game, ox, oy + BLOCK_H - LAVA_W, BLOCK_W, LAVA_W));
+                }
+                if (!this._isWalkableBlock(bx - 1, by)) {
+                    block.addEntity(new Lava(this.game, ox, oy, LAVA_W, BLOCK_H));
+                }
+                if (!this._isWalkableBlock(bx + 1, by)) {
+                    block.addEntity(new Lava(this.game, ox + BLOCK_W - LAVA_W, oy, LAVA_W, BLOCK_H));
+                }
             }
         }
 
@@ -574,3 +610,4 @@ class World {
 window.World = World;
 window.BLOCK_W = BLOCK_W;
 window.BLOCK_H = BLOCK_H;
+window.STACK_OFFSET = STACK_OFFSET;

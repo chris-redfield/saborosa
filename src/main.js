@@ -58,15 +58,21 @@ function updateGame(dt) {
         player.dash(performance.now(), movement.x, movement.y);
     }
 
-    // Movement: dash overrides normal speed
+    // Check if player is on sand
+    const playerCenterX = player.x + player.width / 2;
+    const playerBottomY = player.y + player.height;
+    player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
+
+    // Movement: dash overrides normal speed, sand slows
+    const speedMult = player.onSand ? player.sandSpeedFactor : 1;
     let dx, dy;
     if (player.dashing) {
-        const dashVel = player.speed * player.dashSpeed;
+        const dashVel = player.speed * player.dashSpeed * speedMult;
         dx = player.dashDirection.x * dashVel;
         dy = player.dashDirection.y * dashVel;
     } else {
-        dx = movement.x * player.speed;
-        dy = movement.y * player.speed;
+        dx = movement.x * player.speed * speedMult;
+        dy = movement.y * player.speed * speedMult;
     }
 
     player.move(dx, dy, obstacles);

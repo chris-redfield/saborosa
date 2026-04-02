@@ -33,6 +33,10 @@ class Player {
         this.dashEndTime = 0;
         this.dashTimer = 0;
 
+        // Sand sinking
+        this.onSand = false;
+        this.sandSpeedFactor = 0.7; // 30% slower on sand
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -193,31 +197,37 @@ class Player {
             spriteData = this.sprites[idleKey][0];
         }
 
+        // When on sand, crop the bottom STACK_OFFSET pixels of the sprite
+        const sinkAmount = this.onSand ? STACK_OFFSET : 0;
+        const visibleH = this.height - sinkAmount;
+        const srcCropRatio = sinkAmount / this.height;
+
         if (spriteData && spriteData.image) {
+            const cropSh = spriteData.sh * (1 - srcCropRatio);
             ctx.save();
             if (spriteData.flipped) {
                 ctx.translate(drawX + this.width, drawY);
                 ctx.scale(-1, 1);
                 ctx.drawImage(
                     spriteData.image,
-                    spriteData.sx, spriteData.sy, spriteData.sw, spriteData.sh,
-                    0, 0, spriteData.width, spriteData.height
+                    spriteData.sx, spriteData.sy, spriteData.sw, cropSh,
+                    0, 0, spriteData.width, visibleH
                 );
             } else {
                 ctx.drawImage(
                     spriteData.image,
-                    spriteData.sx, spriteData.sy, spriteData.sw, spriteData.sh,
-                    drawX, drawY, spriteData.width, spriteData.height
+                    spriteData.sx, spriteData.sy, spriteData.sw, cropSh,
+                    drawX, drawY, spriteData.width, visibleH
                 );
             }
             ctx.restore();
         } else {
             ctx.fillStyle = '#ff6b35';
-            ctx.fillRect(drawX, drawY, this.width, this.height);
+            ctx.fillRect(drawX, drawY, this.width, visibleH);
             ctx.fillStyle = '#fff';
             ctx.font = '10px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText('BILLY', drawX + this.width / 2, drawY + this.height / 2 + 4);
+            ctx.fillText('BILLY', drawX + this.width / 2, drawY + visibleH / 2 + 4);
             ctx.textAlign = 'left';
         }
 
