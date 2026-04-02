@@ -45,6 +45,11 @@ class Player {
         this.onSand = false;
         this.sandSpeedFactor = 0.7; // 30% slower on sand
 
+        // Lifting
+        this.liftedObject = null;
+        this.liftOffsetX = 0;  // centered on player
+        this.liftOffsetY = -20; // above head — tweak this to experiment
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -110,6 +115,59 @@ class Player {
             this.frame = 0;
             this.animationCounter = 0;
         }
+
+        // Update lifted object position to follow player
+        if (this.liftedObject) {
+            const obj = this.liftedObject;
+            obj.x = this.x + (this.width - obj.width) / 2 + this.liftOffsetX;
+            obj.y = this.y + this.liftOffsetY;
+        }
+    }
+
+    /**
+     * Try to lift a nearby object, or drop the currently held one.
+     * Returns the dropped object (if any) so main.js can re-add it to the world.
+     */
+    liftOrDrop(obstacles) {
+        if (this.liftedObject) {
+            // Drop in front of the player based on facing direction
+            const obj = this.liftedObject;
+            const gap = 4;
+            switch (this.facing) {
+                case 'down':  obj.x = this.x + (this.width - obj.width) / 2; obj.y = this.y + this.height + gap; break;
+                case 'up':    obj.x = this.x + (this.width - obj.width) / 2; obj.y = this.y - obj.height - gap; break;
+                case 'right': obj.x = this.x + this.width + gap; obj.y = this.y + (this.height - obj.height) / 2; break;
+                case 'left':  obj.x = this.x - obj.width - gap; obj.y = this.y + (this.height - obj.height) / 2; break;
+            }
+            obj.isObstacle = true;
+            this.liftedObject = null;
+            return obj;
+        }
+
+        // Try to pick up a nearby pushable object in the facing direction
+        const reach = 8;
+        for (const obs of obstacles) {
+            if (!obs.pushable || obs.mass >= this.mass) continue;
+
+            const r = obs.getRect();
+            const pr = this.getRect();
+
+            // Check if close enough and in the right direction
+            let inRange = false;
+            switch (this.facing) {
+                case 'down':  inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && pr.x + pr.width > r.x && pr.x < r.x + r.width; break;
+                case 'up':    inRange = pr.y - reach < r.y + r.height && pr.y > r.y && pr.x + pr.width > r.x && pr.x < r.x + r.width; break;
+                case 'right': inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && pr.y + pr.height > r.y && pr.y < r.y + r.height; break;
+                case 'left':  inRange = pr.x - reach < r.x + r.width && pr.x > r.x && pr.y + pr.height > r.y && pr.y < r.y + r.height; break;
+            }
+
+            if (inRange) {
+                this.liftedObject = obs;
+                obs.isObstacle = false;
+                return null; // no drop happened
+            }
+        }
+        return null;
     }
 
     move(dx, dy, obstacles = []) {
@@ -317,6 +375,11 @@ class Player {
             ctx.font = '10px monospace';
             const dashInfo = this.dashing ? ' DASH' : (performance.now() < this.dashTimer ? ' cd' : '');
             ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${dashInfo}`, drawX, drawY - 4);
+        }
+
+        // Render lifted object above head
+        if (this.liftedObject) {
+            this.liftedObject.render(ctx, game, camX, camY);
         }
     }
 }

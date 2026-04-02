@@ -79,6 +79,11 @@ function updateGame(dt) {
     player.update(dt);
     world.update(player);
 
+    // Lift / drop (Space)
+    if (game.input.isKeyJustPressed('attack')) {
+        player.liftOrDrop(obstacles);
+    }
+
     // Portal interaction
     if (game.input.isKeyJustPressed('interact')) {
         const portal = world.getPortalAt(player);
@@ -100,7 +105,8 @@ function renderGame(ctx) {
     world.renderGround(ctx);
 
     // Collect all renderables, depth-sort by bottom edge
-    const entities = world.getAllEntities();
+    // Exclude lifted object (player renders it on top of themselves)
+    const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
     entities.push(player);
     entities.sort((a, b) => (a.y + a.height) - (b.y + b.height));
 
