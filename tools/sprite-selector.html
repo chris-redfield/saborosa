@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billy Soco - Sprite Selector</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #toolbar {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 2px solid #0f3460;
+            flex-shrink: 0;
+        }
+
+        #toolbar h1 {
+            font-size: 18px;
+            color: #e94560;
+            margin-right: 20px;
+        }
+
+        .mode-label {
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        .mode-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #53d8fb;
+        }
+
+        .frame-count {
+            font-size: 14px;
+            color: #aaa;
+        }
+
+        button {
+            background: #0f3460;
+            color: #eee;
+            border: 1px solid #53d8fb;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+
+        button:hover { background: #1a4a8a; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        button.active { background: #e94560; border-color: #e94560; }
+        button.export-btn { background: #2d6a4f; border-color: #52b788; margin-left: auto; }
+        button.export-btn:hover { background: #3a8a63; }
+
+        #main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #canvas-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            cursor: crosshair;
+        }
+
+        #sprite-canvas {
+            display: block;
+            image-rendering: pixelated;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #16213e;
+            border-left: 2px solid #0f3460;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        #sidebar h2 {
+            padding: 12px 16px;
+            font-size: 15px;
+            color: #53d8fb;
+            border-bottom: 1px solid #0f3460;
+        }
+
+        #frame-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .direction-group {
+            margin-bottom: 12px;
+        }
+
+        .direction-group h3 {
+            font-size: 13px;
+            color: #e94560;
+            padding: 4px 8px;
+            background: #0f3460;
+            border-radius: 3px;
+            margin-bottom: 4px;
+        }
+
+        .frame-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 4px 8px;
+            font-size: 12px;
+            border-radius: 3px;
+            color: #ccc;
+        }
+
+        .frame-item:hover { background: #1a3a5c; }
+
+        .frame-item canvas {
+            border: 1px solid #333;
+            image-rendering: pixelated;
+            background: #fff;
+        }
+
+        .frame-item .coords {
+            color: #888;
+            font-family: monospace;
+            font-size: 11px;
+        }
+
+        .frame-item .delete-btn {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: #e94560;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0 4px;
+        }
+
+        .frame-item .delete-btn:hover { color: #ff6b81; }
+
+        #preview-section {
+            border-top: 2px solid #0f3460;
+            padding: 12px;
+        }
+
+        #preview-section h3 {
+            font-size: 13px;
+            color: #53d8fb;
+            margin-bottom: 8px;
+        }
+
+        #preview-area {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        #preview-canvas {
+            border: 1px solid #333;
+            image-rendering: pixelated;
+            background: #fff;
+        }
+
+        #preview-info {
+            font-size: 12px;
+            color: #aaa;
+        }
+
+        #selection-rect {
+            position: absolute;
+            border: 2px solid #e94560;
+            background: rgba(233, 69, 96, 0.15);
+            pointer-events: none;
+        }
+
+        #zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #zoom-controls span {
+            font-size: 13px;
+            color: #aaa;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        #instructions {
+            padding: 8px 16px;
+            background: #0d1b2a;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px solid #0f3460;
+        }
+
+        .step-indicators {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .step {
+            padding: 4px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+            background: #0f3460;
+            color: #888;
+        }
+
+        .step.active {
+            background: #e94560;
+            color: #fff;
+        }
+
+        .step.done {
+            background: #2d6a4f;
+            color: #52b788;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <h1>Sprite Selector</h1>
+        <div class="step-indicators" id="direction-picker"></div>
+        <span class="mode-label">Current:</span>
+        <span class="mode-name" id="current-mode">down_idle</span>
+        <span class="frame-count" id="frame-count">(0/1)</span>
+        <button id="prev-btn">Prev</button>
+        <button id="next-btn">Next</button>
+        <button id="skip-walk-btn" style="display:none">Skip Walk (idle only)</button>
+        <div id="zoom-controls">
+            <button id="zoom-out">-</button>
+            <span id="zoom-level">2x</span>
+            <button id="zoom-in">+</button>
+        </div>
+        <button id="prefab-btn">Prefab 55x85</button>
+        <button id="undo-btn">Undo</button>
+        <button class="export-btn" id="export-btn">Export JSON</button>
+    </div>
+
+    <div id="main">
+        <div id="canvas-container">
+            <canvas id="sprite-canvas"></canvas>
+            <div id="selection-rect" style="display:none"></div>
+        </div>
+
+        <div id="sidebar">
+            <h2>Selected Frames</h2>
+            <div id="frame-list"></div>
+            <div id="preview-section">
+                <h3>Preview</h3>
+                <div id="preview-area">
+                    <canvas id="preview-canvas" width="64" height="64"></canvas>
+                    <div id="preview-info">Select a frame to preview</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="instructions">
+        Draw: click+drag on empty area. Move: drag inside a frame. Resize: drag any edge or corner handle. Select idle frames (down, up, right, left), then walk frames (3 per direction).
+    </div>
+
+    <script>
+        const IDLE_DIRECTIONS = ['down', 'up', 'right', 'left'];
+        const WALK_DIRECTIONS = ['down', 'up', 'right', 'left'];
+        const IDLE_FRAMES_PER_DIR = 1;
+        const WALK_FRAMES_PER_DIR = 3;
+
+        let spriteImage = null;
+        let zoom = 2;
+        let phase = 'idle';
+        let currentDirIndex = 0;
+        let frames = {};
+
+        // Interaction state
+        // mode: 'none' | 'selecting' | 'moving' | 'resizing'
+        let interaction = {
+            mode: 'none',
+            // For selecting (drawing new rect)
+            selStart: { x: 0, y: 0 },
+            selEnd: { x: 0, y: 0 },
+            // For moving/resizing existing frames
+            targetKey: null,
+            targetIndex: -1,
+            // For moving: offset from mouse to frame origin
+            moveOffsetX: 0,
+            moveOffsetY: 0,
+            // For resizing: which handle and original frame state
+            resizeHandle: null, // 'n','s','e','w','nw','ne','sw','se'
+            origFrame: null     // snapshot of frame before resize started
+        };
+
+        const HANDLE_TOLERANCE = 5; // pixels in image space for edge/corner hit detection
+
+        // Prefab placement mode
+        let prefabActive = false;
+        const PREFAB_W = 55;
+        const PREFAB_H = 85;
+
+        // Init all frame slots
+        for (const dir of IDLE_DIRECTIONS) frames[`${dir}_idle`] = [];
+        for (const dir of WALK_DIRECTIONS) frames[`${dir}_walk`] = [];
+
+        const canvas = document.getElementById('sprite-canvas');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const selRect = document.getElementById('selection-rect');
+        const previewCanvas = document.getElementById('preview-canvas');
+        const previewCtx = previewCanvas.getContext('2d');
+
+        const ALL_KEYS = [
+            ...IDLE_DIRECTIONS.map(d => `${d}_idle`),
+            ...WALK_DIRECTIONS.map(d => `${d}_walk`)
+        ];
+
+        const COLORS = {
+            'down_idle': '#e94560', 'up_idle': '#53d8fb', 'right_idle': '#52b788', 'left_idle': '#ffa62b',
+            'down_walk': '#ff6b81', 'up_walk': '#7ec8e3', 'right_walk': '#74c69d', 'left_walk': '#ffc971'
+        };
+
+        function getCurrentKey() {
+            const dir = phase === 'idle' ? IDLE_DIRECTIONS[currentDirIndex] : WALK_DIRECTIONS[currentDirIndex];
+            return `${dir}_${phase}`;
+        }
+
+        function getMaxFrames() {
+            return phase === 'idle' ? IDLE_FRAMES_PER_DIR : WALK_FRAMES_PER_DIR;
+        }
+
+        // --- Hit testing ---
+
+        /**
+         * Returns { key, index, handle } or null.
+         * handle is 'nw','n','ne','e','se','s','sw','w' for edges/corners, or 'body' for interior.
+         */
+        function hitTestFrames(imgX, imgY) {
+            const tol = HANDLE_TOLERANCE;
+
+            // Iterate in reverse draw order so topmost frame wins
+            for (let ki = ALL_KEYS.length - 1; ki >= 0; ki--) {
+                const key = ALL_KEYS[ki];
+                const keyFrames = frames[key];
+                if (!keyFrames) continue;
+                for (let i = keyFrames.length - 1; i >= 0; i--) {
+                    const f = keyFrames[i];
+                    const nearLeft   = Math.abs(imgX - f.x) <= tol;
+                    const nearRight  = Math.abs(imgX - (f.x + f.w)) <= tol;
+                    const nearTop    = Math.abs(imgY - f.y) <= tol;
+                    const nearBottom = Math.abs(imgY - (f.y + f.h)) <= tol;
+                    const inXRange   = imgX >= f.x - tol && imgX <= f.x + f.w + tol;
+                    const inYRange   = imgY >= f.y - tol && imgY <= f.y + f.h + tol;
+
+                    // Corners (check first, they overlap edges)
+                    if (nearTop && nearLeft && inXRange && inYRange)    return { key, index: i, handle: 'nw' };
+                    if (nearTop && nearRight && inXRange && inYRange)   return { key, index: i, handle: 'ne' };
+                    if (nearBottom && nearLeft && inXRange && inYRange) return { key, index: i, handle: 'sw' };
+                    if (nearBottom && nearRight && inXRange && inYRange)return { key, index: i, handle: 'se' };
+
+                    // Edges
+                    if (nearTop && inXRange)    return { key, index: i, handle: 'n' };
+                    if (nearBottom && inXRange)  return { key, index: i, handle: 's' };
+                    if (nearLeft && inYRange)    return { key, index: i, handle: 'w' };
+                    if (nearRight && inYRange)   return { key, index: i, handle: 'e' };
+
+                    // Body (interior)
+                    if (imgX >= f.x && imgX <= f.x + f.w && imgY >= f.y && imgY <= f.y + f.h) {
+                        return { key, index: i, handle: 'body' };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function getCursorForHandle(handle) {
+            if (!handle) return 'crosshair';
+            const map = {
+                'nw': 'nwse-resize', 'se': 'nwse-resize',
+                'ne': 'nesw-resize', 'sw': 'nesw-resize',
+                'n': 'ns-resize', 's': 'ns-resize',
+                'e': 'ew-resize', 'w': 'ew-resize',
+                'body': 'move'
+            };
+            return map[handle] || 'crosshair';
+        }
+
+        // --- UI updates ---
+
+        function updateUI() {
+            const key = getCurrentKey();
+            const current = frames[key] || [];
+            const max = getMaxFrames();
+
+            document.getElementById('current-mode').textContent = key;
+            document.getElementById('frame-count').textContent = `(${current.length}/${max})`;
+            document.getElementById('skip-walk-btn').style.display = phase === 'walk' ? '' : 'none';
+
+            // Build direction picker
+            const picker = document.getElementById('direction-picker');
+            picker.innerHTML = '';
+            for (const k of ALL_KEYS) {
+                const btn = document.createElement('div');
+                btn.className = 'step';
+                const kFrames = frames[k] || [];
+                const kMax = k.includes('_idle') ? IDLE_FRAMES_PER_DIR : WALK_FRAMES_PER_DIR;
+                if (k === key) {
+                    btn.classList.add('active');
+                } else if (kFrames.length >= kMax) {
+                    btn.classList.add('done');
+                }
+                btn.textContent = `${k} (${kFrames.length}/${kMax})`;
+                btn.style.cursor = 'pointer';
+                btn.addEventListener('click', () => {
+                    // Jump to this direction
+                    if (k.includes('_idle')) {
+                        phase = 'idle';
+                        currentDirIndex = IDLE_DIRECTIONS.indexOf(k.replace('_idle', ''));
+                    } else {
+                        phase = 'walk';
+                        currentDirIndex = WALK_DIRECTIONS.indexOf(k.replace('_walk', ''));
+                    }
+                    updateUI();
+                });
+                picker.appendChild(btn);
+            }
+
+            renderFrameList();
+            drawCanvas();
+        }
+
+        function renderFrameList() {
+            const list = document.getElementById('frame-list');
+            list.innerHTML = '';
+
+            for (const key of ALL_KEYS) {
+                const keyFrames = frames[key];
+                if (!keyFrames || keyFrames.length === 0) continue;
+
+                const group = document.createElement('div');
+                group.className = 'direction-group';
+
+                const h3 = document.createElement('h3');
+                h3.textContent = key;
+                group.appendChild(h3);
+
+                keyFrames.forEach((frame, i) => {
+                    const item = document.createElement('div');
+                    item.className = 'frame-item';
+
+                    const miniCanvas = document.createElement('canvas');
+                    miniCanvas.width = 32;
+                    miniCanvas.height = 32;
+                    const miniCtx = miniCanvas.getContext('2d');
+                    miniCtx.imageSmoothingEnabled = false;
+                    if (spriteImage) {
+                        const scale = Math.min(32 / frame.w, 32 / frame.h);
+                        const dw = frame.w * scale;
+                        const dh = frame.h * scale;
+                        miniCtx.drawImage(spriteImage, frame.x, frame.y, frame.w, frame.h,
+                            (32 - dw) / 2, (32 - dh) / 2, dw, dh);
+                    }
+                    item.appendChild(miniCanvas);
+
+                    const coords = document.createElement('span');
+                    coords.className = 'coords';
+                    coords.textContent = `${frame.x},${frame.y} ${frame.w}x${frame.h}`;
+                    item.appendChild(coords);
+
+                    const delBtn = document.createElement('span');
+                    delBtn.className = 'delete-btn';
+                    delBtn.textContent = '\u00d7';
+                    delBtn.onclick = () => { keyFrames.splice(i, 1); updateUI(); };
+                    item.appendChild(delBtn);
+
+                    item.onclick = (e) => { if (e.target !== delBtn) showPreview(frame); };
+                    group.appendChild(item);
+                });
+
+                list.appendChild(group);
+            }
+        }
+
+        function showPreview(frame) {
+            previewCanvas.width = 128;
+            previewCanvas.height = 128;
+            previewCtx.imageSmoothingEnabled = false;
+            previewCtx.clearRect(0, 0, 128, 128);
+
+            if (spriteImage) {
+                const scale = Math.min(128 / frame.w, 128 / frame.h);
+                const dw = frame.w * scale;
+                const dh = frame.h * scale;
+                previewCtx.drawImage(spriteImage, frame.x, frame.y, frame.w, frame.h,
+                    (128 - dw) / 2, (128 - dh) / 2, dw, dh);
+            }
+
+            document.getElementById('preview-info').textContent =
+                `x:${frame.x} y:${frame.y}\n${frame.w} x ${frame.h}px`;
+        }
+
+        // --- Canvas drawing ---
+
+        function drawCanvas() {
+            if (!spriteImage) return;
+
+            canvas.width = spriteImage.width * zoom;
+            canvas.height = spriteImage.height * zoom;
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(spriteImage, 0, 0, canvas.width, canvas.height);
+
+            for (const key of ALL_KEYS) {
+                const keyFrames = frames[key];
+                if (!keyFrames) continue;
+
+                const color = COLORS[key] || '#fff';
+                ctx.strokeStyle = color;
+                ctx.lineWidth = 2;
+                ctx.setLineDash(key === getCurrentKey() ? [] : [4, 4]);
+
+                keyFrames.forEach((frame, i) => {
+                    const fx = frame.x * zoom;
+                    const fy = frame.y * zoom;
+                    const fw = frame.w * zoom;
+                    const fh = frame.h * zoom;
+
+                    ctx.strokeRect(fx, fy, fw, fh);
+
+                    // Label
+                    ctx.fillStyle = color;
+                    ctx.font = '11px monospace';
+                    ctx.fillText(`${key}[${i}]`, fx + 2, fy - 3);
+
+                    // Draw resize handles (small squares at corners and edge midpoints)
+                    const hs = 6; // handle size in screen px
+                    ctx.fillStyle = color;
+                    // Corners
+                    ctx.fillRect(fx - hs/2, fy - hs/2, hs, hs);               // nw
+                    ctx.fillRect(fx + fw - hs/2, fy - hs/2, hs, hs);          // ne
+                    ctx.fillRect(fx - hs/2, fy + fh - hs/2, hs, hs);          // sw
+                    ctx.fillRect(fx + fw - hs/2, fy + fh - hs/2, hs, hs);     // se
+                    // Edge midpoints
+                    ctx.fillRect(fx + fw/2 - hs/2, fy - hs/2, hs, hs);        // n
+                    ctx.fillRect(fx + fw/2 - hs/2, fy + fh - hs/2, hs, hs);   // s
+                    ctx.fillRect(fx - hs/2, fy + fh/2 - hs/2, hs, hs);        // w
+                    ctx.fillRect(fx + fw - hs/2, fy + fh/2 - hs/2, hs, hs);   // e
+                });
+            }
+
+            ctx.setLineDash([]);
+        }
+
+        // --- Coordinate helpers ---
+
+        function getImageCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: Math.floor((e.clientX - rect.left) / zoom),
+                y: Math.floor((e.clientY - rect.top) / zoom)
+            };
+        }
+
+        function updateSelRectDiv(e) {
+            const cX = e.clientX - container.getBoundingClientRect().left;
+            const cY = e.clientY - container.getBoundingClientRect().top;
+            const sX = interaction.selStart.x * zoom - container.scrollLeft;
+            const sY = interaction.selStart.y * zoom - container.scrollTop;
+
+            selRect.style.left   = Math.min(sX, cX) + 'px';
+            selRect.style.top    = Math.min(sY, cY) + 'px';
+            selRect.style.width  = Math.abs(cX - sX) + 'px';
+            selRect.style.height = Math.abs(cY - sY) + 'px';
+        }
+
+        // --- Mouse event handlers ---
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            const img = getImageCoords(e);
+
+            // Prefab placement: drop a 55x85 rect centered on click, then start moving it
+            if (prefabActive) {
+                const key = getCurrentKey();
+                const max = getMaxFrames();
+
+                if (frames[key].length >= max) {
+                    advanceDirection();
+                    deactivatePrefab();
+                    return;
+                }
+
+                const fx = Math.max(0, img.x - Math.floor(PREFAB_W / 2));
+                const fy = Math.max(0, img.y - Math.floor(PREFAB_H / 2));
+                const newFrame = { x: fx, y: fy, w: PREFAB_W, h: PREFAB_H };
+                frames[key].push(newFrame);
+
+                // Immediately enter moving mode so user can reposition
+                const idx = frames[key].length - 1;
+                interaction.mode = 'moving';
+                interaction.targetKey = key;
+                interaction.targetIndex = idx;
+                interaction.moveOffsetX = img.x - fx;
+                interaction.moveOffsetY = img.y - fy;
+
+                deactivatePrefab();
+                updateUI();
+                return;
+            }
+
+            const hit = hitTestFrames(img.x, img.y);
+
+            if (hit && hit.handle !== 'body') {
+                // Start resizing
+                const f = frames[hit.key][hit.index];
+                interaction.mode = 'resizing';
+                interaction.targetKey = hit.key;
+                interaction.targetIndex = hit.index;
+                interaction.resizeHandle = hit.handle;
+                interaction.origFrame = { x: f.x, y: f.y, w: f.w, h: f.h };
+                interaction.selStart = { x: img.x, y: img.y };
+            } else if (hit && hit.handle === 'body') {
+                // Start moving
+                const f = frames[hit.key][hit.index];
+                interaction.mode = 'moving';
+                interaction.targetKey = hit.key;
+                interaction.targetIndex = hit.index;
+                interaction.moveOffsetX = img.x - f.x;
+                interaction.moveOffsetY = img.y - f.y;
+            } else {
+                // Start drawing a new selection
+                interaction.mode = 'selecting';
+                interaction.selStart = { x: img.x, y: img.y };
+                interaction.selEnd = { x: img.x, y: img.y };
+                selRect.style.display = 'block';
+                updateSelRectDiv(e);
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const img = getImageCoords(e);
+
+            if (interaction.mode === 'selecting') {
+                interaction.selEnd = img;
+                updateSelRectDiv(e);
+                return;
+            }
+
+            if (interaction.mode === 'moving') {
+                const f = frames[interaction.targetKey][interaction.targetIndex];
+                f.x = Math.max(0, img.x - interaction.moveOffsetX);
+                f.y = Math.max(0, img.y - interaction.moveOffsetY);
+                if (spriteImage) {
+                    f.x = Math.min(f.x, spriteImage.width - f.w);
+                    f.y = Math.min(f.y, spriteImage.height - f.h);
+                }
+                drawCanvas();
+                return;
+            }
+
+            if (interaction.mode === 'resizing') {
+                const orig = interaction.origFrame;
+                const dx = img.x - interaction.selStart.x;
+                const dy = img.y - interaction.selStart.y;
+                const f = frames[interaction.targetKey][interaction.targetIndex];
+                const h = interaction.resizeHandle;
+
+                // Start from original frame, then adjust edges based on handle
+                let nx = orig.x, ny = orig.y, nw = orig.w, nh = orig.h;
+
+                if (h.includes('w')) { nx = orig.x + dx; nw = orig.w - dx; }
+                if (h.includes('e')) { nw = orig.w + dx; }
+                if (h.includes('n')) { ny = orig.y + dy; nh = orig.h - dy; }
+                if (h.includes('s')) { nh = orig.h + dy; }
+
+                // Enforce minimum size and flip if dragged past opposite edge
+                if (nw < 5) { nw = 5; if (h.includes('w')) nx = orig.x + orig.w - 5; }
+                if (nh < 5) { nh = 5; if (h.includes('n')) ny = orig.y + orig.h - 5; }
+
+                f.x = Math.max(0, nx);
+                f.y = Math.max(0, ny);
+                f.w = nw;
+                f.h = nh;
+                drawCanvas();
+                return;
+            }
+
+            // Idle: update cursor based on hover or prefab mode
+            if (prefabActive) {
+                container.style.cursor = 'copy';
+            } else {
+                const hit = hitTestFrames(img.x, img.y);
+                container.style.cursor = getCursorForHandle(hit ? hit.handle : null);
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            const mode = interaction.mode;
+
+            if (mode === 'moving' || mode === 'resizing') {
+                const f = frames[interaction.targetKey][interaction.targetIndex];
+                showPreview(f);
+                interaction.mode = 'none';
+                updateUI();
+                return;
+            }
+
+            if (mode === 'selecting') {
+                interaction.mode = 'none';
+                selRect.style.display = 'none';
+                const img = getImageCoords(e);
+                interaction.selEnd = img;
+
+                const x = Math.min(interaction.selStart.x, interaction.selEnd.x);
+                const y = Math.min(interaction.selStart.y, interaction.selEnd.y);
+                const w = Math.abs(interaction.selEnd.x - interaction.selStart.x);
+                const h = Math.abs(interaction.selEnd.y - interaction.selStart.y);
+
+                if (w < 5 || h < 5) return;
+
+                const key = getCurrentKey();
+                const max = getMaxFrames();
+
+                if (frames[key].length >= max) {
+                    advanceDirection();
+                    return;
+                }
+
+                frames[key].push({ x, y, w, h });
+                showPreview({ x, y, w, h });
+                updateUI();
+                return;
+            }
+
+            interaction.mode = 'none';
+        });
+
+        // Cancel on mouse leaving canvas while dragging
+        canvas.addEventListener('mouseleave', () => {
+            if (interaction.mode === 'selecting') {
+                selRect.style.display = 'none';
+            }
+            // Keep move/resize active so user can return
+        });
+
+        // --- Prefab ---
+
+        function deactivatePrefab() {
+            prefabActive = false;
+            document.getElementById('prefab-btn').classList.remove('active');
+        }
+
+        document.getElementById('prefab-btn').addEventListener('click', () => {
+            prefabActive = !prefabActive;
+            document.getElementById('prefab-btn').classList.toggle('active', prefabActive);
+            container.style.cursor = prefabActive ? 'copy' : 'crosshair';
+        });
+
+        // Escape key cancels prefab mode
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && prefabActive) {
+                deactivatePrefab();
+                container.style.cursor = 'crosshair';
+            }
+        });
+
+        // --- Direction flow ---
+
+        function advanceDirection() {
+            const dirs = phase === 'idle' ? IDLE_DIRECTIONS : WALK_DIRECTIONS;
+            if (currentDirIndex < dirs.length - 1) {
+                currentDirIndex++;
+            } else if (phase === 'idle') {
+                phase = 'walk';
+                currentDirIndex = 0;
+            } else {
+                document.getElementById('instructions').textContent =
+                    'All frames selected! Click "Export JSON" to save your sprite definitions.';
+            }
+            updateUI();
+        }
+
+        document.getElementById('next-btn').addEventListener('click', advanceDirection);
+
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            const dirs = phase === 'idle' ? IDLE_DIRECTIONS : WALK_DIRECTIONS;
+            if (currentDirIndex > 0) {
+                currentDirIndex--;
+            } else if (phase === 'walk') {
+                phase = 'idle';
+                currentDirIndex = IDLE_DIRECTIONS.length - 1;
+            }
+            updateUI();
+        });
+
+        document.getElementById('skip-walk-btn').addEventListener('click', () => {
+            phase = 'idle';
+            currentDirIndex = 0;
+            for (const dir of WALK_DIRECTIONS) frames[`${dir}_walk`] = [];
+            document.getElementById('instructions').textContent =
+                'Walk frames skipped. Only idle frames will be exported. Click "Export JSON" to save.';
+            updateUI();
+        });
+
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            const key = getCurrentKey();
+            if (frames[key] && frames[key].length > 0) frames[key].pop();
+            updateUI();
+        });
+
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            if (zoom < 6) { zoom++; document.getElementById('zoom-level').textContent = zoom + 'x'; drawCanvas(); }
+        });
+
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            if (zoom > 1) { zoom--; document.getElementById('zoom-level').textContent = zoom + 'x'; drawCanvas(); }
+        });
+
+        document.getElementById('export-btn').addEventListener('click', () => {
+            const output = {};
+            for (const [key, keyFrames] of Object.entries(frames)) {
+                if (keyFrames.length > 0) {
+                    output[key] = keyFrames.map(f => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
+                }
+            }
+
+            const json = JSON.stringify(output, null, 2);
+
+            navigator.clipboard.writeText(json).then(() => {
+                alert('JSON copied to clipboard!\n\nAlso saving as download.');
+            }).catch(() => {});
+
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'billy-sprites.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Load existing sprite data, then load the spritesheet
+        async function loadExistingData() {
+            try {
+                const resp = await fetch('../assets/billy-sprites.json');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    for (const [key, keyFrames] of Object.entries(data)) {
+                        if (frames[key]) {
+                            frames[key] = keyFrames;
+                        }
+                    }
+                    console.log('Loaded existing sprite data:', Object.keys(data).join(', '));
+
+                    // Skip ahead to first incomplete direction
+                    // Check idle first, then walk
+                    let found = false;
+                    for (let i = 0; i < IDLE_DIRECTIONS.length; i++) {
+                        const k = `${IDLE_DIRECTIONS[i]}_idle`;
+                        if (!frames[k] || frames[k].length < IDLE_FRAMES_PER_DIR) {
+                            phase = 'idle';
+                            currentDirIndex = i;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        for (let i = 0; i < WALK_DIRECTIONS.length; i++) {
+                            const k = `${WALK_DIRECTIONS[i]}_walk`;
+                            if (!frames[k] || frames[k].length < WALK_FRAMES_PER_DIR) {
+                                phase = 'walk';
+                                currentDirIndex = i;
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!found) {
+                        phase = 'walk';
+                        currentDirIndex = WALK_DIRECTIONS.length - 1;
+                    }
+                }
+            } catch (e) {
+                console.log('No existing sprite data found, starting fresh');
+            }
+        }
+
+        loadExistingData().then(() => {
+            spriteImage = new Image();
+            spriteImage.onload = () => { drawCanvas(); updateUI(); };
+            spriteImage.src = '../assets/billy-sprite-sheet.png';
+        });
+    </script>
+</body>
+</html>

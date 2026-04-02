@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billy Soco</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="fps-counter">FPS: 0</div>
+        <div id="debug-info"></div>
+    </div>
+
+    <!-- Engine -->
+    <script src="src/engine/input.js"></script>
+
+    <script src="src/engine/game.js"></script>
+
+    <!-- Entities -->
+    <script src="src/entities/spritesheet.js"></script>
+    <script src="src/entities/environment.js"></script>
+    <script src="src/entities/lava.js"></script>
+    <script src="src/entities/sand.js"></script>
+    <script src="src/entities/portal.js"></script>
+    <script src="src/entities/player.js"></script>
+
+    <!-- World -->
+    <script src="src/world/world.js"></script>
+    <script src="src/world/stages.js"></script>
+
+    <!-- Main -->
+    <script src="src/main.js"></script>
+</body>
+</html>
