@@ -108,7 +108,12 @@ function renderGame(ctx) {
     // Exclude lifted object (player renders it on top of themselves)
     const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
     entities.push(player);
-    entities.sort((a, b) => (a.y + a.height) - (b.y + b.height));
+    // Stacked rocks use their parent's bottom edge + 1 so they render in front
+    entities.sort((a, b) => {
+        const ay = a.stackParent ? (a.stackParent.y + a.stackParent.height + 1) : (a.y + a.height);
+        const by = b.stackParent ? (b.stackParent.y + b.stackParent.height + 1) : (b.y + b.height);
+        return ay - by;
+    });
 
     // Render with camera offset
     for (const entity of entities) {

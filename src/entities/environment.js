@@ -20,6 +20,10 @@ class Rock {
         this.colOffY = size - this.colH;
         this.mass = this.colW * this.colH;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
+
+        // Stacking
+        this.stackParent = null; // rock this one sits on
+        this.stackChild = null;  // rock sitting on top of this one
     }
 
     getRect() {

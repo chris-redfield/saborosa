@@ -139,32 +139,76 @@ class Player {
                 case 'right': obj.x = this.x + this.width + gap; obj.y = this.y + (this.height - obj.height) / 2; break;
                 case 'left':  obj.x = this.x - obj.width - gap; obj.y = this.y + (this.height - obj.height) / 2; break;
             }
+
+            // Check if dropping onto another rock — stack it
+            const dropRect = obj.getRect();
+            let stacked = false;
+            for (const other of obstacles) {
+                if (other === obj || !other.pushable) continue;
+                if (other.stackChild) continue; // already has something on top
+                const or = other.getRect();
+                // Check overlap between drop position and other rock's collision
+                if (dropRect.x < or.x + or.width && dropRect.x + dropRect.width > or.x &&
+                    dropRect.y < or.y + or.height && dropRect.y + dropRect.height > or.y) {
+                    // Stack: center on top of the base rock, offset up by STACK_OFFSET
+                    obj.x = other.x + (other.width - obj.width) / 2;
+                    obj.y = other.y - STACK_OFFSET;
+                    obj.stackParent = other;
+                    other.stackChild = obj;
+                    stacked = true;
+                    break;
+                }
+            }
+
             obj.isObstacle = true;
+
+            // Nudge player out if the dropped rock overlaps with them
+            const dr = obj.getRect();
+            const pr = this.getRect();
+            if (pr.x < dr.x + dr.width && pr.x + pr.width > dr.x &&
+                pr.y < dr.y + dr.height && pr.y + pr.height > dr.y) {
+                switch (this.facing) {
+                    case 'down':  this.y = dr.y - this.colH - this.colOffY - 1; break;
+                    case 'up':    this.y = dr.y + dr.height - this.colOffY + 1; break;
+                    case 'right': this.x = dr.x - this.colW - this.colOffX - 1; break;
+                    case 'left':  this.x = dr.x + dr.width - this.colOffX + 1; break;
+                }
+            }
             this.liftedObject = null;
             return obj;
         }
 
         // Try to pick up a nearby pushable object in the facing direction
+        // Use visual bounds (not collision footprint) for vertical overlap — needed for stacked rocks
         const reach = 8;
         for (const obs of obstacles) {
             if (!obs.pushable || obs.mass >= this.mass) continue;
+            if (obs.stackChild) continue; // can't lift if something is on top
 
             const r = obs.getRect();
             const pr = this.getRect();
+            // Visual vertical overlap (generous — allows lifting stacked rocks above player)
+            const vOverlap = this.y + this.height > obs.y && this.y < obs.y + obs.height;
+            // Horizontal overlap using collision footprint
+            const hOverlap = pr.x + pr.width > r.x && pr.x < r.x + r.width;
 
-            // Check if close enough and in the right direction
             let inRange = false;
             switch (this.facing) {
-                case 'down':  inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && pr.x + pr.width > r.x && pr.x < r.x + r.width; break;
-                case 'up':    inRange = pr.y - reach < r.y + r.height && pr.y > r.y && pr.x + pr.width > r.x && pr.x < r.x + r.width; break;
-                case 'right': inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && pr.y + pr.height > r.y && pr.y < r.y + r.height; break;
-                case 'left':  inRange = pr.x - reach < r.x + r.width && pr.x > r.x && pr.y + pr.height > r.y && pr.y < r.y + r.height; break;
+                case 'down':  inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && hOverlap; break;
+                case 'up':    inRange = pr.y - reach < r.y + r.height && pr.y > r.y && hOverlap; break;
+                case 'right': inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && vOverlap; break;
+                case 'left':  inRange = pr.x - reach < r.x + r.width && pr.x > r.x && vOverlap; break;
             }
 
             if (inRange) {
+                // Detach from stack if this rock was on top of another
+                if (obs.stackParent) {
+                    obs.stackParent.stackChild = null;
+                    obs.stackParent = null;
+                }
                 this.liftedObject = obs;
                 obs.isObstacle = false;
-                return null; // no drop happened
+                return null;
             }
         }
         return null;
@@ -210,27 +254,29 @@ class Player {
             let xBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(newX, this.y, obs)) {
-                    if (obs.pushable && obs.mass < this.mass) {
+                    // Resolve to base of stack
+                    const base = obs.stackParent || obs;
+                    const stackMass = base.mass + (base.stackChild ? base.stackChild.mass : 0);
+
+                    if (base.pushable && stackMass < this.mass) {
                         const pushDir = dx > 0 ? 1 : -1;
-                        const pushSpeed = obs.mass < this.mass * 0.5 ? 0.7 : 0.5;
+                        const pushSpeed = stackMass < this.mass * 0.5 ? 0.7 : 0.5;
                         const pushDx = pushDir * Math.abs(dx) * pushSpeed;
-                        const pushNewX = obs.x + pushDx;
-                        const oCol = obs.getRect();
+                        const pushNewX = base.x + pushDx;
+                        const oCol = base.getRect();
 
                         let pushBlocked = false;
                         for (const other of obstacles) {
-                            if (other === obs) continue;
-                            const offX = oCol.x - obs.x;
-                            const offY = oCol.y - obs.y;
-                            if (this._rectsOverlap(pushNewX + offX, oCol.y, oCol.width, oCol.height, other)) {
+                            if (other === base || other === base.stackChild) continue;
+                            if (this._rectsOverlap(pushNewX + (oCol.x - base.x), oCol.y, oCol.width, oCol.height, other)) {
                                 pushBlocked = true;
                                 break;
                             }
                         }
                         if (!pushBlocked) {
-                            obs.x = pushNewX;
-                            const r = obs.getRect();
-                            // Snap player collision edge against rock collision edge
+                            base.x = pushNewX;
+                            if (base.stackChild) base.stackChild.x = base.x + (base.width - base.stackChild.width) / 2;
+                            const r = obs.getRect(); // snap against the rock we actually hit
                             newX = dx > 0 ? r.x - this.colW - this.colOffX : r.x + r.width - this.colOffX;
                             this.pushing = true;
                         } else {
@@ -248,27 +294,29 @@ class Player {
             let yBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(this.x, newY, obs)) {
-                    if (obs.pushable && obs.mass < this.mass) {
+                    // Resolve to base of stack
+                    const base = obs.stackParent || obs;
+                    const stackMass = base.mass + (base.stackChild ? base.stackChild.mass : 0);
+
+                    if (base.pushable && stackMass < this.mass) {
                         const pushDir = dy > 0 ? 1 : -1;
-                        const pushSpeed = obs.mass < this.mass * 0.5 ? 0.7 : 0.5;
+                        const pushSpeed = stackMass < this.mass * 0.5 ? 0.7 : 0.5;
                         const pushDy = pushDir * Math.abs(dy) * pushSpeed;
-                        const pushNewY = obs.y + pushDy;
-                        const oCol = obs.getRect();
+                        const pushNewY = base.y + pushDy;
+                        const oCol = base.getRect();
 
                         let pushBlocked = false;
                         for (const other of obstacles) {
-                            if (other === obs) continue;
-                            const offX = oCol.x - obs.x;
-                            const offY = oCol.y - obs.y;
-                            if (this._rectsOverlap(oCol.x, pushNewY + offY, oCol.width, oCol.height, other)) {
+                            if (other === base || other === base.stackChild) continue;
+                            if (this._rectsOverlap(oCol.x, pushNewY + (oCol.y - base.y), oCol.width, oCol.height, other)) {
                                 pushBlocked = true;
                                 break;
                             }
                         }
                         if (!pushBlocked) {
-                            obs.y = pushNewY;
+                            base.y = pushNewY;
+                            if (base.stackChild) base.stackChild.y = base.y - STACK_OFFSET;
                             const r = obs.getRect();
-                            // Snap player collision edge against rock collision edge
                             newY = dy > 0 ? r.y - this.colH - this.colOffY : r.y + r.height - this.colOffY;
                             this.pushing = true;
                         } else {
