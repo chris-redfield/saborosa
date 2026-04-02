@@ -378,9 +378,11 @@ class World {
                 ctx.restore();
 
                 // --- Bottom face: front faces of cubes, clipped below block bottom ---
+                // Use hsY as face depth so bottom edge zigzags naturally
+                const faceDepth = hsY;
                 ctx.save();
                 ctx.beginPath();
-                ctx.rect(clipLeft, blockBottom, clipWidth, depth + hsY);
+                ctx.rect(clipLeft, blockBottom, clipWidth, 3 * hsY);
                 ctx.clip();
 
                 for (let a = aMin; a <= aMax; a++) {
@@ -395,23 +397,26 @@ class World {
                         const bvy = Math.round(b * hsY + hsY - cy);
                         const rx = Math.round(a * hs + ts - cx);
 
-                        // Front-left face: left→bottom vertex, dropped by depth
+                        // Only first row: diamonds straddling the block bottom
+                        if (ly > blockBottom || bvy + faceDepth < blockBottom) continue;
+
+                        // Front-left face: left→bottom vertex, dropped by faceDepth
                         ctx.fillStyle = isCB ? fLeftC : fLeftG;
                         ctx.beginPath();
                         ctx.moveTo(lx, ly);
                         ctx.lineTo(bvx, bvy);
-                        ctx.lineTo(bvx, bvy + depth);
-                        ctx.lineTo(lx, ly + depth);
+                        ctx.lineTo(bvx, bvy + faceDepth);
+                        ctx.lineTo(lx, ly + faceDepth);
                         ctx.closePath();
                         ctx.fill();
 
-                        // Front-right face: bottom→right vertex, dropped by depth
+                        // Front-right face: bottom→right vertex, dropped by faceDepth
                         ctx.fillStyle = isCB ? fRightC : fRightG;
                         ctx.beginPath();
                         ctx.moveTo(bvx, bvy);
                         ctx.lineTo(rx, ly);
-                        ctx.lineTo(rx, ly + depth);
-                        ctx.lineTo(bvx, bvy + depth);
+                        ctx.lineTo(rx, ly + faceDepth);
+                        ctx.lineTo(bvx, bvy + faceDepth);
                         ctx.closePath();
                         ctx.fill();
                     }
