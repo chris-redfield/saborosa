@@ -344,6 +344,39 @@ class World {
                 const bMin = Math.floor(oy / hsY) - 3;
                 const bMax = Math.ceil((oy + BLOCK_H + depth) / hsY) + 3;
 
+                // --- Shaded ground: darken ground areas in the last row ---
+                // Fill with dark ground color, then redraw CB diamonds on top
+                const shadeHeight = 8;
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(clipLeft, blockBottom - shadeHeight, clipWidth, shadeHeight);
+                ctx.clip();
+
+                ctx.fillStyle = this._darkenColor(gc, 0.75);
+                ctx.fillRect(clipLeft, blockBottom - shadeHeight, clipWidth, shadeHeight);
+
+                // Restore CB diamonds with their original color
+                for (let a = aMin; a <= aMax; a++) {
+                    if (((a % 2) + 2) % 2 === 0) continue;
+                    for (let b = bMin; b <= bMax; b++) {
+                        if (((a + b) % 2 + 2) % 2 !== 0) continue; // only CB diamonds
+
+                        const lx = Math.round(a * hs - cx);
+                        const ly = Math.round(b * hsY - cy);
+
+                        ctx.fillStyle = cc;
+                        ctx.beginPath();
+                        ctx.moveTo(lx, ly);
+                        ctx.lineTo(Math.round(lx + hs), Math.round(ly + hsY));
+                        ctx.lineTo(Math.round(lx + ts), ly);
+                        ctx.lineTo(Math.round(lx + hs), Math.round(ly - hsY));
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+
+                ctx.restore();
+
                 // --- Bottom face: front faces of cubes, clipped below block bottom ---
                 ctx.save();
                 ctx.beginPath();
