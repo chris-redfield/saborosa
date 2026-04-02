@@ -1,12 +1,13 @@
 # Saborosa
 
-A 2D top-down game with isometric-style visuals, featuring a push/mass physics system and terrain depth rendering.
+A 2D top-down game with isometric-style visuals, featuring push/mass physics, object lifting and stacking, and terrain depth rendering.
 
 ## Controls
 
 - **WASD / Arrow Keys** — Move
 - **Shift** — Dash (5x speed, 150ms duration, 1s cooldown)
-- **E** — Interact (portals)
+- **Space** — Lift / Drop objects
+- **E** — Interact (enter fruit basket to travel to next stage)
 - **C** (hold) — Debug overlay (shows collision boxes, block coords)
 
 ## Architecture
@@ -17,16 +18,16 @@ src/
     input.js      — Keyboard, mouse, gamepad input handling
     game.js       — Core game loop, canvas scaling, asset loading
   entities/
-    player.js     — Player movement, collision, push mechanics
-    environment.js — Rock entities with mass and collision
+    player.js     — Player movement, collision, push, lift mechanics
+    environment.js — Rock entities with mass, collision, stacking
     spritesheet.js — Sprite loading and animation frames
     sand.js       — Sand boundary entity (ground layer)
     lava.js       — Lava boundary entity (ground layer)
-    portal.js     — Stage transition portals
+    portal.js     — Fruit basket (stage transition)
   world/
     world.js      — Block-based world, terrain rendering, depth effect
     stages.js     — Stage definitions (Endless Desert, Sand Bank)
-  main.js         — Entry point, game state, update/render loop
+  main.js         — Entry point, game state, update/render loop, transitions
 ```
 
 ## Isometric Style
@@ -79,7 +80,7 @@ Shaded row:   ◇ ◇ ◇ ◇ ◇ ◇ ◇     ← last row darkened (ground colo
 Transition:    △ △ △ △ △ △ △      ← surface-colored triangles (seamless edge)
 Cube faces:   ◁▷◁▷◁▷◁▷◁▷◁▷      ← front-left (60%) + front-right (70%) faces
 Zigzag bottom: \/\/\/\/\/\/\/     ← jagged edge (no flat bottom)
-Sand:         ▒▒▒▒▒▒▒▒▒▒▒▒▒▒     ← unwalkable sand below
+Sand:         ▒▒▒▒▒▒▒▒▒▒▒▒▒▒     ← walkable sand below
 ```
 
 ### Rendering Layers (bottom to top)
@@ -112,6 +113,7 @@ When the player walks off the walkable terrain onto sand:
 - **Sinking** — The bottom `STACK_OFFSET` (19px) of the player sprite is cropped, making them appear to sink into the sand
 - **Speed reduction** — Movement is 30% slower (`sandSpeedFactor: 0.7`)
 - **Collision box unchanged** — The full footprint is still used for collision
+- **Sand is walkable** — No collision barriers on sand stages; the player can freely walk between the walkable platform and sand
 
 ### Terrain Detection
 
@@ -142,12 +144,86 @@ Objects can be pushed based on a mass comparison. Mass is calculated from the **
 - **Push with effort**: `rock.mass < player.mass` — Rock moves at **50%** of player speed
 - **Push with ease**: `rock.mass < player.mass * 0.5` — Rock moves at **70%** of player speed
 
+### Stack Mass
+
+When rocks are stacked, the **total stack mass** (base + child) is used for push calculations. Two medium rocks stacked together may become too heavy to push even though each one individually is pushable.
+
 ### Push Behavior
 
 - Player and rock move together (player snaps against rock's collision edge)
 - Push is per-axis (X and Y checked independently, allows sliding along rocks)
 - Push is blocked if the rock would collide with another obstacle
-- Pushed rocks collide with other rocks, lava, and obstacles
+- Pushing a stack moves all rocks in the stack together
+- When colliding with a stacked rock, the push resolves to the base of the stack
+
+## Object Lifting
+
+The player can lift and carry objects, Zelda-style.
+
+### How It Works
+
+- **Space** near a liftable rock — picks it up (rock floats above player's head)
+- **Space** while carrying — drops it in front of the player (based on facing direction)
+- Only rocks **lighter than the player** can be lifted (same mass rule as pushing)
+
+### Lift Behavior
+
+- Lifted object follows the player, rendered above the sprite at `liftOffsetY = -20`
+- Lifted rocks are removed from the obstacle list while carried
+- The lift range check uses **visual bounds** for vertical overlap, allowing stacked rocks to be reached
+- After dropping, the player is nudged out if the rock's collision overlaps with them
+
+### Lift Restrictions
+
+- Can't lift a rock that has something stacked on top of it (lift the top one first)
+- Can't lift rocks heavier than the player (`rock.mass >= player.mass`)
+
+## Object Stacking
+
+Rocks can be stacked on top of each other by dropping a carried rock onto another.
+
+### How It Works
+
+- Lift a rock with **Space**, walk to another rock, press **Space** to drop
+- If the drop position overlaps with another rock, the carried rock **snaps on top**, offset by `STACK_OFFSET` (19px)
+- The stacked rock is centered horizontally on the base rock
+
+### Stack Properties
+
+- **Parent/child references** — `rock.stackParent` and `rock.stackChild` track the relationship
+- **Depth sorting** — Stacked rocks use their parent's bottom edge for sorting, so they always render **in front** of the base rock
+- **Max stack depth** — Currently supports 2 rocks (base + one on top)
+- **Unstacking** — Lift the top rock to detach it from the stack
+
+### Stack Interactions
+
+- **Pushing a stack** — The child moves with the base when pushed
+- **Stack mass** — Combined mass determines if the stack can be pushed
+- **Can't lift base** — A rock with a `stackChild` cannot be lifted; remove the top first
+
+## Fruit Basket (Stage Transition)
+
+The portal has been replaced with a **fruit basket** (`assets/empty-basket.png`) that triggers a ToeJam & Earl-style ascent transition.
+
+### Transition Effect
+
+1. Player presses **E** near the basket
+2. Player stops moving and sits inside the basket
+3. The basket ascends upward at 3px/frame
+4. The camera follows the basket — the current stage scrolls away below
+5. After ascending ~1.2x screen height, the new stage loads
+
+### Configuration
+
+The basket is defined in stage configs as a portal:
+
+```js
+portals: [
+    { x: BLOCK_W / 2 + 80, y: BLOCK_H / 2 - 32, targetStage: 1, label: 'Desert' }
+]
+```
+
+The basket renders at 101x101px using the `empty-basket.png` sprite, with a label above and `[E]` prompt below.
 
 ## Stages
 
@@ -155,7 +231,7 @@ Objects can be pushed based on a mass comparison. Mass is calculated from the **
 - **Type**: Infinite (blocks generated around player)
 - **Ground**: Dark brown (`#5c3317`), no checkerboard
 - **Rocks**: 5-12 per block
-- **Portal**: To Sand Bank
+- **Basket**: To Sand Bank
 
 ### Stage 2 — Sand Bank (starting stage)
 - **Type**: Finite (3x3 block grid, center walkable)
@@ -163,7 +239,7 @@ Objects can be pushed based on a mass comparison. Mass is calculated from the **
 - **Sand**: Golden (`#d4a55a`), walkable, player sinks
 - **Depth**: 3D cube faces at bottom edge
 - **Rocks**: 3-7 per block + 80px test rock
-- **Portal**: To Endless Desert
+- **Basket**: To Endless Desert
 
 ## Constants
 
