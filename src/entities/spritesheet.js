@@ -1,5 +1,5 @@
 /**
- * SpriteSheet - Loads Billy Soco sprites from per-direction strip files.
+ * SpriteSheet - Loads player sprites from per-direction strip files.
  *
  * Each strip file (e.g. facing_down.png) contains frames laid out horizontally:
  *   [idle] [walk1] [walk2] [walk3]

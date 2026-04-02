@@ -1,5 +1,5 @@
 /**
- * Player - Billy Soco character with movement and animation
+ * Player - Character with movement and animation
  */
 class Player {
     constructor(game, x, y) {
@@ -302,7 +302,7 @@ class Player {
             ctx.fillStyle = '#fff';
             ctx.font = '10px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText('BILLY', drawX + this.width / 2, drawY + visibleH / 2 + 4);
+            ctx.fillText('PLAYER', drawX + this.width / 2, drawY + visibleH / 2 + 4);
             ctx.textAlign = 'left';
         }
 

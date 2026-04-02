@@ -1,5 +1,5 @@
 /**
- * Billy Soco - Main entry point
+ * Saborosa - Main entry point
  */
 
 let game;
@@ -11,7 +11,7 @@ const gameState = {
 };
 
 async function init() {
-    console.log('Initializing Billy Soco...');
+    console.log('Initializing Saborosa...');
 
     game = new Game('game-canvas');
     await game.loadAssets();
