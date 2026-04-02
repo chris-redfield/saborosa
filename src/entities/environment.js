@@ -10,8 +10,10 @@ class Rock {
         this.height = size;
         this.entityType = 'environment';
         this.isObstacle = true;
+        this.pushable = true;
         this.spriteKey = `rock${type}`;
 
+        this.mass = this.width * this.height;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
     }
 
