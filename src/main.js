@@ -7,7 +7,9 @@ let game;
 const gameState = {
     player: null,
     world: null,
-    currentStage: null
+    currentStage: null,
+    // Basket ascent transition
+    transition: null // { basket, targetStage, basketY, startY, speed, phase }
 };
 
 async function init() {
@@ -50,6 +52,31 @@ function loadStage(stage) {
 function updateGame(dt) {
     const player = gameState.player;
     const world = gameState.world;
+
+    // --- Basket ascent transition ---
+    if (gameState.transition) {
+        const t = gameState.transition;
+        if (t.phase === 'ascending') {
+            // Move basket and player upward
+            t.basketY -= t.speed;
+            t.basket.y = t.basketY;
+            player.x = t.basket.x + (t.basket.width - player.width) / 2;
+            player.y = t.basketY - player.height + 20; // player sits in basket
+
+            // Camera follows the basket
+            world.cameraX = t.basket.x + t.basket.width / 2 - game.width / 2;
+            world.cameraY = t.basketY + t.basket.height / 2 - game.height / 2;
+
+            // After ascending enough, load new stage
+            if (t.startY - t.basketY > game.height * 1.2) {
+                loadStage(STAGES[t.targetStage]);
+                gameState.transition = null;
+            }
+        }
+        return; // skip normal input during transition
+    }
+
+    // --- Normal gameplay ---
     const obstacles = world.getObstacles();
     const movement = game.input.getMovementVector();
 
@@ -84,11 +111,19 @@ function updateGame(dt) {
         player.liftOrDrop(obstacles);
     }
 
-    // Portal interaction
+    // Basket interaction — start ascent
     if (game.input.isKeyJustPressed('interact')) {
         const portal = world.getPortalAt(player);
         if (portal) {
-            loadStage(STAGES[portal.targetStage]);
+            gameState.transition = {
+                basket: portal,
+                targetStage: portal.targetStage,
+                basketY: portal.y,
+                startY: portal.y,
+                speed: 3,
+                phase: 'ascending'
+            };
+            player.moving = false;
             game.input.clearFrameState();
             return;
         }
@@ -125,23 +160,32 @@ function renderGame(ctx) {
         entity.render(ctx, game, camX, camY);
     }
 
+    // During transition, draw the basket on top of everything (it's ascending)
+    if (gameState.transition) {
+        const t = gameState.transition;
+        t.basket.render(ctx, game, camX, camY);
+        player.render(ctx, game, camX, camY);
+    }
+
     // Stage name
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
     ctx.font = '11px monospace';
     ctx.fillText(gameState.currentStage.name, 10, 16);
 
     // Dash cooldown bar
-    const barX = 10, barY = 24, barW = 60, barH = 6;
-    const now = performance.now();
-    const cdEnd = player.dashTimer;
-    const cdTotal = player.dashDuration + player.dashCooldown;
-    const remaining = Math.max(0, cdEnd - now);
-    const fill = 1 - remaining / cdTotal;
+    if (!gameState.transition) {
+        const barX = 10, barY = 24, barW = 60, barH = 6;
+        const now = performance.now();
+        const cdEnd = player.dashTimer;
+        const cdTotal = player.dashDuration + player.dashCooldown;
+        const remaining = Math.max(0, cdEnd - now);
+        const fill = 1 - remaining / cdTotal;
 
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(barX, barY, barW, barH);
-    ctx.fillStyle = fill >= 1 ? '#4f4' : '#2a2';
-    ctx.fillRect(barX, barY, barW * fill, barH);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = fill >= 1 ? '#4f4' : '#2a2';
+        ctx.fillRect(barX, barY, barW * fill, barH);
+    }
 
     // Debug overlay
     if (game.showDebug) {
