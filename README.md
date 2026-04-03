@@ -8,7 +8,7 @@ A 2D top-down game with isometric-style visuals, featuring push/mass physics, ob
 - **Shift** — Dash (5x speed, 150ms duration, 1s cooldown)
 - **Space** — Lift / Drop objects
 - **E** — Interact (enter fruit basket to travel to next stage)
-- **C** (hold) — Debug overlay (shows collision boxes, block coords)
+- **C** (hold) — Debug overlay (collision boxes, block coords, mass values)
 
 ## Architecture
 
@@ -182,11 +182,21 @@ The player can lift and carry objects, Zelda-style.
 
 Rocks can be stacked on top of each other by dropping a carried rock onto another.
 
+### Stack Target Cursor
+
+When carrying an object, a **white pulsing cursor** (corner brackets) appears around the rock the player is aiming at. The target is selected based on:
+
+- **Facing direction** — Uses dot product alignment (>0.3 threshold) with the player's facing vector
+- **Distance** — Must be within 96px
+- **Score** — Closest + most aligned rock wins (`distance * (1.5 - dot)`)
+- **Performance** — Target selection runs every 6 frames, not every frame
+
 ### How It Works
 
-- Lift a rock with **Space**, walk to another rock, press **Space** to drop
-- If the drop position overlaps with another rock, the carried rock **snaps on top**, offset by `STACK_OFFSET` (19px)
+- Lift a rock with **Space**, walk toward another rock until the cursor appears, press **Space** to stack
+- The carried rock **snaps on top** of the targeted rock, offset by `STACK_OFFSET` (19px)
 - The stacked rock is centered horizontally on the base rock
+- If no target is selected, the rock drops to the ground in front of the player
 
 ### Stack Properties
 
@@ -238,7 +248,7 @@ The basket renders at 101x101px using the `empty-basket.png` sprite, with a labe
 - **Ground**: Tan checkerboard (`#c9a070` / `#b8875f`)
 - **Sand**: Golden (`#d4a55a`), walkable, player sinks
 - **Depth**: 3D cube faces at bottom edge
-- **Rocks**: 3-7 per block + 80px test rock
+- **Rocks**: 8-16 per block + 80px test rock
 - **Basket**: To Endless Desert
 
 ## Constants

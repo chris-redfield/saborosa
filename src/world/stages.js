@@ -37,7 +37,7 @@ const STAGES = {
         spawnY: BLOCK_H / 2 - 28,
         safeZone: { x: BLOCK_W / 2, y: BLOCK_H / 2, radius: 120 },
         portals: [
-            { x: BLOCK_W / 2 + 80, y: BLOCK_H / 2 - 32, targetStage: 1, label: 'Desert' }
+            { x: BLOCK_W / 2 - 160, y: BLOCK_H / 2 - 160, targetStage: 1, label: 'Desert' }
         ]
     }
 };
