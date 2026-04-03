@@ -54,6 +54,25 @@ class World {
         return this._walkableBlocks.has(`${bx},${by}`);
     }
 
+    _getDiamondGeometry(bx, by) {
+        const cb = this.stage.checkerboard;
+        if (!cb) return null;
+        const hs = cb.tileSize / 2;
+        const yRatio = (cb.style === 'perspective') ? (cb.yRatio || 0.5) : 1;
+        const hsY = hs * yRatio;
+
+        const cx = bx * BLOCK_W + BLOCK_W / 2;
+        const cy = by * BLOCK_H + BLOCK_H / 2;
+
+        const maxRW = Math.floor((BLOCK_W / 2) / hs);
+        const maxRH = Math.floor((BLOCK_H / 2) / hsY);
+        const R = this.stage.diamondRadius || Math.min(maxRW, maxRH) - 1;
+        const hw = R * hs;
+        const hh = R * hsY;
+
+        return { cx, cy, hw, hh };
+    }
+
     /**
      * Check if a world position is on walkable terrain (not sand).
      * Accounts for diamond-aligned visual inset on sand stages.
@@ -64,6 +83,23 @@ class World {
         const by = Math.floor(y / BLOCK_H);
 
         if (this._walkableBlocks.has(`${bx},${by}`)) {
+            if (this.stage.terrainShape === 'diamond') {
+                const d = this._getDiamondGeometry(bx, by);
+                const normDist = Math.abs(x - d.cx) / d.hw + Math.abs(y - d.cy) / d.hh;
+                if (normDist <= 1) return true;
+                // Depth area below bottom edges
+                if (this.stage.terrainDepth) {
+                    const ddx = x - d.cx;
+                    const ddy = y - d.cy;
+                    if (ddy > 0 && Math.abs(ddx) <= d.hw) {
+                        const yEdge = ddx <= 0
+                            ? d.cy + ((x - d.cx + d.hw) / d.hw) * d.hh
+                            : d.cy + ((d.cx + d.hw - x) / d.hw) * d.hh;
+                        if (y >= yEdge && y - yEdge < STACK_OFFSET * 2 + 25) return true;
+                    }
+                }
+                return false;
+            }
             // On the walkable block — check visual inset edges
             if (this.stage.sandColor && this.stage.checkerboard) {
                 const ox = bx * BLOCK_W;
@@ -225,25 +261,35 @@ class World {
                 continue;
             }
 
-            // Sand stages: clip walkable block to diamond-aligned boundary
+            // Sand stages: clip walkable block
             let groundClipped = false;
             if (this.stage.sandColor && this.stage.checkerboard) {
-                const _hs = this.stage.checkerboard.tileSize / 2;
-                const _ox = block.xCoord * BLOCK_W;
-                const _oy = block.yCoord * BLOCK_H;
-                let aLeft = Math.ceil(_ox / _hs);
-                if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
-                const alignedLeft = Math.round(aLeft * _hs - cx);
-
                 // Fill full block with sand first
                 ctx.fillStyle = this.stage.sandColor;
                 ctx.fillRect(screenX, screenY, BLOCK_W + 1, BLOCK_H + 1);
 
-                // Clip to diamond-aligned area (inset on left and top)
                 ctx.save();
-                ctx.beginPath();
-                ctx.rect(alignedLeft, screenY + LAVA_W, screenX + BLOCK_W - alignedLeft + 1, BLOCK_H - LAVA_W + 1);
-                ctx.clip();
+                if (this.stage.terrainShape === 'diamond') {
+                    // Diamond terrain: clip to diamond shape
+                    const d = this._getDiamondGeometry(block.xCoord, block.yCoord);
+                    ctx.beginPath();
+                    ctx.moveTo(Math.round(d.cx - d.hw - cx), Math.round(d.cy - cy));
+                    ctx.lineTo(Math.round(d.cx - cx), Math.round(d.cy - d.hh - cy));
+                    ctx.lineTo(Math.round(d.cx + d.hw - cx), Math.round(d.cy - cy));
+                    ctx.lineTo(Math.round(d.cx - cx), Math.round(d.cy + d.hh - cy));
+                    ctx.closePath();
+                    ctx.clip();
+                } else {
+                    // Rectangular terrain: clip to diamond-aligned boundary
+                    const _hs = this.stage.checkerboard.tileSize / 2;
+                    const _ox = block.xCoord * BLOCK_W;
+                    let aLeft = Math.ceil(_ox / _hs);
+                    if (((aLeft % 2) + 2) % 2 === 0) aLeft++;
+                    const alignedLeft = Math.round(aLeft * _hs - cx);
+                    ctx.beginPath();
+                    ctx.rect(alignedLeft, screenY + LAVA_W, screenX + BLOCK_W - alignedLeft + 1, BLOCK_H - LAVA_W + 1);
+                    ctx.clip();
+                }
                 groundClipped = true;
             }
 
@@ -389,6 +435,74 @@ class World {
 
                 const ox = block.xCoord * BLOCK_W;
                 const oy = block.yCoord * BLOCK_H;
+
+                // Diamond terrain depth
+                if (this.stage.terrainShape === 'diamond') {
+                    const d = this._getDiamondGeometry(block.xCoord, block.yCoord);
+                    const dsx = Math.round(d.cx - cx);
+                    const dsy = Math.round(d.cy - cy);
+                    const faceDepth = hsY;
+
+                    const dAMin = Math.floor((d.cx - d.hw) / hs) - 3;
+                    const dAMax = Math.ceil((d.cx + d.hw) / hs) + 3;
+                    const dBMin = Math.floor(d.cy / hsY) - 3;
+                    const dBMax = Math.ceil((d.cy + d.hh + faceDepth * 2) / hsY) + 3;
+
+                    // Clip: area below bottom two edges of the diamond
+                    ctx.save();
+                    ctx.beginPath();
+                    ctx.moveTo(Math.round(dsx - d.hw), Math.round(dsy));
+                    ctx.lineTo(Math.round(dsx), Math.round(dsy + d.hh));
+                    ctx.lineTo(Math.round(dsx + d.hw), Math.round(dsy));
+                    ctx.lineTo(Math.round(dsx + d.hw), Math.round(dsy + d.hh + 4 * hsY));
+                    ctx.lineTo(Math.round(dsx - d.hw), Math.round(dsy + d.hh + 4 * hsY));
+                    ctx.closePath();
+                    ctx.clip();
+
+
+                    // Cube faces along the bottom edges
+                    for (let a = dAMin; a <= dAMax; a++) {
+                        if (((a % 2) + 2) % 2 === 0) continue;
+                        for (let b = dBMin; b <= dBMax; b++) {
+                            const isCB = ((a + b) % 2) === 0;
+                            const lx = Math.round(a * hs - cx);
+                            const ly = Math.round(b * hsY - cy);
+                            const bvx = Math.round(a * hs + hs - cx);
+                            const bvy = Math.round(b * hsY + hsY - cy);
+                            const rx = Math.round(a * hs + ts - cx);
+
+                            // Only render near the diamond boundary
+                            const tileCX = a * hs + hs;
+                            const tileCY = b * hsY;
+                            const ndist = Math.abs(tileCX - d.cx) / d.hw + Math.abs(tileCY - d.cy) / d.hh;
+                            if (ndist < 0.9 || ndist > 1.15) continue;
+
+                            // Front-left face
+                            ctx.fillStyle = isCB ? fLeftC : fLeftG;
+                            ctx.beginPath();
+                            ctx.moveTo(lx, ly);
+                            ctx.lineTo(bvx, bvy);
+                            ctx.lineTo(bvx, bvy + faceDepth);
+                            ctx.lineTo(lx, ly + faceDepth);
+                            ctx.closePath();
+                            ctx.fill();
+
+                            // Front-right face
+                            ctx.fillStyle = isCB ? fRightC : fRightG;
+                            ctx.beginPath();
+                            ctx.moveTo(bvx, bvy);
+                            ctx.lineTo(rx, ly);
+                            ctx.lineTo(rx, ly + faceDepth);
+                            ctx.lineTo(bvx, bvy + faceDepth);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                    }
+
+                    ctx.restore();
+                    continue;
+                }
+
                 const sx = Math.round(ox - cx);
                 const sy = Math.round(oy - cy);
                 const blockBottom = sy + BLOCK_H;
@@ -564,6 +678,12 @@ class World {
                 const dx = (x + size / 2) - sz.x;
                 const dy = (y + size / 2) - sz.y;
                 if (Math.sqrt(dx * dx + dy * dy) < safeRadius) continue;
+            }
+
+            // Skip if outside diamond terrain boundary
+            if (this.stage.terrainShape === 'diamond') {
+                const d = this._getDiamondGeometry(bx, by);
+                if (Math.abs(x + size / 2 - d.cx) / d.hw + Math.abs(y + size / 2 - d.cy) / d.hh > 0.85) continue;
             }
 
             // Skip if overlapping a portal position

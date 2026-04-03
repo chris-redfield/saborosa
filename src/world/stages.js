@@ -28,6 +28,7 @@ const STAGES = {
             [-1,  1], [0,  1], [1,  1]
         ],
         walkableBlocks: [[0, 0]],
+        terrainShape: 'diamond',
         sandColor: '#d4a55a',
         groundColor: '#c9a070',
         checkerboard: { tileSize: 77, color: '#b8875f', style: 'perspective' },
