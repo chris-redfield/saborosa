@@ -250,6 +250,7 @@
             <button id="zoom-in">+</button>
         </div>
         <button id="prefab-btn">Prefab 55x85</button>
+        <button id="prefab2-btn">Prefab 145x109</button>
         <button id="undo-btn">Undo</button>
         <button class="export-btn" id="export-btn">Export JSON</button>
     </div>
@@ -279,7 +280,7 @@
 
     <script>
         const IDLE_DIRECTIONS = ['down', 'up', 'right', 'left'];
-        const WALK_DIRECTIONS = ['down', 'up', 'right', 'left'];
+        const WALK_DIRECTIONS = [];
         const IDLE_FRAMES_PER_DIR = 1;
         const WALK_FRAMES_PER_DIR = 3;
 
@@ -311,8 +312,8 @@
 
         // Prefab placement mode
         let prefabActive = false;
-        const PREFAB_W = 55;
-        const PREFAB_H = 85;
+        let prefabW = 55;
+        let prefabH = 85;
 
         // Init all frame slots
         for (const dir of IDLE_DIRECTIONS) frames[`${dir}_idle`] = [];
@@ -604,9 +605,9 @@
                     return;
                 }
 
-                const fx = Math.max(0, img.x - Math.floor(PREFAB_W / 2));
-                const fy = Math.max(0, img.y - Math.floor(PREFAB_H / 2));
-                const newFrame = { x: fx, y: fy, w: PREFAB_W, h: PREFAB_H };
+                const fx = Math.max(0, img.x - Math.floor(prefabW / 2));
+                const fy = Math.max(0, img.y - Math.floor(prefabH / 2));
+                const newFrame = { x: fx, y: fy, w: prefabW, h: prefabH };
                 frames[key].push(newFrame);
 
                 // Immediately enter moving mode so user can reposition
@@ -762,12 +763,28 @@
         function deactivatePrefab() {
             prefabActive = false;
             document.getElementById('prefab-btn').classList.remove('active');
+            document.getElementById('prefab2-btn').classList.remove('active');
+            container.style.cursor = 'crosshair';
+        }
+
+        function activatePrefab(w, h, btnId) {
+            const wasActive = prefabActive && prefabW === w && prefabH === h;
+            deactivatePrefab();
+            if (!wasActive) {
+                prefabActive = true;
+                prefabW = w;
+                prefabH = h;
+                document.getElementById(btnId).classList.add('active');
+                container.style.cursor = 'copy';
+            }
         }
 
         document.getElementById('prefab-btn').addEventListener('click', () => {
-            prefabActive = !prefabActive;
-            document.getElementById('prefab-btn').classList.toggle('active', prefabActive);
-            container.style.cursor = prefabActive ? 'copy' : 'crosshair';
+            activatePrefab(55, 85, 'prefab-btn');
+        });
+
+        document.getElementById('prefab2-btn').addEventListener('click', () => {
+            activatePrefab(145, 109, 'prefab2-btn');
         });
 
         // Escape key cancels prefab mode
@@ -848,7 +865,7 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = 'billy-sprites.json';
+            a.download = 'saborosa-cha-001-sprites.json';
             a.click();
             URL.revokeObjectURL(url);
         });
@@ -856,7 +873,7 @@
         // Load existing sprite data, then load the spritesheet
         async function loadExistingData() {
             try {
-                const resp = await fetch('../assets/billy-sprites.json');
+                const resp = await fetch('../assets/saborosa-cha-001-sprites.json');
                 if (resp.ok) {
                     const data = await resp.json();
                     for (const [key, keyFrames] of Object.entries(data)) {
@@ -902,7 +919,7 @@
         loadExistingData().then(() => {
             spriteImage = new Image();
             spriteImage.onload = () => { drawCanvas(); updateUI(); };
-            spriteImage.src = '../assets/billy-sprite-sheet.png';
+            spriteImage.src = '../assets/saborosa-cha-001.png';
         });
     </script>
 </body>

@@ -69,10 +69,8 @@ class Game {
     async loadAssets() {
         try {
             await Promise.all([
-                this.loadImage('facing_down', 'assets/sprites/facing_down.png'),
-                this.loadImage('facing_up', 'assets/sprites/facing_up.png'),
-                this.loadImage('facing_right', 'assets/sprites/facing_right.png'),
-                this.loadImage('facing_left', 'assets/sprites/facing_left.png'),
+                this.loadImage('character_sheet', 'assets/saborosa-cha-001.png'),
+                this.loadJSON('character_sprites', 'assets/saborosa-cha-001-sprites.json'),
                 this.loadImage('rock1', 'assets/rock1.png'),
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),

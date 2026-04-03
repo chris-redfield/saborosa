@@ -1,9 +1,8 @@
 /**
- * SpriteSheet - Loads player sprites from per-direction strip files.
+ * SpriteSheet - Loads player sprites from a single sheet + JSON definition.
  *
- * Each strip file (e.g. facing_down.png) contains frames laid out horizontally:
- *   [idle] [walk1] [walk2] [walk3]
- * All frames are FRAME_W x FRAME_H with SPACING px gaps between them.
+ * The JSON file defines idle frames per direction (down, up, right, left).
+ * Walk frames reuse the idle sprite until dedicated walk frames are available.
  */
 class SpriteSheet {
     constructor(game) {
@@ -11,10 +10,8 @@ class SpriteSheet {
     }
 
     loadSprites(targetWidth, targetHeight) {
-        const FRAME_W = 55;
-        const FRAME_H = 85;
-        const SPACING = 10;
-        const DIRECTIONS = ['down', 'up', 'right', 'left'];
+        const img = this.game.getImage('character_sheet');
+        const data = this.game.getJSON('character_sprites');
 
         const sprites = {
             down_idle: [], down_walk: [],
@@ -23,31 +20,46 @@ class SpriteSheet {
             left_idle: [], left_walk: []
         };
 
+        if (!img || !data) return { sprites };
+
+        const DIRECTIONS = ['down', 'up', 'right', 'left'];
+
         for (const dir of DIRECTIONS) {
-            const img = this.game.getImage(`facing_${dir}`);
-            if (!img) continue;
+            const idleFrames = data[`${dir}_idle`];
+            if (!idleFrames || idleFrames.length === 0) continue;
 
-            // Frame 0 = idle, frames 1-3 = walk
-            const numFrames = Math.round((img.width + SPACING) / (FRAME_W + SPACING));
+            const f = idleFrames[0];
+            const spriteData = {
+                image: img,
+                sx: f.x,
+                sy: f.y,
+                sw: f.w,
+                sh: f.h,
+                width: targetWidth,
+                height: targetHeight,
+                flipped: false
+            };
 
-            for (let i = 0; i < numFrames; i++) {
-                const sx = i * (FRAME_W + SPACING);
-                const spriteData = {
-                    image: img,
-                    sx: sx,
-                    sy: 0,
-                    sw: FRAME_W,
-                    sh: FRAME_H,
-                    width: targetWidth,
-                    height: targetHeight,
-                    flipped: false
-                };
+            sprites[`${dir}_idle`].push(spriteData);
 
-                if (i === 0) {
-                    sprites[`${dir}_idle`].push(spriteData);
-                } else {
-                    sprites[`${dir}_walk`].push(spriteData);
+            // Use walk frames from JSON if available, otherwise reuse idle
+            const walkFrames = data[`${dir}_walk`];
+            if (walkFrames && walkFrames.length > 0) {
+                for (const wf of walkFrames) {
+                    sprites[`${dir}_walk`].push({
+                        image: img,
+                        sx: wf.x,
+                        sy: wf.y,
+                        sw: wf.w,
+                        sh: wf.h,
+                        width: targetWidth,
+                        height: targetHeight,
+                        flipped: false
+                    });
                 }
+            } else {
+                // Reuse idle as single walk frame (no animation)
+                sprites[`${dir}_walk`].push({ ...spriteData });
             }
         }
 

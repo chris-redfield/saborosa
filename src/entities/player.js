@@ -6,15 +6,15 @@ class Player {
         this.game = game;
         this.x = x;
         this.y = y;
-        this.width = 48;
-        this.height = 56;
+        this.width = 145;
+        this.height = 109;
         this.speed = 3;
 
-        // Isometric collision footprint (bottom portion of sprite)
+        // Isometric collision footprint (bottom portion of sprite, centered)
         this.colW = 48;
-        this.colH = 28; // bottom half
-        this.colOffX = 0;
-        this.colOffY = 28; // offset from top of sprite
+        this.colH = 28;
+        this.colOffX = Math.floor((145 - 48) / 2); // 48 — centered horizontally
+        this.colOffY = 109 - 28; // 81 — at the feet
         this.mass = this.colW * this.colH;
         this.pushing = false;
 
@@ -52,7 +52,7 @@ class Player {
         // Lifting
         this.liftedObject = null;
         this.liftOffsetX = 0;  // centered on player
-        this.liftOffsetY = -20; // above head — tweak this to experiment
+        this.liftOffsetY = -30; // above head
         this.stackTarget = null; // rock currently targeted for stacking
 
         // Sprites
