@@ -41,6 +41,10 @@ class Player {
         this.dashEndTime = 0;
         this.dashTimer = 0;
 
+        // Run (sprint)
+        this.running = false;
+        this.runSpeedFactor = 1.45; // 100% faster when running
+
         // Sand sinking
         this.onSand = false;
         this.sandSpeedFactor = 0.7; // 30% slower on sand
@@ -468,8 +472,9 @@ class Player {
             ctx.strokeRect(drawX + this.colOffX, drawY + this.colOffY, this.colW, this.colH);
             ctx.fillStyle = 'lime';
             ctx.font = '10px monospace';
+            const runInfo = this.running ? ' RUN' : '';
             const dashInfo = this.dashing ? ' DASH' : (performance.now() < this.dashTimer ? ' cd' : '');
-            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${dashInfo} m:${this.mass}`, drawX, drawY - 4);
+            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${runInfo}${dashInfo} m:${this.mass}`, drawX, drawY - 4);
         }
 
         // Render lifted object above head

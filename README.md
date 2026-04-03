@@ -5,9 +5,11 @@ A 2D top-down game with isometric-style visuals, featuring push/mass physics, ob
 ## Controls
 
 - **WASD / Arrow Keys** — Move
+- **R** (hold) — Run (100% speed boost while held)
 - **Shift** — Dash (5x speed, 150ms duration, 1s cooldown)
 - **Space** — Lift / Drop objects
-- **E** — Interact (enter fruit basket to travel to next stage)
+- **E** — Explore / Interact (enter fruit basket to travel to next stage)
+- **P** — Pause
 - **C** (hold) — Debug overlay (collision boxes, block coords, mass values)
 
 ## Architecture

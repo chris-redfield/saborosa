@@ -28,6 +28,8 @@ class InputHandler {
             'Space': 'attack',
             'KeyE': 'interact',
             'ShiftLeft': 'dash', 'ShiftRight': 'dash',
+            'KeyR': 'run',
+            'KeyP': 'pause',
 
             'Escape': 'escape',
             'KeyC': 'debug'

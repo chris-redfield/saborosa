@@ -90,8 +90,12 @@ function updateGame(dt) {
     const playerBottomY = player.y + player.height;
     player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
 
-    // Movement: dash overrides normal speed, sand slows
-    const speedMult = player.onSand ? player.sandSpeedFactor : 1;
+    // Run (sprint) — hold R to move 27% faster
+    player.running = game.input.isKeyDown('run');
+
+    // Movement: dash overrides normal speed, sand slows, run boosts
+    let speedMult = player.onSand ? player.sandSpeedFactor : 1;
+    if (player.running && !player.dashing) speedMult *= player.runSpeedFactor;
     let dx, dy;
     if (player.dashing) {
         const dashVel = player.speed * player.dashSpeed * speedMult;
