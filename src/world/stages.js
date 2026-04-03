@@ -32,7 +32,7 @@ const STAGES = {
         groundColor: '#c9a070',
         checkerboard: { tileSize: 77, color: '#b8875f', style: 'perspective' },
         terrainDepth: 30,
-        rockCount: [3, 7],
+        rockCount: [8, 16],
         spawnX: BLOCK_W / 2 - 24,
         spawnY: BLOCK_H / 2 - 28,
         safeZone: { x: BLOCK_W / 2, y: BLOCK_H / 2, radius: 120 },

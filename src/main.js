@@ -106,6 +106,9 @@ function updateGame(dt) {
     player.update(dt);
     world.update(player);
 
+    // Update stack target cursor every frame while carrying
+    player.updateStackTarget(obstacles);
+
     // Lift / drop (Space)
     if (game.input.isKeyJustPressed('attack')) {
         player.liftOrDrop(obstacles);

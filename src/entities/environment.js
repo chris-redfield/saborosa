@@ -53,6 +53,12 @@ class Rock {
             // Collision footprint
             ctx.strokeStyle = 'red';
             ctx.strokeRect(sx + this.colOffX, sy + this.colOffY, this.colW, this.colH);
+            // Mass label
+            ctx.fillStyle = 'yellow';
+            ctx.font = '9px monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(`m:${this.mass}`, sx + this.width / 2, sy - 3);
+            ctx.textAlign = 'left';
         }
     }
 }

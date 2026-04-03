@@ -49,6 +49,7 @@ class Player {
         this.liftedObject = null;
         this.liftOffsetX = 0;  // centered on player
         this.liftOffsetY = -20; // above head — tweak this to experiment
+        this.stackTarget = null; // rock currently targeted for stacking
 
         // Sprites
         this.sprites = null;
@@ -125,6 +126,60 @@ class Player {
     }
 
     /**
+     * Get the facing direction as a unit vector based on last input.
+     */
+    getFacingVector() {
+        switch (this.facing) {
+            case 'down':  return { x: 0, y: 1 };
+            case 'up':    return { x: 0, y: -1 };
+            case 'right': return { x: 1, y: 0 };
+            case 'left':  return { x: -1, y: 0 };
+            default:      return { x: 0, y: 1 };
+        }
+    }
+
+    /**
+     * Find the best rock to stack on: closest in the facing direction.
+     */
+    updateStackTarget(obstacles) {
+        // Only update every 6 frames
+        this._stackTargetTimer = (this._stackTargetTimer || 0) + 1;
+        if (this._stackTargetTimer % 6 !== 0) return;
+
+        this.stackTarget = null;
+        if (!this.liftedObject) return;
+
+        const cx = this.x + this.width / 2;
+        const cy = this.y + this.height / 2;
+        const dir = this.getFacingVector();
+        const maxDist = 96;
+
+        let bestScore = Infinity;
+        for (const obs of obstacles) {
+            if (!obs.pushable || obs === this.liftedObject) continue;
+            if (obs.stackChild) continue;
+
+            const ox = obs.x + obs.width / 2;
+            const oy = obs.y + obs.height / 2;
+            const dx = ox - cx;
+            const dy = oy - cy;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > maxDist || dist < 1) continue;
+
+            // Dot product: how aligned is this rock with facing direction
+            const dot = (dx / dist) * dir.x + (dy / dist) * dir.y;
+            if (dot < 0.3) continue; // must be roughly in front
+
+            // Score: prefer closer and more aligned
+            const score = dist * (1.5 - dot);
+            if (score < bestScore) {
+                bestScore = score;
+                this.stackTarget = obs;
+            }
+        }
+    }
+
+    /**
      * Try to lift a nearby object, or drop the currently held one.
      * Returns the dropped object (if any) so main.js can re-add it to the world.
      */
@@ -140,25 +195,17 @@ class Player {
                 case 'left':  obj.x = this.x - obj.width - gap; obj.y = this.y + (this.height - obj.height) / 2; break;
             }
 
-            // Check if dropping onto another rock — stack it
-            const dropRect = obj.getRect();
+            // Stack onto the targeted rock if one exists
             let stacked = false;
-            for (const other of obstacles) {
-                if (other === obj || !other.pushable) continue;
-                if (other.stackChild) continue; // already has something on top
-                const or = other.getRect();
-                // Check overlap between drop position and other rock's collision
-                if (dropRect.x < or.x + or.width && dropRect.x + dropRect.width > or.x &&
-                    dropRect.y < or.y + or.height && dropRect.y + dropRect.height > or.y) {
-                    // Stack: center on top of the base rock, offset up by STACK_OFFSET
-                    obj.x = other.x + (other.width - obj.width) / 2;
-                    obj.y = other.y - STACK_OFFSET;
-                    obj.stackParent = other;
-                    other.stackChild = obj;
-                    stacked = true;
-                    break;
-                }
+            if (this.stackTarget && !this.stackTarget.stackChild) {
+                const other = this.stackTarget;
+                obj.x = other.x + (other.width - obj.width) / 2;
+                obj.y = other.y - STACK_OFFSET;
+                obj.stackParent = other;
+                other.stackChild = obj;
+                stacked = true;
             }
+            this.stackTarget = null;
 
             obj.isObstacle = true;
 
@@ -422,12 +469,52 @@ class Player {
             ctx.fillStyle = 'lime';
             ctx.font = '10px monospace';
             const dashInfo = this.dashing ? ' DASH' : (performance.now() < this.dashTimer ? ' cd' : '');
-            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${dashInfo}`, drawX, drawY - 4);
+            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${dashInfo} m:${this.mass}`, drawX, drawY - 4);
         }
 
         // Render lifted object above head
         if (this.liftedObject) {
             this.liftedObject.render(ctx, game, camX, camY);
+        }
+
+        // Stack target cursor — shows which rock you'll stack on
+        if (this.stackTarget && this.liftedObject) {
+            const t = this.stackTarget;
+            const tx = t.x - camX;
+            const ty = t.y - camY;
+            const pad = 4;
+            const cornerLen = 8;
+
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.6 + Math.sin(performance.now() / 200) * 0.3;
+
+            // Top-left corner
+            ctx.beginPath();
+            ctx.moveTo(tx - pad, ty - pad + cornerLen);
+            ctx.lineTo(tx - pad, ty - pad);
+            ctx.lineTo(tx - pad + cornerLen, ty - pad);
+            ctx.stroke();
+            // Top-right corner
+            ctx.beginPath();
+            ctx.moveTo(tx + t.width + pad - cornerLen, ty - pad);
+            ctx.lineTo(tx + t.width + pad, ty - pad);
+            ctx.lineTo(tx + t.width + pad, ty - pad + cornerLen);
+            ctx.stroke();
+            // Bottom-left corner
+            ctx.beginPath();
+            ctx.moveTo(tx - pad, ty + t.height + pad - cornerLen);
+            ctx.lineTo(tx - pad, ty + t.height + pad);
+            ctx.lineTo(tx - pad + cornerLen, ty + t.height + pad);
+            ctx.stroke();
+            // Bottom-right corner
+            ctx.beginPath();
+            ctx.moveTo(tx + t.width + pad - cornerLen, ty + t.height + pad);
+            ctx.lineTo(tx + t.width + pad, ty + t.height + pad);
+            ctx.lineTo(tx + t.width + pad, ty + t.height + pad - cornerLen);
+            ctx.stroke();
+
+            ctx.globalAlpha = 1;
         }
     }
 }
