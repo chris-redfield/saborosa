@@ -22,7 +22,8 @@ src/
   entities/
     player.js     — Player movement, collision, push, lift mechanics
     environment.js — Rock entities with mass, collision, stacking
-    spritesheet.js — Sprite loading and animation frames
+    liverock.js   — Live Rock entity (animated, unliftable)
+    spritesheet.js — Sprite loading from single sheet + JSON definitions
     sand.js       — Sand boundary entity (ground layer)
     lava.js       — Lava boundary entity (ground layer)
     portal.js     — Fruit basket (stage transition)
@@ -30,7 +31,61 @@ src/
     world.js      — Block-based world, terrain rendering, depth effect
     stages.js     — Stage definitions (Endless Desert, Sand Bank)
   main.js         — Entry point, game state, update/render loop, transitions
+tools/
+  sprite-selector.html — Visual tool for selecting sprite regions from a sheet
+assets/
+  saborosa-cha-001.png           — Character + Live Rock sprite sheet
+  saborosa-cha-001-sprites.json  — Character sprite regions (idle per direction)
+  saborosa-liverock-sprites.json — Live Rock sprite regions (pos1-pos4)
 ```
+
+## Sprite System
+
+Sprites are loaded from a **single sprite sheet** (`saborosa-cha-001.png`) with frame coordinates defined in JSON files.
+
+### Character Sprites
+
+Defined in `saborosa-cha-001-sprites.json`:
+
+```json
+{
+  "down_idle": [{ "x": 237, "y": 353, "w": 145, "h": 109 }],
+  "up_idle":   [{ "x": 241, "y": 77,  "w": 145, "h": 109 }],
+  "right_idle":[{ "x": 422, "y": 215, "w": 145, "h": 109 }],
+  "left_idle": [{ "x": 55,  "y": 219, "w": 145, "h": 109 }]
+}
+```
+
+- The player visual size matches the sprite dimensions (145 x 109px) — no deformation
+- Walk frames reuse the idle sprite until dedicated walk animation is available
+- `spritesheet.js` reads the JSON and maps source regions to the player's render size
+
+### Live Rock Sprites
+
+Defined in `saborosa-liverock-sprites.json`:
+
+```json
+{
+  "pos1_idle": [{ "x": 574, "y": 214, "w": 253, "h": 169 }],
+  "pos2_idle": [{ "x": 574, "y": 25,  "w": 253, "h": 170 }],
+  "pos3_idle": [{ "x": 845, "y": 25,  "w": 250, "h": 170 }],
+  "pos4_idle": [{ "x": 844, "y": 214, "w": 252, "h": 170 }]
+}
+```
+
+- 4 positions on the same sprite sheet
+- pos1-pos3: normal cycling animation
+- pos4: collision reaction frame (shown when the player bumps into it)
+
+### Sprite Selector Tool
+
+`tools/sprite-selector.html` is a visual tool for defining sprite regions:
+
+- **Entity tabs** — Switch between Character and Live Rock selection
+- **Prefab buttons** — Quick-place 55x85 or 145x109 rectangles
+- **Draw / Move / Resize** — Click+drag to create, drag body to move, drag edges to resize
+- **Export** — Downloads separate JSON files per entity
+- **Auto-load** — Loads existing JSON data on startup, skips to first incomplete slot
 
 ## Isometric Style
 
@@ -57,8 +112,8 @@ Key derived values:
 Since the game is viewed from a top-down isometric angle, collision boxes use the **bottom portion** of each sprite — the "ground footprint" — rather than the full visual rect.
 
 **Player:**
-- Visual size: 48 x 56px
-- Collision footprint: 48 x 28px (bottom half, offset 28px from top)
+- Visual size: 145 x 109px (matches sprite sheet dimensions)
+- Collision footprint: 48 x 28px (centered at bottom, offset 48px from left, 81px from top)
 - Debug: green rect = visual, red rect = collision
 
 **Rocks:**
@@ -66,7 +121,24 @@ Since the game is viewed from a top-down isometric angle, collision boxes use th
 - Collision footprint: `size x (size * 0.5)` (bottom half)
 - Debug: yellow rect = visual, red rect = collision
 
+**Live Rocks:**
+- Visual size: 253 x 170px (from sprite sheet dimensions)
+- Collision footprint: 40% width x 30% height (centered at bottom)
+- Debug: red rect = visual, red rect = collision
+
 This allows sprites to visually overlap when one entity is "behind" another, while collision only happens at ground level.
+
+## Run (Sprint)
+
+Holding **R** activates run mode, boosting movement speed by 45%.
+
+### How It Works
+
+- `player.running` is set each frame based on whether the `run` key is held
+- Speed multiplier: `runSpeedFactor = 1.45` applied to base speed
+- **Stacks with sand**: running on sand applies both multipliers (`sandSpeedFactor * runSpeedFactor`)
+- **Not applied during dash**: dash uses its own speed multiplier independently
+- Debug overlay shows `RUN` when active
 
 ## Terrain Depth (3D Cube Faces)
 
@@ -134,11 +206,12 @@ Objects can be pushed based on a mass comparison. Mass is calculated from the **
 
 | Entity | Visual Size | Footprint | Mass |
 |--------|------------|-----------|------|
-| Player | 48 x 56 | 48 x 28 | **1344** |
+| Player | 145 x 109 | 48 x 28 | **1344** |
 | Small rock (25px) | 25 x 25 | 25 x 13 | 325 |
 | Medium rock (37px) | 37 x 37 | 37 x 19 | 703 |
 | Large rock (52px) | 52 x 52 | 52 x 26 | 1352 |
 | Big test rock (80px) | 80 x 80 | 80 x 40 | 3200 |
+| Live Rock | 253 x 170 | 101 x 51 | 5151 |
 
 ### Push Rules
 
@@ -157,6 +230,7 @@ When rocks are stacked, the **total stack mass** (base + child) is used for push
 - Push is blocked if the rock would collide with another obstacle
 - Pushing a stack moves all rocks in the stack together
 - When colliding with a stacked rock, the push resolves to the base of the stack
+- Colliding with a Live Rock triggers its **reaction frame** (pos4)
 
 ## Object Lifting
 
@@ -170,7 +244,7 @@ The player can lift and carry objects, Zelda-style.
 
 ### Lift Behavior
 
-- Lifted object follows the player, rendered above the sprite at `liftOffsetY = -20`
+- Lifted object follows the player, rendered above the sprite at `liftOffsetY = -30`
 - Lifted rocks are removed from the obstacle list while carried
 - The lift range check uses **visual bounds** for vertical overlap, allowing stacked rocks to be reached
 - After dropping, the player is nudged out if the rock's collision overlaps with them
@@ -179,6 +253,34 @@ The player can lift and carry objects, Zelda-style.
 
 - Can't lift a rock that has something stacked on top of it (lift the top one first)
 - Can't lift rocks heavier than the player (`rock.mass >= player.mass`)
+- **Live Rocks** cannot be lifted (`liftable = false`) regardless of mass
+
+## Live Rock
+
+A special animated rock entity that cycles through sprite positions and reacts to player contact.
+
+### Animation
+
+- **Normal cycle**: pos1 → pos2 → pos3 → pos1 (loops at 800ms per frame)
+- **Collision reaction**: switches to pos4 for 400ms when the player collides, then resumes the normal cycle
+- Each live rock starts at a random frame and timer offset so multiple rocks don't animate in sync
+
+### Properties
+
+- **Can be pushed** — Follows the same mass-based push rules as regular rocks
+- **Cannot be lifted** — `liftable = false`, player cannot pick it up with Space
+- **Sprite-sized** — Visual dimensions come from the sprite sheet (~253 x 170px), not an arbitrary size parameter
+- **Supports stacking** — Has `stackParent` / `stackChild` references like regular rocks
+
+### Stage Configuration
+
+Live rocks are placed at fixed positions in the stage config:
+
+```js
+liveRocks: [
+    { x: BLOCK_W / 2, y: BLOCK_H / 2 - 200 }
+]
+```
 
 ## Object Stacking
 
@@ -251,6 +353,7 @@ The basket renders at 101x101px using the `empty-basket.png` sprite, with a labe
 - **Sand**: Golden (`#d4a55a`), walkable, player sinks
 - **Depth**: 3D cube faces at bottom edge
 - **Rocks**: 8-16 per block + 80px test rock
+- **Live Rocks**: Fixed positions defined in stage config
 - **Basket**: To Endless Desert
 
 ## Constants
