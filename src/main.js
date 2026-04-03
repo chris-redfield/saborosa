@@ -60,8 +60,8 @@ function updateGame(dt) {
             // Move basket and player upward
             t.basketY -= t.speed;
             t.basket.y = t.basketY;
-            player.x = t.basket.x + (t.basket.width - player.width) / 2;
-            player.y = t.basketY - player.height + 20; // player sits in basket
+            player.x = t.basket.x + t.playerOffsetX;
+            player.y = t.basketY + t.playerOffsetY;
 
             // Camera follows the basket
             world.cameraX = t.basket.x + t.basket.width / 2 - game.width / 2;
@@ -123,6 +123,8 @@ function updateGame(dt) {
                 targetStage: portal.targetStage,
                 basketY: portal.y,
                 startY: portal.y,
+                playerOffsetX: player.x - portal.x,
+                playerOffsetY: player.y - portal.y,
                 speed: 3,
                 phase: 'ascending'
             };
