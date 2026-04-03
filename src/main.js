@@ -110,6 +110,11 @@ function updateGame(dt) {
     player.update(dt);
     world.update(player);
 
+    // Animate live rocks
+    for (const obs of obstacles) {
+        if (obs.update && obs !== player) obs.update(dt);
+    }
+
     // Update stack target cursor every frame while carrying
     player.updateStackTarget(obstacles);
 

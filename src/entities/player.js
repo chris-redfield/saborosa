@@ -234,6 +234,7 @@ class Player {
         const reach = 8;
         for (const obs of obstacles) {
             if (!obs.pushable || obs.mass >= this.mass) continue;
+            if (obs.liftable === false) continue; // live rocks can't be lifted
             if (obs.stackChild) continue; // can't lift if something is on top
 
             const r = obs.getRect();
@@ -305,8 +306,8 @@ class Player {
             let xBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(newX, this.y, obs)) {
-                    // Resolve to base of stack
                     const base = obs.stackParent || obs;
+                    if (base.onCollision) base.onCollision();
                     const stackMass = base.mass + (base.stackChild ? base.stackChild.mass : 0);
 
                     if (base.pushable && stackMass < this.mass) {
@@ -345,8 +346,8 @@ class Player {
             let yBlocked = false;
             for (const obs of obstacles) {
                 if (this._collides(this.x, newY, obs)) {
-                    // Resolve to base of stack
                     const base = obs.stackParent || obs;
+                    if (base.onCollision) base.onCollision();
                     const stackMass = base.mass + (base.stackChild ? base.stackChild.mass : 0);
 
                     if (base.pushable && stackMass < this.mass) {

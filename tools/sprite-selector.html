@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Billy Soco - Sprite Selector</title>
+    <title>Saborosa - Sprite Selector</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -232,11 +232,35 @@
             background: #2d6a4f;
             color: #52b788;
         }
+
+        .entity-tabs {
+            display: flex;
+            gap: 4px;
+            margin-right: 12px;
+        }
+
+        .entity-tab {
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+            background: #0f3460;
+            color: #888;
+            border: 1px solid #0f3460;
+            cursor: pointer;
+        }
+
+        .entity-tab.active {
+            background: #53d8fb;
+            color: #1a1a2e;
+            border-color: #53d8fb;
+        }
     </style>
 </head>
 <body>
     <div id="toolbar">
         <h1>Sprite Selector</h1>
+        <div class="entity-tabs" id="entity-tabs"></div>
         <div class="step-indicators" id="direction-picker"></div>
         <span class="mode-label">Current:</span>
         <span class="mode-name" id="current-mode">down_idle</span>
@@ -279,16 +303,46 @@
     </div>
 
     <script>
-        const IDLE_DIRECTIONS = ['down', 'up', 'right', 'left'];
-        const WALK_DIRECTIONS = [];
-        const IDLE_FRAMES_PER_DIR = 1;
-        const WALK_FRAMES_PER_DIR = 3;
+        // Entity definitions
+        const ENTITIES = {
+            character: {
+                label: 'Character',
+                jsonFile: 'saborosa-cha-001-sprites.json',
+                directions: ['down', 'up', 'right', 'left'],
+                phases: { idle: 1 }, // phase name -> frames per direction
+                colors: {
+                    'down_idle': '#e94560', 'up_idle': '#53d8fb',
+                    'right_idle': '#52b788', 'left_idle': '#ffa62b'
+                }
+            },
+            liverock: {
+                label: 'Live Rock',
+                jsonFile: 'saborosa-liverock-sprites.json',
+                directions: ['pos1', 'pos2', 'pos3', 'pos4'],
+                phases: { idle: 1 },
+                colors: {
+                    'pos1_idle': '#ff9f43', 'pos2_idle': '#a29bfe',
+                    'pos3_idle': '#fd79a8', 'pos4_idle': '#00cec9'
+                }
+            }
+        };
 
+        let currentEntity = 'character';
         let spriteImage = null;
         let zoom = 2;
         let phase = 'idle';
         let currentDirIndex = 0;
+
+        // frames[entityName] = { 'down_idle': [...], ... }
         let frames = {};
+        for (const [eid, ent] of Object.entries(ENTITIES)) {
+            frames[eid] = {};
+            for (const dir of ent.directions) {
+                for (const ph of Object.keys(ent.phases)) {
+                    frames[eid][`${dir}_${ph}`] = [];
+                }
+            }
+        }
 
         // Interaction state
         // mode: 'none' | 'selecting' | 'moving' | 'resizing'
@@ -298,6 +352,7 @@
             selStart: { x: 0, y: 0 },
             selEnd: { x: 0, y: 0 },
             // For moving/resizing existing frames
+            targetEid: null,
             targetKey: null,
             targetIndex: -1,
             // For moving: offset from mouse to frame origin
@@ -315,10 +370,6 @@
         let prefabW = 55;
         let prefabH = 85;
 
-        // Init all frame slots
-        for (const dir of IDLE_DIRECTIONS) frames[`${dir}_idle`] = [];
-        for (const dir of WALK_DIRECTIONS) frames[`${dir}_walk`] = [];
-
         const canvas = document.getElementById('sprite-canvas');
         const ctx = canvas.getContext('2d');
         const container = document.getElementById('canvas-container');
@@ -326,23 +377,38 @@
         const previewCanvas = document.getElementById('preview-canvas');
         const previewCtx = previewCanvas.getContext('2d');
 
-        const ALL_KEYS = [
-            ...IDLE_DIRECTIONS.map(d => `${d}_idle`),
-            ...WALK_DIRECTIONS.map(d => `${d}_walk`)
-        ];
+        function getEntity() { return ENTITIES[currentEntity]; }
+        function getEntityFrames() { return frames[currentEntity]; }
 
-        const COLORS = {
-            'down_idle': '#e94560', 'up_idle': '#53d8fb', 'right_idle': '#52b788', 'left_idle': '#ffa62b',
-            'down_walk': '#ff6b81', 'up_walk': '#7ec8e3', 'right_walk': '#74c69d', 'left_walk': '#ffc971'
-        };
+        function getEntityKeys(eid) {
+            const ent = ENTITIES[eid];
+            const keys = [];
+            for (const ph of Object.keys(ent.phases)) {
+                for (const dir of ent.directions) {
+                    keys.push(`${dir}_${ph}`);
+                }
+            }
+            return keys;
+        }
+
+        // All keys across ALL entities (for hit testing / drawing)
+        function getAllKeysAllEntities() {
+            const result = [];
+            for (const eid of Object.keys(ENTITIES)) {
+                for (const k of getEntityKeys(eid)) {
+                    result.push({ eid, key: k });
+                }
+            }
+            return result;
+        }
 
         function getCurrentKey() {
-            const dir = phase === 'idle' ? IDLE_DIRECTIONS[currentDirIndex] : WALK_DIRECTIONS[currentDirIndex];
-            return `${dir}_${phase}`;
+            const ent = getEntity();
+            return `${ent.directions[currentDirIndex]}_${phase}`;
         }
 
         function getMaxFrames() {
-            return phase === 'idle' ? IDLE_FRAMES_PER_DIR : WALK_FRAMES_PER_DIR;
+            return getEntity().phases[phase] || 1;
         }
 
         // --- Hit testing ---
@@ -353,11 +419,12 @@
          */
         function hitTestFrames(imgX, imgY) {
             const tol = HANDLE_TOLERANCE;
+            const all = getAllKeysAllEntities();
 
             // Iterate in reverse draw order so topmost frame wins
-            for (let ki = ALL_KEYS.length - 1; ki >= 0; ki--) {
-                const key = ALL_KEYS[ki];
-                const keyFrames = frames[key];
+            for (let ki = all.length - 1; ki >= 0; ki--) {
+                const { eid, key } = all[ki];
+                const keyFrames = frames[eid][key];
                 if (!keyFrames) continue;
                 for (let i = keyFrames.length - 1; i >= 0; i--) {
                     const f = keyFrames[i];
@@ -369,20 +436,20 @@
                     const inYRange   = imgY >= f.y - tol && imgY <= f.y + f.h + tol;
 
                     // Corners (check first, they overlap edges)
-                    if (nearTop && nearLeft && inXRange && inYRange)    return { key, index: i, handle: 'nw' };
-                    if (nearTop && nearRight && inXRange && inYRange)   return { key, index: i, handle: 'ne' };
-                    if (nearBottom && nearLeft && inXRange && inYRange) return { key, index: i, handle: 'sw' };
-                    if (nearBottom && nearRight && inXRange && inYRange)return { key, index: i, handle: 'se' };
+                    if (nearTop && nearLeft && inXRange && inYRange)    return { eid, key, index: i, handle: 'nw' };
+                    if (nearTop && nearRight && inXRange && inYRange)   return { eid, key, index: i, handle: 'ne' };
+                    if (nearBottom && nearLeft && inXRange && inYRange) return { eid, key, index: i, handle: 'sw' };
+                    if (nearBottom && nearRight && inXRange && inYRange)return { eid, key, index: i, handle: 'se' };
 
                     // Edges
-                    if (nearTop && inXRange)    return { key, index: i, handle: 'n' };
-                    if (nearBottom && inXRange)  return { key, index: i, handle: 's' };
-                    if (nearLeft && inYRange)    return { key, index: i, handle: 'w' };
-                    if (nearRight && inYRange)   return { key, index: i, handle: 'e' };
+                    if (nearTop && inXRange)    return { eid, key, index: i, handle: 'n' };
+                    if (nearBottom && inXRange)  return { eid, key, index: i, handle: 's' };
+                    if (nearLeft && inYRange)    return { eid, key, index: i, handle: 'w' };
+                    if (nearRight && inYRange)   return { eid, key, index: i, handle: 'e' };
 
                     // Body (interior)
                     if (imgX >= f.x && imgX <= f.x + f.w && imgY >= f.y && imgY <= f.y + f.h) {
-                        return { key, index: i, handle: 'body' };
+                        return { eid, key, index: i, handle: 'body' };
                     }
                 }
             }
@@ -404,22 +471,42 @@
         // --- UI updates ---
 
         function updateUI() {
+            const ent = getEntity();
+            const ef = getEntityFrames();
             const key = getCurrentKey();
-            const current = frames[key] || [];
+            const current = ef[key] || [];
             const max = getMaxFrames();
 
-            document.getElementById('current-mode').textContent = key;
+            document.getElementById('current-mode').textContent = `${ent.label}: ${key}`;
             document.getElementById('frame-count').textContent = `(${current.length}/${max})`;
             document.getElementById('skip-walk-btn').style.display = phase === 'walk' ? '' : 'none';
 
-            // Build direction picker
+            // Build entity tabs
+            const tabs = document.getElementById('entity-tabs');
+            tabs.innerHTML = '';
+            for (const [eid, e] of Object.entries(ENTITIES)) {
+                const tab = document.createElement('div');
+                tab.className = 'entity-tab' + (eid === currentEntity ? ' active' : '');
+                tab.textContent = e.label;
+                tab.addEventListener('click', () => {
+                    currentEntity = eid;
+                    phase = Object.keys(getEntity().phases)[0];
+                    currentDirIndex = 0;
+                    updateUI();
+                });
+                tabs.appendChild(tab);
+            }
+
+            // Build direction picker for current entity
             const picker = document.getElementById('direction-picker');
             picker.innerHTML = '';
-            for (const k of ALL_KEYS) {
+            const entityKeys = getEntityKeys(currentEntity);
+            for (const k of entityKeys) {
                 const btn = document.createElement('div');
                 btn.className = 'step';
-                const kFrames = frames[k] || [];
-                const kMax = k.includes('_idle') ? IDLE_FRAMES_PER_DIR : WALK_FRAMES_PER_DIR;
+                const kFrames = ef[k] || [];
+                const ph = k.split('_').pop();
+                const kMax = ent.phases[ph] || 1;
                 if (k === key) {
                     btn.classList.add('active');
                 } else if (kFrames.length >= kMax) {
@@ -428,14 +515,11 @@
                 btn.textContent = `${k} (${kFrames.length}/${kMax})`;
                 btn.style.cursor = 'pointer';
                 btn.addEventListener('click', () => {
-                    // Jump to this direction
-                    if (k.includes('_idle')) {
-                        phase = 'idle';
-                        currentDirIndex = IDLE_DIRECTIONS.indexOf(k.replace('_idle', ''));
-                    } else {
-                        phase = 'walk';
-                        currentDirIndex = WALK_DIRECTIONS.indexOf(k.replace('_walk', ''));
-                    }
+                    const parts = k.split('_');
+                    const dir = parts[0];
+                    const ph = parts[1];
+                    phase = ph;
+                    currentDirIndex = ent.directions.indexOf(dir);
                     updateUI();
                 });
                 picker.appendChild(btn);
@@ -449,51 +533,55 @@
             const list = document.getElementById('frame-list');
             list.innerHTML = '';
 
-            for (const key of ALL_KEYS) {
-                const keyFrames = frames[key];
-                if (!keyFrames || keyFrames.length === 0) continue;
+            for (const [eid, ent] of Object.entries(ENTITIES)) {
+                const ef = frames[eid];
+                const entityKeys = getEntityKeys(eid);
+                for (const key of entityKeys) {
+                    const keyFrames = ef[key];
+                    if (!keyFrames || keyFrames.length === 0) continue;
 
-                const group = document.createElement('div');
-                group.className = 'direction-group';
+                    const group = document.createElement('div');
+                    group.className = 'direction-group';
 
-                const h3 = document.createElement('h3');
-                h3.textContent = key;
-                group.appendChild(h3);
+                    const h3 = document.createElement('h3');
+                    h3.textContent = `${ent.label} — ${key}`;
+                    group.appendChild(h3);
 
-                keyFrames.forEach((frame, i) => {
-                    const item = document.createElement('div');
-                    item.className = 'frame-item';
+                    keyFrames.forEach((frame, i) => {
+                        const item = document.createElement('div');
+                        item.className = 'frame-item';
 
-                    const miniCanvas = document.createElement('canvas');
-                    miniCanvas.width = 32;
-                    miniCanvas.height = 32;
-                    const miniCtx = miniCanvas.getContext('2d');
-                    miniCtx.imageSmoothingEnabled = false;
-                    if (spriteImage) {
-                        const scale = Math.min(32 / frame.w, 32 / frame.h);
-                        const dw = frame.w * scale;
-                        const dh = frame.h * scale;
-                        miniCtx.drawImage(spriteImage, frame.x, frame.y, frame.w, frame.h,
-                            (32 - dw) / 2, (32 - dh) / 2, dw, dh);
-                    }
-                    item.appendChild(miniCanvas);
+                        const miniCanvas = document.createElement('canvas');
+                        miniCanvas.width = 32;
+                        miniCanvas.height = 32;
+                        const miniCtx = miniCanvas.getContext('2d');
+                        miniCtx.imageSmoothingEnabled = false;
+                        if (spriteImage) {
+                            const scale = Math.min(32 / frame.w, 32 / frame.h);
+                            const dw = frame.w * scale;
+                            const dh = frame.h * scale;
+                            miniCtx.drawImage(spriteImage, frame.x, frame.y, frame.w, frame.h,
+                                (32 - dw) / 2, (32 - dh) / 2, dw, dh);
+                        }
+                        item.appendChild(miniCanvas);
 
-                    const coords = document.createElement('span');
-                    coords.className = 'coords';
-                    coords.textContent = `${frame.x},${frame.y} ${frame.w}x${frame.h}`;
-                    item.appendChild(coords);
+                        const coords = document.createElement('span');
+                        coords.className = 'coords';
+                        coords.textContent = `${frame.x},${frame.y} ${frame.w}x${frame.h}`;
+                        item.appendChild(coords);
 
-                    const delBtn = document.createElement('span');
-                    delBtn.className = 'delete-btn';
-                    delBtn.textContent = '\u00d7';
-                    delBtn.onclick = () => { keyFrames.splice(i, 1); updateUI(); };
-                    item.appendChild(delBtn);
+                        const delBtn = document.createElement('span');
+                        delBtn.className = 'delete-btn';
+                        delBtn.textContent = '\u00d7';
+                        delBtn.onclick = () => { keyFrames.splice(i, 1); updateUI(); };
+                        item.appendChild(delBtn);
 
-                    item.onclick = (e) => { if (e.target !== delBtn) showPreview(frame); };
-                    group.appendChild(item);
-                });
+                        item.onclick = (e) => { if (e.target !== delBtn) showPreview(frame); };
+                        group.appendChild(item);
+                    });
 
-                list.appendChild(group);
+                    list.appendChild(group);
+                }
             }
         }
 
@@ -525,14 +613,18 @@
             ctx.imageSmoothingEnabled = false;
             ctx.drawImage(spriteImage, 0, 0, canvas.width, canvas.height);
 
-            for (const key of ALL_KEYS) {
-                const keyFrames = frames[key];
+            const curKey = getCurrentKey();
+            for (const { eid, key } of getAllKeysAllEntities()) {
+                const ent = ENTITIES[eid];
+                const keyFrames = frames[eid][key];
                 if (!keyFrames) continue;
 
-                const color = COLORS[key] || '#fff';
+                const color = ent.colors[key] || '#fff';
+                const isActive = eid === currentEntity && key === curKey;
                 ctx.strokeStyle = color;
                 ctx.lineWidth = 2;
-                ctx.setLineDash(key === getCurrentKey() ? [] : [4, 4]);
+                ctx.setLineDash(isActive ? [] : [4, 4]);
+                ctx.globalAlpha = eid === currentEntity ? 1 : 0.4;
 
                 keyFrames.forEach((frame, i) => {
                     const fx = frame.x * zoom;
@@ -545,24 +637,24 @@
                     // Label
                     ctx.fillStyle = color;
                     ctx.font = '11px monospace';
-                    ctx.fillText(`${key}[${i}]`, fx + 2, fy - 3);
+                    const label = eid === currentEntity ? `${key}[${i}]` : `${ent.label}:${key}[${i}]`;
+                    ctx.fillText(label, fx + 2, fy - 3);
 
                     // Draw resize handles (small squares at corners and edge midpoints)
-                    const hs = 6; // handle size in screen px
+                    const hs = 6;
                     ctx.fillStyle = color;
-                    // Corners
-                    ctx.fillRect(fx - hs/2, fy - hs/2, hs, hs);               // nw
-                    ctx.fillRect(fx + fw - hs/2, fy - hs/2, hs, hs);          // ne
-                    ctx.fillRect(fx - hs/2, fy + fh - hs/2, hs, hs);          // sw
-                    ctx.fillRect(fx + fw - hs/2, fy + fh - hs/2, hs, hs);     // se
-                    // Edge midpoints
-                    ctx.fillRect(fx + fw/2 - hs/2, fy - hs/2, hs, hs);        // n
-                    ctx.fillRect(fx + fw/2 - hs/2, fy + fh - hs/2, hs, hs);   // s
-                    ctx.fillRect(fx - hs/2, fy + fh/2 - hs/2, hs, hs);        // w
-                    ctx.fillRect(fx + fw - hs/2, fy + fh/2 - hs/2, hs, hs);   // e
+                    ctx.fillRect(fx - hs/2, fy - hs/2, hs, hs);
+                    ctx.fillRect(fx + fw - hs/2, fy - hs/2, hs, hs);
+                    ctx.fillRect(fx - hs/2, fy + fh - hs/2, hs, hs);
+                    ctx.fillRect(fx + fw - hs/2, fy + fh - hs/2, hs, hs);
+                    ctx.fillRect(fx + fw/2 - hs/2, fy - hs/2, hs, hs);
+                    ctx.fillRect(fx + fw/2 - hs/2, fy + fh - hs/2, hs, hs);
+                    ctx.fillRect(fx - hs/2, fy + fh/2 - hs/2, hs, hs);
+                    ctx.fillRect(fx + fw - hs/2, fy + fh/2 - hs/2, hs, hs);
                 });
             }
 
+            ctx.globalAlpha = 1;
             ctx.setLineDash([]);
         }
 
@@ -593,13 +685,14 @@
         canvas.addEventListener('mousedown', (e) => {
             if (e.button !== 0) return;
             const img = getImageCoords(e);
+            const ef = getEntityFrames();
 
-            // Prefab placement: drop a 55x85 rect centered on click, then start moving it
+            // Prefab placement: drop rect centered on click, then start moving it
             if (prefabActive) {
                 const key = getCurrentKey();
                 const max = getMaxFrames();
 
-                if (frames[key].length >= max) {
+                if (ef[key].length >= max) {
                     advanceDirection();
                     deactivatePrefab();
                     return;
@@ -608,11 +701,11 @@
                 const fx = Math.max(0, img.x - Math.floor(prefabW / 2));
                 const fy = Math.max(0, img.y - Math.floor(prefabH / 2));
                 const newFrame = { x: fx, y: fy, w: prefabW, h: prefabH };
-                frames[key].push(newFrame);
+                ef[key].push(newFrame);
 
-                // Immediately enter moving mode so user can reposition
-                const idx = frames[key].length - 1;
+                const idx = ef[key].length - 1;
                 interaction.mode = 'moving';
+                interaction.targetEid = currentEntity;
                 interaction.targetKey = key;
                 interaction.targetIndex = idx;
                 interaction.moveOffsetX = img.x - fx;
@@ -626,24 +719,23 @@
             const hit = hitTestFrames(img.x, img.y);
 
             if (hit && hit.handle !== 'body') {
-                // Start resizing
-                const f = frames[hit.key][hit.index];
+                const f = frames[hit.eid][hit.key][hit.index];
                 interaction.mode = 'resizing';
+                interaction.targetEid = hit.eid;
                 interaction.targetKey = hit.key;
                 interaction.targetIndex = hit.index;
                 interaction.resizeHandle = hit.handle;
                 interaction.origFrame = { x: f.x, y: f.y, w: f.w, h: f.h };
                 interaction.selStart = { x: img.x, y: img.y };
             } else if (hit && hit.handle === 'body') {
-                // Start moving
-                const f = frames[hit.key][hit.index];
+                const f = frames[hit.eid][hit.key][hit.index];
                 interaction.mode = 'moving';
+                interaction.targetEid = hit.eid;
                 interaction.targetKey = hit.key;
                 interaction.targetIndex = hit.index;
                 interaction.moveOffsetX = img.x - f.x;
                 interaction.moveOffsetY = img.y - f.y;
             } else {
-                // Start drawing a new selection
                 interaction.mode = 'selecting';
                 interaction.selStart = { x: img.x, y: img.y };
                 interaction.selEnd = { x: img.x, y: img.y };
@@ -662,7 +754,7 @@
             }
 
             if (interaction.mode === 'moving') {
-                const f = frames[interaction.targetKey][interaction.targetIndex];
+                const f = frames[interaction.targetEid][interaction.targetKey][interaction.targetIndex];
                 f.x = Math.max(0, img.x - interaction.moveOffsetX);
                 f.y = Math.max(0, img.y - interaction.moveOffsetY);
                 if (spriteImage) {
@@ -677,7 +769,7 @@
                 const orig = interaction.origFrame;
                 const dx = img.x - interaction.selStart.x;
                 const dy = img.y - interaction.selStart.y;
-                const f = frames[interaction.targetKey][interaction.targetIndex];
+                const f = frames[interaction.targetEid][interaction.targetKey][interaction.targetIndex];
                 const h = interaction.resizeHandle;
 
                 // Start from original frame, then adjust edges based on handle
@@ -713,7 +805,7 @@
             const mode = interaction.mode;
 
             if (mode === 'moving' || mode === 'resizing') {
-                const f = frames[interaction.targetKey][interaction.targetIndex];
+                const f = frames[interaction.targetEid][interaction.targetKey][interaction.targetIndex];
                 showPreview(f);
                 interaction.mode = 'none';
                 updateUI();
@@ -733,15 +825,16 @@
 
                 if (w < 5 || h < 5) return;
 
+                const ef = getEntityFrames();
                 const key = getCurrentKey();
                 const max = getMaxFrames();
 
-                if (frames[key].length >= max) {
+                if (ef[key].length >= max) {
                     advanceDirection();
                     return;
                 }
 
-                frames[key].push({ x, y, w, h });
+                ef[key].push({ x, y, w, h });
                 showPreview({ x, y, w, h });
                 updateUI();
                 return;
@@ -798,15 +891,18 @@
         // --- Direction flow ---
 
         function advanceDirection() {
-            const dirs = phase === 'idle' ? IDLE_DIRECTIONS : WALK_DIRECTIONS;
-            if (currentDirIndex < dirs.length - 1) {
+            const ent = getEntity();
+            const phases = Object.keys(ent.phases);
+            const phaseIdx = phases.indexOf(phase);
+
+            if (currentDirIndex < ent.directions.length - 1) {
                 currentDirIndex++;
-            } else if (phase === 'idle') {
-                phase = 'walk';
+            } else if (phaseIdx < phases.length - 1) {
+                phase = phases[phaseIdx + 1];
                 currentDirIndex = 0;
             } else {
                 document.getElementById('instructions').textContent =
-                    'All frames selected! Click "Export JSON" to save your sprite definitions.';
+                    `All ${ent.label} frames selected! Click "Export JSON" to save.`;
             }
             updateUI();
         }
@@ -814,28 +910,36 @@
         document.getElementById('next-btn').addEventListener('click', advanceDirection);
 
         document.getElementById('prev-btn').addEventListener('click', () => {
-            const dirs = phase === 'idle' ? IDLE_DIRECTIONS : WALK_DIRECTIONS;
+            const ent = getEntity();
+            const phases = Object.keys(ent.phases);
+            const phaseIdx = phases.indexOf(phase);
+
             if (currentDirIndex > 0) {
                 currentDirIndex--;
-            } else if (phase === 'walk') {
-                phase = 'idle';
-                currentDirIndex = IDLE_DIRECTIONS.length - 1;
+            } else if (phaseIdx > 0) {
+                phase = phases[phaseIdx - 1];
+                currentDirIndex = ent.directions.length - 1;
             }
             updateUI();
         });
 
         document.getElementById('skip-walk-btn').addEventListener('click', () => {
-            phase = 'idle';
+            const ent = getEntity();
+            phase = Object.keys(ent.phases)[0];
             currentDirIndex = 0;
-            for (const dir of WALK_DIRECTIONS) frames[`${dir}_walk`] = [];
+            const ef = getEntityFrames();
+            for (const dir of ent.directions) {
+                if (ef[`${dir}_walk`]) ef[`${dir}_walk`] = [];
+            }
             document.getElementById('instructions').textContent =
                 'Walk frames skipped. Only idle frames will be exported. Click "Export JSON" to save.';
             updateUI();
         });
 
         document.getElementById('undo-btn').addEventListener('click', () => {
+            const ef = getEntityFrames();
             const key = getCurrentKey();
-            if (frames[key] && frames[key].length > 0) frames[key].pop();
+            if (ef[key] && ef[key].length > 0) ef[key].pop();
             updateUI();
         });
 
@@ -848,72 +952,80 @@
         });
 
         document.getElementById('export-btn').addEventListener('click', () => {
-            const output = {};
-            for (const [key, keyFrames] of Object.entries(frames)) {
-                if (keyFrames.length > 0) {
-                    output[key] = keyFrames.map(f => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
+            const downloads = [];
+            for (const [eid, ent] of Object.entries(ENTITIES)) {
+                const ef = frames[eid];
+                const output = {};
+                for (const [key, keyFrames] of Object.entries(ef)) {
+                    if (keyFrames.length > 0) {
+                        output[key] = keyFrames.map(f => ({ x: f.x, y: f.y, w: f.w, h: f.h }));
+                    }
+                }
+                if (Object.keys(output).length > 0) {
+                    downloads.push({ filename: ent.jsonFile, data: output });
                 }
             }
 
-            const json = JSON.stringify(output, null, 2);
+            for (const dl of downloads) {
+                const json = JSON.stringify(dl.data, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = dl.filename;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
 
-            navigator.clipboard.writeText(json).then(() => {
-                alert('JSON copied to clipboard!\n\nAlso saving as download.');
-            }).catch(() => {});
-
-            const blob = new Blob([json], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'saborosa-cha-001-sprites.json';
-            a.click();
-            URL.revokeObjectURL(url);
+            const allJson = JSON.stringify(downloads.map(d => ({ file: d.filename, ...d.data })), null, 2);
+            navigator.clipboard.writeText(allJson).then(() => {
+                alert(`Exported ${downloads.length} file(s): ${downloads.map(d => d.filename).join(', ')}`);
+            }).catch(() => {
+                alert(`Exported ${downloads.length} file(s): ${downloads.map(d => d.filename).join(', ')}`);
+            });
         });
 
-        // Load existing sprite data, then load the spritesheet
+        // Load existing sprite data for all entities, then load the spritesheet
         async function loadExistingData() {
-            try {
-                const resp = await fetch('../assets/saborosa-cha-001-sprites.json');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    for (const [key, keyFrames] of Object.entries(data)) {
-                        if (frames[key]) {
-                            frames[key] = keyFrames;
-                        }
-                    }
-                    console.log('Loaded existing sprite data:', Object.keys(data).join(', '));
-
-                    // Skip ahead to first incomplete direction
-                    // Check idle first, then walk
-                    let found = false;
-                    for (let i = 0; i < IDLE_DIRECTIONS.length; i++) {
-                        const k = `${IDLE_DIRECTIONS[i]}_idle`;
-                        if (!frames[k] || frames[k].length < IDLE_FRAMES_PER_DIR) {
-                            phase = 'idle';
-                            currentDirIndex = i;
-                            found = true;
-                            break;
-                        }
-                    }
-                    if (!found) {
-                        for (let i = 0; i < WALK_DIRECTIONS.length; i++) {
-                            const k = `${WALK_DIRECTIONS[i]}_walk`;
-                            if (!frames[k] || frames[k].length < WALK_FRAMES_PER_DIR) {
-                                phase = 'walk';
-                                currentDirIndex = i;
-                                found = true;
-                                break;
+            for (const [eid, ent] of Object.entries(ENTITIES)) {
+                try {
+                    const resp = await fetch(`../assets/${ent.jsonFile}`);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        for (const [key, keyFrames] of Object.entries(data)) {
+                            if (frames[eid][key]) {
+                                frames[eid][key] = keyFrames;
                             }
                         }
+                        console.log(`Loaded ${ent.label} data:`, Object.keys(data).join(', '));
                     }
-                    if (!found) {
-                        phase = 'walk';
-                        currentDirIndex = WALK_DIRECTIONS.length - 1;
+                } catch (e) {
+                    console.log(`No existing ${ent.label} data found, starting fresh`);
+                }
+            }
+
+            // Skip to first incomplete slot in the current entity
+            skipToIncomplete();
+        }
+
+        function skipToIncomplete() {
+            const ent = getEntity();
+            const ef = getEntityFrames();
+            const phases = Object.keys(ent.phases);
+
+            for (const ph of phases) {
+                for (let i = 0; i < ent.directions.length; i++) {
+                    const k = `${ent.directions[i]}_${ph}`;
+                    if (!ef[k] || ef[k].length < ent.phases[ph]) {
+                        phase = ph;
+                        currentDirIndex = i;
+                        return;
                     }
                 }
-            } catch (e) {
-                console.log('No existing sprite data found, starting fresh');
             }
+            // All complete — stay on last
+            phase = phases[phases.length - 1];
+            currentDirIndex = ent.directions.length - 1;
         }
 
         loadExistingData().then(() => {

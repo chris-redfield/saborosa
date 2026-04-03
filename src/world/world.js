@@ -707,6 +707,17 @@ class World {
             block.addEntity(new Rock(this.game, x, y, size, type));
         }
 
+        // Fixed live rocks defined in stage config
+        if (this.stage.liveRocks) {
+            for (const lr of this.stage.liveRocks) {
+                const lrBx = Math.floor(lr.x / BLOCK_W);
+                const lrBy = Math.floor(lr.y / BLOCK_H);
+                if (lrBx === bx && lrBy === by) {
+                    block.addEntity(new LiveRock(this.game, lr.x, lr.y));
+                }
+            }
+        }
+
         // Test: add a big rock (too heavy to push) in walkable blocks
         if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
             block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, 80, 1));
