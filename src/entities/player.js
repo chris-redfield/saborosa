@@ -323,9 +323,11 @@ class Player {
             let newY = this.y + dy;
             this.pushing = false;
 
-            // Check X axis
+            // Check X axis (only if actually moving on X)
             let xBlocked = false;
-            for (const obs of obstacles) {
+            let xPushedBase = null;
+            let xPushedOrigX = 0;
+            if (dx !== 0) for (const obs of obstacles) {
                 if (this._collides(newX, this.y, obs)) {
                     const base = obs.stackParent || obs;
                     if (base.onCollision) base.onCollision();
@@ -347,9 +349,11 @@ class Player {
                             }
                         }
                         if (!pushBlocked) {
+                            xPushedOrigX = base.x;
+                            xPushedBase = base;
                             base.x = pushNewX;
                             if (base.stackChild) base.stackChild.x = base.x + (base.width - base.stackChild.width) / 2;
-                            const r = obs.getRect(); // snap against the rock we actually hit
+                            const r = obs.getRect();
                             newX = dx > 0 ? r.x - this.colW - this.colOffX : r.x + r.width - this.colOffX;
                             this.pushing = true;
                         } else {
@@ -361,11 +365,27 @@ class Player {
                     break;
                 }
             }
+            // Verify resolved X doesn't overlap any other obstacle
+            if (!xBlocked) {
+                for (const obs of obstacles) {
+                    if (this._collides(newX, this.y, obs)) {
+                        xBlocked = true;
+                        // Revert push if we pushed a rock
+                        if (xPushedBase) {
+                            xPushedBase.x = xPushedOrigX;
+                            if (xPushedBase.stackChild) xPushedBase.stackChild.x = xPushedOrigX + (xPushedBase.width - xPushedBase.stackChild.width) / 2;
+                        }
+                        break;
+                    }
+                }
+            }
             if (!xBlocked) this.x = newX;
 
-            // Check Y axis
+            // Check Y axis (only if actually moving on Y)
             let yBlocked = false;
-            for (const obs of obstacles) {
+            let yPushedBase = null;
+            let yPushedOrigY = 0;
+            if (dy !== 0) for (const obs of obstacles) {
                 if (this._collides(this.x, newY, obs)) {
                     const base = obs.stackParent || obs;
                     if (base.onCollision) base.onCollision();
@@ -387,6 +407,8 @@ class Player {
                             }
                         }
                         if (!pushBlocked) {
+                            yPushedOrigY = base.y;
+                            yPushedBase = base;
                             base.y = pushNewY;
                             if (base.stackChild) base.stackChild.y = base.y - STACK_OFFSET;
                             const r = obs.getRect();
@@ -399,6 +421,19 @@ class Player {
                         yBlocked = true;
                     }
                     break;
+                }
+            }
+            // Verify resolved Y doesn't overlap any other obstacle
+            if (!yBlocked) {
+                for (const obs of obstacles) {
+                    if (this._collides(this.x, newY, obs)) {
+                        yBlocked = true;
+                        if (yPushedBase) {
+                            yPushedBase.y = yPushedOrigY;
+                            if (yPushedBase.stackChild) yPushedBase.stackChild.y = yPushedOrigY - STACK_OFFSET;
+                        }
+                        break;
+                    }
                 }
             }
             if (!yBlocked) this.y = newY;
