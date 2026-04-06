@@ -348,86 +348,89 @@ class Player {
     /**
      * Resolve collision on a single axis. Returns true if blocked.
      * On success, sets this._resolvedPos to the new coordinate.
+     * Supports chain pushing: rock A pushed into rock B pushes both.
      */
     _resolveAxis(testX, testY, delta, axis, obstacles) {
-        // 1. Collect all colliding obstacles and their bases
-        const hitBases = new Set();
+        // 1. Collect all obstacles the player directly collides with
+        const pushChain = new Set();
         for (const obs of obstacles) {
             if (this._collides(testX, testY, obs)) {
                 const base = obs.stackParent || obs;
                 if (base.onCollision) base.onCollision();
-                hitBases.add(base);
+                if (!base.pushable) return true; // immovable
+                pushChain.add(base);
             }
         }
 
-        if (hitBases.size === 0) {
+        if (pushChain.size === 0) {
             this._resolvedPos = axis === 'x' ? testX : testY;
             this.pushing = false;
-            return false; // not blocked
+            return false;
         }
 
-        // 2. Check if all are pushable, sum combined mass
-        let combinedMass = 0;
-        for (const base of hitBases) {
-            const stackMass = base.mass + (base.stackChild ? base.stackChild.mass : 0);
-            if (!base.pushable || stackMass >= this.mass) {
-                return true; // blocked: immovable or too heavy on its own
-            }
-            combinedMass += stackMass;
-        }
-
-        if (combinedMass >= this.mass) {
-            return true; // combined mass too heavy
-        }
-
-        // 3. Push all bases — speed based on combined mass ratio
+        // 2. Cascade: check if pushed rocks would hit other rocks, adding them to the chain
         const pushDir = delta > 0 ? 1 : -1;
+        let chainChanged = true;
+        while (chainChanged) {
+            chainChanged = false;
+            for (const base of pushChain) {
+                const oCol = base.getRect();
+                // Simulate this rock's pushed position
+                const simX = axis === 'x' ? oCol.x + delta : oCol.x;
+                const simY = axis === 'y' ? oCol.y + delta : oCol.y;
+
+                for (const other of obstacles) {
+                    const otherBase = other.stackParent || other;
+                    if (pushChain.has(otherBase) || other === base.stackChild) continue;
+
+                    const oR = other.getRect();
+                    if (simX < oR.x + oR.width && simX + oCol.width > oR.x &&
+                        simY < oR.y + oR.height && simY + oCol.height > oR.y) {
+                        // This rock would be pushed into 'other'
+                        if (!otherBase.pushable) return true; // chain hits immovable
+                        pushChain.add(otherBase);
+                        chainChanged = true;
+                    }
+                }
+            }
+        }
+
+        // 3. Sum combined mass of entire chain
+        let combinedMass = 0;
+        for (const base of pushChain) {
+            combinedMass += base.mass + (base.stackChild ? base.stackChild.mass : 0);
+        }
+        if (combinedMass >= this.mass) return true; // too heavy
+
+        // 4. Compute push speed based on combined mass, then check for external blockers
         const pushSpeed = combinedMass < this.mass * 0.5 ? 0.7 : 0.5;
         const pushDelta = pushDir * Math.abs(delta) * pushSpeed;
 
         const savedPositions = [];
-        for (const base of hitBases) {
+        for (const base of pushChain) {
             savedPositions.push({ base, x: base.x, y: base.y });
         }
 
-        let anyPushBlocked = false;
-        for (const base of hitBases) {
+        // Check each chain rock's pushed position against non-chain obstacles
+        for (const base of pushChain) {
             const oCol = base.getRect();
-            let pushNewPos, newColPos;
+            const newColX = axis === 'x' ? oCol.x + pushDelta : oCol.x;
+            const newColY = axis === 'y' ? oCol.y + pushDelta : oCol.y;
 
-            if (axis === 'x') {
-                pushNewPos = base.x + pushDelta;
-                newColPos = pushNewPos + (oCol.x - base.x);
-                // Check this rock's new position against all non-pushed obstacles
-                for (const other of obstacles) {
-                    if (hitBases.has(other) || hitBases.has(other.stackParent) || other.stackParent && hitBases.has(other.stackParent)) continue;
-                    if (other === base.stackChild) continue;
-                    if (this._rectsOverlap(newColPos, oCol.y, oCol.width, oCol.height, other)) {
-                        anyPushBlocked = true;
-                        break;
-                    }
-                }
-            } else {
-                pushNewPos = base.y + pushDelta;
-                newColPos = pushNewPos + (oCol.y - base.y);
-                for (const other of obstacles) {
-                    if (hitBases.has(other) || hitBases.has(other.stackParent) || other.stackParent && hitBases.has(other.stackParent)) continue;
-                    if (other === base.stackChild) continue;
-                    if (this._rectsOverlap(oCol.x, newColPos, oCol.width, oCol.height, other)) {
-                        anyPushBlocked = true;
-                        break;
-                    }
+            for (const other of obstacles) {
+                const otherBase = other.stackParent || other;
+                if (pushChain.has(otherBase) || other === base.stackChild) continue;
+
+                const oR = other.getRect();
+                if (newColX < oR.x + oR.width && newColX + oCol.width > oR.x &&
+                    newColY < oR.y + oR.height && newColY + oCol.height > oR.y) {
+                    return true; // chain blocked by external obstacle
                 }
             }
-            if (anyPushBlocked) break;
         }
 
-        if (anyPushBlocked) {
-            return true; // blocked: a rock can't be pushed
-        }
-
-        // 4. Apply push to all bases
-        for (const base of hitBases) {
+        // 5. Apply push to entire chain
+        for (const base of pushChain) {
             if (axis === 'x') {
                 base.x += pushDelta;
                 if (base.stackChild) base.stackChild.x = base.x + (base.width - base.stackChild.width) / 2;
@@ -437,18 +440,18 @@ class Player {
             }
         }
 
-        // 5. Snap player to the nearest obstacle edge
+        // 6. Snap player to nearest obstacle edge (only direct-hit rocks)
         let snapPos;
         if (axis === 'x') {
             if (delta > 0) {
                 snapPos = Infinity;
-                for (const base of hitBases) {
+                for (const base of pushChain) {
                     const r = base.getRect();
                     snapPos = Math.min(snapPos, r.x - this.colW - this.colOffX);
                 }
             } else {
                 snapPos = -Infinity;
-                for (const base of hitBases) {
+                for (const base of pushChain) {
                     const r = base.getRect();
                     snapPos = Math.max(snapPos, r.x + r.width - this.colOffX);
                 }
@@ -456,25 +459,24 @@ class Player {
         } else {
             if (delta > 0) {
                 snapPos = Infinity;
-                for (const base of hitBases) {
+                for (const base of pushChain) {
                     const r = base.getRect();
                     snapPos = Math.min(snapPos, r.y - this.colH - this.colOffY);
                 }
             } else {
                 snapPos = -Infinity;
-                for (const base of hitBases) {
+                for (const base of pushChain) {
                     const r = base.getRect();
                     snapPos = Math.max(snapPos, r.y + r.height - this.colOffY);
                 }
             }
         }
 
-        // 6. Verify snap position doesn't overlap any obstacle
+        // 7. Verify snap position doesn't overlap any obstacle
         const verifyX = axis === 'x' ? snapPos : testX;
         const verifyY = axis === 'y' ? snapPos : testY;
         for (const obs of obstacles) {
             if (this._collides(verifyX, verifyY, obs)) {
-                // Revert all pushes
                 for (const saved of savedPositions) {
                     saved.base.x = saved.x;
                     saved.base.y = saved.y;
@@ -483,13 +485,13 @@ class Player {
                         saved.base.stackChild.y = saved.y - STACK_OFFSET;
                     }
                 }
-                return true; // blocked
+                return true;
             }
         }
 
         this._resolvedPos = snapPos;
         this.pushing = true;
-        return false; // success
+        return false;
     }
 
     _collides(testX, testY, obstacle) {
