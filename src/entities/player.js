@@ -11,10 +11,10 @@ class Player {
         this.speed = 3;
 
         // Isometric collision footprint (bottom portion of sprite, centered)
-        this.colW = 48;
-        this.colH = 28;
-        this.colOffX = Math.floor((145 - 48) / 2); // 48 — centered horizontally
-        this.colOffY = 109 - 28; // 81 — at the feet
+        this.colW = Math.round(this.width * 0.8);
+        this.colH = Math.round(this.height * 0.5);
+        this.colOffX = Math.floor((this.width - this.colW) / 2);
+        this.colOffY = this.height - this.colH;
         this.mass = this.colW * this.colH;
         this.pushing = false;
 

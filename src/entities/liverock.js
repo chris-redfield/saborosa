@@ -40,8 +40,8 @@ class LiveRock {
         }
 
         // Isometric collision footprint (bottom portion, centered)
-        this.colW = Math.round(this.width * 0.4);
-        this.colH = Math.round(this.height * 0.3);
+        this.colW = Math.round(this.width * 0.8);
+        this.colH = Math.round(this.height * 0.5);
         this.colOffX = Math.floor((this.width - this.colW) / 2);
         this.colOffY = this.height - this.colH;
         this.mass = this.colW * this.colH;
