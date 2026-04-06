@@ -308,11 +308,13 @@
             character: {
                 label: 'Character',
                 jsonFile: 'saborosa-cha-001-sprites.json',
-                directions: ['down', 'up', 'right', 'left'],
+                directions: ['down', 'up', 'right', 'left', 'down_right', 'down_left', 'up_right', 'up_left'],
                 phases: { idle: 1 }, // phase name -> frames per direction
                 colors: {
                     'down_idle': '#e94560', 'up_idle': '#53d8fb',
-                    'right_idle': '#52b788', 'left_idle': '#ffa62b'
+                    'right_idle': '#52b788', 'left_idle': '#ffa62b',
+                    'down_right_idle': '#ff6b9d', 'down_left_idle': '#c44569',
+                    'up_right_idle': '#78e08f', 'up_left_idle': '#f8c291'
                 }
             },
             liverock: {

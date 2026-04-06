@@ -57,7 +57,7 @@ class Game {
     }
 
     loadJSON(key, src) {
-        return fetch(src)
+        return fetch(src, { cache: 'no-cache' })
             .then(r => { if (!r.ok) throw new Error(`Failed: ${src}`); return r.json(); })
             .then(data => { this.assets.json[key] = data; return data; });
     }

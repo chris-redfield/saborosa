@@ -17,12 +17,16 @@ class SpriteSheet {
             down_idle: [], down_walk: [],
             up_idle: [], up_walk: [],
             right_idle: [], right_walk: [],
-            left_idle: [], left_walk: []
+            left_idle: [], left_walk: [],
+            down_right_idle: [], down_right_walk: [],
+            down_left_idle: [], down_left_walk: [],
+            up_right_idle: [], up_right_walk: [],
+            up_left_idle: [], up_left_walk: []
         };
 
         if (!img || !data) return { sprites };
 
-        const DIRECTIONS = ['down', 'up', 'right', 'left'];
+        const DIRECTIONS = ['down', 'up', 'right', 'left', 'down_right', 'down_left', 'up_right', 'up_left'];
 
         for (const dir of DIRECTIONS) {
             const idleFrames = data[`${dir}_idle`];
@@ -62,6 +66,9 @@ class SpriteSheet {
                 sprites[`${dir}_walk`].push({ ...spriteData });
             }
         }
+
+        const loaded = DIRECTIONS.filter(d => sprites[`${d}_idle`].length > 0);
+        console.log('SpriteSheet loaded directions:', loaded.join(', '));
 
         return { sprites };
     }

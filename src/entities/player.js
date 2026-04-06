@@ -74,12 +74,9 @@ class Player {
 
         // Fall back to facing direction if no input
         if (dx === 0 && dy === 0) {
-            switch (this.facing) {
-                case 'right': dx = 1; break;
-                case 'left': dx = -1; break;
-                case 'down': dy = 1; break;
-                case 'up': dy = -1; break;
-            }
+            const fv = this.getFacingVector();
+            dx = fv.x;
+            dy = fv.y;
         }
 
         // Normalize diagonal
@@ -133,12 +130,17 @@ class Player {
      * Get the facing direction as a unit vector based on last input.
      */
     getFacingVector() {
+        const diag = Math.SQRT1_2; // ~0.707
         switch (this.facing) {
-            case 'down':  return { x: 0, y: 1 };
-            case 'up':    return { x: 0, y: -1 };
-            case 'right': return { x: 1, y: 0 };
-            case 'left':  return { x: -1, y: 0 };
-            default:      return { x: 0, y: 1 };
+            case 'down':       return { x: 0, y: 1 };
+            case 'up':         return { x: 0, y: -1 };
+            case 'right':      return { x: 1, y: 0 };
+            case 'left':       return { x: -1, y: 0 };
+            case 'down_right': return { x: diag, y: diag };
+            case 'down_left':  return { x: -diag, y: diag };
+            case 'up_right':   return { x: diag, y: -diag };
+            case 'up_left':    return { x: -diag, y: -diag };
+            default:           return { x: 0, y: 1 };
         }
     }
 
@@ -192,12 +194,11 @@ class Player {
             // Drop in front of the player based on facing direction
             const obj = this.liftedObject;
             const gap = 4;
-            switch (this.facing) {
-                case 'down':  obj.x = this.x + (this.width - obj.width) / 2; obj.y = this.y + this.height + gap; break;
-                case 'up':    obj.x = this.x + (this.width - obj.width) / 2; obj.y = this.y - obj.height - gap; break;
-                case 'right': obj.x = this.x + this.width + gap; obj.y = this.y + (this.height - obj.height) / 2; break;
-                case 'left':  obj.x = this.x - obj.width - gap; obj.y = this.y + (this.height - obj.height) / 2; break;
-            }
+            const fv = this.getFacingVector();
+            const cx = this.x + (this.width - obj.width) / 2;
+            const cy = this.y + (this.height - obj.height) / 2;
+            obj.x = cx + fv.x * (this.width / 2 + obj.width / 2 + gap);
+            obj.y = cy + fv.y * (this.height / 2 + obj.height / 2 + gap);
 
             // Stack onto the targeted rock if one exists
             let stacked = false;
@@ -218,20 +219,18 @@ class Player {
             const pr = this.getRect();
             if (pr.x < dr.x + dr.width && pr.x + pr.width > dr.x &&
                 pr.y < dr.y + dr.height && pr.y + pr.height > dr.y) {
-                switch (this.facing) {
-                    case 'down':  this.y = dr.y - this.colH - this.colOffY - 1; break;
-                    case 'up':    this.y = dr.y + dr.height - this.colOffY + 1; break;
-                    case 'right': this.x = dr.x - this.colW - this.colOffX - 1; break;
-                    case 'left':  this.x = dr.x + dr.width - this.colOffX + 1; break;
-                }
+                if (fv.x > 0)  this.x = dr.x - this.colW - this.colOffX - 1;
+                if (fv.x < 0)  this.x = dr.x + dr.width - this.colOffX + 1;
+                if (fv.y > 0)  this.y = dr.y - this.colH - this.colOffY - 1;
+                if (fv.y < 0)  this.y = dr.y + dr.height - this.colOffY + 1;
             }
             this.liftedObject = null;
             return obj;
         }
 
         // Try to pick up a nearby pushable object in the facing direction
-        // Use visual bounds (not collision footprint) for vertical overlap — needed for stacked rocks
         const reach = 8;
+        const liftFv = this.getFacingVector();
         for (const obs of obstacles) {
             if (!obs.pushable || obs.mass >= this.mass) continue;
             if (obs.liftable === false) continue; // live rocks can't be lifted
@@ -245,12 +244,19 @@ class Player {
             const hOverlap = pr.x + pr.width > r.x && pr.x < r.x + r.width;
 
             let inRange = false;
-            switch (this.facing) {
-                case 'down':  inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && hOverlap; break;
-                case 'up':    inRange = pr.y - reach < r.y + r.height && pr.y > r.y && hOverlap; break;
-                case 'right': inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && vOverlap; break;
-                case 'left':  inRange = pr.x - reach < r.x + r.width && pr.x > r.x && vOverlap; break;
-            }
+            if (liftFv.x !== 0 && liftFv.y !== 0) {
+                // Diagonal: check both axes independently (generous)
+                const hOk = liftFv.x > 0
+                    ? pr.x + pr.width + reach > r.x && pr.x < r.x
+                    : pr.x - reach < r.x + r.width && pr.x > r.x;
+                const vOk = liftFv.y > 0
+                    ? pr.y + pr.height + reach > r.y && pr.y < r.y
+                    : pr.y - reach < r.y + r.height && pr.y > r.y;
+                inRange = hOk || vOk;
+            } else if (liftFv.y > 0)  { inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && hOverlap; }
+            else if (liftFv.y < 0)    { inRange = pr.y - reach < r.y + r.height && pr.y > r.y && hOverlap; }
+            else if (liftFv.x > 0)    { inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && vOverlap; }
+            else if (liftFv.x < 0)    { inRange = pr.x - reach < r.x + r.width && pr.x > r.x && vOverlap; }
 
             if (inRange) {
                 // Detach from stack if this rock was on top of another
@@ -270,27 +276,38 @@ class Player {
         if (dx !== 0 || dy !== 0) {
             this.moving = true;
 
-            // Determine dominant axis for facing direction
-            const wasH = this.lastDx !== 0;
-            const wasV = this.lastDy !== 0;
+            // Determine facing direction — use diagonal when both axes active
             const nowH = dx !== 0;
             const nowV = dy !== 0;
 
             if (nowH && nowV) {
-                if (!wasH && nowH) this.dominantAxis = 'vertical';
-                else if (!wasV && nowV) this.dominantAxis = 'horizontal';
-                if (!this.dominantAxis) {
-                    this.dominantAxis = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+                const vDir = dy > 0 ? 'down' : 'up';
+                const hDir = dx > 0 ? 'right' : 'left';
+                const diagFacing = `${vDir}_${hDir}`;
+                // Use diagonal facing if we have a sprite for it, otherwise fall back to dominant axis
+                const diagKey = `${diagFacing}_idle`;
+                if (this.sprites && this.sprites[diagKey] && this.sprites[diagKey].length > 0) {
+                    this.facing = diagFacing;
+                } else {
+                    // Fallback: pick dominant axis like before
+                    const wasH = this.lastDx !== 0;
+                    const wasV = this.lastDy !== 0;
+                    if (!wasH && nowH) this.dominantAxis = 'vertical';
+                    else if (!wasV && nowV) this.dominantAxis = 'horizontal';
+                    if (!this.dominantAxis) {
+                        this.dominantAxis = Math.abs(dx) >= Math.abs(dy) ? 'horizontal' : 'vertical';
+                    }
+                    if (this.dominantAxis === 'horizontal') {
+                        this.facing = dx > 0 ? 'right' : 'left';
+                    } else {
+                        this.facing = dy > 0 ? 'down' : 'up';
+                    }
                 }
             } else if (nowH) {
                 this.dominantAxis = 'horizontal';
-            } else {
-                this.dominantAxis = 'vertical';
-            }
-
-            if (this.dominantAxis === 'horizontal') {
                 this.facing = dx > 0 ? 'right' : 'left';
             } else {
+                this.dominantAxis = 'vertical';
                 this.facing = dy > 0 ? 'down' : 'up';
             }
 
