@@ -10,11 +10,12 @@ class Player {
         this.height = 109;
         this.speed = 3;
 
-        // Isometric collision footprint (bottom portion of sprite, centered)
-        this.colW = Math.round(this.width * 0.8);
-        this.colH = Math.round(this.height * 0.5);
-        this.colOffX = Math.floor((this.width - this.colW) / 2);
-        this.colOffY = this.height - this.colH;
+        // Isometric collision footprint from config
+        const colCfg = (game.getJSON('collision_config') || {}).character || { colW: 0.80, colH: 0.50, colOffX: 0.10, colOffY: 0.50 };
+        this.colW = Math.round(this.width * colCfg.colW);
+        this.colH = Math.round(this.height * colCfg.colH);
+        this.colOffX = Math.round(this.width * colCfg.colOffX);
+        this.colOffY = Math.round(this.height * colCfg.colOffY);
         this.mass = this.colW * this.colH;
         this.pushing = false;
 

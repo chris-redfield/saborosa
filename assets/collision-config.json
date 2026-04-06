@@ -1,0 +1,20 @@
+{
+  "character": {
+    "colW": 0.80,
+    "colH": 0.50,
+    "colOffX": 0.10,
+    "colOffY": 0.50
+  },
+  "liverock": {
+    "colW": 0.92,
+    "colH": 0.52,
+    "colOffX": 0.02,
+    "colOffY": 0.31
+  },
+  "rock": {
+    "colW": 1.00,
+    "colH": 0.50,
+    "colOffX": 0.00,
+    "colOffY": 0.50
+  }
+}

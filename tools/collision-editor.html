@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saborosa - Collision Editor</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #toolbar {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-bottom: 2px solid #0f3460;
+            flex-shrink: 0;
+        }
+
+        #toolbar h1 {
+            font-size: 18px;
+            color: #e94560;
+            margin-right: 12px;
+        }
+
+        .entity-tabs {
+            display: flex;
+            gap: 4px;
+        }
+
+        .entity-tab {
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+            background: #0f3460;
+            color: #888;
+            border: 1px solid #0f3460;
+            cursor: pointer;
+        }
+
+        .entity-tab.active {
+            background: #53d8fb;
+            color: #1a1a2e;
+            border-color: #53d8fb;
+        }
+
+        button {
+            background: #0f3460;
+            color: #eee;
+            border: 1px solid #53d8fb;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        button:hover { background: #1a4a8a; }
+        button.export-btn { background: #2d6a4f; border-color: #52b788; margin-left: auto; }
+        button.export-btn:hover { background: #3a8a63; }
+
+        #main {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        #canvas-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            position: relative;
+        }
+
+        #sprite-canvas {
+            image-rendering: pixelated;
+            cursor: crosshair;
+        }
+
+        #sidebar {
+            width: 320px;
+            background: #16213e;
+            border-left: 2px solid #0f3460;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+            flex-shrink: 0;
+        }
+
+        #sidebar h2 {
+            font-size: 15px;
+            color: #53d8fb;
+            border-bottom: 1px solid #0f3460;
+            padding-bottom: 8px;
+        }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .field-row label {
+            font-size: 13px;
+            color: #aaa;
+            min-width: 60px;
+        }
+
+        .field-row input[type="number"] {
+            width: 70px;
+            background: #0d1b2a;
+            color: #eee;
+            border: 1px solid #0f3460;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 13px;
+            font-family: monospace;
+        }
+
+        .field-row input[type="range"] {
+            flex: 1;
+        }
+
+        .field-row .value {
+            font-size: 12px;
+            font-family: monospace;
+            color: #53d8fb;
+            min-width: 35px;
+            text-align: right;
+        }
+
+        .info-block {
+            background: #0d1b2a;
+            border-radius: 4px;
+            padding: 10px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #ccc;
+            line-height: 1.6;
+            white-space: pre;
+        }
+
+        .section-label {
+            font-size: 13px;
+            color: #e94560;
+            font-weight: bold;
+            margin-top: 4px;
+        }
+
+        #instructions {
+            padding: 8px 16px;
+            background: #0d1b2a;
+            font-size: 12px;
+            color: #888;
+            border-top: 1px solid #0f3460;
+        }
+
+        .zoom-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .zoom-controls span {
+            font-size: 13px;
+            color: #aaa;
+            min-width: 30px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <h1>Collision Editor</h1>
+        <div class="entity-tabs" id="entity-tabs"></div>
+        <div class="zoom-controls">
+            <button id="zoom-out">-</button>
+            <span id="zoom-level">3x</span>
+            <button id="zoom-in">+</button>
+        </div>
+        <button class="export-btn" id="export-btn">Export Config JSON</button>
+    </div>
+
+    <div id="main">
+        <div id="canvas-area">
+            <canvas id="sprite-canvas"></canvas>
+        </div>
+
+        <div id="sidebar">
+            <h2 id="entity-name">Character</h2>
+
+            <div class="section-label">Sprite Size</div>
+            <div class="info-block" id="sprite-info">w: 0  h: 0</div>
+
+            <div class="section-label">Collision Box</div>
+            <div class="field-group">
+                <div class="field-row">
+                    <label>offX</label>
+                    <input type="range" id="sl-offx" min="0" max="200" value="0">
+                    <span class="value" id="val-offx">0</span>
+                </div>
+                <div class="field-row">
+                    <label>offY</label>
+                    <input type="range" id="sl-offy" min="0" max="200" value="0">
+                    <span class="value" id="val-offy">0</span>
+                </div>
+                <div class="field-row">
+                    <label>width</label>
+                    <input type="range" id="sl-colw" min="1" max="300" value="50">
+                    <span class="value" id="val-colw">50</span>
+                </div>
+                <div class="field-row">
+                    <label>height</label>
+                    <input type="range" id="sl-colh" min="1" max="300" value="50">
+                    <span class="value" id="val-colh">50</span>
+                </div>
+            </div>
+
+            <div class="section-label">Ratios (for dynamic sizing)</div>
+            <div class="info-block" id="ratio-info">...</div>
+
+            <div class="section-label">Code Output</div>
+            <div class="info-block" id="code-output">...</div>
+
+            <button id="center-x-btn">Center Horizontally</button>
+            <button id="snap-bottom-btn">Snap to Bottom</button>
+        </div>
+    </div>
+
+    <div id="instructions">
+        Click + drag on the sprite to draw a collision box. Use sliders for fine-tuning. "Center Horizontally" and "Snap to Bottom" are shortcuts for isometric footprints.
+    </div>
+
+    <script>
+        const CONFIG_PATH = '../assets/collision-config.json';
+
+        const ENTITIES = {
+            character: {
+                label: 'Character',
+                configKey: 'character',
+                spriteSheet: '../assets/saborosa-cha-001.png',
+                spriteJSON: '../assets/saborosa-cha-001-sprites.json',
+                spriteKey: 'down_idle'
+            },
+            liverock: {
+                label: 'Live Rock',
+                configKey: 'liverock',
+                spriteSheet: '../assets/saborosa-cha-001.png',
+                spriteJSON: '../assets/saborosa-liverock-sprites.json',
+                spriteKey: 'pos1_idle'
+            },
+            rock1: {
+                label: 'Rock 1',
+                configKey: 'rock',
+                spriteImage: '../assets/rock1.png'
+            },
+            rock2: {
+                label: 'Rock 2',
+                configKey: 'rock',
+                spriteImage: '../assets/rock2.png'
+            },
+            rock3: {
+                label: 'Rock 3',
+                configKey: 'rock',
+                spriteImage: '../assets/rock3.png'
+            }
+        };
+
+        let currentEntity = 'character';
+        let zoom = 3;
+
+        // Loaded config ratios from collision-config.json
+        let configData = {};
+
+        // Per-entity collision data in pixels: { colOffX, colOffY, colW, colH }
+        let collisions = {};
+
+        // Per-entity sprite info: { image, sx, sy, sw, sh, w, h }
+        let spriteData = {};
+
+        // Drawing state
+        let drawing = false;
+        let drawStart = { x: 0, y: 0 };
+
+        const canvas = document.getElementById('sprite-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function ent() { return ENTITIES[currentEntity]; }
+        function col() { return collisions[currentEntity]; }
+        function spr() { return spriteData[currentEntity]; }
+
+        // --- Loading ---
+
+        async function loadAllSprites() {
+            // Load collision config first
+            try {
+                configData = await fetch(CONFIG_PATH, { cache: 'no-cache' }).then(r => r.json());
+                console.log('Loaded collision config:', configData);
+            } catch (err) {
+                console.warn('No collision config found, using defaults');
+                configData = {};
+            }
+
+            for (const [eid, e] of Object.entries(ENTITIES)) {
+                if (e.spriteJSON) {
+                    try {
+                        const [img, json] = await Promise.all([
+                            loadImg(e.spriteSheet),
+                            fetch(e.spriteJSON, { cache: 'no-cache' }).then(r => r.json())
+                        ]);
+                        const frames = json[e.spriteKey];
+                        if (frames && frames.length > 0) {
+                            const f = frames[0];
+                            spriteData[eid] = { image: img, sx: f.x, sy: f.y, sw: f.w, sh: f.h, w: f.w, h: f.h };
+                        }
+                    } catch (err) {
+                        console.warn(`Failed to load ${e.label}:`, err);
+                    }
+                } else if (e.spriteImage) {
+                    try {
+                        const img = await loadImg(e.spriteImage);
+                        spriteData[eid] = { image: img, sx: 0, sy: 0, sw: img.width, sh: img.height, w: img.width, h: img.height };
+                    } catch (err) {
+                        console.warn(`Failed to load ${e.label}:`, err);
+                    }
+                }
+
+                // Apply ratios from config, or fall back to defaults
+                const s = spriteData[eid];
+                const cfg = configData[e.configKey];
+                if (s && cfg) {
+                    collisions[eid] = {
+                        colOffX: Math.round(s.w * cfg.colOffX),
+                        colOffY: Math.round(s.h * cfg.colOffY),
+                        colW: Math.round(s.w * cfg.colW),
+                        colH: Math.round(s.h * cfg.colH)
+                    };
+                } else if (s) {
+                    const colW = Math.round(s.w * 0.8);
+                    const colH = Math.round(s.h * 0.5);
+                    collisions[eid] = {
+                        colOffX: Math.floor((s.w - colW) / 2),
+                        colOffY: s.h - colH,
+                        colW, colH
+                    };
+                } else {
+                    collisions[eid] = { colOffX: 0, colOffY: 0, colW: 50, colH: 50 };
+                }
+            }
+        }
+
+        function loadImg(src) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = src;
+            });
+        }
+
+        // --- Drawing ---
+
+        function render() {
+            const s = spr();
+            if (!s) return;
+
+            const cw = s.w * zoom;
+            const ch = s.h * zoom;
+            canvas.width = cw;
+            canvas.height = ch;
+            ctx.imageSmoothingEnabled = false;
+
+            // Draw sprite
+            ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, 0, 0, cw, ch);
+
+            // Draw sprite bounds (lime)
+            ctx.strokeStyle = 'lime';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, cw, ch);
+
+            // Draw collision box (red, filled semi-transparent)
+            const c = col();
+            const rx = c.colOffX * zoom;
+            const ry = c.colOffY * zoom;
+            const rw = c.colW * zoom;
+            const rh = c.colH * zoom;
+
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
+            ctx.fillRect(rx, ry, rw, rh);
+            ctx.strokeStyle = 'red';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(rx, ry, rw, rh);
+
+            // Corner handles
+            const hs = 6;
+            ctx.fillStyle = 'red';
+            ctx.fillRect(rx - hs/2, ry - hs/2, hs, hs);
+            ctx.fillRect(rx + rw - hs/2, ry - hs/2, hs, hs);
+            ctx.fillRect(rx - hs/2, ry + rh - hs/2, hs, hs);
+            ctx.fillRect(rx + rw - hs/2, ry + rh - hs/2, hs, hs);
+
+            // Crosshair at center of collision box
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(rx + rw/2, ry);
+            ctx.lineTo(rx + rw/2, ry + rh);
+            ctx.moveTo(rx, ry + rh/2);
+            ctx.lineTo(rx + rw, ry + rh/2);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        // --- UI ---
+
+        function updateUI() {
+            const e = ent();
+            const s = spr();
+            const c = col();
+
+            document.getElementById('entity-name').textContent = e.label;
+
+            // Tabs
+            const tabs = document.getElementById('entity-tabs');
+            tabs.innerHTML = '';
+            for (const [eid, en] of Object.entries(ENTITIES)) {
+                const tab = document.createElement('div');
+                tab.className = 'entity-tab' + (eid === currentEntity ? ' active' : '');
+                tab.textContent = en.label;
+                tab.addEventListener('click', () => { currentEntity = eid; syncSliders(); updateUI(); render(); });
+                tabs.appendChild(tab);
+            }
+
+            // Sprite info
+            if (s) {
+                document.getElementById('sprite-info').textContent = `w: ${s.w}  h: ${s.h}`;
+            }
+
+            // Slider ranges
+            if (s) {
+                document.getElementById('sl-offx').max = s.w;
+                document.getElementById('sl-offy').max = s.h;
+                document.getElementById('sl-colw').max = s.w;
+                document.getElementById('sl-colh').max = s.h;
+            }
+
+            // Values
+            document.getElementById('val-offx').textContent = c.colOffX;
+            document.getElementById('val-offy').textContent = c.colOffY;
+            document.getElementById('val-colw').textContent = c.colW;
+            document.getElementById('val-colh').textContent = c.colH;
+
+            // Ratios
+            if (s) {
+                const wRatio = (c.colW / s.w).toFixed(3);
+                const hRatio = (c.colH / s.h).toFixed(3);
+                const offXRatio = (c.colOffX / s.w).toFixed(3);
+                const offYRatio = (c.colOffY / s.h).toFixed(3);
+                document.getElementById('ratio-info').textContent =
+                    `colW/w:    ${wRatio}\n` +
+                    `colH/h:    ${hRatio}\n` +
+                    `offX/w:    ${offXRatio}\n` +
+                    `offY/h:    ${offYRatio}`;
+            }
+
+            // Code output
+            updateCodeOutput();
+        }
+
+        function updateCodeOutput() {
+            const e = ent();
+            const s = spr();
+            const c = col();
+            if (!s) return;
+
+            const wR = (c.colW / s.w).toFixed(2);
+            const hR = (c.colH / s.h).toFixed(2);
+            const oxR = (c.colOffX / s.w).toFixed(2);
+            const oyR = (c.colOffY / s.h).toFixed(2);
+
+            const code =
+                `// ${e.label} collision\n` +
+                `this.colW = Math.round(this.width * ${wR});\n` +
+                `this.colH = Math.round(this.height * ${hR});\n` +
+                `this.colOffX = Math.round(this.width * ${oxR});\n` +
+                `this.colOffY = Math.round(this.height * ${oyR});`;
+
+            document.getElementById('code-output').textContent = code;
+        }
+
+        function syncSliders() {
+            const c = col();
+            document.getElementById('sl-offx').value = c.colOffX;
+            document.getElementById('sl-offy').value = c.colOffY;
+            document.getElementById('sl-colw').value = c.colW;
+            document.getElementById('sl-colh').value = c.colH;
+        }
+
+        // --- Slider events ---
+
+        function onSlider(id, field) {
+            const slider = document.getElementById(id);
+            slider.addEventListener('input', () => {
+                col()[field] = parseInt(slider.value);
+                clampCollision();
+                updateUI();
+                render();
+            });
+        }
+
+        onSlider('sl-offx', 'colOffX');
+        onSlider('sl-offy', 'colOffY');
+        onSlider('sl-colw', 'colW');
+        onSlider('sl-colh', 'colH');
+
+        function clampCollision() {
+            const s = spr();
+            const c = col();
+            if (!s) return;
+            c.colW = Math.max(1, Math.min(c.colW, s.w));
+            c.colH = Math.max(1, Math.min(c.colH, s.h));
+            c.colOffX = Math.max(0, Math.min(c.colOffX, s.w - c.colW));
+            c.colOffY = Math.max(0, Math.min(c.colOffY, s.h - c.colH));
+        }
+
+        // --- Canvas mouse: draw collision box ---
+
+        function getImgCoords(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: Math.floor((e.clientX - rect.left) / zoom),
+                y: Math.floor((e.clientY - rect.top) / zoom)
+            };
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            drawing = true;
+            drawStart = getImgCoords(e);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!drawing) return;
+            const pos = getImgCoords(e);
+            const c = col();
+            const s = spr();
+            if (!s) return;
+
+            c.colOffX = Math.max(0, Math.min(drawStart.x, pos.x));
+            c.colOffY = Math.max(0, Math.min(drawStart.y, pos.y));
+            c.colW = Math.abs(pos.x - drawStart.x);
+            c.colH = Math.abs(pos.y - drawStart.y);
+            clampCollision();
+            syncSliders();
+            updateUI();
+            render();
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (!drawing) return;
+            drawing = false;
+            clampCollision();
+            syncSliders();
+            updateUI();
+            render();
+        });
+
+        // --- Helper buttons ---
+
+        document.getElementById('center-x-btn').addEventListener('click', () => {
+            const s = spr();
+            const c = col();
+            if (!s) return;
+            c.colOffX = Math.floor((s.w - c.colW) / 2);
+            syncSliders();
+            updateUI();
+            render();
+        });
+
+        document.getElementById('snap-bottom-btn').addEventListener('click', () => {
+            const s = spr();
+            const c = col();
+            if (!s) return;
+            c.colOffY = s.h - c.colH;
+            syncSliders();
+            updateUI();
+            render();
+        });
+
+        // --- Zoom ---
+
+        document.getElementById('zoom-in').addEventListener('click', () => {
+            if (zoom < 8) { zoom++; document.getElementById('zoom-level').textContent = zoom + 'x'; render(); }
+        });
+        document.getElementById('zoom-out').addEventListener('click', () => {
+            if (zoom > 1) { zoom--; document.getElementById('zoom-level').textContent = zoom + 'x'; render(); }
+        });
+
+        // --- Export ---
+
+        function buildConfigJSON() {
+            // Build config from current collision data, grouped by configKey
+            // If multiple entities share a configKey (e.g. rock1/rock2/rock3 -> "rock"),
+            // use the first one encountered
+            const output = {};
+            const seen = new Set();
+            for (const [eid, e] of Object.entries(ENTITIES)) {
+                if (seen.has(e.configKey)) continue;
+                seen.add(e.configKey);
+                const s = spriteData[eid];
+                const c = collisions[eid];
+                if (!s || !c) continue;
+                output[e.configKey] = {
+                    colW: parseFloat((c.colW / s.w).toFixed(2)),
+                    colH: parseFloat((c.colH / s.h).toFixed(2)),
+                    colOffX: parseFloat((c.colOffX / s.w).toFixed(2)),
+                    colOffY: parseFloat((c.colOffY / s.h).toFixed(2))
+                };
+            }
+            return output;
+        }
+
+        document.getElementById('export-btn').addEventListener('click', () => {
+            const output = buildConfigJSON();
+            const json = JSON.stringify(output, null, 2);
+
+            // Download as file
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'collision-config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+
+            // Also copy to clipboard
+            navigator.clipboard.writeText(json).then(() => {
+                alert('collision-config.json downloaded and copied to clipboard!');
+            }).catch(() => {
+                alert('collision-config.json downloaded! (clipboard copy failed)');
+            });
+        });
+
+        // --- Init ---
+
+        loadAllSprites().then(() => {
+            syncSliders();
+            updateUI();
+            render();
+        });
+    </script>
+</body>
+</html>

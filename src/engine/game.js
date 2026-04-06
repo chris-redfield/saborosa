@@ -73,6 +73,7 @@ class Game {
                 this.loadJSON('character_sprites', 'assets/saborosa-cha-001-sprites.json'),
                 this.loadImage('liverock_sheet', 'assets/saborosa-cha-001.png'),
                 this.loadJSON('liverock_sprites', 'assets/saborosa-liverock-sprites.json'),
+                this.loadJSON('collision_config', 'assets/collision-config.json'),
                 this.loadImage('rock1', 'assets/rock1.png'),
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),

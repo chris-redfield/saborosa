@@ -13,11 +13,12 @@ class Rock {
         this.pushable = true;
         this.spriteKey = `rock${type}`;
 
-        // Isometric collision footprint (bottom portion)
-        this.colW = size;
-        this.colH = Math.round(size * 0.5);
-        this.colOffX = 0;
-        this.colOffY = size - this.colH;
+        // Isometric collision footprint from config
+        const colCfg = (game.getJSON('collision_config') || {}).rock || { colW: 1.00, colH: 0.50, colOffX: 0.00, colOffY: 0.50 };
+        this.colW = Math.round(this.width * colCfg.colW);
+        this.colH = Math.round(this.height * colCfg.colH);
+        this.colOffX = Math.round(this.width * colCfg.colOffX);
+        this.colOffY = Math.round(this.height * colCfg.colOffY);
         this.mass = this.colW * this.colH;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
 
