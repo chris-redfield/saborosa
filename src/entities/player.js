@@ -352,12 +352,14 @@ class Player {
      */
     _resolveAxis(testX, testY, delta, axis, obstacles) {
         // 1. Collect all obstacles the player directly collides with
+        const directHits = new Set();
         const pushChain = new Set();
         for (const obs of obstacles) {
             if (this._collides(testX, testY, obs)) {
                 const base = obs.stackParent || obs;
                 if (base.onCollision) base.onCollision();
                 if (!base.pushable) return true; // immovable
+                directHits.add(base);
                 pushChain.add(base);
             }
         }
@@ -440,18 +442,18 @@ class Player {
             }
         }
 
-        // 6. Snap player to nearest obstacle edge (only direct-hit rocks)
+        // 6. Snap player to nearest directly-hit obstacle edge
         let snapPos;
         if (axis === 'x') {
             if (delta > 0) {
                 snapPos = Infinity;
-                for (const base of pushChain) {
+                for (const base of directHits) {
                     const r = base.getRect();
                     snapPos = Math.min(snapPos, r.x - this.colW - this.colOffX);
                 }
             } else {
                 snapPos = -Infinity;
-                for (const base of pushChain) {
+                for (const base of directHits) {
                     const r = base.getRect();
                     snapPos = Math.max(snapPos, r.x + r.width - this.colOffX);
                 }
@@ -459,13 +461,13 @@ class Player {
         } else {
             if (delta > 0) {
                 snapPos = Infinity;
-                for (const base of pushChain) {
+                for (const base of directHits) {
                     const r = base.getRect();
                     snapPos = Math.min(snapPos, r.y - this.colH - this.colOffY);
                 }
             } else {
                 snapPos = -Infinity;
-                for (const base of pushChain) {
+                for (const base of directHits) {
                     const r = base.getRect();
                     snapPos = Math.max(snapPos, r.y + r.height - this.colOffY);
                 }
