@@ -31,6 +31,7 @@ class Player {
         this.dominantAxis = null;
         this.lastDx = 0;
         this.lastDy = 0;
+        this.diagGraceFrames = 0;
 
         // Dash
         this.dashing = false;
@@ -284,12 +285,10 @@ class Player {
                 const vDir = dy > 0 ? 'down' : 'up';
                 const hDir = dx > 0 ? 'right' : 'left';
                 const diagFacing = `${vDir}_${hDir}`;
-                // Use diagonal facing if we have a sprite for it, otherwise fall back to dominant axis
                 const diagKey = `${diagFacing}_idle`;
                 if (this.sprites && this.sprites[diagKey] && this.sprites[diagKey].length > 0) {
                     this.facing = diagFacing;
                 } else {
-                    // Fallback: pick dominant axis like before
                     const wasH = this.lastDx !== 0;
                     const wasV = this.lastDy !== 0;
                     if (!wasH && nowH) this.dominantAxis = 'vertical';
@@ -303,6 +302,10 @@ class Player {
                         this.facing = dy > 0 ? 'down' : 'up';
                     }
                 }
+                this.diagGraceFrames = 3;
+            } else if (this.diagGraceFrames > 0) {
+                // Just released one key from diagonal — hold diagonal facing briefly
+                this.diagGraceFrames--;
             } else if (nowH) {
                 this.dominantAxis = 'horizontal';
                 this.facing = dx > 0 ? 'right' : 'left';
@@ -403,6 +406,7 @@ class Player {
             this.dominantAxis = null;
             this.lastDx = 0;
             this.lastDy = 0;
+            this.diagGraceFrames = 0;
         }
     }
 
