@@ -35,7 +35,7 @@ const STAGES = {
         terrainDepth: 30,
         rockCount: [8, 16],
         liveRocks: [
-            { x: BLOCK_W / 2 , y: BLOCK_H / 2 - 200 }
+            { x: BLOCK_W / 2 , y: BLOCK_H / 2 - 250 }
         ],
         spawnX: BLOCK_W / 2 - 24,
         spawnY: BLOCK_H / 2 - 28,
