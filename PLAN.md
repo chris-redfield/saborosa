@@ -32,34 +32,37 @@ Same physics as green. Separate color kept in the enum so we can differentiate l
 
 ## Phased Implementation
 
-### Phase 1 — Zone infrastructure (no gameplay change yet)
+### Phase 1 — Zone infrastructure ✅ **DONE**
 
-- Draw the background image once into an **offscreen canvas** (not a separate zone-map — the background *is* the zone source).
-- Cache `getImageData` once per stage load so sampling is O(1).
-- Add `world.getZoneAt(worldX, worldY)` → maps world coords to image pixel coords (accounting for `backgroundImageRect` scale/offset), reads RGB, classifies by hue/saturation into a zone enum: `WALKABLE | RAMP_LEFT | RAMP_RIGHT | DENSE_SAND | WALL | NONE`.
-- Handle black outlines: classify as `WALKABLE` (walk over the line).
-- Debug overlay (hold `C`): show the detected zone name near the player + a small color swatch.
+Shipped:
+- Background image cached into an offscreen canvas at stage load (`_ensureZoneData` in `src/world/world.js`).
+- `World.getZoneAt(worldX, worldY)` samples a single pixel at the world→image coordinate; if that pixel is an outline-black fallback samples 8 nearby points.
+- HSV classifier `classifyZoneColor(r, g, b)` → `Zone` enum: `WALKABLE | RAMP_LEFT | RAMP_RIGHT | DENSE_SAND | WALL | NONE`.
+- Debug overlay (hold `C`): zone name in the HUD + a colored swatch next to the player's footprint. Palette in `src/main.js` (`ZONE_DEBUG_COLORS`).
 
-**Exit criteria:** Walking around stage 3, the debug overlay shows the right zone label for each colored region (yellow → `RAMP_LEFT`, blue → `RAMP_RIGHT`, gray → `DENSE_SAND`, green & red → `WALL`, beige → `NONE`).
+Key tuning knobs in `src/world/world.js`: outline cutoff (`Math.max(r,g,b) < 46`) and the HSV hue buckets in `classifyZoneColor`.
 
-### Phase 2 — Ramps (yellow, blue)
+### Phase 2 — Ramps (yellow + blue) ✅ **DONE**
 
-- On each frame, if player is on a ramp zone, add a constant `vx` nudge (left or right).
-- Tune magnitude until sliding *feels* right.
-- Sanity test: walking uphill should be slow, downhill fast.
+Shipped:
+- Pure `getZoneDrift(zone)` → `{dx, dy}` (yellow: `(-1.2, 0.6)`, blue: `(1.2, 0.6)`). 2:1 ratio matches the isometric `yRatio=0.5`, so drift runs down the visual slope.
+- Player drift applied in `main.js` after walking speed is computed — magnitude is below walking speed so the player can counter-walk uphill.
+- Rocks and live rocks drift too, via `applyObstacleDrift(obs, dx, dy, obstacles, player)` in `world.js`. Axis-separated collision rejection; stack children are dragged along with their parent. Player rect is passed in as a collider so drift can't shove a pushed rock back through the pusher.
 
-**Exit criteria:** Standing still on yellow drifts player left; on blue drifts right.
+### Phase 3 — Dense sand (gray) ✅ **DONE**
 
-### Phase 3 — Dense sand (gray)
+Shipped:
+- Gray is treated as sand in addition to walkable — `player.onSand` is `true` when on `DENSE_SAND`, so the existing sink/crop effect applies.
+- Extra 10% slowdown on top of the regular `sandSpeedFactor` (net `0.63` of base speed, or `~0.91` while running).
+- Rocks are intentionally unaffected on gray.
 
-- New zone hooks into the existing sand path (`player.onSand`).
-- Override sink amount (smaller than `STACK_OFFSET`) and speed factor (slower than current 0.7).
+Change lives in `updateGame` in `src/main.js` (the `playerZone` sample is reused for sand + drift + debug).
 
-**Exit criteria:** Gray zone feels visibly different from regular sand — less sinking, slower pace.
+### Phase 4 — Dynamic zones ⏸ **DEFERRED**
 
-### Phase 4 — Dynamic zones
+Out of order — skipped for now because by itself it has no visible payoff; coming back once a gameplay reason (switches, puzzles, triggers) justifies it.
 
-- Expose `world.setZoneAt(worldX, worldY, zone)` / region variant.
+- Expose `world.setZoneAt(worldX, worldY, zone)` / region variant that paints onto the cached zone canvas at runtime.
 - Small test: a trigger tile that flips a yellow ramp to blue.
 
 **Exit criteria:** A scripted event can repaint a region and the physics immediately reflect it.
@@ -101,10 +104,14 @@ Since there's no `level` integer, zoom is driven by `surfaceState`:
 
 ## Progress Tracking
 
-- [ ] Phase 1 — Zone infrastructure
-- [ ] Phase 2 — Ramps
-- [ ] Phase 3 — Dense sand
-- [ ] Phase 4 — Dynamic zones
-- [ ] Phase 5 — Walls (green + red share behavior)
+- [x] Phase 1 — Zone infrastructure
+- [x] Phase 2 — Ramps (yellow + blue, player + rocks)
+- [x] Phase 3 — Dense sand
+- [ ] Phase 4 — Dynamic zones *(deferred)*
+- [ ] Phase 5 — Walls (green + red share behavior) ← **next**
 - [ ] Phase 6 — Camera zoom on walls
 - [ ] Phase 7 — Differentiate red
+
+## Known Issues / Follow-ups
+
+- **Pushing against drift feels sluggish.** Pushing a rock *uphill* on a ramp works (the player is a collider so the rock won't drift back through them), but the net rock speed while being pushed is pusher-speed − drift-speed, which can feel slow. Not a bug per se, but worth tuning when we revisit ramp feel.

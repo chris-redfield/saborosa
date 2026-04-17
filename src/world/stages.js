@@ -49,13 +49,21 @@ const STAGES = {
         id: 3,
         name: 'Painted Isle',
         type: 'finite',
+        // 6x6 total, 4x4 walkable in the middle with a 1-block sand border
         blocks: [
-            [-1, -1], [0, -1], [1, -1], [2, -1],
-            [-1,  0], [0,  0], [1,  0], [2,  0],
-            [-1,  1], [0,  1], [1,  1], [2,  1],
-            [-1,  2], [0,  2], [1,  2], [2,  2]
+            [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [4, -1],
+            [-1,  0], [0,  0], [1,  0], [2,  0], [3,  0], [4,  0],
+            [-1,  1], [0,  1], [1,  1], [2,  1], [3,  1], [4,  1],
+            [-1,  2], [0,  2], [1,  2], [2,  2], [3,  2], [4,  2],
+            [-1,  3], [0,  3], [1,  3], [2,  3], [3,  3], [4,  3],
+            [-1,  4], [0,  4], [1,  4], [2,  4], [3,  4], [4,  4]
         ],
-        walkableBlocks: [[0, 0], [1, 0], [0, 1], [1, 1]],
+        walkableBlocks: [
+            [0, 0], [1, 0], [2, 0], [3, 0],
+            [0, 1], [1, 1], [2, 1], [3, 1],
+            [0, 2], [1, 2], [2, 2], [3, 2],
+            [0, 3], [1, 3], [2, 3], [3, 3]
+        ],
         terrainShape: 'diamond',
         sandColor: '#c7c4b3',
         groundColor: '#9a9a9a',
@@ -63,10 +71,13 @@ const STAGES = {
         terrainDepth: 30,
         rockCount: [10, 20],
         backgroundImage: 'stage3_bg',
-        backgroundImageRect: { x: 0, y: 0, w: 2560, h: 1440 },
-        spawnX: BLOCK_W - 24,
-        spawnY: BLOCK_H - 28,
-        safeZone: { x: BLOCK_W, y: BLOCK_H, radius: 140 },
+        // Image 4679x3624 (AR ~1.291). Fit to 4x4 walkable height (2880px),
+        // preserving aspect: w = 2880 * 1.291 = 3718. Centered horizontally
+        // in the 5120-wide walkable area (margin 701 each side).
+        backgroundImageRect: { x: 701, y: 0, w: 3718, h: 2880 },
+        spawnX: BLOCK_W * 2 - 24,
+        spawnY: BLOCK_H * 2 - 28,
+        safeZone: { x: BLOCK_W * 2, y: BLOCK_H * 2, radius: 200 },
         portals: [
             { x: BLOCK_W - 50, y: BLOCK_H / 2 - 200, targetStage: 2, label: 'Sand Bank' }
         ]

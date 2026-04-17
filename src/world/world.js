@@ -905,7 +905,7 @@ function classifyZoneColor(r, g, b) {
     }
 
     // Saturated: classify by hue
-    if (h < 20 || h >= 340) return Zone.WALL;        // red
+    if (h < 20 || h >= 340) return Zone.WALKABLE;    // red — plain walkable
     if (h >= 40  && h < 80)  return Zone.RAMP_LEFT;  // yellow
     if (h >= 90  && h < 170) return Zone.WALL;       // green
     if (h >= 180 && h < 260) return Zone.RAMP_RIGHT; // blue

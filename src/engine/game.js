@@ -78,7 +78,7 @@ class Game {
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
-                this.loadImage('stage3_bg', 'assets/saborosa-fund-01.png')
+                this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png')
             ]);
             this.assets.loaded = true;
             console.log('Assets loaded');

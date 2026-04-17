@@ -94,7 +94,14 @@ function updateGame(dt) {
         player.dash(performance.now(), movement.x, movement.y);
     }
 
-    // Check if player is on sand
+    // Sample the zone under the player's footprint once — reused for sand,
+    // drift, and any future zone-based behavior.
+    const feetX = player.x + player.colOffX + player.colW / 2;
+    const feetY = player.y + player.colOffY + player.colH / 2;
+    const playerZone = world.getZoneAt(feetX, feetY);
+
+    // Check if player is on sand. Only regular sand sinks the sprite —
+    // DENSE_SAND slows the player but doesn't crop the sprite.
     const playerCenterX = player.x + player.width / 2;
     const playerBottomY = player.y + player.height;
     player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
@@ -102,8 +109,12 @@ function updateGame(dt) {
     // Run (sprint) — hold R to move 27% faster
     player.running = game.input.isKeyDown('run');
 
-    // Movement: dash overrides normal speed, sand slows, run boosts
-    let speedMult = player.onSand ? player.sandSpeedFactor : 1;
+    // Movement: dash overrides normal speed, sand slows, run boosts.
+    // DENSE_SAND applies the sand speed factor with an extra 10% slowdown,
+    // without the sinking effect.
+    let speedMult = 1;
+    if (player.onSand) speedMult = player.sandSpeedFactor;
+    else if (playerZone === Zone.DENSE_SAND) speedMult = player.sandSpeedFactor * 0.9;
     if (player.running && !player.dashing) speedMult *= player.runSpeedFactor;
     let dx, dy;
     if (player.dashing) {
@@ -115,19 +126,90 @@ function updateGame(dt) {
         dy = movement.y * player.speed * speedMult;
     }
 
-    // Zone-based drift — ramps push the player in their downhill direction.
-    // Drift is set slower than walking speed so the player can counter it by
-    // walking back uphill.
-    if (!player.dashing) {
-        const feetX = player.x + player.colOffX + player.colW / 2;
-        const feetY = player.y + player.colOffY + player.colH / 2;
-        const zone = world.getZoneAt(feetX, feetY);
-        const drift = getZoneDrift(zone);
+    // --- Wall state machine (Phase 5) ---
+    // While onWall, the entire "upper" zone set keeps you on the wall:
+    //   WALL       — another wall face (side of a higher cube)
+    //   DENSE_SAND — gray top of the cube
+    //   RAMP_*     — a ramp sitting on top of the cube
+    // Anything else (walkable, none) means you stepped off the edge and fall.
+    const onWallStickyZone = (z) =>
+        z === Zone.WALL || z === Zone.DENSE_SAND ||
+        z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
+
+    // Track previous state so we can detect a transition *into* falling.
+    const prevState = player.surfaceState;
+
+    // 1) Transitions based on current zone + intended movement direction.
+    if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
+        // Entering a wall from ground: climb only if moving predominantly "up"
+        // into the wall (smaller Y). Any other direction = fall.
+        if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
+            player.surfaceState = 'climbing';
+            player.surfaceTimer = player.climbDurationMs;
+        } else {
+            player.surfaceState = 'falling';
+        }
+    } else if (player.surfaceState === 'climbing' && playerZone !== Zone.WALL) {
+        // Backed out of the wall mid-climb.
+        player.surfaceState = 'ground';
+    } else if (player.surfaceState === 'onWall') {
+        // Zones that represent being "on top of a cube" (anything walkable
+        // you can stand on up there). Stepping from a top zone back onto a
+        // WALL face means you crossed the front edge and should fall.
+        const isTopZone = (z) =>
+            z === Zone.DENSE_SAND || z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
+        if (!onWallStickyZone(playerZone)) {
+            // Stepped off the cube onto beige (walkable) / image void.
+            player.surfaceState = 'falling';
+        } else if (isTopZone(player.lastZone) && playerZone === Zone.WALL) {
+            // Crossed the edge from the top of the cube back onto the face.
+            player.surfaceState = 'falling';
+        }
+    } else if (player.surfaceState === 'falling' && playerZone !== Zone.WALL && playerZone !== Zone.NONE) {
+        // Landed on another zone.
+        player.surfaceState = 'ground';
+    }
+
+    // Reset fall timer the frame we start falling.
+    if (player.surfaceState === 'falling' && prevState !== 'falling') {
+        player.fallTimerMs = 0;
+    }
+
+    // 2) State-specific movement overrides.
+    if (player.surfaceState === 'climbing') {
+        // Lock the player in place while climbing. Otherwise slow movement
+        // drifts them out of a thin wall zone before the timer finishes,
+        // and the onWall handoff immediately flips to falling.
+        dx = 0;
+        dy = 0;
+        player.surfaceTimer -= dt * 1000;
+        if (player.surfaceTimer <= 0) {
+            player.surfaceState = 'onWall';
+            player.surfaceTimer = 0;
+        }
+    } else if (player.surfaceState === 'falling') {
+        // No recovery until landing — input ignored. Fall speed accelerates
+        // with time: start slow, accelerate, cap at fallMaxSpeed.
+        player.fallTimerMs += dt * 1000;
+        const t = player.fallTimerMs / 1000;
+        dx = 0;
+        dy = Math.min(player.fallMaxSpeed, player.fallStartSpeed + player.fallAccelPerSec * t);
+    }
+
+    // 3) Ramp drift applies whenever you're standing on terrain — both
+    //    the ground level and the top of a cube. Falling/climbing are not
+    //    drifted; they're locked movement states.
+    if (!player.dashing &&
+        (player.surfaceState === 'ground' || player.surfaceState === 'onWall')) {
+        const drift = getZoneDrift(playerZone);
         dx += drift.dx;
         dy += drift.dy;
     }
 
     player.move(dx, dy, obstacles);
+
+    // Record the zone we settled on this frame for next frame's edge-detect.
+    player.lastZone = playerZone;
 
     // Apply zone drift to movable obstacles (rocks, live rocks).
     // Skip carried objects and stack children (their parent will drag them).
@@ -251,7 +333,7 @@ function renderGame(ctx) {
         const zone = world.getZoneAt ? world.getZoneAt(feetX, feetY) : '-';
         ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 54);
         ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 36);
-        ctx.fillText(`Zone: ${zone}`, 10, game.height - 16);
+        ctx.fillText(`Zone: ${zone}   State: ${player.surfaceState}`, 10, game.height - 16);
 
         // Zone badge near the player's feet
         const swatch = ZONE_DEBUG_COLORS[zone] || '#888';
