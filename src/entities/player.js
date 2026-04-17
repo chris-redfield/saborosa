@@ -62,7 +62,7 @@ class Player {
         // as fallTimer increases. Reset when a fall begins.
         this.fallStartSpeed = 1.5;
         this.fallMaxSpeed = 11;
-        this.fallAccelPerSec = 12; // px/sec added to velocity each second
+        this.fallAccelPerSec = 15; // px/sec added to velocity each second (was 12, +25%)
         this.fallTimerMs = 0;
 
         // Tracks the zone under the player on the previous frame — used to
@@ -543,13 +543,7 @@ class Player {
 
     render(ctx, game, camX, camY) {
         const drawX = this.x - camX;
-        let wallOffset = 0;
-        if (this.surfaceState === 'onWall') wallOffset = this.onWallOffsetY;
-        else if (this.surfaceState === 'climbing') {
-            const progress = 1 - Math.max(0, this.surfaceTimer) / this.climbDurationMs;
-            wallOffset = this.onWallOffsetY * progress;
-        }
-        const drawY = this.y - camY + wallOffset;
+        const drawY = this.y - camY;
 
         let spriteData;
         const walkKey = `${this.facing}_walk`;

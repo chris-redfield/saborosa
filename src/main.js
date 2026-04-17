@@ -149,9 +149,6 @@ function updateGame(dt) {
         } else {
             player.surfaceState = 'falling';
         }
-    } else if (player.surfaceState === 'climbing' && playerZone !== Zone.WALL) {
-        // Backed out of the wall mid-climb.
-        player.surfaceState = 'ground';
     } else if (player.surfaceState === 'onWall') {
         // Zones that represent being "on top of a cube" (anything walkable
         // you can stand on up there). Stepping from a top zone back onto a
@@ -177,11 +174,13 @@ function updateGame(dt) {
 
     // 2) State-specific movement overrides.
     if (player.surfaceState === 'climbing') {
-        // Lock the player in place while climbing. Otherwise slow movement
-        // drifts them out of a thin wall zone before the timer finishes,
-        // and the onWall handoff immediately flips to falling.
+        // Physically rise over climbDuration, so the collision footprint
+        // (and zone sampling) end up on top of the wall when the timer
+        // finishes. No visual-only offset — the real Y carries the sprite.
+        const totalLift = Math.abs(player.onWallOffsetY); // 40px upward
+        const climbSec = player.climbDurationMs / 1000;
         dx = 0;
-        dy = 0;
+        dy = -(totalLift / climbSec) * dt;
         player.surfaceTimer -= dt * 1000;
         if (player.surfaceTimer <= 0) {
             player.surfaceState = 'onWall';
