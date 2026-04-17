@@ -119,8 +119,8 @@ function updateGame(dt) {
     // Drift is set slower than walking speed so the player can counter it by
     // walking back uphill.
     if (!player.dashing) {
-        const feetX = player.x + player.width / 2;
-        const feetY = player.y + player.height;
+        const feetX = player.x + player.colOffX + player.colW / 2;
+        const feetY = player.y + player.colOffY + player.colH / 2;
         const zone = world.getZoneAt(feetX, feetY);
         if (zone === Zone.RAMP_LEFT) {
             dx += -1.2;
@@ -231,8 +231,8 @@ function renderGame(ctx) {
         ctx.font = '12px monospace';
         const bx = Math.floor(player.x / BLOCK_W);
         const by = Math.floor(player.y / BLOCK_H);
-        const feetX = player.x + player.width / 2;
-        const feetY = player.y + player.height;
+        const feetX = player.x + player.colOffX + player.colW / 2;
+        const feetY = player.y + player.colOffY + player.colH / 2;
         const zone = world.getZoneAt ? world.getZoneAt(feetX, feetY) : '-';
         ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 54);
         ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 36);

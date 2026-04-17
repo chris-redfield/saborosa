@@ -80,16 +80,32 @@ class World {
         if (!this._zoneData) return Zone.WALKABLE;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return Zone.WALKABLE;
-        const px = Math.floor((wx - rect.x) / rect.w * this._zoneData.width);
-        const py = Math.floor((wy - rect.y) / rect.h * this._zoneData.height);
-        if (px < 0 || py < 0 || px >= this._zoneData.width || py >= this._zoneData.height) {
-            return Zone.NONE;
+        const imgW = this._zoneData.width;
+        const imgH = this._zoneData.height;
+        const data = this._zoneData.data;
+
+        const readClassified = (px, py) => {
+            if (px < 0 || py < 0 || px >= imgW || py >= imgH) return null;
+            const i = (py * imgW + px) * 4;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            if (Math.max(r, g, b) < 46) return null; // black outline
+            return classifyZoneColor(r, g, b);
+        };
+
+        const px = Math.floor((wx - rect.x) / rect.w * imgW);
+        const py = Math.floor((wy - rect.y) / rect.h * imgH);
+
+        const z = readClassified(px, py);
+        if (z !== null) return z;
+
+        // Fallback: caller pointed at a black outline pixel. Check the 4
+        // cardinal neighbors a few pixels out and return the first hit.
+        const OFFSETS = [[0, -3], [3, 0], [0, 3], [-3, 0], [0, -6], [6, 0], [0, 6], [-6, 0]];
+        for (const [ox, oy] of OFFSETS) {
+            const z2 = readClassified(px + ox, py + oy);
+            if (z2 !== null) return z2;
         }
-        const i = (py * this._zoneData.width + px) * 4;
-        const r = this._zoneData.data[i];
-        const g = this._zoneData.data[i + 1];
-        const b = this._zoneData.data[i + 2];
-        return classifyZoneColor(r, g, b);
+        return Zone.NONE;
     }
 
     _isWalkableBlock(bx, by) {
