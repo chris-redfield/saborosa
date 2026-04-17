@@ -4,6 +4,16 @@
  * type: 'infinite' — unlimited blocks generated around the player
  * type: 'finite'   — only the listed blocks exist; lava at boundaries
  */
+
+// Helper: build a rectangular grid of [x, y] block coords (inclusive bounds).
+function rectBlocks(minX, minY, maxX, maxY) {
+    const out = [];
+    for (let y = minY; y <= maxY; y++) {
+        for (let x = minX; x <= maxX; x++) out.push([x, y]);
+    }
+    return out;
+}
+
 const STAGES = {
     1: {
         id: 1,
@@ -49,21 +59,10 @@ const STAGES = {
         id: 3,
         name: 'Painted Isle',
         type: 'finite',
-        // 6x6 total, 4x4 walkable in the middle with a 1-block sand border
-        blocks: [
-            [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [4, -1],
-            [-1,  0], [0,  0], [1,  0], [2,  0], [3,  0], [4,  0],
-            [-1,  1], [0,  1], [1,  1], [2,  1], [3,  1], [4,  1],
-            [-1,  2], [0,  2], [1,  2], [2,  2], [3,  2], [4,  2],
-            [-1,  3], [0,  3], [1,  3], [2,  3], [3,  3], [4,  3],
-            [-1,  4], [0,  4], [1,  4], [2,  4], [3,  4], [4,  4]
-        ],
-        walkableBlocks: [
-            [0, 0], [1, 0], [2, 0], [3, 0],
-            [0, 1], [1, 1], [2, 1], [3, 1],
-            [0, 2], [1, 2], [2, 2], [3, 2],
-            [0, 3], [1, 3], [2, 3], [3, 3]
-        ],
+        // 11x11 total, 9x9 walkable (50% bigger than the previous 6x6)
+        // with a 1-block sand border on all sides.
+        blocks: rectBlocks(-1, -1, 9, 9),
+        walkableBlocks: rectBlocks(0, 0, 8, 8),
         terrainShape: 'diamond',
         sandColor: '#c7c4b3',
         groundColor: '#9a9a9a',
@@ -71,13 +70,13 @@ const STAGES = {
         terrainDepth: 30,
         rockCount: [10, 20],
         backgroundImage: 'stage3_bg',
-        // Image 4679x3624 (AR ~1.291). Fit to 4x4 walkable height (2880px),
-        // preserving aspect: w = 2880 * 1.291 = 3718. Centered horizontally
-        // in the 5120-wide walkable area (margin 701 each side).
-        backgroundImageRect: { x: 701, y: 0, w: 3718, h: 2880 },
-        spawnX: BLOCK_W * 2 - 24,
-        spawnY: BLOCK_H * 2 - 28,
-        safeZone: { x: BLOCK_W * 2, y: BLOCK_H * 2, radius: 200 },
+        // Image 4679x3624 (AR ~1.291). Fit to 9x9 walkable height (6480px),
+        // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
+        // in the 11520-wide walkable area (margin ~1577 each side).
+        backgroundImageRect: { x: 1577, y: 0, w: 8366, h: 6480 },
+        spawnX: BLOCK_W * 4.5 - 24,
+        spawnY: BLOCK_H * 4.5 - 28,
+        safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },
         portals: [
             { x: BLOCK_W - 50, y: BLOCK_H / 2 - 200, targetStage: 2, label: 'Sand Bank' }
         ]
