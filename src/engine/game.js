@@ -78,13 +78,40 @@ class Game {
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
-                this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png')
+                this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
+                this.loadImage('cubes', 'assets/cor-saborosa-box-01.png')
             ]);
+            // Cube sheet uses a solid white background. Key it out so the
+            // sprites composite cleanly over the stage art.
+            this._makeWhiteTransparent('cubes');
             this.assets.loaded = true;
             console.log('Assets loaded');
         } catch (err) {
             console.error('Asset load error:', err);
             this.assets.loaded = true;
+        }
+    }
+
+    _makeWhiteTransparent(key) {
+        const img = this.getImage(key);
+        if (!img) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        try {
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                if (data[i] > 240 && data[i + 1] > 240 && data[i + 2] > 240) {
+                    data[i + 3] = 0;
+                }
+            }
+            ctx.putImageData(imageData, 0, 0);
+            this.assets.images[key] = canvas;
+        } catch (err) {
+            console.error('Failed to preprocess', key, err);
         }
     }
 

@@ -776,7 +776,7 @@ class World {
         const margin = this.stage.type === 'finite' ? 60 : 30;
 
         for (let i = 0; i < rockCount; i++) {
-            const type = Math.floor(rand() * 3) + 1;
+            const type = Math.floor(rand() * 6) + 1;
             const scale = 0.25 + rand() * 0.35;
             const size = Math.floor(100 * scale);
             const x = ox + margin + rand() * (BLOCK_W - margin * 2 - size);
