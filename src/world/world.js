@@ -913,8 +913,72 @@ function classifyZoneColor(r, g, b) {
     return Zone.WALKABLE;
 }
 
+// Zone → per-frame drift vector. Pure function so rocks, player, and any
+// future entity all get the same physics. Add new cases here when we handle
+// more zones (e.g. DENSE_SAND speed mod, WALL fall-on-edge).
+function getZoneDrift(zone) {
+    switch (zone) {
+        case Zone.RAMP_LEFT:  return { dx: -1.2, dy:  0.6 };
+        case Zone.RAMP_RIGHT: return { dx:  1.2, dy:  0.6 };
+        default:              return { dx:  0,   dy:  0   };
+    }
+}
+
+// Move an obstacle by (dx, dy), rejecting each axis independently if it
+// collides with another obstacle or the player. Used for ramp drift —
+// a soft nudge that stops on contact rather than transferring force.
+// Stack children are dragged along with their parent. Passing the player
+// as a collider prevents drift from pushing a rock back through the
+// pusher's body (which would make pushing uphill feel broken).
+function applyObstacleDrift(obs, dx, dy, obstacles, player) {
+    const overlapsOther = (r, other) => {
+        if (other === obs || !other.isObstacle) return false;
+        if (other === obs.stackChild || other === obs.stackParent) return false;
+        const o = other.getRect();
+        return r.x < o.x + o.width && r.x + r.width > o.x &&
+               r.y < o.y + o.height && r.y + r.height > o.y;
+    };
+    const overlapsPlayer = (r) => {
+        if (!player) return false;
+        const p = player.getRect();
+        return r.x < p.x + p.width && r.x + r.width > p.x &&
+               r.y < p.y + p.height && r.y + r.height > p.y;
+    };
+
+    if (dx !== 0) {
+        const origX = obs.x;
+        obs.x += dx;
+        const rect = obs.getRect();
+        let blocked = overlapsPlayer(rect);
+        if (!blocked) {
+            for (const other of obstacles) {
+                if (overlapsOther(rect, other)) { blocked = true; break; }
+            }
+        }
+        if (blocked) obs.x = origX;
+    }
+    if (dy !== 0) {
+        const origY = obs.y;
+        obs.y += dy;
+        const rect = obs.getRect();
+        let blocked = overlapsPlayer(rect);
+        if (!blocked) {
+            for (const other of obstacles) {
+                if (overlapsOther(rect, other)) { blocked = true; break; }
+            }
+        }
+        if (blocked) obs.y = origY;
+    }
+    if (obs.stackChild) {
+        obs.stackChild.x = obs.x + (obs.width - obs.stackChild.width) / 2;
+        obs.stackChild.y = obs.y - STACK_OFFSET;
+    }
+}
+
 window.Zone = Zone;
 window.classifyZoneColor = classifyZoneColor;
+window.getZoneDrift = getZoneDrift;
+window.applyObstacleDrift = applyObstacleDrift;
 window.World = World;
 window.BLOCK_W = BLOCK_W;
 window.BLOCK_H = BLOCK_H;

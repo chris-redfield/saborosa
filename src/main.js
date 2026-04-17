@@ -122,13 +122,28 @@ function updateGame(dt) {
         const feetX = player.x + player.colOffX + player.colW / 2;
         const feetY = player.y + player.colOffY + player.colH / 2;
         const zone = world.getZoneAt(feetX, feetY);
-        if (zone === Zone.RAMP_LEFT) {
-            dx += -1.2;
-            dy += 0.6;
-        }
+        const drift = getZoneDrift(zone);
+        dx += drift.dx;
+        dy += drift.dy;
     }
 
     player.move(dx, dy, obstacles);
+
+    // Apply zone drift to movable obstacles (rocks, live rocks).
+    // Skip carried objects and stack children (their parent will drag them).
+    for (const obs of obstacles) {
+        if (obs === player) continue;
+        if (!obs.pushable) continue;
+        if (obs.stackParent) continue;
+        if (player.liftedObject === obs) continue;
+        const ocx = obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2;
+        const ocy = obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2;
+        const oZone = world.getZoneAt(ocx, ocy);
+        const oDrift = getZoneDrift(oZone);
+        if (oDrift.dx || oDrift.dy) {
+            applyObstacleDrift(obs, oDrift.dx, oDrift.dy, obstacles, player);
+        }
+    }
     player.update(dt);
     world.update(player);
 
