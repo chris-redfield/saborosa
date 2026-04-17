@@ -356,6 +356,39 @@ The basket renders at 101x101px using the `empty-basket.png` sprite, with a labe
 - **Live Rocks**: Fixed positions defined in stage config
 - **Basket**: To Endless Desert
 
+## Color-Coded Terrain Zones (planned)
+
+The stage background image is not just decoration — **each color represents a zone that changes the physical behavior of the world**. At runtime, the game reads the pixel color under the player and applies the corresponding effect. Faces can change dynamically during gameplay, and the color encodes both the *type* of surface and its *facing direction* (e.g. ramp-left vs ramp-right).
+
+Reference art: `assets/saborosa-fund-01.png`.
+
+### Zone Types
+
+| Color | Zone | Behavior |
+|-------|------|----------|
+| 🟡 Yellow | **Ramp (left)** | Player slides / is pushed to the **left** while standing on it — like a sloped tile. |
+| 🔵 Blue   | **Ramp (right)** | Player slides / is pushed to the **right** while standing on it. |
+| ⚫ Gray   | **Dense sand** | A different sand variant: player sinks **less** (denser than normal sand) but walks **slower**. |
+| 🟢 Green  | **Wall** | Climbed **very slowly**. If the player is currently "above" a wall and walks onto a wall zone, they **fall** (drop to the level below). |
+| 🔴 Red    | **Wall** (same as green for now) | Treated identically to green until a distinct behavior is defined. |
+
+### Face Encoding
+
+Each colored face in the reference image corresponds to a physical face of the terrain. The encoding captures:
+
+- **Type** — ramp / sand / wall / etc.
+- **Direction** — which way a ramp tips, which way a wall faces.
+
+Yellow triangles on the left side of the diamond tip the ground left; the blue front face tips right; the gray parallelogram on top is the walkable plane.
+
+### Dynamic Zones
+
+Faces are **not static**. Gameplay events can mutate them — a yellow ramp could flip to blue (now pushes the other way), or a gray plane could become a green wall. The zone is read *live* from the rendered pixels (or from a parallel zone map aligned to the background image).
+
+### Altitude-Driven Camera
+
+Related mechanic: **the camera zooms out as the player climbs higher**. The further above the ground plane the player goes (via stacking, walls, platforms), the more of the world becomes visible — giving a sense of scale and risk as they ascend.
+
 ## Constants
 
 | Constant | Value | Description |

@@ -4,6 +4,15 @@
 
 let game;
 
+const ZONE_DEBUG_COLORS = {
+    WALKABLE:   '#cccccc',
+    RAMP_LEFT:  '#e6c93a',
+    RAMP_RIGHT: '#3a8fd1',
+    DENSE_SAND: '#808080',
+    WALL:       '#3aa847',
+    NONE:       '#000000'
+};
+
 const gameState = {
     player: null,
     world: null,
@@ -18,7 +27,7 @@ async function init() {
     game = new Game('game-canvas');
     await game.loadAssets();
 
-    loadStage(STAGES[2]);
+    loadStage(STAGES[3]);
 
     game.onUpdate = (dt) => updateGame(dt);
     game.onRender = (ctx) => renderGame(ctx);
@@ -104,6 +113,19 @@ function updateGame(dt) {
     } else {
         dx = movement.x * player.speed * speedMult;
         dy = movement.y * player.speed * speedMult;
+    }
+
+    // Zone-based drift — ramps push the player in their downhill direction.
+    // Drift is set slower than walking speed so the player can counter it by
+    // walking back uphill.
+    if (!player.dashing) {
+        const feetX = player.x + player.width / 2;
+        const feetY = player.y + player.height;
+        const zone = world.getZoneAt(feetX, feetY);
+        if (zone === Zone.RAMP_LEFT) {
+            dx += -1.2;
+            dy += 0.6;
+        }
     }
 
     player.move(dx, dy, obstacles);
@@ -204,13 +226,30 @@ function renderGame(ctx) {
     // Debug overlay
     if (game.showDebug) {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(4, game.height - 52, 340, 48);
+        ctx.fillRect(4, game.height - 72, 360, 68);
         ctx.fillStyle = '#0f0';
         ctx.font = '12px monospace';
         const bx = Math.floor(player.x / BLOCK_W);
         const by = Math.floor(player.y / BLOCK_H);
-        ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 34);
-        ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 16);
+        const feetX = player.x + player.width / 2;
+        const feetY = player.y + player.height;
+        const zone = world.getZoneAt ? world.getZoneAt(feetX, feetY) : '-';
+        ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 54);
+        ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 36);
+        ctx.fillText(`Zone: ${zone}`, 10, game.height - 16);
+
+        // Zone badge near the player's feet
+        const swatch = ZONE_DEBUG_COLORS[zone] || '#888';
+        const screenFeetX = feetX - camX;
+        const screenFeetY = feetY - camY;
+        ctx.fillStyle = swatch;
+        ctx.fillRect(screenFeetX - 6, screenFeetY + 4, 12, 12);
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(screenFeetX - 6, screenFeetY + 4, 12, 12);
+        ctx.fillStyle = '#fff';
+        ctx.font = '10px monospace';
+        ctx.fillText(zone, screenFeetX + 10, screenFeetY + 14);
     }
 }
 

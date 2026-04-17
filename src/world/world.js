@@ -49,6 +49,49 @@ class World {
         return this._validBlocks.has(`${bx},${by}`);
     }
 
+    // --- Zone sampling (Phase 1: color-coded terrain zones) ---
+    //
+    // Reads the stage's background image as the source of truth for terrain
+    // behavior. Each colored region classifies into one of the Zone enum values.
+    // Classification runs in HSV space to tolerate hand-drawn color variance
+    // and anti-aliased edges.
+
+    _ensureZoneData() {
+        if (this._zoneData !== undefined) return;
+        this._zoneData = null;
+        if (!this.stage.backgroundImage) return;
+        const img = this.game.getImage(this.stage.backgroundImage);
+        if (!img || !img.naturalWidth) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const c = canvas.getContext('2d');
+        c.drawImage(img, 0, 0);
+        try {
+            this._zoneData = c.getImageData(0, 0, canvas.width, canvas.height);
+        } catch (err) {
+            console.error('Zone data sampling failed:', err);
+            this._zoneData = null;
+        }
+    }
+
+    getZoneAt(wx, wy) {
+        this._ensureZoneData();
+        if (!this._zoneData) return Zone.WALKABLE;
+        const rect = this.stage.backgroundImageRect;
+        if (!rect) return Zone.WALKABLE;
+        const px = Math.floor((wx - rect.x) / rect.w * this._zoneData.width);
+        const py = Math.floor((wy - rect.y) / rect.h * this._zoneData.height);
+        if (px < 0 || py < 0 || px >= this._zoneData.width || py >= this._zoneData.height) {
+            return Zone.NONE;
+        }
+        const i = (py * this._zoneData.width + px) * 4;
+        const r = this._zoneData.data[i];
+        const g = this._zoneData.data[i + 1];
+        const b = this._zoneData.data[i + 2];
+        return classifyZoneColor(r, g, b);
+    }
+
     _isWalkableBlock(bx, by) {
         if (!this._walkableBlocks) return this._isValidBlock(bx, by);
         return this._walkableBlocks.has(`${bx},${by}`);
@@ -61,11 +104,30 @@ class World {
         const yRatio = (cb.style === 'perspective') ? (cb.yRatio || 0.5) : 1;
         const hsY = hs * yRatio;
 
-        const cx = bx * BLOCK_W + BLOCK_W / 2;
-        const cy = by * BLOCK_H + BLOCK_H / 2;
+        // Global diamond spans the bounding box of all walkable blocks
+        let minBx, minBy, maxBx, maxBy;
+        if (this._walkableBlocks && this._walkableBlocks.size > 0) {
+            minBx = Infinity; minBy = Infinity; maxBx = -Infinity; maxBy = -Infinity;
+            for (const key of this._walkableBlocks) {
+                const parts = key.split(',');
+                const wbx = parseInt(parts[0], 10);
+                const wby = parseInt(parts[1], 10);
+                if (wbx < minBx) minBx = wbx;
+                if (wby < minBy) minBy = wby;
+                if (wbx > maxBx) maxBx = wbx;
+                if (wby > maxBy) maxBy = wby;
+            }
+        } else {
+            minBx = bx; minBy = by; maxBx = bx; maxBy = by;
+        }
 
-        const maxRW = Math.floor((BLOCK_W / 2) / hs);
-        const maxRH = Math.floor((BLOCK_H / 2) / hsY);
+        const cx = (minBx + maxBx + 1) * BLOCK_W / 2;
+        const cy = (minBy + maxBy + 1) * BLOCK_H / 2;
+        const spanW = (maxBx - minBx + 1) * BLOCK_W;
+        const spanH = (maxBy - minBy + 1) * BLOCK_H;
+
+        const maxRW = Math.floor((spanW / 2) / hs);
+        const maxRH = Math.floor((spanH / 2) / hsY);
         const R = this.stage.diamondRadius || Math.min(maxRW, maxRH) - 1;
         const hw = R * hs;
         const hh = R * hsY;
@@ -246,6 +308,34 @@ class World {
     renderGround(ctx) {
         const cx = this.cameraX;
         const cy = this.cameraY;
+
+        if (this.stage.backgroundImage) {
+            const img = this.game.getImage(this.stage.backgroundImage);
+            if (img) {
+                let rect = this.stage.backgroundImageRect;
+                if (!rect) {
+                    const b = this._getStageBounds();
+                    rect = { x: b.x, y: b.y, w: b.w, h: b.h };
+                }
+                ctx.drawImage(img,
+                    Math.round(rect.x - cx), Math.round(rect.y - cy),
+                    rect.w, rect.h);
+            }
+
+            if (this.game.showDebug) {
+                for (const block of Object.values(this.blocks)) {
+                    const screenX = Math.round(block.xCoord * BLOCK_W - cx);
+                    const screenY = Math.round(block.yCoord * BLOCK_H - cy);
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(screenX, screenY, BLOCK_W, BLOCK_H);
+                    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                    ctx.font = '14px monospace';
+                    ctx.fillText(`(${block.xCoord},${block.yCoord})`, screenX + 8, screenY + 20);
+                }
+            }
+            return;
+        }
 
         for (const block of Object.values(this.blocks)) {
             const screenX = Math.round(block.xCoord * BLOCK_W - cx);
@@ -429,6 +519,7 @@ class World {
             const fLeftC  = this._darkenColor(cc, 0.6);
             const fRightC = this._darkenColor(cc, 0.7);
 
+            let diamondDepthDrawn = false;
             for (const block of Object.values(this.blocks)) {
                 const key = `${block.xCoord},${block.yCoord}`;
                 if (!this._walkableBlocks.has(key)) continue;
@@ -436,8 +527,10 @@ class World {
                 const ox = block.xCoord * BLOCK_W;
                 const oy = block.yCoord * BLOCK_H;
 
-                // Diamond terrain depth
+                // Diamond terrain depth — global geometry, draw once
                 if (this.stage.terrainShape === 'diamond') {
+                    if (diamondDepthDrawn) continue;
+                    diamondDepthDrawn = true;
                     const d = this._getDiamondGeometry(block.xCoord, block.yCoord);
                     const dsx = Math.round(d.cx - cx);
                     const dsy = Math.round(d.cy - cy);
@@ -757,6 +850,55 @@ class World {
     }
 }
 
+// Zone enum — physical behavior encoded by background color.
+// See PLAN.md and README.md "Color-Coded Terrain Zones".
+const Zone = {
+    WALKABLE:   'WALKABLE',    // default / beige / black outline
+    RAMP_LEFT:  'RAMP_LEFT',   // yellow — pushes player left
+    RAMP_RIGHT: 'RAMP_RIGHT',  // blue   — pushes player right
+    DENSE_SAND: 'DENSE_SAND',  // gray   — less sink, slower walk
+    WALL:       'WALL',        // green & red — climbed slowly; fall off edge
+    NONE:       'NONE'         // outside the background image
+};
+
+// RGB → Zone classification. Hue buckets for saturated colors, value check for
+// neutrals. Hand-drawn art has edge variance; buckets are generous.
+function classifyZoneColor(r, g, b) {
+    const rf = r / 255, gf = g / 255, bf = b / 255;
+    const max = Math.max(rf, gf, bf);
+    const min = Math.min(rf, gf, bf);
+    const delta = max - min;
+    const v = max;
+    const s = max === 0 ? 0 : delta / max;
+    let h = 0;
+    if (delta > 0) {
+        if (max === rf)      h = ((gf - bf) / delta) % 6;
+        else if (max === gf) h = (bf - rf) / delta + 2;
+        else                 h = (rf - gf) / delta + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+
+    // Black outlines → treat as walkable (don't want thin lines to block movement)
+    if (v < 0.18) return Zone.WALKABLE;
+
+    // Low-saturation: gray vs. beige background, separated by value
+    if (s < 0.18) {
+        if (v < 0.70) return Zone.DENSE_SAND; // mid gray
+        return Zone.WALKABLE;                 // beige/off-white background
+    }
+
+    // Saturated: classify by hue
+    if (h < 20 || h >= 340) return Zone.WALL;        // red
+    if (h >= 40  && h < 80)  return Zone.RAMP_LEFT;  // yellow
+    if (h >= 90  && h < 170) return Zone.WALL;       // green
+    if (h >= 180 && h < 260) return Zone.RAMP_RIGHT; // blue
+
+    return Zone.WALKABLE;
+}
+
+window.Zone = Zone;
+window.classifyZoneColor = classifyZoneColor;
 window.World = World;
 window.BLOCK_W = BLOCK_W;
 window.BLOCK_H = BLOCK_H;
