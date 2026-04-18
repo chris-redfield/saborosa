@@ -43,6 +43,9 @@ class Rock {
         this.stackParent = null; // rock this one sits on
         this.stackChild = null;  // rock sitting on top of this one
 
+        // Visual sink (mirrors player.onSand) — cropped render when on sand.
+        this.onSand = false;
+
         // Falling (zone-driven stages). When a cube ends up on a WALL pixel,
         // it falls until it hits a non-wall zone. Mirror of the player's
         // falling state. pushable flips to false during the fall.
@@ -65,13 +68,22 @@ class Rock {
         const sx = this.x - camX;
         const sy = this.y - camY;
 
+        // Sink into sand: scale the crop to the cube's height so small cubes
+        // don't lose their whole base while big cubes still visibly settle.
+        // Player sinks ~17.4% of its height (19/109); cubes sink deeper
+        // (~0.30 of cube height) so the base reads as buried.
+        const sinkAmount = this.onSand ? Math.round(this.height * 0.30) : 0;
+        const visibleH = this.height - sinkAmount;
+        const srcCropRatio = sinkAmount / this.height;
+
         const sheet = game.getImage('cubes');
         if (sheet && this.cubeRegion) {
             const r = this.cubeRegion;
-            ctx.drawImage(sheet, r.x, r.y, r.w, r.h, sx, sy, this.width, this.height);
+            const cropSh = r.h * (1 - srcCropRatio);
+            ctx.drawImage(sheet, r.x, r.y, r.w, cropSh, sx, sy, this.width, visibleH);
         } else {
             ctx.fillStyle = '#787878';
-            ctx.fillRect(sx, sy, this.width, this.height);
+            ctx.fillRect(sx, sy, this.width, visibleH);
         }
 
         if (game.showDebug) {

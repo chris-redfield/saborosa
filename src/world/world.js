@@ -896,10 +896,11 @@ class World {
 // Zone enum — physical behavior encoded by background color.
 // See PLAN.md and README.md "Color-Coded Terrain Zones".
 const Zone = {
-    WALKABLE:   'WALKABLE',    // default / beige / black outline
+    WALKABLE:   'WALKABLE',    // black outline fallback / uncategorized
+    SAND:       'SAND',        // beige background — sinks + slows (regular sand)
     RAMP_LEFT:  'RAMP_LEFT',   // yellow — pushes player left
     RAMP_RIGHT: 'RAMP_RIGHT',  // blue   — pushes player right
-    DENSE_SAND: 'DENSE_SAND',  // gray   — less sink, slower walk
+    DENSE_SAND: 'DENSE_SAND',  // gray   — slower walk, no sink
     WALL:       'WALL',        // green & red — climbed slowly; fall off edge
     NONE:       'NONE'         // outside the background image
 };
@@ -928,7 +929,7 @@ function classifyZoneColor(r, g, b) {
     // Low-saturation: gray vs. beige background, separated by value
     if (s < 0.18) {
         if (v < 0.70) return Zone.DENSE_SAND; // mid gray
-        return Zone.WALKABLE;                 // beige/off-white background
+        return Zone.SAND;                     // beige/off-white — regular sand
     }
 
     // Saturated: classify by hue

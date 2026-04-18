@@ -6,6 +6,7 @@ let game;
 
 const ZONE_DEBUG_COLORS = {
     WALKABLE:   '#cccccc',
+    SAND:       '#c7b47a',
     RAMP_LEFT:  '#e6c93a',
     RAMP_RIGHT: '#3a8fd1',
     DENSE_SAND: '#808080',
@@ -103,9 +104,15 @@ function updateGame(dt) {
 
     // Check if player is on sand. Only regular sand sinks the sprite —
     // DENSE_SAND slows the player but doesn't crop the sprite.
+    // On zone-driven stages, sand = beige background (SAND) or outside the
+    // image (NONE). Elsewhere, fall back to diamond-geometry walkable test.
     const playerCenterX = player.x + player.width / 2;
     const playerBottomY = player.y + player.height;
-    player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
+    if (world.stage && world.stage.backgroundImage) {
+        player.onSand = (playerZone === Zone.SAND || playerZone === Zone.NONE);
+    } else {
+        player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
+    }
 
     // Run (sprint) — hold R to move 27% faster
     player.running = game.input.isKeyDown('run');
@@ -224,6 +231,12 @@ function updateGame(dt) {
         const oDrift = getZoneDrift(oZone);
         if (oDrift.dx || oDrift.dy) {
             applyObstacleDrift(obs, oDrift.dx, oDrift.dy, obstacles, player);
+        }
+        // Mirror of the player's sand check: sink when footprint is on SAND
+        // (beige background) or NONE (outside image). Non-zone stages have
+        // no sink for cubes.
+        if (world.stage && world.stage.backgroundImage && 'onSand' in obs) {
+            obs.onSand = (oZone === Zone.SAND || oZone === Zone.NONE);
         }
     }
 
