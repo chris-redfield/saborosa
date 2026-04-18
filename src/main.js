@@ -119,9 +119,10 @@ function updateGame(dt) {
 
     // Movement: dash overrides normal speed, sand slows, run boosts.
     // DENSE_SAND applies the sand speed factor with an extra 10% slowdown,
-    // without the sinking effect.
+    // without the sinking effect. Climbing is slower than any sand.
     let speedMult = 1;
-    if (player.onSand) speedMult = player.sandSpeedFactor;
+    if (player.surfaceState === 'climbing') speedMult = player.climbSpeedFactor;
+    else if (player.onSand) speedMult = player.sandSpeedFactor;
     else if (playerZone === Zone.DENSE_SAND) speedMult = player.sandSpeedFactor * 0.9;
     if (player.running && !player.dashing) speedMult *= player.runSpeedFactor;
     let dx, dy;
@@ -135,12 +136,12 @@ function updateGame(dt) {
     }
 
     // --- Wall state machine (Phase 5) ---
-    // While onWall, the entire "upper" zone set keeps you on the wall:
-    //   WALL       — another wall face (side of a higher cube)
+    // While climbing, the entire "upper" zone set keeps you on the wall:
+    //   WALL       — green face
     //   DENSE_SAND — gray top of the cube
     //   RAMP_*     — a ramp sitting on top of the cube
     // Anything else (walkable, none) means you stepped off the edge and fall.
-    const onWallStickyZone = (z) =>
+    const climbStickyZone = (z) =>
         z === Zone.WALL || z === Zone.DENSE_SAND ||
         z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
 
@@ -149,21 +150,20 @@ function updateGame(dt) {
 
     // 1) Transitions based on current zone + intended movement direction.
     if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
-        // Entering a wall from ground: climb only if moving predominantly "up"
-        // into the wall (smaller Y). Any other direction = fall.
+        // Entering a wall from ground: going up = climbing; any other
+        // direction = fall.
         if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
             player.surfaceState = 'climbing';
-            player.surfaceTimer = player.climbDurationMs;
         } else {
             player.surfaceState = 'falling';
         }
-    } else if (player.surfaceState === 'onWall') {
+    } else if (player.surfaceState === 'climbing') {
         // Zones that represent being "on top of a cube" (anything walkable
         // you can stand on up there). Stepping from a top zone back onto a
         // WALL face means you crossed the front edge and should fall.
         const isTopZone = (z) =>
             z === Zone.DENSE_SAND || z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
-        if (!onWallStickyZone(playerZone)) {
+        if (!climbStickyZone(playerZone)) {
             // Stepped off the cube onto beige (walkable) / image void.
             player.surfaceState = 'falling';
         } else if (isTopZone(player.lastZone) && playerZone === Zone.WALL) {
@@ -181,20 +181,7 @@ function updateGame(dt) {
     }
 
     // 2) State-specific movement overrides.
-    if (player.surfaceState === 'climbing') {
-        // Physically rise over climbDuration, so the collision footprint
-        // (and zone sampling) end up on top of the wall when the timer
-        // finishes. No visual-only offset — the real Y carries the sprite.
-        const totalLift = Math.abs(player.onWallOffsetY); // 40px upward
-        const climbSec = player.climbDurationMs / 1000;
-        dx = 0;
-        dy = -(totalLift / climbSec) * dt;
-        player.surfaceTimer -= dt * 1000;
-        if (player.surfaceTimer <= 0) {
-            player.surfaceState = 'onWall';
-            player.surfaceTimer = 0;
-        }
-    } else if (player.surfaceState === 'falling') {
+    if (player.surfaceState === 'falling') {
         // No recovery until landing — input ignored. Fall speed accelerates
         // with time: start slow, accelerate, cap at fallMaxSpeed.
         player.fallTimerMs += dt * 1000;
@@ -203,11 +190,10 @@ function updateGame(dt) {
         dy = Math.min(player.fallMaxSpeed, player.fallStartSpeed + player.fallAccelPerSec * t);
     }
 
-    // 3) Ramp drift applies whenever you're standing on terrain — both
-    //    the ground level and the top of a cube. Falling/climbing are not
-    //    drifted; they're locked movement states.
+    // 3) Ramp drift applies whenever you're standing on terrain — ground,
+    //    top of a cube, or a wall face. Falling is not drifted.
     if (!player.dashing &&
-        (player.surfaceState === 'ground' || player.surfaceState === 'onWall')) {
+        (player.surfaceState === 'ground' || player.surfaceState === 'climbing')) {
         const drift = getZoneDrift(playerZone);
         dx += drift.dx;
         dy += drift.dy;

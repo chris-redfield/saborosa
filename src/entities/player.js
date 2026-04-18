@@ -51,12 +51,9 @@ class Player {
         this.onSand = false;
         this.sandSpeedFactor = 0.7; // 30% slower on sand
 
-        // Wall interaction (Phase 5 — climb / onWall / fall)
-        this.surfaceState = 'ground'; // 'ground' | 'climbing' | 'onWall' | 'falling'
-        this.surfaceTimer = 0;        // ms remaining in climb, ticks down
-        this.climbDurationMs = 800;
-        this.climbSpeedFactor = 0.4;
-        this.onWallOffsetY = -40;     // visual lift while on top of a wall
+        // Wall interaction (Phase 5 — climbing / fall)
+        this.surfaceState = 'ground'; // 'ground' | 'climbing' | 'falling'
+        this.climbSpeedFactor = 0.4;  // movement multiplier while on green (slower than sand)
 
         // Falling velocity — accelerates from fallStartSpeed up to fallMaxSpeed
         // as fallTimer increases. Reset when a fall begins.
@@ -66,8 +63,7 @@ class Player {
         this.fallTimerMs = 0;
 
         // Tracks the zone under the player on the previous frame — used to
-        // distinguish "just stepped off the cube top onto the wall face"
-        // (fall) from "still climbing up the wall face" (onWall).
+        // detect "just stepped off the cube top onto the wall face" (fall).
         this.lastZone = null;
 
         // Lifting
