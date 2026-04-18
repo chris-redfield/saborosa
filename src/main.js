@@ -159,8 +159,9 @@ function updateGame(dt) {
             // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
             player.surfaceState = 'ground';
         }
-    } else if (player.surfaceState === 'falling' && playerZone !== Zone.WALL && playerZone !== Zone.NONE) {
-        // Landed on another zone.
+    } else if (player.surfaceState === 'falling' && playerZone !== Zone.WALL) {
+        // Landed on another zone (including NONE off the image rect —
+        // otherwise stepping off the painted area triggers an endless fall).
         player.surfaceState = 'ground';
     }
 
@@ -246,7 +247,10 @@ function updateGame(dt) {
 
                 const newCy = obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2;
                 const landedZone = world.getZoneAt(ocxF, newCy);
-                if (landedZone !== Zone.WALL && landedZone !== Zone.NONE) {
+                // Land on anything that isn't a wall face. NONE (off the image
+                // rect) also counts as landing — otherwise a cube pushed off
+                // the edge of the painted area falls forever and vanishes.
+                if (landedZone !== Zone.WALL) {
                     obs.surfaceState = 'ground';
                     obs.pushable = true;
                     obs.fallTimerMs = 0;

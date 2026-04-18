@@ -204,11 +204,24 @@ class World {
     }
 
     /**
-     * Load the 3x3 grid around a block coordinate (only valid blocks). Unload anything outside.
+     * Load the 3x3 grid around a block coordinate (only valid blocks). Unload
+     * anything outside. Finite stages load every valid block once and never
+     * unload — otherwise entities (e.g. cubes pushed across block boundaries)
+     * would vanish when the player walks far enough to cycle the origin block.
      */
     loadSurrounding(bx, by) {
         this.currentBlockX = bx;
         this.currentBlockY = by;
+
+        if (this.stage.type === 'finite') {
+            for (const key of this._validBlocks) {
+                if (!this.blocks[key]) {
+                    const [nbx, nby] = key.split(',').map(Number);
+                    this.blocks[key] = this._generateBlock(nbx, nby);
+                }
+            }
+            return;
+        }
 
         const needed = new Set();
         for (let dy = -1; dy <= 1; dy++) {
@@ -224,7 +237,7 @@ class World {
             }
         }
 
-        // Unload blocks outside the 3x3
+        // Unload blocks outside the 3x3 (infinite stages only)
         for (const key of Object.keys(this.blocks)) {
             if (!needed.has(key)) {
                 delete this.blocks[key];
