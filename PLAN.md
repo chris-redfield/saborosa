@@ -1,6 +1,6 @@
 # Implementation Plan — Color-Coded Terrain Zones
 
-Roadmap for the zone system described in [README.md › Color-Coded Terrain Zones](./README.md#color-coded-terrain-zones-planned). Reference art: `assets/saborosa-fund-01.png`.
+Roadmap for the zone system described in [README.md › Color-Coded Terrain Zones](./README.md#color-coded-terrain-zones-planned). Reference art: `assets/cor-saborosa-fundo-02.png` (current stage 3 background). Earlier iterations used `assets/saborosa-fund-01.png`.
 
 ## Decisions
 
@@ -67,32 +67,40 @@ Out of order — skipped for now because by itself it has no visible payoff; com
 
 **Exit criteria:** A scripted event can repaint a region and the physics immediately reflect it.
 
-### Phase 5 — Walls (green + red)
+### Phase 5 — Walls (green + red) ✅ **DONE**
 
 Marble-Madness-style: walls are higher surfaces, not an altitude integer.
 
-- Add a `player.surfaceState`: `'ground' | 'climbing' | 'onWall'`.
-- **Entering** a wall zone from `ground`: transition to `climbing` — movement slows (~40% speed), wait ~0.8s, snap to `onWall`.
-- **Moving while `onWall`:** if the next step is still a wall-zone pixel → stay on. If it's a non-wall pixel ("edge of the wall") → transition back to `ground` (the "fall").
-- Render offset: small constant upward y-offset while `onWall` so the sprite visually rises onto the wall — doesn't need to match physical cube heights, just read as "up there."
-- Treat red identically to green for classification and physics.
+Shipped:
+- `player.surfaceState`: `'ground' | 'climbing' | 'onWall' | 'falling'`, plus `player.lastZone` for edge detection.
+- **Entering a wall (ground → climbing/falling):** walking into a WALL pixel moving predominantly up (`dy < 0 && |dy| >= |dx|`) triggers `climbing`. Any other approach (down / sideways) triggers `falling`.
+- **Climb = physical lift.** The climb lasts `climbDurationMs = 800ms` and *actually* moves the player up 40px by interpolating `dy` over the duration (no visual-only offset — the earlier approach caused a mismatch where zone sampling still read `WALL` even though the sprite looked on top). After the timer hits 0, state → `onWall`.
+- **Sticky top zones while onWall:** `WALL | DENSE_SAND | RAMP_LEFT | RAMP_RIGHT` all keep you up. Gray (cube top) and ramps on top both count as "still on the cube."
+- **Edge fall-offs:** stepping from a top zone (`DENSE_SAND` / `RAMP_*`) back onto a `WALL` pixel = you walked off the front edge → `falling`. Implemented via `player.lastZone` comparison.
+- **Ramp drift applies while onWall too** — standing on a yellow/blue ramp at the top of a cube slides you.
+- **Falling = unrecoverable gravity.** Input is ignored, `dy` accelerates from `fallStartSpeed = 1.5` up to `fallMaxSpeed = 11` at `fallAccelPerSec = 15` (bumped +25% from the initial 12). Transitions back to `ground` when the sampled zone is no longer `WALL` / `NONE`.
+- **Red is plain walkable.** The classifier was later changed so red no longer counts as a wall (see Phase 7 below).
 
-**Exit criteria:** Player walks into the green rectangle, climbs for ~1s, ends up visibly "on top" (offset). Walking off the edge drops them back.
+Change lives in `src/entities/player.js` (state fields + constants) and `src/main.js` (`updateGame` state machine, sample once at collision-box center, reuse for sand/drift/wall).
 
-### Phase 6 — Camera zoom when on walls
+### Phase 6 — Camera zoom when on walls ← **next**
 
 Since there's no `level` integer, zoom is driven by `surfaceState`:
 
-- `ground` → scale 1.0
+- `ground` / `climbing` / `falling` → scale 1.0
 - `onWall` → scale ~0.85 (smoothed over ~0.5s)
 - Apply in `renderGround` / entity pass.
 
 **Exit criteria:** Climbing onto a wall visibly zooms out; stepping off zooms back in smoothly.
 
-### Phase 7 — Differentiate red
+### Phase 7 — Differentiate red (partial)
 
-- Decide red's distinct behavior (user hasn't defined it yet).
-- Split `WALL` into `WALL_GREEN` and `WALL_RED` in the enum so only the physics branch needs swapping.
+Shipped so far:
+- Red reclassified from `WALL` to `WALKABLE` in `classifyZoneColor` — walking on red is currently indistinguishable from walking on beige.
+
+Still open:
+- Decide red's *distinct* behavior (user hasn't defined it yet).
+- If it needs different physics from plain walkable, split `WALKABLE` → add a `RED` zone with its own rule.
 
 ## Risks & Gotchas
 
@@ -108,10 +116,12 @@ Since there's no `level` integer, zoom is driven by `surfaceState`:
 - [x] Phase 2 — Ramps (yellow + blue, player + rocks)
 - [x] Phase 3 — Dense sand
 - [ ] Phase 4 — Dynamic zones *(deferred)*
-- [ ] Phase 5 — Walls (green + red share behavior) ← **next**
-- [ ] Phase 6 — Camera zoom on walls
-- [ ] Phase 7 — Differentiate red
+- [x] Phase 5 — Walls (climb / onWall / fall with gray-top stickiness and edge-fall)
+- [ ] Phase 6 — Camera zoom on walls ← **next**
+- [~] Phase 7 — Red reclassified to plain walkable; distinct behavior still TBD
 
 ## Known Issues / Follow-ups
 
 - **Pushing against drift feels sluggish.** Pushing a rock *uphill* on a ramp works (the player is a collider so the rock won't drift back through them), but the net rock speed while being pushed is pusher-speed − drift-speed, which can feel slow. Not a bug per se, but worth tuning when we revisit ramp feel.
+- **Fall feel.** Acceleration is currently `startSpeed=1.5`, `accel=15 px/s²`, `cap=11` — tweak whenever the fall starts to feel too floaty/sudden.
+- **Cube sprite scale.** Cubes replaced rock PNGs; at the current `size` range (25–60px) they may look smaller than intended. Bump `rockCount` scale in `world.js` `_generateBlock` if desired.
