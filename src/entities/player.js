@@ -330,6 +330,17 @@ class Player {
                 this.facing = dy > 0 ? 'down' : 'up';
             }
 
+            // While climbing, the player is hugging the wall and cannot turn
+            // to face downward. Clamp the lower half of the facing set to the
+            // equivalent upward pose.
+            if (this.surfaceState === 'climbing') {
+                if      (this.facing === 'down')       this.facing = 'up';
+                else if (this.facing === 'down_left')  this.facing = 'up_left';
+                else if (this.facing === 'down_right') this.facing = 'up_right';
+                else if (this.facing === 'left')       this.facing = 'up_left';
+                else if (this.facing === 'right')      this.facing = 'up_right';
+            }
+
             this.lastDx = dx;
             this.lastDy = dy;
 

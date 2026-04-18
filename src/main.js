@@ -135,15 +135,10 @@ function updateGame(dt) {
         dy = movement.y * player.speed * speedMult;
     }
 
-    // --- Wall state machine (Phase 5) ---
-    // While climbing, the entire "upper" zone set keeps you on the wall:
-    //   WALL       — green face
-    //   DENSE_SAND — gray top of the cube
-    //   RAMP_*     — a ramp sitting on top of the cube
-    // Anything else (walkable, none) means you stepped off the edge and fall.
-    const climbStickyZone = (z) =>
-        z === Zone.WALL || z === Zone.DENSE_SAND ||
-        z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
+    // --- Wall state machine ---
+    // Climbing is now strictly "the player is on a green (WALL) pixel."
+    // Stepping off onto any other zone either drops to ground (gray top,
+    // ramps, walkable, red) or triggers falling (beige sand / image void).
 
     // Track previous state so we can detect a transition *into* falling.
     const prevState = player.surfaceState;
@@ -158,17 +153,11 @@ function updateGame(dt) {
             player.surfaceState = 'falling';
         }
     } else if (player.surfaceState === 'climbing') {
-        // Zones that represent being "on top of a cube" (anything walkable
-        // you can stand on up there). Stepping from a top zone back onto a
-        // WALL face means you crossed the front edge and should fall.
-        const isTopZone = (z) =>
-            z === Zone.DENSE_SAND || z === Zone.RAMP_LEFT || z === Zone.RAMP_RIGHT;
-        if (!climbStickyZone(playerZone)) {
-            // Stepped off the cube onto beige (walkable) / image void.
+        if (playerZone === Zone.SAND || playerZone === Zone.NONE) {
             player.surfaceState = 'falling';
-        } else if (isTopZone(player.lastZone) && playerZone === Zone.WALL) {
-            // Crossed the edge from the top of the cube back onto the face.
-            player.surfaceState = 'falling';
+        } else if (playerZone !== Zone.WALL) {
+            // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
+            player.surfaceState = 'ground';
         }
     } else if (player.surfaceState === 'falling' && playerZone !== Zone.WALL && playerZone !== Zone.NONE) {
         // Landed on another zone.
