@@ -74,7 +74,7 @@ const STAGES = {
         // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
         // in the 11520-wide walkable area (margin ~1577 each side).
         backgroundImageRect: { x: 1577, y: 0, w: 8366, h: 6480 },
-        spawnX: 7900,
+        spawnX: 7900, // 7900
         spawnY: 3800, // 3800
         safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },
         portals: [

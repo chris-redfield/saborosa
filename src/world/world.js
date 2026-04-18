@@ -775,45 +775,72 @@ class World {
         const rockCount = minRocks + Math.floor(rand() * (maxRocks - minRocks + 1));
         const margin = this.stage.type === 'finite' ? 60 : 30;
 
+        const MAX_ATTEMPTS = 30;
         for (let i = 0; i < rockCount; i++) {
-            const type = Math.floor(rand() * 6) + 1;
-            const scale = 0.25 + rand() * 0.35;
-            const size = Math.floor(100 * scale);
-            const x = ox + margin + rand() * (BLOCK_W - margin * 2 - size);
-            const y = oy + margin + rand() * (BLOCK_H - margin * 2 - size);
+            let placed = false;
+            for (let attempt = 0; attempt < MAX_ATTEMPTS && !placed; attempt++) {
+                const type = Math.floor(rand() * 6) + 1;
+                const scale = 0.25 + rand() * 0.35;
+                const size = Math.floor(100 * scale);
+                const x = ox + margin + rand() * (BLOCK_W - margin * 2 - size);
+                const y = oy + margin + rand() * (BLOCK_H - margin * 2 - size);
 
-            // Skip if in safe zone
-            if (safeRadius > 0 && sz) {
-                const dx = (x + size / 2) - sz.x;
-                const dy = (y + size / 2) - sz.y;
-                if (Math.sqrt(dx * dx + dy * dy) < safeRadius) continue;
-            }
+                // Skip if in safe zone
+                if (safeRadius > 0 && sz) {
+                    const dx = (x + size / 2) - sz.x;
+                    const dy = (y + size / 2) - sz.y;
+                    if (Math.sqrt(dx * dx + dy * dy) < safeRadius) continue;
+                }
 
-            // Skip if outside diamond terrain boundary
-            if (this.stage.terrainShape === 'diamond') {
-                const d = this._getDiamondGeometry(bx, by);
-                if (Math.abs(x + size / 2 - d.cx) / d.hw + Math.abs(y + size / 2 - d.cy) / d.hh > 0.85) continue;
-            }
+                // Skip if outside diamond terrain boundary
+                if (this.stage.terrainShape === 'diamond') {
+                    const d = this._getDiamondGeometry(bx, by);
+                    if (Math.abs(x + size / 2 - d.cx) / d.hw + Math.abs(y + size / 2 - d.cy) / d.hh > 0.85) continue;
+                }
 
-            // Skip if overlapping a portal position
-            let overlapsPortal = false;
-            if (this.stage.portals) {
-                for (const p of this.stage.portals) {
-                    const pbx = Math.floor(p.x / BLOCK_W);
-                    const pby = Math.floor(p.y / BLOCK_H);
-                    if (pbx === bx && pby === by) {
-                        const dx = (x + size / 2) - (p.x + 24);
-                        const dy = (y + size / 2) - (p.y + 32);
-                        if (Math.sqrt(dx * dx + dy * dy) < 80) {
-                            overlapsPortal = true;
-                            break;
+                // Zone-gated stages: footprint must be fully on gray (dense sand).
+                // Sample center + 4 corners of the collision box; reject if any
+                // point is not DENSE_SAND. Prevents stray placements on walls
+                // when the single-center sample hits a black outline pixel.
+                if (this.stage.backgroundImage) {
+                    const fx = x + size / 2;
+                    const fTop = y + size * 0.5;
+                    const fBot = y + size * 1.0;
+                    const fLeft = x + size * 0.1;
+                    const fRight = x + size * 0.9;
+                    const samples = [
+                        [fx, (fTop + fBot) / 2],
+                        [fLeft, fTop], [fRight, fTop],
+                        [fLeft, fBot], [fRight, fBot]
+                    ];
+                    let allGray = true;
+                    for (const [sx, sy] of samples) {
+                        if (this.getZoneAt(sx, sy) !== Zone.DENSE_SAND) { allGray = false; break; }
+                    }
+                    if (!allGray) continue;
+                }
+
+                // Skip if overlapping a portal position
+                let overlapsPortal = false;
+                if (this.stage.portals) {
+                    for (const p of this.stage.portals) {
+                        const pbx = Math.floor(p.x / BLOCK_W);
+                        const pby = Math.floor(p.y / BLOCK_H);
+                        if (pbx === bx && pby === by) {
+                            const dx = (x + size / 2) - (p.x + 24);
+                            const dy = (y + size / 2) - (p.y + 32);
+                            if (Math.sqrt(dx * dx + dy * dy) < 80) {
+                                overlapsPortal = true;
+                                break;
+                            }
                         }
                     }
                 }
-            }
-            if (overlapsPortal) continue;
+                if (overlapsPortal) continue;
 
-            block.addEntity(new Rock(this.game, x, y, size, type));
+                block.addEntity(new Rock(this.game, x, y, size, type));
+                placed = true;
+            }
         }
 
         // Fixed live rocks defined in stage config
