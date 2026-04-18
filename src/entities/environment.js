@@ -42,6 +42,15 @@ class Rock {
         // Stacking
         this.stackParent = null; // rock this one sits on
         this.stackChild = null;  // rock sitting on top of this one
+
+        // Falling (zone-driven stages). When a cube ends up on a WALL pixel,
+        // it falls until it hits a non-wall zone. Mirror of the player's
+        // falling state. pushable flips to false during the fall.
+        this.surfaceState = 'ground'; // 'ground' | 'falling'
+        this.fallTimerMs = 0;
+        this.fallStartSpeed = 1.5;
+        this.fallMaxSpeed = 11;
+        this.fallAccelPerSec = 15;
     }
 
     getRect() {

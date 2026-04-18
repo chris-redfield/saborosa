@@ -39,6 +39,7 @@ async function init() {
 function loadStage(stage) {
     gameState.currentStage = stage;
     gameState.world = new World(game, stage);
+    game.world = gameState.world;
 
     if (!gameState.player) {
         gameState.player = new Player(game, stage.spawnX, stage.spawnY);
@@ -223,6 +224,46 @@ function updateGame(dt) {
         const oDrift = getZoneDrift(oZone);
         if (oDrift.dx || oDrift.dy) {
             applyObstacleDrift(obs, oDrift.dx, oDrift.dy, obstacles, player);
+        }
+    }
+
+    // Cube wall-fall physics (zone-driven stages only). A cube whose
+    // footprint center lands on a WALL pixel starts falling: vertical-only
+    // drop with the same accel curve as the player. Lands when the sampled
+    // zone is no longer WALL/NONE. While falling the cube is non-pushable.
+    if (world.stage && world.stage.backgroundImage) {
+        for (const obs of obstacles) {
+            if (obs === player) continue;
+            if (obs === player.liftedObject) continue;
+            if (obs.stackParent) continue;
+            if (obs.surfaceState === undefined) continue;
+
+            const ocxF = obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2;
+            const ocyF = obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2;
+
+            if (obs.surfaceState === 'ground') {
+                if (world.getZoneAt(ocxF, ocyF) === Zone.WALL) {
+                    obs.surfaceState = 'falling';
+                    obs.fallTimerMs = 0;
+                    obs.pushable = false;
+                }
+            }
+
+            if (obs.surfaceState === 'falling') {
+                obs.fallTimerMs += dt * 1000;
+                const t = obs.fallTimerMs / 1000;
+                const vy = Math.min(obs.fallMaxSpeed, obs.fallStartSpeed + obs.fallAccelPerSec * t);
+                obs.y += vy;
+                if (obs.stackChild) obs.stackChild.y += vy;
+
+                const newCy = obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2;
+                const landedZone = world.getZoneAt(ocxF, newCy);
+                if (landedZone !== Zone.WALL && landedZone !== Zone.NONE) {
+                    obs.surfaceState = 'ground';
+                    obs.pushable = true;
+                    obs.fallTimerMs = 0;
+                }
+            }
         }
     }
     player.update(dt);

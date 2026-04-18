@@ -450,6 +450,20 @@ class Player {
             }
         }
 
+        // On zone-driven stages: reject upward pushes that would land any
+        // chain rock on a WALL pixel. Side and downward pushes onto walls are
+        // allowed — the per-frame fall check in updateGame turns them into
+        // a fall. Upward pushes (pushing a cube from below onto a wall) are
+        // blocked outright for now.
+        const world = this.game && this.game.world;
+        if (axis === 'y' && pushDelta < 0 && world && world.stage && world.stage.backgroundImage) {
+            for (const base of pushChain) {
+                const cx = base.x + (base.colOffX || 0) + (base.colW || base.width) / 2;
+                const cy = base.y + pushDelta + (base.colOffY || 0) + (base.colH || base.height) / 2;
+                if (world.getZoneAt(cx, cy) === Zone.WALL) return true;
+            }
+        }
+
         // 5. Apply push to entire chain
         for (const base of pushChain) {
             if (axis === 'x') {
