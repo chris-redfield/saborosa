@@ -57,9 +57,9 @@ class Player {
 
         // Falling velocity — accelerates from fallStartSpeed up to fallMaxSpeed
         // as fallTimer increases. Reset when a fall begins.
-        this.fallStartSpeed = 1.5;
-        this.fallMaxSpeed = 11;
-        this.fallAccelPerSec = 15; // px/sec added to velocity each second (was 12, +25%)
+        this.fallStartSpeed = 1.8;
+        this.fallMaxSpeed = 14.3;
+        this.fallAccelPerSec = 18; // px/sec added to velocity each second
         this.fallTimerMs = 0;
 
         // Tracks the zone under the player on the previous frame — used to

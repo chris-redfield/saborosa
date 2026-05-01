@@ -78,7 +78,7 @@ Shipped:
 - **Sticky top zones while onWall:** `WALL | DENSE_SAND | RAMP_LEFT | RAMP_RIGHT` all keep you up. Gray (cube top) and ramps on top both count as "still on the cube."
 - **Edge fall-offs:** stepping from a top zone (`DENSE_SAND` / `RAMP_*`) back onto a `WALL` pixel = you walked off the front edge → `falling`. Implemented via `player.lastZone` comparison.
 - **Ramp drift applies while onWall too** — standing on a yellow/blue ramp at the top of a cube slides you.
-- **Falling = unrecoverable gravity.** Input is ignored, `dy` accelerates from `fallStartSpeed = 1.5` up to `fallMaxSpeed = 11` at `fallAccelPerSec = 15` (bumped +25% from the initial 12). Transitions back to `ground` when the sampled zone is no longer `WALL` / `NONE`.
+- **Falling = unrecoverable gravity.** Input is ignored, `dy` accelerates from `fallStartSpeed = 1.8` up to `fallMaxSpeed = 14.3` at `fallAccelPerSec = 18`. Transitions back to `ground` when the sampled zone is no longer `WALL` / `NONE`.
 - **Red is plain walkable.** The classifier was later changed so red no longer counts as a wall (see Phase 7 below).
 
 Change lives in `src/entities/player.js` (state fields + constants) and `src/main.js` (`updateGame` state machine, sample once at collision-box center, reuse for sand/drift/wall).
@@ -123,5 +123,5 @@ Still open:
 ## Known Issues / Follow-ups
 
 - **Pushing against drift feels sluggish.** Pushing a rock *uphill* on a ramp works (the player is a collider so the rock won't drift back through them), but the net rock speed while being pushed is pusher-speed − drift-speed, which can feel slow. Not a bug per se, but worth tuning when we revisit ramp feel.
-- **Fall feel.** Acceleration is currently `startSpeed=1.5`, `accel=15 px/s²`, `cap=11` — tweak whenever the fall starts to feel too floaty/sudden.
+- **Fall feel.** Acceleration is currently `startSpeed=1.8`, `accel=18 px/s²`, `cap=14.3` — tweak whenever the fall starts to feel too floaty/sudden.
 - **Cube sprite scale.** Cubes replaced rock PNGs; at the current `size` range (25–60px) they may look smaller than intended. Bump `rockCount` scale in `world.js` `_generateBlock` if desired.
