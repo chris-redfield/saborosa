@@ -202,11 +202,11 @@ function updateGame(dt) {
         if (player.fallTargetY != null) player.behindMountain = true;
     }
 
-    // Clear behindMountain once the player walks out of the column shadow.
-    // Sticky while the column above still has any mountain pixel.
-    if (player.behindMountain && world.hasMountainAboveColumn) {
+    // Clear behindMountain once the player walks out of the silhouette
+    // (computed from the overlay PNG, so it matches what's drawn).
+    if (player.behindMountain && world.isInMountainShadow) {
         const px = player.x + player.colOffX + player.colW * 0.5;
-        if (!world.hasMountainAboveColumn(px)) player.behindMountain = false;
+        if (!world.isInMountainShadow(px)) player.behindMountain = false;
     }
 
     // 2) State-specific movement overrides.

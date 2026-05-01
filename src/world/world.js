@@ -85,46 +85,87 @@ class World {
         return rect.y + rect.h * 0.5;
     }
 
-    // For each image column above the midline, store the largest row index
-    // (= lowest screen position) that contains a non-sand "mountain" pixel.
-    // -1 means "no mountain pixel in this column above the midline."
-    // Used by isPlayerBehindMountain.
-    _ensureMountainBottomEdge() {
-        if (this._mountainBottomEdge !== undefined) return;
-        this._mountainBottomEdge = null;
-        this._ensureZoneData();
-        if (!this._zoneData) return;
-        const w = this._zoneData.width;
-        const h = this._zoneData.height;
-        const data = this._zoneData.data;
+    // Sample the overlay PNG (which already encodes the mountain silhouette
+    // as its opaque pixels) once at first use, and compute a per-column
+    // boolean: "is column X part of the mountain shadow?"
+    //
+    // The classifier-based version this replaces was tripping on isolated
+    // outline / anti-alias pixels far outside the visible silhouette,
+    // trapping the player behind the mountain forever. Here we require a
+    // minimum contiguous vertical run of opaque pixels in the column so
+    // single stray dots can't mark a column as shadow.
+    _ensureMountainSilhouette() {
+        if (this._mountainSilhouette !== undefined) return;
+        this._mountainSilhouette = null;
+        const key = this.stage.backgroundOverlayImage;
+        if (!key) return;
+        const img = this.game.getImage(key);
+        if (!img || !img.naturalWidth) return;
+
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        let data;
+        try {
+            data = ctx.getImageData(0, 0, w, h).data;
+        } catch (err) {
+            console.error('Mountain silhouette sampling failed:', err);
+            return;
+        }
+
+        // For each column, find the lowest opaque pixel — i.e. the bottom
+        // edge of the silhouette at that column. Concave parts of the
+        // silhouette (notches above the midline, peaks where the mountain is
+        // only at the very top) have a small bottom-Y; columns where the
+        // silhouette "comes down close to the player" have a large bottom-Y.
         const midline = Math.floor(h * 0.5);
-        const arr = new Int32Array(w);
-        for (let x = 0; x < w; x++) arr[x] = -1;
+        const bottomY = new Int32Array(w);
+        for (let x = 0; x < w; x++) bottomY[x] = -1;
         for (let y = 0; y < midline; y++) {
             for (let x = 0; x < w; x++) {
-                const i = (y * w + x) * 4;
-                if (data[i + 3] === 0) continue;
-                const r = data[i], g = data[i + 1], b = data[i + 2];
-                // Outline pixels count as mountain (part of the silhouette).
-                if (Math.max(r, g, b) < 46) { arr[x] = y; continue; }
-                if (classifyZoneColor(r, g, b) !== Zone.SAND) arr[x] = y;
+                if (data[(y * w + x) * 4 + 3] > 0) bottomY[x] = y;
             }
         }
-        this._mountainBottomEdge = arr;
+
+        // A column counts as "shadow" only when its silhouette-bottom is
+        // within REACH_PX of the midline. This is the value that follows the
+        // polygon's actual shape: concave notches and far-up peaks naturally
+        // fall outside the threshold so the player can walk past them.
+        // 60 image pixels ≈ the player sprite's top half projected into
+        // image space — i.e. "the mountain is close enough overhead that it
+        // would visually cover the sprite."
+        const REACH_PX = 60;
+        const minBottom = midline - REACH_PX;
+        const cols = new Uint8Array(w);
+        let xMin = w, xMax = -1;
+        for (let x = 0; x < w; x++) {
+            if (bottomY[x] >= minBottom) {
+                cols[x] = 1;
+                if (x < xMin) xMin = x;
+                if (x > xMax) xMax = x;
+            }
+        }
+
+        this._mountainSilhouette = { cols, imgW: w, imgH: h, xMin, xMax };
     }
 
-    // True if the column at world-x has any mountain pixel above the midline.
-    // Used to clear the player's "behindMountain" flag once they step out of
-    // the mountain's column shadow.
-    hasMountainAboveColumn(wx) {
-        this._ensureMountainBottomEdge();
-        if (!this._mountainBottomEdge) return false;
+    // True if the column at world-x falls inside the mountain silhouette
+    // (computed from the overlay PNG). Used to keep the player's
+    // behindMountain flag while they remain in the silhouette and clear it
+    // the instant they walk past either edge.
+    isInMountainShadow(wx) {
+        this._ensureMountainSilhouette();
+        const sil = this._mountainSilhouette;
+        if (!sil) return false;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return false;
-        const imgW = this._zoneData.width;
-        const px = Math.floor((wx - rect.x) / rect.w * imgW);
-        if (px < 0 || px >= imgW) return false;
-        return this._mountainBottomEdge[px] >= 0;
+        const px = Math.floor((wx - rect.x) / rect.w * sil.imgW);
+        if (px < sil.xMin || px > sil.xMax) return false;
+        return sil.cols[px] === 1;
     }
 
     // Mountain-silhouette overlay (transparent below the midline). Drawn on
