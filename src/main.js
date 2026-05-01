@@ -230,6 +230,19 @@ function updateGame(dt) {
 
     player.move(dx, dy, obstacles);
 
+    // Behind-mountain horizontal wall: while in the fall-behind state the
+    // player can't move south past the midline. They fall down to it (the
+    // fall's own landing logic snaps them there), and from then on going
+    // down is blocked — they have to walk left or right out of the shadow.
+    // Going up is allowed; this only catches frames where movement would
+    // push the player below the line.
+    if (player.behindMountain && midlineWorldY != null) {
+        const feetY2 = player.y + player.colOffY + player.colH * 0.5;
+        if (feetY2 > midlineWorldY) {
+            player.y = midlineWorldY - player.colOffY - player.colH * 0.5;
+        }
+    }
+
     // Record the zone we settled on this frame for next frame's edge-detect.
     player.lastZone = playerZone;
 

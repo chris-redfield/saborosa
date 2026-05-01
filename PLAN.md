@@ -95,12 +95,23 @@ Since there's no `level` integer, zoom is driven by `surfaceState`:
 
 ### Phase 8 — "Fall-behind" system (high-zone → sand fall with occlusion) ✅ **DONE**
 
-Shipped:
-- Asset built via `tools/fall-behind-overlay.html`; saved as `assets/cor-saborosa-fundo-02-overlay.png` and registered in `engine/game.js` as `stage3_overlay`. Stage 3 in `world/stages.js` references it via `backgroundOverlayImage`.
-- `world.getMidlineWorldY()` returns the world Y of the image midline; `world.isPlayerBehindMountain(wx, wy)` answers the per-frame occlusion check using a precomputed 1D `_mountainBottomEdge` array (largest non-sand row per column above the midline). `world.renderOverlay(ctx)` draws the overlay PNG using the same rect transform as the base background.
-- `player.fallTargetY` (default `null`) flags fall-behind drops. When a fall begins on sand above the midline, `fallTargetY` is set to the midline world Y; the falling exit branch in `main.js` lands the player exactly on it (`player.y` snapped so collision center = midline).
-- New `ground → falling` transition for "stepping off any non-sand zone onto sand while above the midline" — covers tops of cubes (`DENSE_SAND`), ramps, and red walkable. The existing `WALL`/`climbing` transitions are left intact; they automatically pick up the midline target if applicable.
-- Render order: full background → entities (incl. player) → overlay (only when `isPlayerBehindMountain` is true). Drawn before HUD so the stage name still sits on top.
+Shipped (final design — diverged from the original sketch in a few ways):
+
+**Two-layer background.** The original `cor-saborosa-fundo-02.png` is no longer drawn. `tools/fall-behind-overlay.html` splits it into two PNGs that stack to recreate the source:
+- `cor-saborosa-fundo-02-lower.png` — everything except the mountain silhouette (full image below the midline + sand-only above the midline). Drawn as the base by `world.renderGround`.
+- `cor-saborosa-fundo-02-overlay.png` — the mountain silhouette above the midline; sand and below-midline transparent. Drawn either before or after the player depending on state.
+
+The original is kept in `engine/game.js` only so `world._ensureZoneData` can build its zone-classification canvas from it.
+
+**Fall trigger and landing.** Stepping off any non-sand zone onto sand while the player's feet are above the image midline transitions `surfaceState` to `'falling'` with `player.fallTargetY = midlineWorldY`. Fall velocity uses the existing accel curve; the falling-exit branch lands by snapping `player.y` so the collision center sits exactly at midline. Wall-side falls keep their old behavior (no target → exit when zone leaves `WALL`).
+
+**`player.behindMountain` is the source of truth for occlusion.** Set true the frame a midline-targeted fall begins; cleared when `world.hasMountainAboveColumn(player.x)` returns false (player walked sideways out of the column shadow). Pure geometry ("are you below mountain pixels?") was tried first but mis-fired when the player walked under the mountain from the south — they were geometrically below mountain pixels but should still render in front. The flag is sticky and only flips on real fall events.
+
+**Render order.** `lower` → if `!behindMountain` then `overlay` → entities → if `behindMountain` then `overlay` at `globalAlpha = 0.5`. The half-opacity is so the player remains visible behind the silhouette during the descent.
+
+**Behind-state physics overrides.** While `behindMountain` is true, `playerZone` is forced to `Zone.SAND` regardless of the painted zone underneath. This disables ramp drift, climb/fall transitions, dense-sand slowdown, and (importantly) prevents the fall-behind trigger from re-firing — `lastZone` ends up `SAND` each frame, so `lastWasMountain` stays false.
+
+**One-way midline wall.** While `behindMountain` is true, after `player.move` we clamp `feetY` back to `midlineWorldY` if movement pushed it south. Going up is uncapped (the player is "above" the wall conceptually). The fall itself is unaffected — its own landing logic does the snap. This forces sideways exit when the column under the player has midline-non-sand terrain and prevents the player from sliding south through the wall and getting stuck behind the mountain on a colored zone.
 
 Below the original specification for reference:
 
