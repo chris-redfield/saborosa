@@ -79,6 +79,8 @@ class Game {
                 this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
                 this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
+                this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
+                this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
                 this.loadImage('cubes', 'assets/cor-saborosa-box-01.png')
             ]);
             // Cube sheet uses a solid white background. Key it out so the

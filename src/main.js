@@ -100,7 +100,13 @@ function updateGame(dt) {
     // drift, and any future zone-based behavior.
     const feetX = player.x + player.colOffX + player.colW / 2;
     const feetY = player.y + player.colOffY + player.colH / 2;
-    const playerZone = world.getZoneAt(feetX, feetY);
+    // While in the fall-behind state, the player is treated as if walking on
+    // plain sand regardless of the actual painted zone — no climbing, no
+    // ramp drift, no re-triggering a fall on top of a different cube. They
+    // stay in this "virtual sand" until they walk out of the column shadow.
+    const playerZone = player.behindMountain
+        ? Zone.SAND
+        : world.getZoneAt(feetX, feetY);
 
     // Check if player is on sand. Only regular sand sinks the sprite —
     // DENSE_SAND slows the player but doesn't crop the sprite.
@@ -143,6 +149,15 @@ function updateGame(dt) {
     // Track previous state so we can detect a transition *into* falling.
     const prevState = player.surfaceState;
 
+    // Fall-behind: any step from a non-sand zone above the image midline
+    // onto sand drops the player straight down to the midline.
+    const midlineWorldY = (world.stage && world.stage.backgroundImage)
+        ? world.getMidlineWorldY() : null;
+    const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
+    const onSandLike = playerZone === Zone.SAND || playerZone === Zone.NONE;
+    const lastWasMountain = player.lastZone != null
+        && player.lastZone !== Zone.SAND && player.lastZone !== Zone.NONE;
+
     // 1) Transitions based on current zone + intended movement direction.
     if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
         // Entering a wall from ground: going up = climbing; any other
@@ -152,22 +167,46 @@ function updateGame(dt) {
         } else {
             player.surfaceState = 'falling';
         }
+    } else if (player.surfaceState === 'ground' && onSandLike
+               && aboveMidline && lastWasMountain) {
+        // Walked off the mountain (any non-sand zone) onto sand while still
+        // above the midline. Fall straight down to the midline.
+        player.surfaceState = 'falling';
     } else if (player.surfaceState === 'climbing') {
-        if (playerZone === Zone.SAND || playerZone === Zone.NONE) {
+        if (onSandLike) {
             player.surfaceState = 'falling';
         } else if (playerZone !== Zone.WALL) {
             // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
             player.surfaceState = 'ground';
         }
-    } else if (player.surfaceState === 'falling' && playerZone !== Zone.WALL) {
-        // Landed on another zone (including NONE off the image rect —
-        // otherwise stepping off the painted area triggers an endless fall).
-        player.surfaceState = 'ground';
+    } else if (player.surfaceState === 'falling') {
+        // Two exit modes: midline-target (fall-behind) or "leave WALL" (climb fall).
+        if (player.fallTargetY != null) {
+            if (feetY >= player.fallTargetY) {
+                player.surfaceState = 'ground';
+                player.y = player.fallTargetY - player.colOffY - player.colH * 0.5;
+                player.fallTargetY = null;
+            }
+        } else if (playerZone !== Zone.WALL) {
+            player.surfaceState = 'ground';
+        }
     }
 
-    // Reset fall timer the frame we start falling.
+    // Reset fall timer + lock in fall mode the frame we start falling.
     if (player.surfaceState === 'falling' && prevState !== 'falling') {
         player.fallTimerMs = 0;
+        // Fall-behind drop has a fixed Y target; wall-side falls don't.
+        player.fallTargetY = (onSandLike && aboveMidline) ? midlineWorldY : null;
+        // The fall-behind drop also flips the render order so the mountain
+        // overlay sits on top of the player.
+        if (player.fallTargetY != null) player.behindMountain = true;
+    }
+
+    // Clear behindMountain once the player walks out of the column shadow.
+    // Sticky while the column above still has any mountain pixel.
+    if (player.behindMountain && world.hasMountainAboveColumn) {
+        const px = player.x + player.colOffX + player.colW * 0.5;
+        if (!world.hasMountainAboveColumn(px)) player.behindMountain = false;
     }
 
     // 2) State-specific movement overrides.
@@ -301,8 +340,17 @@ function renderGame(ctx) {
     const camX = world.cameraX;
     const camY = world.cameraY;
 
-    // Draw ground tiles + lava
+    // Draw ground tiles + lava (lower layer = sand + below-midline content)
     world.renderGround(ctx);
+
+    // Mountain layer order depends on the player.behindMountain state, set
+    // when fall-behind starts and cleared when the player walks out of the
+    // column shadow. Default: upper drawn first (player walks in front of
+    // mountain). Behind: drawn last so the mountain occludes the sprite.
+    const hasOverlay = world.stage && world.stage.backgroundOverlayImage;
+    if (hasOverlay && !player.behindMountain) {
+        world.renderOverlay(ctx);
+    }
 
     // Collect all renderables, depth-sort by bottom edge
     // Exclude lifted object (player renders it on top of themselves)
@@ -323,6 +371,15 @@ function renderGame(ctx) {
             sy + entity.height < 0 || sy > game.height) continue;
 
         entity.render(ctx, game, camX, camY);
+    }
+
+    // Fall-behind: when the player has dropped below the mountain silhouette,
+    // draw the upper layer AFTER the player so the mountain occludes them.
+    // Half-opacity so the player remains visible through the silhouette.
+    if (hasOverlay && player.behindMountain) {
+        ctx.globalAlpha = 0.5;
+        world.renderOverlay(ctx);
+        ctx.globalAlpha = 1;
     }
 
     // During transition, draw the basket on top of everything (it's ascending)

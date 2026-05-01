@@ -69,7 +69,14 @@ const STAGES = {
         checkerboard: { tileSize: 77, color: '#7e7e7e', style: 'perspective' },
         terrainDepth: 30,
         rockCount: [10, 20],
+        // The original image (`stage3_bg`) is no longer drawn — it's only
+        // kept here for zone classification (cached canvas). The visible
+        // background is split into a lower (sand + below-midline) layer and
+        // an upper (mountain-above-midline) layer, so the upper can be drawn
+        // on either side of the player depending on fall-behind state.
         backgroundImage: 'stage3_bg',
+        backgroundLowerImage: 'stage3_lower',
+        backgroundOverlayImage: 'stage3_overlay',
         // Image 4679x3624 (AR ~1.291). Fit to 9x9 walkable height (6480px),
         // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
         // in the 11520-wide walkable area (margin ~1577 each side).

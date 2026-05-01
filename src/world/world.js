@@ -75,6 +75,72 @@ class World {
         }
     }
 
+    // World-Y of the image midline. Used as both the "high zone" boundary
+    // and the landing Y for fall-behind drops.
+    getMidlineWorldY() {
+        this._ensureZoneData();
+        if (!this._zoneData) return 0;
+        const rect = this.stage.backgroundImageRect;
+        if (!rect) return 0;
+        return rect.y + rect.h * 0.5;
+    }
+
+    // For each image column above the midline, store the largest row index
+    // (= lowest screen position) that contains a non-sand "mountain" pixel.
+    // -1 means "no mountain pixel in this column above the midline."
+    // Used by isPlayerBehindMountain.
+    _ensureMountainBottomEdge() {
+        if (this._mountainBottomEdge !== undefined) return;
+        this._mountainBottomEdge = null;
+        this._ensureZoneData();
+        if (!this._zoneData) return;
+        const w = this._zoneData.width;
+        const h = this._zoneData.height;
+        const data = this._zoneData.data;
+        const midline = Math.floor(h * 0.5);
+        const arr = new Int32Array(w);
+        for (let x = 0; x < w; x++) arr[x] = -1;
+        for (let y = 0; y < midline; y++) {
+            for (let x = 0; x < w; x++) {
+                const i = (y * w + x) * 4;
+                if (data[i + 3] === 0) continue;
+                const r = data[i], g = data[i + 1], b = data[i + 2];
+                // Outline pixels count as mountain (part of the silhouette).
+                if (Math.max(r, g, b) < 46) { arr[x] = y; continue; }
+                if (classifyZoneColor(r, g, b) !== Zone.SAND) arr[x] = y;
+            }
+        }
+        this._mountainBottomEdge = arr;
+    }
+
+    // True if the column at world-x has any mountain pixel above the midline.
+    // Used to clear the player's "behindMountain" flag once they step out of
+    // the mountain's column shadow.
+    hasMountainAboveColumn(wx) {
+        this._ensureMountainBottomEdge();
+        if (!this._mountainBottomEdge) return false;
+        const rect = this.stage.backgroundImageRect;
+        if (!rect) return false;
+        const imgW = this._zoneData.width;
+        const px = Math.floor((wx - rect.x) / rect.w * imgW);
+        if (px < 0 || px >= imgW) return false;
+        return this._mountainBottomEdge[px] >= 0;
+    }
+
+    // Mountain-silhouette overlay (transparent below the midline). Drawn on
+    // top of the player when fall-behind detection fires.
+    renderOverlay(ctx) {
+        if (!this.stage.backgroundOverlayImage) return;
+        const img = this.game.getImage(this.stage.backgroundOverlayImage);
+        if (!img || !img.naturalWidth) return;
+        const rect = this.stage.backgroundImageRect;
+        if (!rect) return;
+        ctx.drawImage(img,
+            Math.round(rect.x - this.cameraX),
+            Math.round(rect.y - this.cameraY),
+            rect.w, rect.h);
+    }
+
     getZoneAt(wx, wy) {
         this._ensureZoneData();
         if (!this._zoneData) return Zone.WALKABLE;
@@ -339,7 +405,11 @@ class World {
         const cy = this.cameraY;
 
         if (this.stage.backgroundImage) {
-            const img = this.game.getImage(this.stage.backgroundImage);
+            // Lower layer (sand + small islands + sand-above-midline). The
+            // upper mountain layer is drawn separately by main.js so it can
+            // sit on either side of the player.
+            const lowerKey = this.stage.backgroundLowerImage || this.stage.backgroundImage;
+            const img = this.game.getImage(lowerKey);
             if (img) {
                 let rect = this.stage.backgroundImageRect;
                 if (!rect) {

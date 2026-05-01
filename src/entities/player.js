@@ -62,6 +62,20 @@ class Player {
         this.fallAccelPerSec = 18; // px/sec added to velocity each second
         this.fallTimerMs = 0;
 
+        // When set, the falling state ends once player.y reaches this Y
+        // instead of waiting to leave a WALL pixel. Used by the fall-behind
+        // system: stepping off the mountain (above midline) drops you down
+        // to the midline regardless of which sand pixel is below.
+        this.fallTargetY = null;
+
+        // True from the moment a fall-behind starts until the player walks
+        // out of the mountain's column shadow. While true the upper layer is
+        // drawn AFTER the player so the mountain occludes the sprite.
+        // Geometric "below mountain pixels" alone is not sufficient because
+        // a player approaching from the south is also below those pixels but
+        // should render in front of the mountain.
+        this.behindMountain = false;
+
         // Tracks the zone under the player on the previous frame — used to
         // detect "just stepped off the cube top onto the wall face" (fall).
         this.lastZone = null;

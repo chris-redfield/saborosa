@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fall-Behind Layer Builder</title>
+<style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #222; color: #ddd; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    p  { margin: 4px 0; font-size: 13px; }
+    code { background: #333; padding: 1px 4px; border-radius: 3px; }
+    button { padding: 6px 12px; margin: 4px 4px 12px 0; font-size: 13px; }
+    .stage { display: flex; gap: 12px; flex-wrap: wrap; }
+    .stage > div { background: #444 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16'><rect width='8' height='8' fill='%23555'/><rect x='8' y='8' width='8' height='8' fill='%23555'/></svg>"); padding: 4px; }
+    canvas { display: block; max-width: 400px; height: auto; }
+    .label { color: #aaa; font-size: 12px; margin-bottom: 2px; }
+    #log { white-space: pre-wrap; background: #111; padding: 8px; font-family: ui-monospace, monospace; font-size: 12px; max-height: 200px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>Fall-Behind Layer Builder</h1>
+<p>Source: <code>../assets/cor-saborosa-fundo-02.png</code></p>
+<p>
+    Splits the source into two transparent PNGs that, stacked, reconstruct the original:
+    <code>upper</code> = mountain silhouette above the midline (sand and below-midline pixels transparent);
+    <code>lower</code> = everything else (full image below the midline, plus sand-only above the midline).
+</p>
+
+<button id="build">Build both</button>
+<button id="dl-upper" disabled>Download upper PNG</button>
+<button id="dl-lower" disabled>Download lower PNG</button>
+
+<div class="stage">
+    <div>
+        <div class="label">Source</div>
+        <canvas id="src"></canvas>
+    </div>
+    <div>
+        <div class="label">Upper (mountain only)</div>
+        <canvas id="upper"></canvas>
+    </div>
+    <div>
+        <div class="label">Lower (sand + small islands)</div>
+        <canvas id="lower"></canvas>
+    </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+function classifyZoneColor(r, g, b) {
+    const rf = r / 255, gf = g / 255, bf = b / 255;
+    const max = Math.max(rf, gf, bf);
+    const min = Math.min(rf, gf, bf);
+    const delta = max - min;
+    const v = max;
+    const s = max === 0 ? 0 : delta / max;
+    let h = 0;
+    if (delta > 0) {
+        if (max === rf)      h = ((gf - bf) / delta) % 6;
+        else if (max === gf) h = (bf - rf) / delta + 2;
+        else                 h = (rf - gf) / delta + 4;
+        h *= 60;
+        if (h < 0) h += 360;
+    }
+    if (v < 0.18) return 'WALKABLE';
+    if (s < 0.18) {
+        if (v < 0.70) return 'DENSE_SAND';
+        return 'SAND';
+    }
+    if (h < 20 || h >= 340)  return 'WALKABLE';
+    if (h >= 40 && h < 80)   return 'RAMP_LEFT';
+    if (h >= 90 && h < 170)  return 'WALL';
+    if (h >= 180 && h < 260) return 'RAMP_RIGHT';
+    return 'WALKABLE';
+}
+
+const log = (msg) => {
+    const el = document.getElementById('log');
+    el.textContent += msg + '\n';
+    el.scrollTop = el.scrollHeight;
+};
+
+const downloadCanvas = (canvas, name) => () => {
+    canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = name;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+};
+
+document.getElementById('build').onclick = async () => {
+    document.getElementById('log').textContent = '';
+    const img = new Image();
+    img.src = '../assets/cor-saborosa-fundo-02.png';
+    log('Loading source...');
+    await img.decode();
+    const w = img.naturalWidth, h = img.naturalHeight;
+    const midline = Math.floor(h / 2);
+    log(`Source: ${w}x${h}, midline y=${midline}`);
+
+    const src = document.getElementById('src');
+    const upper = document.getElementById('upper');
+    const lower = document.getElementById('lower');
+    src.width = upper.width = lower.width = w;
+    src.height = upper.height = lower.height = h;
+
+    const sctx = src.getContext('2d');
+    const uctx = upper.getContext('2d');
+    const lctx = lower.getContext('2d');
+    sctx.drawImage(img, 0, 0);
+
+    const srcData = sctx.getImageData(0, 0, w, h);
+    const upperData = uctx.createImageData(w, h);
+    const lowerData = lctx.createImageData(w, h);
+    const sd = srcData.data, ud = upperData.data, ld = lowerData.data;
+
+    let upKept = 0, upDropSand = 0, upDropBelow = 0;
+    let loKeptAbove = 0, loKeptBelow = 0, loDropMountain = 0;
+
+    for (let y = 0; y < h; y++) {
+        const belowMid = y >= midline;
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            const a = sd[i + 3];
+
+            if (a === 0) {
+                ud[i + 3] = 0;
+                ld[i + 3] = 0;
+                continue;
+            }
+
+            const z = classifyZoneColor(sd[i], sd[i + 1], sd[i + 2]);
+            const upperPixel = !belowMid && z !== 'SAND';
+
+            // Upper layer: only the mountain silhouette above the midline.
+            if (upperPixel) {
+                ud[i] = sd[i]; ud[i + 1] = sd[i + 1]; ud[i + 2] = sd[i + 2]; ud[i + 3] = a;
+                upKept++;
+            } else {
+                ud[i + 3] = 0;
+                if (belowMid) upDropBelow++; else upDropSand++;
+            }
+
+            // Lower layer: complement of upper. Stacking lower+upper restores the source.
+            if (!upperPixel) {
+                ld[i] = sd[i]; ld[i + 1] = sd[i + 1]; ld[i + 2] = sd[i + 2]; ld[i + 3] = a;
+                if (belowMid) loKeptBelow++; else loKeptAbove++;
+            } else {
+                ld[i + 3] = 0;
+                loDropMountain++;
+            }
+        }
+    }
+
+    uctx.putImageData(upperData, 0, 0);
+    lctx.putImageData(lowerData, 0, 0);
+
+    log(`Upper kept (mountain above):  ${upKept.toLocaleString()} px`);
+    log(`Upper dropped (sand above):   ${upDropSand.toLocaleString()} px`);
+    log(`Upper dropped (below):        ${upDropBelow.toLocaleString()} px`);
+    log(`Lower kept (above midline):   ${loKeptAbove.toLocaleString()} px`);
+    log(`Lower kept (below midline):   ${loKeptBelow.toLocaleString()} px`);
+    log(`Lower dropped (mountain):     ${loDropMountain.toLocaleString()} px`);
+
+    const dlU = document.getElementById('dl-upper');
+    const dlL = document.getElementById('dl-lower');
+    dlU.disabled = false;
+    dlL.disabled = false;
+    dlU.onclick = downloadCanvas(upper, 'cor-saborosa-fundo-02-overlay.png');
+    dlL.onclick = downloadCanvas(lower, 'cor-saborosa-fundo-02-lower.png');
+    log('Ready. Save both PNGs into assets/.');
+};
+</script>
+</body>
+</html>
