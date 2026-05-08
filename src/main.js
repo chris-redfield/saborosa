@@ -102,16 +102,20 @@ function updateGame(dt) {
     const feetY = player.y + player.colOffY + player.colH / 2;
     const realZone = world.getZoneAt(feetX, feetY);
 
-    // Sample the mountain overlay's alpha at the feet (1x1) — true when the
-    // feet are over an opaque overlay pixel (= mountain or its outline at
-    // the feet position), false on transparent (sand or below midline).
-    // This is the source of truth for fall-behind and walk-back-behind: it
-    // can't disagree with what's drawn on screen, and at polygon junctions
-    // the black outline pixels are still opaque in the overlay so the feet
-    // remain "on mountain" — no junction misfire.
+    // Sample the mountain overlay's alpha in a small box around the feet —
+    // true when ANY pixel in the box is opaque. Source of truth for
+    // fall-behind / walk-back-behind: can't disagree with what's drawn,
+    // and a small box (rather than 1x1) absorbs pinhole holes inside the
+    // overlay caused by the generation-tool classifier marking bright-gray
+    // pixels as SAND (transparent). Without the absorption the trigger
+    // could fire when the feet landed exactly on such a hole.
+    const FEET_BOX = 8; // image pixels — wide enough to cover anti-alias holes,
+                        //                 narrow enough to flip cleanly on real sand
     const onMountain = (world.stage && world.stage.backgroundOverlayImage
         && world.isSpriteBehindMountain)
-        ? world.isSpriteBehindMountain(feetX, feetY, 1, 1)
+        ? world.isSpriteBehindMountain(
+            feetX - FEET_BOX / 2, feetY - FEET_BOX / 2,
+            FEET_BOX, FEET_BOX)
         : false;
 
     const midlineWorldY = (world.stage && world.stage.backgroundImage)
@@ -141,7 +145,16 @@ function updateGame(dt) {
     const playerCenterX = player.x + player.width / 2;
     const playerBottomY = player.y + player.height;
     if (world.stage && world.stage.backgroundImage) {
-        player.onSand = (playerZone === Zone.SAND || playerZone === Zone.NONE);
+        // Above midline, the overlay is the source of truth: opaque pixels
+        // are mountain (including outlines and cube faces), transparent is
+        // sand. This dodges the classifier's flicker between SAND/NONE/etc.
+        // at polygon junctions on the mountain top, which used to cause a
+        // 1-frame sand-sink visual blip.
+        if (aboveMidline && onMountain) {
+            player.onSand = false;
+        } else {
+            player.onSand = (playerZone === Zone.SAND || playerZone === Zone.NONE);
+        }
     } else {
         player.onSand = !world.isOnWalkableTerrain(playerCenterX, playerBottomY);
     }
@@ -217,7 +230,11 @@ function updateGame(dt) {
             // player crosses the midline on the lower part of the mountain.
             player.surfaceState = 'falling';
         } else if (player.surfaceState === 'climbing') {
-            if (onSandLike) {
+            if (onSandLike && !onMountain) {
+                // Stepped off the green onto real sand (overlay says we're
+                // off the mountain) → fall. Gating on !onMountain prevents
+                // the southward-push bounce when the zone briefly reads
+                // sand-like at a polygon junction while still on mountain.
                 player.surfaceState = 'falling';
             } else if (playerZone !== Zone.WALL) {
                 // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
