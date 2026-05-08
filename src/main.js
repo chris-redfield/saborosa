@@ -102,18 +102,29 @@ function updateGame(dt) {
     const feetY = player.y + player.colOffY + player.colH / 2;
     const realZone = world.getZoneAt(feetX, feetY);
 
-    // Walk-back-behind trigger: if the player is on sand above the midline
-    // and steps into any non-sand zone, slip behind the mountain rather than
-    // climbing it or falling. Mirrors the fall-behind direction (mountain →
-    // sand), but for sand → mountain. Runs before the playerZone override so
-    // the override applies on the same frame the flag flips.
+    // Sample the mountain overlay's alpha at the feet (1x1) — true when the
+    // feet are over an opaque overlay pixel (= mountain or its outline at
+    // the feet position), false on transparent (sand or below midline).
+    // This is the source of truth for fall-behind and walk-back-behind: it
+    // can't disagree with what's drawn on screen, and at polygon junctions
+    // the black outline pixels are still opaque in the overlay so the feet
+    // remain "on mountain" — no junction misfire.
+    const onMountain = (world.stage && world.stage.backgroundOverlayImage
+        && world.isSpriteBehindMountain)
+        ? world.isSpriteBehindMountain(feetX, feetY, 1, 1)
+        : false;
+
     const midlineWorldY = (world.stage && world.stage.backgroundImage)
         ? world.getMidlineWorldY() : null;
     const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
-    if (!player.behindMountain && aboveMidline
+
+    // Walk-back-behind: feet just stepped onto an opaque overlay pixel from
+    // a transparent one while above the midline. Slip behind, no climb.
+    // Both frames must be above midline — the overlay only has opaque pixels
+    // above the midline, so a midline crossing alone would otherwise trigger.
+    if (!player.behindMountain && aboveMidline && player.lastAboveMidline
         && player.surfaceState === 'ground'
-        && (player.lastZone === Zone.SAND || player.lastZone === Zone.NONE)
-        && realZone !== Zone.SAND && realZone !== Zone.NONE) {
+        && !player.lastOnMountain && onMountain) {
         player.behindMountain = true;
     }
 
@@ -195,10 +206,15 @@ function updateGame(dt) {
             } else {
                 player.surfaceState = 'falling';
             }
-        } else if (player.surfaceState === 'ground' && onSandLike
-                   && aboveMidline && lastWasMountain) {
-            // Walked off the mountain (any non-sand zone) onto sand while still
-            // above the midline. Fall straight down to the midline.
+        } else if (player.surfaceState === 'ground' && aboveMidline
+                   && player.lastAboveMidline
+                   && player.lastOnMountain && !onMountain) {
+            // Feet just stepped off the mountain overlay onto sand while
+            // above the midline → fall straight down to the midline. Uses
+            // the overlay's alpha rather than the zone classifier so the
+            // trigger doesn't misfire at black-outline junctions. Requiring
+            // both frames above midline avoids a false transition when the
+            // player crosses the midline on the lower part of the mountain.
             player.surfaceState = 'falling';
         } else if (player.surfaceState === 'climbing') {
             if (onSandLike) {
@@ -213,11 +229,17 @@ function updateGame(dt) {
     // Reset fall timer + lock in fall mode the frame we start falling.
     if (player.surfaceState === 'falling' && prevState !== 'falling') {
         player.fallTimerMs = 0;
-        // Fall-behind drop has a fixed Y target; wall-side falls don't.
-        player.fallTargetY = (onSandLike && aboveMidline) ? midlineWorldY : null;
-        // The fall-behind drop also flips the render order so the mountain
-        // overlay sits on top of the player.
-        if (player.fallTargetY != null) player.behindMountain = true;
+        // Midline target only when feet truly stepped off the mountain
+        // overlay this frame. Any other path (wall-side fall, junction
+        // misfire while still on mountain art) → no target → wall-side fall
+        // that exits as soon as the zone reads non-WALL.
+        if (aboveMidline && player.lastAboveMidline
+            && player.lastOnMountain && !onMountain) {
+            player.fallTargetY = midlineWorldY;
+            player.behindMountain = true;
+        } else {
+            player.fallTargetY = null;
+        }
     }
 
     // Clear behindMountain when the player's sprite bbox no longer overlaps
@@ -272,6 +294,8 @@ function updateGame(dt) {
     // edge-detect. Tracking the override SAND would mislead walk-back-behind
     // into re-firing the moment behindMountain clears onto colored ground.
     player.lastZone = realZone;
+    player.lastOnMountain = onMountain;
+    player.lastAboveMidline = aboveMidline;
 
     // Apply zone drift to movable obstacles (rocks, live rocks).
     // Skip carried objects and stack children (their parent will drag them).

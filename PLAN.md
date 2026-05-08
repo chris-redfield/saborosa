@@ -107,10 +107,17 @@ The original `stage3_bg` is still loaded but only used by `_ensureZoneData` to b
 
 **`player.behindMountain` flag.** Set true the frame a midline-targeted fall begins; cleared when the player walks out of the silhouette. State, not pure geometry — a geometric "is below mountain pixels" check fires when the player walks *under* the mountain from the south too, which should render in front, not behind.
 
-**Silhouette detection (`world.isInMountainShadow(wx)`).** Sources directly from the overlay PNG, not from classifier results, so it matches what's drawn. Computed once at first use:
-1. Sample the overlay's alpha channel into per-column `bottomY` — the lowest opaque row at each column.
-2. A column is "shadow" if `bottomY[col] >= midline - REACH_PX` (silhouette comes down close to where the player stands). `REACH_PX = 60` ≈ player-sprite half-height in image space.
-3. This naturally follows concavity: notches above midline are columns whose bottom-Y is far up, so the player walks through them freely. Earlier "any pixel in the column" / "min-run" / "column mass" attempts all failed because they ignored *how close* the silhouette gets to the midline — far-up peaks would trap the player in distant columns forever.
+**Silhouette detection (`world.isSpriteBehindMountain(wx, wy, ww, wh)`).** Reads the overlay PNG's alpha channel directly — the overlay *is* the polygon, alpha *is* the boundary. Returns true if any opaque pixel of the overlay overlaps the given world rect. Sparse 2-pixel sampling for cost. Used in two places:
+- **`onMountain` (1×1 sample at the feet)** drives transition triggers (fall-behind / walk-back-behind). Robust against junction misreads because overlay's outline pixels are opaque.
+- **Sprite-bbox sample** clears `behindMountain` once the sprite no longer overlaps any opaque pixel.
+
+Earlier silhouette attempts that didn't work, kept as warnings:
+1. *"Any pixel in the column"* — trapped the player anywhere a stray outline existed above midline.
+2. *Min-run of opaque pixels per column* — tuning the threshold either trapped or freed the player too early.
+3. *Column mass* — same problem, plus performance per frame.
+4. *Per-column bottom-edge near midline (REACH_PX=60)* — broke at concave silhouettes; the threshold was a guess.
+
+The current bbox-overlap approach has no thresholds; the source of truth is the overlay PNG itself.
 
 **Render order.** `lower` → if `!behindMountain` then `overlay` → entities → if `behindMountain` then `overlay` at `globalAlpha = 0.5`. Half-opacity keeps the sprite visible while occluded.
 
@@ -118,20 +125,27 @@ The original `stage3_bg` is still loaded but only used by `_ensureZoneData` to b
 
 **One-way midline wall.** While `behindMountain`, after `player.move` we clamp `feetY` back to `midlineWorldY` if it pushed south. Up is unconstrained (the player is "above" the wall conceptually). Forces sideways exit instead of letting the player slide south onto colored ground and re-bind themselves behind.
 
-### Phase 9 — Walk-back-behind + behind-state isolation ← **next**
+### Phase 9 — Walk-back-behind + behind-state isolation ✅ **DONE**
 
-Two follow-ups that complete the fall-behind feel:
+**Walk-back-behind trigger.** Mirror of fall-behind: while on sand above the midline, stepping into the mountain should set `behindMountain = true` directly — no climb, no fall, just slip behind.
 
-**Walk-back-behind trigger.** Currently the only path into `behindMountain` is the fall. But the player can also be standing on sand *above* the midline (north of the mountain, on the open beige) and walk south into the mountain. Today that triggers climb/fall on the mountain pixels. The desired behavior: while on sand above the midline, stepping into any non-sand zone should set `behindMountain = true` directly — no climb, no fall, just slip behind. They never "interact with" the mountain from the high-altitude sand side.
+**Object non-interaction while behind.** ✅ Done.
+- Empty obstacle list to `player.move` while `behindMountain` so rocks/cubes don't collide.
+- `liftOrDrop` / `updateStackTarget` / portal interactions skipped.
 
-Implementation sketch: in the surface-state machine, before the existing `ground → climbing/falling` transitions, check `prevZone === SAND/NONE && aboveMidline && playerZone !== SAND/NONE`. If yes, set `behindMountain = true` and skip the rest of the transition logic (no `fallTargetY`, no state change — the SAND override will kick in for everything else).
+**Trigger source — chain of failed attempts** (all from this session, kept as warnings):
 
-**Object non-interaction while behind.** While `behindMountain` is true the player shouldn't touch any surface objects — they're not on the same plane. Concretely:
-- Pass an empty (or filtered) obstacle list to `player.move` so rocks/cubes don't collide.
-- Skip the `liftOrDrop` and `updateStackTarget` calls.
-- Skip portal/basket interaction checks.
+| Approach | Why it failed |
+| --- | --- |
+| Zone-based: `lastZone === SAND && realZone === non-SAND` | Junction misread fires both fall-behind and walk-back-behind. Black-outline pixel cluster returns NONE; bright anti-aliased pixels can return SAND. |
+| Widen the `getZoneAt` outline-fallback radius (±3 / ±6 / ±10 / ±15) + return WALKABLE for in-bounds-all-black | Reduced misreads but didn't eliminate them — anti-aliased gray-on-color produces low-saturation bright pixels that still classify as SAND. |
+| Gate trigger on column-shadow check (`isInMountainShadow(wx)` with bottom-Y ≥ midline − REACH_PX) | Per-column heuristic, not a true polygon test. Got stuck behind tendrils, released too early near edges. |
+| Gate trigger on sprite-bbox silhouette test (`isSpriteBehindMountain`) | Worked for walk-back-behind, but blocked legit fall-behind because the sprite still overlaps the silhouette one frame after the feet step onto sand. |
+| Two-channel: sprite-bbox for walk-back-behind, 1×1 feet for fall-behind | Junction-safe and fall-correct, but a different problem appeared: midline crossing (overlay is transparent below midline → opaque above) read as a sand→mountain transition. |
 
-**Exit criteria:** (1) Walking south on sand from the north side of the mountain into the silhouette puts the player directly behind it without climbing, and lateral exit from the silhouette returns control as before. (2) Rocks left on the surface are visibly walked-through while behind, and the lift key does nothing while behind.
+**What worked.** Single transition primitive: feet-on-overlay (`onMountain` = `isSpriteBehindMountain(feetX, feetY, 1, 1)`). Both fall-behind and walk-back-behind triggers require the *transition* `lastOnMountain → onMountain` to actually flip — AND they require `aboveMidline && lastAboveMidline` so a midline crossing alone (where the overlay first becomes opaque) doesn't read as a transition. Sprite-bbox `isSpriteBehindMountain` is still used for the clear check.
+
+**Exit criteria:** (1) Walking south on sand into the silhouette puts the player behind without climbing; lateral exit returns control. (2) Walking up the mountain across the midline does nothing — player stays on top, no behind state. (3) Walking over polygon junctions on the mountain top doesn't fall or trigger behind. (4) Stepping off the mountain top onto sand triggers the midline drop. (5) Rocks/portals are inert while behind.
 
 ### Phase 7 — Differentiate red (partial)
 
@@ -160,7 +174,7 @@ Still open:
 - [ ] Phase 6 — Camera zoom on walls
 - [~] Phase 7 — Red reclassified to plain walkable; distinct behavior still TBD
 - [x] Phase 8 — Fall-behind system (overlay-asset occlusion when falling left of mountain)
-- [ ] Phase 9 — Walk-back-behind trigger + object non-interaction while behind ← **next**
+- [x] Phase 9 — Walk-back-behind trigger + object non-interaction while behind
 
 ## Known Issues / Follow-ups
 

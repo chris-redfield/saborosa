@@ -80,6 +80,20 @@ class Player {
         // detect "just stepped off the cube top onto the wall face" (fall).
         this.lastZone = null;
 
+        // Tracks whether the player's feet were over the mountain overlay
+        // (opaque alpha) on the previous frame. Drives fall-behind and
+        // walk-back-behind triggers without going through the zone classifier
+        // — the overlay's alpha is exactly the mountain silhouette as drawn,
+        // so it doesn't misfire at polygon junctions where the classifier
+        // briefly returns SAND/NONE on a black outline pixel.
+        this.lastOnMountain = false;
+        // Was the player above the image midline on the previous frame?
+        // Both transition triggers (fall-behind and walk-back-behind) require
+        // BOTH frames to be above midline so that simply crossing the midline
+        // (where the overlay only starts being opaque) doesn't read as a
+        // sand-to-mountain or mountain-to-sand transition.
+        this.lastAboveMidline = false;
+
         // Lifting
         this.liftedObject = null;
         this.liftOffsetX = 0;  // centered on player
