@@ -142,10 +142,22 @@ The current bbox-overlap approach has no thresholds; the source of truth is the 
 | Gate trigger on column-shadow check (`isInMountainShadow(wx)` with bottom-Y ≥ midline − REACH_PX) | Per-column heuristic, not a true polygon test. Got stuck behind tendrils, released too early near edges. |
 | Gate trigger on sprite-bbox silhouette test (`isSpriteBehindMountain`) | Worked for walk-back-behind, but blocked legit fall-behind because the sprite still overlaps the silhouette one frame after the feet step onto sand. |
 | Two-channel: sprite-bbox for walk-back-behind, 1×1 feet for fall-behind | Junction-safe and fall-correct, but a different problem appeared: midline crossing (overlay is transparent below midline → opaque above) read as a sand→mountain transition. |
+| Single feet-on-overlay primitive with both `lastOnMountain → onMountain` flip AND `aboveMidline && lastAboveMidline` guard | Initially looked like the answer — fixed midline-crossing. But two new problems surfaced as we played longer: (a) sand-sink visual flicker at black junctions because `getZoneAt` still flickered between NONE/SAND/DENSE_SAND; (b) wall trigger firing → `climbing → falling` pushing south when zone briefly read sand-like at a green strip on the mountain top, producing a "can't walk up, bounces back" feel. |
+| Tighten SAND classifier at runtime (`s<0.18 && v>=0.70 && r>b+8`) to stop bright neutral-gray reading as sand | Reverted — caused a different visible flicker because gameplay (`onSand`, speed mult, drift) reacted to bright-gray reads now landing in `DENSE_SAND` instead of `SAND`. Pixel-by-pixel value changes during movement made motion feel jittery. |
+| Gate the entire wall trigger on `!player.lastOnMountain` | Killed the bounce — but also killed the legitimate "step off cube top onto green wall face → fall" (Phase 5 cube-edge fall), since both frames are on the mountain. Reverted. |
 
-**What worked.** Single transition primitive: feet-on-overlay (`onMountain` = `isSpriteBehindMountain(feetX, feetY, 1, 1)`). Both fall-behind and walk-back-behind triggers require the *transition* `lastOnMountain → onMountain` to actually flip — AND they require `aboveMidline && lastAboveMidline` so a midline crossing alone (where the overlay first becomes opaque) doesn't read as a transition. Sprite-bbox `isSpriteBehindMountain` is still used for the clear check.
+**What actually worked (final).** Two surgical guards on top of the feet-on-overlay primitive, neither touching the wall trigger entry:
 
-**Exit criteria:** (1) Walking south on sand into the silhouette puts the player behind without climbing; lateral exit returns control. (2) Walking up the mountain across the midline does nothing — player stays on top, no behind state. (3) Walking over polygon junctions on the mountain top doesn't fall or trigger behind. (4) Stepping off the mountain top onto sand triggers the midline drop. (5) Rocks/portals are inert while behind.
+- **`onSand` override above midline (B).** When `aboveMidline && onMountain`, force `player.onSand = false` regardless of classifier output. Kills the sand-sink visual blip at junctions because the overlay is opaque on outline pixels too. Three-line change in the `onSand` block.
+- **`climbing → falling` gated on `!onMountain` (D).** While on the mountain, climbing exits to ground rather than falling when the zone briefly reads sand-like. Kills the southward-push bounce while leaving wall-fall (`ground+WALL+!up → falling`) intact, so cube-edge falls still work.
+
+**The overlay PNG has pinhole holes.** The generation tool (`tools/fall-behind-overlay.html`) uses the same loose `s<0.18 && v>=0.70 → SAND` classifier as runtime — so any bright neutral-gray pixel inside the source's gray polygons (anti-alias slivers, scanned-art highlights) gets marked transparent in the overlay. When the player's feet sample landed on such a hole, the trigger correctly fired ("feet just left the mountain") even though visually they were still on it.
+
+**Hole-tolerant feet sample.** Instead of `isSpriteBehindMountain(feetX, feetY, 1, 1)`, sample an 8-pixel box around the feet (`FEET_BOX = 8`). Any opaque pixel in the box → `onMountain = true`. Pinholes (1–3 px) get absorbed because some neighbors are still opaque. Real sand stays unambiguous because the transparent area is much wider than 8 px. Trade-off: trigger fires a few pixels late when stepping off the mountain — imperceptible.
+
+Alternative we *didn't* take: regenerate the overlay PNG with a tighter SAND rule in the tool. Would eliminate the holes at asset-build time without runtime cost. Box-sampling was preferred because it doesn't require rerolling the asset.
+
+**Exit criteria:** (1) Walking south on sand into the silhouette puts the player behind without climbing; lateral exit returns control. (2) Walking up the mountain across the midline does nothing — player stays on top, no behind state. (3) Walking over polygon junctions on the mountain top doesn't fall, doesn't trigger behind, doesn't sink-flicker, doesn't bounce. (4) Stepping off the mountain top onto sand triggers the midline drop. (5) Walking into a green wall from sand still climbs / wall-side-falls correctly. (6) Rocks/portals are inert while behind.
 
 ### Phase 7 — Differentiate red (partial)
 
@@ -181,3 +193,27 @@ Still open:
 - **Pushing against drift feels sluggish.** Pushing a rock *uphill* on a ramp works (the player is a collider so the rock won't drift back through them), but the net rock speed while being pushed is pusher-speed − drift-speed, which can feel slow. Not a bug per se, but worth tuning when we revisit ramp feel.
 - **Fall feel.** Acceleration is currently `startSpeed=1.8`, `accel=18 px/s²`, `cap=14.3` — tweak whenever the fall starts to feel too floaty/sudden.
 - **Cube sprite scale.** Cubes replaced rock PNGs; at the current `size` range (25–60px) they may look smaller than intended. Bump `rockCount` scale in `world.js` `_generateBlock` if desired.
+- **Junction speed flicker (cosmetic).** When walking through a narrow green strip on the mountain top, the wall trigger still enters `climbing` for 1–2 frames, so speed briefly drops to climb-factor (0.4×). No bounce, no fall, just a tiny speed wobble. Living with it; would require either gating the wall trigger entry (which broke cube-edge falls last time) or per-frame zone-stability hysteresis.
+- **Overlay-tool classifier loose.** `tools/fall-behind-overlay.html` mirrors the runtime classifier, including the loose SAND rule. Any future regeneration of the overlay should consider tightening the SAND check there (`r > b + 8 && v >= 0.70`) — eliminates the pinhole holes the runtime box-sampler currently absorbs. Safe to do because it's an asset-time change, not a runtime classifier change.
+
+## Architecture quick-reference (for future-me)
+
+If you're touching the fall-behind / walk-back-behind code, these are the only signals you should use for the triggers — DO NOT route them through the zone classifier:
+
+- `onMountain` — `world.isSpriteBehindMountain(feetX - 4, feetY - 4, 8, 8)`. 8-px box at the feet. True iff any opaque overlay pixel overlaps.
+- `player.lastOnMountain` — previous-frame value, updated end-of-frame.
+- `aboveMidline` — `feetY < world.getMidlineWorldY()`.
+- `player.lastAboveMidline` — previous-frame value, updated end-of-frame.
+- `player.behindMountain` — true while occluded by the overlay.
+
+Triggers fire on *transitions* gated by both midline frames being above:
+- Walk-back-behind: `!lastOnMountain && onMountain && aboveMidline && lastAboveMidline && state==='ground' && !behindMountain`.
+- Fall-behind: `lastOnMountain && !onMountain && aboveMidline && lastAboveMidline && state==='ground'`. Sets `fallTargetY = midlineWorldY` and `behindMountain = true`.
+
+Behind-state guards still in place:
+- Zone override: `playerZone = behindMountain ? Zone.SAND : realZone` (suppresses ramp drift, climb, etc.).
+- `onSand` override: `aboveMidline && onMountain → onSand = false`.
+- Climbing→falling gate: `onSandLike && !onMountain → falling` (otherwise stays climbing/ground).
+- Empty obstacle list while behind so the player phases through rocks.
+- Y-clamp at midline so `feetY > midlineWorldY` is pulled back while behind.
+- Clear: full sprite-bbox `isSpriteBehindMountain(player.x, player.y, player.width, player.height)` returns false → `behindMountain = false`.
