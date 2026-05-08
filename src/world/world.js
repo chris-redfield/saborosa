@@ -85,18 +85,12 @@ class World {
         return rect.y + rect.h * 0.5;
     }
 
-    // Sample the overlay PNG (which already encodes the mountain silhouette
-    // as its opaque pixels) once at first use, and compute a per-column
-    // boolean: "is column X part of the mountain shadow?"
-    //
-    // The classifier-based version this replaces was tripping on isolated
-    // outline / anti-alias pixels far outside the visible silhouette,
-    // trapping the player behind the mountain forever. Here we require a
-    // minimum contiguous vertical run of opaque pixels in the column so
-    // single stray dots can't mark a column as shadow.
-    _ensureMountainSilhouette() {
-        if (this._mountainSilhouette !== undefined) return;
-        this._mountainSilhouette = null;
+    // Cache the overlay PNG's pixel data once at first use. The overlay is
+    // the actual mountain silhouette as drawn on screen, so its alpha
+    // channel is the source of truth for "is this pixel mountain?"
+    _ensureMountainOverlayData() {
+        if (this._mountainOverlayData !== undefined) return;
+        this._mountainOverlayData = null;
         const key = this.stage.backgroundOverlayImage;
         if (!key) return;
         const img = this.game.getImage(key);
@@ -109,63 +103,46 @@ class World {
         c.height = h;
         const ctx = c.getContext('2d');
         ctx.drawImage(img, 0, 0);
-        let data;
         try {
-            data = ctx.getImageData(0, 0, w, h).data;
+            const id = ctx.getImageData(0, 0, w, h);
+            this._mountainOverlayData = { data: id.data, w, h };
         } catch (err) {
-            console.error('Mountain silhouette sampling failed:', err);
-            return;
+            console.error('Mountain overlay sampling failed:', err);
         }
-
-        // For each column, find the lowest opaque pixel — i.e. the bottom
-        // edge of the silhouette at that column. Concave parts of the
-        // silhouette (notches above the midline, peaks where the mountain is
-        // only at the very top) have a small bottom-Y; columns where the
-        // silhouette "comes down close to the player" have a large bottom-Y.
-        const midline = Math.floor(h * 0.5);
-        const bottomY = new Int32Array(w);
-        for (let x = 0; x < w; x++) bottomY[x] = -1;
-        for (let y = 0; y < midline; y++) {
-            for (let x = 0; x < w; x++) {
-                if (data[(y * w + x) * 4 + 3] > 0) bottomY[x] = y;
-            }
-        }
-
-        // A column counts as "shadow" only when its silhouette-bottom is
-        // within REACH_PX of the midline. This is the value that follows the
-        // polygon's actual shape: concave notches and far-up peaks naturally
-        // fall outside the threshold so the player can walk past them.
-        // 60 image pixels ≈ the player sprite's top half projected into
-        // image space — i.e. "the mountain is close enough overhead that it
-        // would visually cover the sprite."
-        const REACH_PX = 60;
-        const minBottom = midline - REACH_PX;
-        const cols = new Uint8Array(w);
-        let xMin = w, xMax = -1;
-        for (let x = 0; x < w; x++) {
-            if (bottomY[x] >= minBottom) {
-                cols[x] = 1;
-                if (x < xMin) xMin = x;
-                if (x > xMax) xMax = x;
-            }
-        }
-
-        this._mountainSilhouette = { cols, imgW: w, imgH: h, xMin, xMax };
     }
 
-    // True if the column at world-x falls inside the mountain silhouette
-    // (computed from the overlay PNG). Used to keep the player's
-    // behindMountain flag while they remain in the silhouette and clear it
-    // the instant they walk past either edge.
-    isInMountainShadow(wx) {
-        this._ensureMountainSilhouette();
-        const sil = this._mountainSilhouette;
-        if (!sil) return false;
+    // True if any opaque overlay pixel overlaps the player's sprite bbox.
+    // This *is* the polygon test: the overlay is the mountain shape, alpha
+    // is the boundary. Rectangular early-out + sparse sampling keep it fast.
+    //
+    // Concavity (notches between peaks, gaps inside the silhouette, etc.)
+    // is handled for free because we're checking the polygon's own pixels
+    // — there is no rectangular bbox heuristic anywhere in the path.
+    isSpriteBehindMountain(wx, wy, ww, wh) {
+        this._ensureMountainOverlayData();
+        const od = this._mountainOverlayData;
+        if (!od) return false;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return false;
-        const px = Math.floor((wx - rect.x) / rect.w * sil.imgW);
-        if (px < sil.xMin || px > sil.xMax) return false;
-        return sil.cols[px] === 1;
+
+        const px0 = Math.max(0, Math.floor((wx - rect.x) / rect.w * od.w));
+        const px1 = Math.min(od.w - 1, Math.floor((wx + ww - rect.x) / rect.w * od.w));
+        const py0 = Math.max(0, Math.floor((wy - rect.y) / rect.h * od.h));
+        const py1 = Math.min(od.h - 1, Math.floor((wy + wh - rect.y) / rect.h * od.h));
+        if (px0 > px1 || py0 > py1) return false;
+
+        // Step samples across the bbox — sprite is small enough that a
+        // 2-pixel step is well under any sliver the overlay could have.
+        const STEP = 2;
+        const data = od.data;
+        const w = od.w;
+        for (let py = py0; py <= py1; py += STEP) {
+            const rowOff = py * w;
+            for (let px = px0; px <= px1; px += STEP) {
+                if (data[(rowOff + px) * 4 + 3] > 0) return true;
+            }
+        }
+        return false;
     }
 
     // Mountain-silhouette overlay (transparent below the midline). Drawn on

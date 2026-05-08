@@ -172,27 +172,10 @@ function updateGame(dt) {
         && player.lastZone !== Zone.SAND && player.lastZone !== Zone.NONE;
 
     // 1) Transitions based on current zone + intended movement direction.
-    if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
-        // Entering a wall from ground: going up = climbing; any other
-        // direction = fall.
-        if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
-            player.surfaceState = 'climbing';
-        } else {
-            player.surfaceState = 'falling';
-        }
-    } else if (player.surfaceState === 'ground' && onSandLike
-               && aboveMidline && lastWasMountain) {
-        // Walked off the mountain (any non-sand zone) onto sand while still
-        // above the midline. Fall straight down to the midline.
-        player.surfaceState = 'falling';
-    } else if (player.surfaceState === 'climbing') {
-        if (onSandLike) {
-            player.surfaceState = 'falling';
-        } else if (playerZone !== Zone.WALL) {
-            // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
-            player.surfaceState = 'ground';
-        }
-    } else if (player.surfaceState === 'falling') {
+    // Falling exit always runs (the fall must be able to land). Other zone
+    // transitions are skipped while behindMountain so they can't re-fire on
+    // the SAND override (e.g. fall-behind retriggering every frame).
+    if (player.surfaceState === 'falling') {
         // Two exit modes: midline-target (fall-behind) or "leave WALL" (climb fall).
         if (player.fallTargetY != null) {
             if (feetY >= player.fallTargetY) {
@@ -202,6 +185,28 @@ function updateGame(dt) {
             }
         } else if (playerZone !== Zone.WALL) {
             player.surfaceState = 'ground';
+        }
+    } else if (!player.behindMountain) {
+        if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
+            // Entering a wall from ground: going up = climbing; any other
+            // direction = fall.
+            if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
+                player.surfaceState = 'climbing';
+            } else {
+                player.surfaceState = 'falling';
+            }
+        } else if (player.surfaceState === 'ground' && onSandLike
+                   && aboveMidline && lastWasMountain) {
+            // Walked off the mountain (any non-sand zone) onto sand while still
+            // above the midline. Fall straight down to the midline.
+            player.surfaceState = 'falling';
+        } else if (player.surfaceState === 'climbing') {
+            if (onSandLike) {
+                player.surfaceState = 'falling';
+            } else if (playerZone !== Zone.WALL) {
+                // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
+                player.surfaceState = 'ground';
+            }
         }
     }
 
@@ -215,11 +220,15 @@ function updateGame(dt) {
         if (player.fallTargetY != null) player.behindMountain = true;
     }
 
-    // Clear behindMountain once the player walks out of the silhouette
-    // (computed from the overlay PNG, so it matches what's drawn).
-    if (player.behindMountain && world.isInMountainShadow) {
-        const px = player.x + player.colOffX + player.colW * 0.5;
-        if (!world.isInMountainShadow(px)) player.behindMountain = false;
+    // Clear behindMountain when the player's sprite bbox no longer overlaps
+    // any opaque pixel of the overlay — i.e., visually the mountain is no
+    // longer covering them. This is a true polygon test against the actual
+    // overlay alpha, not a column-of-X heuristic, so concave notches and
+    // tendrils are handled correctly.
+    if (player.behindMountain && world.isSpriteBehindMountain) {
+        if (!world.isSpriteBehindMountain(player.x, player.y, player.width, player.height)) {
+            player.behindMountain = false;
+        }
     }
 
     // 2) State-specific movement overrides.
@@ -259,8 +268,10 @@ function updateGame(dt) {
         }
     }
 
-    // Record the zone we settled on this frame for next frame's edge-detect.
-    player.lastZone = playerZone;
+    // Record the *real* zone we settled on this frame for next frame's
+    // edge-detect. Tracking the override SAND would mislead walk-back-behind
+    // into re-firing the moment behindMountain clears onto colored ground.
+    player.lastZone = realZone;
 
     // Apply zone drift to movable obstacles (rocks, live rocks).
     // Skip carried objects and stack children (their parent will drag them).
