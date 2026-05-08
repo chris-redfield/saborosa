@@ -100,13 +100,28 @@ function updateGame(dt) {
     // drift, and any future zone-based behavior.
     const feetX = player.x + player.colOffX + player.colW / 2;
     const feetY = player.y + player.colOffY + player.colH / 2;
+    const realZone = world.getZoneAt(feetX, feetY);
+
+    // Walk-back-behind trigger: if the player is on sand above the midline
+    // and steps into any non-sand zone, slip behind the mountain rather than
+    // climbing it or falling. Mirrors the fall-behind direction (mountain →
+    // sand), but for sand → mountain. Runs before the playerZone override so
+    // the override applies on the same frame the flag flips.
+    const midlineWorldY = (world.stage && world.stage.backgroundImage)
+        ? world.getMidlineWorldY() : null;
+    const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
+    if (!player.behindMountain && aboveMidline
+        && player.surfaceState === 'ground'
+        && (player.lastZone === Zone.SAND || player.lastZone === Zone.NONE)
+        && realZone !== Zone.SAND && realZone !== Zone.NONE) {
+        player.behindMountain = true;
+    }
+
     // While in the fall-behind state, the player is treated as if walking on
     // plain sand regardless of the actual painted zone — no climbing, no
     // ramp drift, no re-triggering a fall on top of a different cube. They
     // stay in this "virtual sand" until they walk out of the column shadow.
-    const playerZone = player.behindMountain
-        ? Zone.SAND
-        : world.getZoneAt(feetX, feetY);
+    const playerZone = player.behindMountain ? Zone.SAND : realZone;
 
     // Check if player is on sand. Only regular sand sinks the sprite —
     // DENSE_SAND slows the player but doesn't crop the sprite.
@@ -150,10 +165,8 @@ function updateGame(dt) {
     const prevState = player.surfaceState;
 
     // Fall-behind: any step from a non-sand zone above the image midline
-    // onto sand drops the player straight down to the midline.
-    const midlineWorldY = (world.stage && world.stage.backgroundImage)
-        ? world.getMidlineWorldY() : null;
-    const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
+    // onto sand drops the player straight down to the midline. midlineWorldY
+    // and aboveMidline are computed earlier (used by walk-back-behind).
     const onSandLike = playerZone === Zone.SAND || playerZone === Zone.NONE;
     const lastWasMountain = player.lastZone != null
         && player.lastZone !== Zone.SAND && player.lastZone !== Zone.NONE;
@@ -228,7 +241,10 @@ function updateGame(dt) {
         dy += drift.dy;
     }
 
-    player.move(dx, dy, obstacles);
+    // While behind the mountain the player isn't on the same plane as the
+    // surface objects — they walk through rocks/cubes/etc. Pass an empty
+    // obstacle list so collisions are skipped.
+    player.move(dx, dy, player.behindMountain ? [] : obstacles);
 
     // Behind-mountain horizontal wall: while in the fall-behind state the
     // player can't move south past the midline. They fall down to it (the
@@ -318,16 +334,20 @@ function updateGame(dt) {
         if (obs.update && obs !== player) obs.update(dt);
     }
 
-    // Update stack target cursor every frame while carrying
-    player.updateStackTarget(obstacles);
+    // Surface interactions are disabled while behind the mountain — the
+    // player isn't on the same plane as the rocks / portals.
+    if (!player.behindMountain) {
+        // Update stack target cursor every frame while carrying
+        player.updateStackTarget(obstacles);
 
-    // Lift / drop (Space)
-    if (game.input.isKeyJustPressed('attack')) {
-        player.liftOrDrop(obstacles);
+        // Lift / drop (Space)
+        if (game.input.isKeyJustPressed('attack')) {
+            player.liftOrDrop(obstacles);
+        }
     }
 
     // Basket interaction — start ascent
-    if (game.input.isKeyJustPressed('interact')) {
+    if (!player.behindMountain && game.input.isKeyJustPressed('interact')) {
         const portal = world.getPortalAt(player);
         if (portal) {
             gameState.transition = {

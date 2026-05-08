@@ -93,48 +93,45 @@ Since there's no `level` integer, zoom is driven by `surfaceState`:
 
 **Exit criteria:** Climbing onto a wall visibly zooms out; stepping off zooms back in smoothly.
 
-### Phase 8 — "Fall-behind" system (high-zone → sand fall with occlusion) ✅ **DONE**
+### Phase 8 — "Fall-behind" system ✅ **DONE**
 
-Shipped (final design — diverged from the original sketch in a few ways):
+The mountain silhouette occludes the player when they fall behind it. Final architecture:
 
-**Two-layer background.** The original `cor-saborosa-fundo-02.png` is no longer drawn. `tools/fall-behind-overlay.html` splits it into two PNGs that stack to recreate the source:
-- `cor-saborosa-fundo-02-lower.png` — everything except the mountain silhouette (full image below the midline + sand-only above the midline). Drawn as the base by `world.renderGround`.
-- `cor-saborosa-fundo-02-overlay.png` — the mountain silhouette above the midline; sand and below-midline transparent. Drawn either before or after the player depending on state.
+**Two-layer background.** `tools/fall-behind-overlay.html` splits the source PNG into two transparent layers that stack back to the original:
+- `assets/cor-saborosa-fundo-02-lower.png` — full image below the midline + sand-only above. Drawn as the base by `world.renderGround`.
+- `assets/cor-saborosa-fundo-02-overlay.png` — mountain silhouette above the midline; everything else transparent. Drawn either before or after the player depending on `behindMountain`.
 
-The original is kept in `engine/game.js` only so `world._ensureZoneData` can build its zone-classification canvas from it.
+The original `stage3_bg` is still loaded but only used by `_ensureZoneData` to build the zone-classification canvas — it's never drawn anymore.
 
-**Fall trigger and landing.** Stepping off any non-sand zone onto sand while the player's feet are above the image midline transitions `surfaceState` to `'falling'` with `player.fallTargetY = midlineWorldY`. Fall velocity uses the existing accel curve; the falling-exit branch lands by snapping `player.y` so the collision center sits exactly at midline. Wall-side falls keep their old behavior (no target → exit when zone leaves `WALL`).
+**Fall trigger.** Stepping off any non-sand zone onto sand while the player's feet are above the image midline sets `surfaceState='falling'` and `player.fallTargetY = midlineWorldY`. The falling-exit branch snaps `player.y` so the collision center lands exactly at midline. Wall-side falls keep their old behavior (`fallTargetY === null` → exit when zone leaves `WALL`).
 
-**`player.behindMountain` is the source of truth for occlusion.** Set true the frame a midline-targeted fall begins; cleared when `world.hasMountainAboveColumn(player.x)` returns false (player walked sideways out of the column shadow). Pure geometry ("are you below mountain pixels?") was tried first but mis-fired when the player walked under the mountain from the south — they were geometrically below mountain pixels but should still render in front. The flag is sticky and only flips on real fall events.
+**`player.behindMountain` flag.** Set true the frame a midline-targeted fall begins; cleared when the player walks out of the silhouette. State, not pure geometry — a geometric "is below mountain pixels" check fires when the player walks *under* the mountain from the south too, which should render in front, not behind.
 
-**Render order.** `lower` → if `!behindMountain` then `overlay` → entities → if `behindMountain` then `overlay` at `globalAlpha = 0.5`. The half-opacity is so the player remains visible behind the silhouette during the descent.
+**Silhouette detection (`world.isInMountainShadow(wx)`).** Sources directly from the overlay PNG, not from classifier results, so it matches what's drawn. Computed once at first use:
+1. Sample the overlay's alpha channel into per-column `bottomY` — the lowest opaque row at each column.
+2. A column is "shadow" if `bottomY[col] >= midline - REACH_PX` (silhouette comes down close to where the player stands). `REACH_PX = 60` ≈ player-sprite half-height in image space.
+3. This naturally follows concavity: notches above midline are columns whose bottom-Y is far up, so the player walks through them freely. Earlier "any pixel in the column" / "min-run" / "column mass" attempts all failed because they ignored *how close* the silhouette gets to the midline — far-up peaks would trap the player in distant columns forever.
 
-**Behind-state physics overrides.** While `behindMountain` is true, `playerZone` is forced to `Zone.SAND` regardless of the painted zone underneath. This disables ramp drift, climb/fall transitions, dense-sand slowdown, and (importantly) prevents the fall-behind trigger from re-firing — `lastZone` ends up `SAND` each frame, so `lastWasMountain` stays false.
+**Render order.** `lower` → if `!behindMountain` then `overlay` → entities → if `behindMountain` then `overlay` at `globalAlpha = 0.5`. Half-opacity keeps the sprite visible while occluded.
 
-**One-way midline wall.** While `behindMountain` is true, after `player.move` we clamp `feetY` back to `midlineWorldY` if movement pushed it south. Going up is uncapped (the player is "above" the wall conceptually). The fall itself is unaffected — its own landing logic does the snap. This forces sideways exit when the column under the player has midline-non-sand terrain and prevents the player from sliding south through the wall and getting stuck behind the mountain on a colored zone.
+**Behind-state physics override.** While `behindMountain` is true, `playerZone` is forced to `Zone.SAND` regardless of the actual painted zone. This disables ramp drift, climb/fall transitions, dense-sand slowdown, and re-triggering the fall (since `lastZone` ends up `SAND`, `lastWasMountain` stays false).
 
-Below the original specification for reference:
+**One-way midline wall.** While `behindMountain`, after `player.move` we clamp `feetY` back to `midlineWorldY` if it pushed south. Up is unconstrained (the player is "above" the wall conceptually). Forces sideways exit instead of letting the player slide south onto colored ground and re-bind themselves behind.
 
+### Phase 9 — Walk-back-behind + behind-state isolation ← **next**
 
+Two follow-ups that complete the fall-behind feel:
 
-When the player steps off a colored (non-sand) zone whose Y is above the image midline directly onto sand, they fall in +Y at locked X (same as the wall-fall logic) until `y == image_height / 2` (the midline). If, during/after that fall, the player's X is within the horizontal span of mountain pixels *below* them (there are colored pixels between the player's Y and the midline at that X), they're "behind" the mountain — the mountain silhouette must render on top of the player to sell the occlusion.
+**Walk-back-behind trigger.** Currently the only path into `behindMountain` is the fall. But the player can also be standing on sand *above* the midline (north of the mountain, on the open beige) and walk south into the mountain. Today that triggers climb/fall on the mountain pixels. The desired behavior: while on sand above the midline, stepping into any non-sand zone should set `behindMountain = true` directly — no climb, no fall, just slip behind. They never "interact with" the mountain from the high-altitude sand side.
 
-Decisions locked in with the user:
-- **Trigger**: stepping off a colored zone above the midline directly onto sand. Reuse the existing wall-fall state machine (`falling`) — extend it for this case, don't refactor it in a way that breaks current wall behavior.
-- **Fall end Y**: exactly `image_height / 2` (same reference used to define "high zone"). Not "next sand pixel."
-- **Behind detection**: at the player's current X, scan upward (or check the precomputed mask) — if there are colored mountain pixels between the player and the midline, they're behind.
-- **Overlay image**: generated *offline* by a separate script so we can inspect the asset before integrating. Script reads the original background, keeps non-sand colored pixels above the midline opaque, makes everything else transparent. Output saved to `assets/` alongside the original.
-- **Render layering when behind**: full background → player → mountain-overlay image on top. Player-only for now (rocks etc. unaffected).
-- **Exit from behind**: player walks sideways out of the occluded X-band onto open sand (no mountain pixels above them anymore). Once they exit, stop rendering the overlay (effectively back to the normal background).
+Implementation sketch: in the surface-state machine, before the existing `ground → climbing/falling` transitions, check `prevZone === SAND/NONE && aboveMidline && playerZone !== SAND/NONE`. If yes, set `behindMountain = true` and skip the rest of the transition logic (no `fallTargetY`, no state change — the SAND override will kick in for everything else).
 
-Plan of attack:
-1. **Asset script** (`scripts/build-fall-behind-overlay.js` or similar). Standalone Node script — input: `assets/cor-saborosa-fundo-02.png`, output: `assets/cor-saborosa-fundo-02-overlay.png`. Uses the same HSV classifier rules as `classifyZoneColor` to decide sand vs. colored. Inspect output by hand before wiring in.
-2. **Load the overlay** alongside the existing background in `world.js` (same stretch transform applied).
-3. **Behind-detection helper**: `world.isPlayerBehindMountain(worldX, worldY)` — samples the cached zone canvas in a vertical strip from player.y up to midline at column worldX; returns `true` if any colored (non-sand, non-walkable) pixel exists in that strip. Cache or scan-line precompute possible if perf becomes an issue.
-4. **Fall trigger extension** in the player surface-state machine: when transitioning to `falling` from a high zone onto sand, mark fall as "high-zone fall" and use midline-Y as the termination instead of "next non-WALL pixel."
-5. **Render hook** in `main.js` (or wherever ground/entities are rendered): if `world.isPlayerBehindMountain(player.x, player.y)`, draw the overlay image after the player pass.
+**Object non-interaction while behind.** While `behindMountain` is true the player shouldn't touch any surface objects — they're not on the same plane. Concretely:
+- Pass an empty (or filtered) obstacle list to `player.move` so rocks/cubes don't collide.
+- Skip the `liftOrDrop` and `updateStackTarget` calls.
+- Skip portal/basket interaction checks.
 
-**Exit criteria**: From the upper mountain area (Phase 5 walls), walking off the left side drops the player straight down to the midline; while in the X-band of the mountain, the colored silhouette draws on top of the sprite; walking sideways out from behind restores normal rendering. Walking off the right side falls without occlusion.
+**Exit criteria:** (1) Walking south on sand from the north side of the mountain into the silhouette puts the player directly behind it without climbing, and lateral exit from the silhouette returns control as before. (2) Rocks left on the surface are visibly walked-through while behind, and the lift key does nothing while behind.
 
 ### Phase 7 — Differentiate red (partial)
 
@@ -163,6 +160,7 @@ Still open:
 - [ ] Phase 6 — Camera zoom on walls
 - [~] Phase 7 — Red reclassified to plain walkable; distinct behavior still TBD
 - [x] Phase 8 — Fall-behind system (overlay-asset occlusion when falling left of mountain)
+- [ ] Phase 9 — Walk-back-behind trigger + object non-interaction while behind ← **next**
 
 ## Known Issues / Follow-ups
 
