@@ -108,8 +108,17 @@ class Player {
 
     loadSprites() {
         const spriteSheet = new SpriteSheet(this.game);
-        const result = spriteSheet.loadSprites(this.width, this.height);
-        this.sprites = result.sprites;
+        const original = spriteSheet.loadSprites(this.width, this.height);
+        const coconut = spriteSheet.loadCoconutSprites(this.height);
+        this.spritePacks = [original.sprites, coconut.sprites];
+        this.characterIndex = 0;
+        this.sprites = this.spritePacks[0];
+    }
+
+    cycleCharacter() {
+        this.characterIndex = (this.characterIndex + 1) % this.spritePacks.length;
+        this.sprites = this.spritePacks[this.characterIndex];
+        console.log('Character switched to pack', this.characterIndex);
     }
 
     dash(currentTime, inputX, inputY) {
@@ -613,20 +622,29 @@ class Player {
 
         if (spriteData && spriteData.image) {
             const cropSh = spriteData.sh * (1 - srcCropRatio);
+            const renderW = spriteData.width;
+            // Center variable-width sprites on the collision footprint. When
+            // renderW === this.width (original character) the math collapses
+            // back to drawX so existing pixel placement is unchanged.
+            let offsetX = drawX;
+            if (renderW !== this.width) {
+                const colCenter = drawX + this.colOffX + this.colW / 2;
+                offsetX = Math.round(colCenter - renderW / 2);
+            }
             ctx.save();
             if (spriteData.flipped) {
-                ctx.translate(drawX + this.width, drawY);
+                ctx.translate(offsetX + renderW, drawY);
                 ctx.scale(-1, 1);
                 ctx.drawImage(
                     spriteData.image,
                     spriteData.sx, spriteData.sy, spriteData.sw, cropSh,
-                    0, 0, spriteData.width, visibleH
+                    0, 0, renderW, visibleH
                 );
             } else {
                 ctx.drawImage(
                     spriteData.image,
                     spriteData.sx, spriteData.sy, spriteData.sw, cropSh,
-                    drawX, drawY, spriteData.width, visibleH
+                    offsetX, drawY, renderW, visibleH
                 );
             }
             ctx.restore();

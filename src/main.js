@@ -96,6 +96,11 @@ function updateGame(dt) {
         player.dash(performance.now(), movement.x, movement.y);
     }
 
+    // Cycle character sprite pack (1 = next pack)
+    if (game.input.isKeyJustPressed('cycleCharacter')) {
+        player.cycleCharacter();
+    }
+
     // Sample the zone under the player's footprint once — reused for sand,
     // drift, and any future zone-based behavior.
     const feetX = player.x + player.colOffX + player.colW / 2;

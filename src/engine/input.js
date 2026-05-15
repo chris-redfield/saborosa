@@ -32,7 +32,8 @@ class InputHandler {
             'KeyP': 'pause',
 
             'Escape': 'escape',
-            'KeyC': 'debug'
+            'KeyC': 'debug',
+            'Digit1': 'cycleCharacter'
         };
 
         this.gamepadMap = {

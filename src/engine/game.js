@@ -81,11 +81,15 @@ class Game {
                 this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
-                this.loadImage('cubes', 'assets/cor-saborosa-box-01.png')
+                this.loadImage('cubes', 'assets/cor-saborosa-box-01.png'),
+                this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
+                this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json')
             ]);
             // Cube sheet uses a solid white background. Key it out so the
             // sprites composite cleanly over the stage art.
             this._makeWhiteTransparent('cubes');
+            // Coconut sheet was pre-processed offline (PIL matte extraction)
+            // into a PNG with proper anti-aliased alpha, so no runtime keying.
             this.assets.loaded = true;
             console.log('Assets loaded');
         } catch (err) {
