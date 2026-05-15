@@ -81,6 +81,13 @@ const STAGES = {
         // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
         // in the 11520-wide walkable area (margin ~1577 each side).
         backgroundImageRect: { x: 1577, y: 0, w: 8366, h: 6480 },
+        // Camera zoom bands keyed off feetY (world coords). Two Y thresholds
+        // → three altitude zones. As the player walks north (smaller Y) and
+        // crosses a threshold, the target scale steps further out. Walking
+        // south back across a threshold steps it back in. Exponential
+        // smoothing makes the steps feel like an eased transition.
+        cameraZoomThresholds: [5000, 2500],
+        cameraZoomScales: [1.0, 0.88, 0.78],
         spawnX: 7900, // 7900
         spawnY: 3800, // 3800
         safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },

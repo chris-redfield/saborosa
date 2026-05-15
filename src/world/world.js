@@ -32,6 +32,7 @@ class World {
 
         this.cameraX = 0;
         this.cameraY = 0;
+        this.cameraScale = 1;
 
         // Cache valid block keys for finite stages
         this._validBlocks = null;

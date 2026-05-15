@@ -18,11 +18,11 @@ Implications:
 The player does not have an explicit integer `level` or float `z`. Instead:
 - Most of the world is flat — walking doesn't change height.
 - **Ramps** (yellow / blue) tilt the surface: the player slides along the ramp, which in our top-down view reads as constant-velocity push in a direction. No explicit height tracked; "rolling downhill" is emergent.
-- **Walls** (green / red) are *higher surfaces*. The player has a boolean-ish state `onWall` (or a small set: `ground | climbing | onWall`). When stepping from ground into a wall zone → climb transition. When stepping off the edge of a wall → fall back to ground.
+- **Walls** (green / red) are *higher surfaces*. The player's `surfaceState` is one of `ground | climbing | falling`. When stepping from ground into a wall zone → `climbing`. When stepping off the edge of a wall → `falling` back to ground. A separate `player.onTop` flag tracks "I'm standing on a cube top" for things like camera zoom.
 - Because visual "up" in an isometric-ish top-down game maps partly to Y, moving north on screen *feels* like going up — that's what the user means by "altitude is kinda defined by Y, but not 100%."
 
 Implications:
-- No camera zoom driven by a `level` integer. Camera zoom-out instead triggers when the player is `onWall` (or scales with a smoothed "wall-ness" value).
+- No camera zoom driven by a `level` integer. Camera zoom-out instead triggers when `player.onTop` is true (or scales with a smoothed "wall-ness" value).
 - Depth sorting already uses Y; walls add a vertical render offset on top of that.
 - Falling off a wall is a state transition, not a physics drop.
 
@@ -72,26 +72,35 @@ Out of order — skipped for now because by itself it has no visible payoff; com
 Marble-Madness-style: walls are higher surfaces, not an altitude integer.
 
 Shipped:
-- `player.surfaceState`: `'ground' | 'climbing' | 'onWall' | 'falling'`, plus `player.lastZone` for edge detection.
+- `player.surfaceState`: `'ground' | 'climbing' | 'falling'`, plus `player.lastZone` for edge detection. A separate `player.onTop` boolean tracks "currently standing on a cube top" (set true when a climb completes, cleared on fall or landing).
 - **Entering a wall (ground → climbing/falling):** walking into a WALL pixel moving predominantly up (`dy < 0 && |dy| >= |dx|`) triggers `climbing`. Any other approach (down / sideways) triggers `falling`.
-- **Climb = physical lift.** The climb lasts `climbDurationMs = 800ms` and *actually* moves the player up 40px by interpolating `dy` over the duration (no visual-only offset — the earlier approach caused a mismatch where zone sampling still read `WALL` even though the sprite looked on top). After the timer hits 0, state → `onWall`.
-- **Sticky top zones while onWall:** `WALL | DENSE_SAND | RAMP_LEFT | RAMP_RIGHT` all keep you up. Gray (cube top) and ramps on top both count as "still on the cube."
+- **Climb = physical lift.** The climb lasts `climbDurationMs = 800ms` and *actually* moves the player up 40px by interpolating `dy` over the duration (no visual-only offset — the earlier approach caused a mismatch where zone sampling still read `WALL` even though the sprite looked on top). After the timer hits 0, the climbing → `ground` transition fires (and sets `onTop = true`).
+- **Sticky top zones while on a cube top:** `WALL | DENSE_SAND | RAMP_LEFT | RAMP_RIGHT` all keep you up. Gray (cube top) and ramps on top both count as "still on the cube."
 - **Edge fall-offs:** stepping from a top zone (`DENSE_SAND` / `RAMP_*`) back onto a `WALL` pixel = you walked off the front edge → `falling`. Implemented via `player.lastZone` comparison.
-- **Ramp drift applies while onWall too** — standing on a yellow/blue ramp at the top of a cube slides you.
+- **Ramp drift applies on the cube top too** — standing on a yellow/blue ramp at the top of a cube slides you.
 - **Falling = unrecoverable gravity.** Input is ignored, `dy` accelerates from `fallStartSpeed = 1.8` up to `fallMaxSpeed = 14.3` at `fallAccelPerSec = 18`. Transitions back to `ground` when the sampled zone is no longer `WALL` / `NONE`.
 - **Red is plain walkable.** The classifier was later changed so red no longer counts as a wall (see Phase 7 below).
 
 Change lives in `src/entities/player.js` (state fields + constants) and `src/main.js` (`updateGame` state machine, sample once at collision-box center, reuse for sand/drift/wall).
 
-### Phase 6 — Camera zoom when on walls ← **next**
+### Phase 6 — Camera zoom (altitude bands) ✅ **DONE**
 
-Since there's no `level` integer, zoom is driven by `surfaceState`:
+Initially planned as state-driven (`onTop` → zoom out, anything else → 1×), but tried in practice and didn't feel right — short cube-tops aren't what should drive the camera. Replaced with altitude bands.
 
-- `ground` / `climbing` / `falling` → scale 1.0
-- `onWall` → scale ~0.85 (smoothed over ~0.5s)
-- Apply in `renderGround` / entity pass.
+Shipped:
+- Two Y thresholds in stage config carve the world into three altitude zones; each zone has its own target scale. Crossing a threshold north (smaller Y) steps the target out; crossing south steps it back in. Smoothing makes each step feel eased.
+- `cameraZoomThresholds: [5000, 2500]` and `cameraZoomScales: [1.0, 0.88, 0.78]` for stage 3. Defaults: low ground gets the widest band (77% of image height), mid-mountain and high-mountain split the remainder roughly evenly.
+- Render pass wrapped in `ctx.scale(s, s)` around the player's on-screen position so the focal point doesn't drift during transitions. HUD draws outside the transform.
+- Cull bounds buffered by 30% on each axis so zoom-out doesn't pop entities at the edge.
+- Active regardless of `behindMountain` state — altitude rules don't change just because you're occluded.
 
-**Exit criteria:** Climbing onto a wall visibly zooms out; stepping off zooms back in smoothly.
+`player.onTop` flag is still maintained (set at climb-complete, cleared on fall/land) but no longer drives the camera. Available for any future feature that wants "am I standing on top of a cube" semantics.
+
+Cosmetic notes:
+- Debug zone badge (held C) drifts a few pixels from the feet at zoom != 1 — it draws outside the transform with un-scaled feet coords.
+- Finite-stage edge clamping doesn't widen at zoom-out, so a sliver past the sand edge can show. Stage 3 is huge so this rarely matters.
+
+**Exit criteria met:** Walking north up the mountain visibly steps the camera out at two altitude bands; falling or walking back south steps it back in smoothly.
 
 ### Phase 8 — "Fall-behind" system ✅ **DONE**
 
@@ -182,8 +191,8 @@ Still open:
 - [x] Phase 2 — Ramps (yellow + blue, player + rocks)
 - [x] Phase 3 — Dense sand
 - [ ] Phase 4 — Dynamic zones *(deferred)*
-- [x] Phase 5 — Walls (climb / onWall / fall with gray-top stickiness and edge-fall)
-- [ ] Phase 6 — Camera zoom on walls
+- [x] Phase 5 — Walls (climb / onTop / fall with gray-top stickiness and edge-fall)
+- [x] Phase 6 — Camera zoom (altitude bands)
 - [~] Phase 7 — Red reclassified to plain walkable; distinct behavior still TBD
 - [x] Phase 8 — Fall-behind system (overlay-asset occlusion when falling left of mountain)
 - [x] Phase 9 — Walk-back-behind trigger + object non-interaction while behind

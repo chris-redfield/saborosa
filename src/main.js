@@ -204,11 +204,13 @@ function updateGame(dt) {
         if (player.fallTargetY != null) {
             if (feetY >= player.fallTargetY) {
                 player.surfaceState = 'ground';
+                player.onTop = false;
                 player.y = player.fallTargetY - player.colOffY - player.colH * 0.5;
                 player.fallTargetY = null;
             }
         } else if (playerZone !== Zone.WALL) {
             player.surfaceState = 'ground';
+            player.onTop = false;
         }
     } else if (!player.behindMountain) {
         if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
@@ -218,6 +220,7 @@ function updateGame(dt) {
                 player.surfaceState = 'climbing';
             } else {
                 player.surfaceState = 'falling';
+                player.onTop = false;
             }
         } else if (player.surfaceState === 'ground' && aboveMidline
                    && player.lastAboveMidline
@@ -229,6 +232,7 @@ function updateGame(dt) {
             // both frames above midline avoids a false transition when the
             // player crosses the midline on the lower part of the mountain.
             player.surfaceState = 'falling';
+            player.onTop = false;
         } else if (player.surfaceState === 'climbing') {
             if (onSandLike && !onMountain) {
                 // Stepped off the green onto real sand (overlay says we're
@@ -236,9 +240,12 @@ function updateGame(dt) {
                 // the southward-push bounce when the zone briefly reads
                 // sand-like at a polygon junction while still on mountain.
                 player.surfaceState = 'falling';
+                player.onTop = false;
             } else if (playerZone !== Zone.WALL) {
                 // Stepped off green onto regular terrain (gray top, ramp, red, walkable).
+                // Climb-complete: this is the moment we've reached the cube top.
                 player.surfaceState = 'ground';
+                player.onTop = true;
             }
         }
     }
@@ -381,6 +388,21 @@ function updateGame(dt) {
     player.update(dt);
     world.update(player);
 
+    // Camera zoom: altitude bands. Two Y thresholds carve the world into
+    // three zones; the target scale steps as the player crosses them. The
+    // exponential smoothing below eases the step into a transition.
+    const stage = gameState.currentStage;
+    let targetScale = 1;
+    if (stage && stage.cameraZoomThresholds && stage.cameraZoomScales) {
+        const thr = stage.cameraZoomThresholds;
+        const sc = stage.cameraZoomScales;
+        if (feetY < thr[1])      targetScale = sc[2];
+        else if (feetY < thr[0]) targetScale = sc[1];
+        else                     targetScale = sc[0];
+    }
+    const k = 1 - Math.exp(-dt / 0.15);
+    world.cameraScale += (targetScale - world.cameraScale) * k;
+
     // Animate live rocks
     for (const obs of obstacles) {
         if (obs.update && obs !== player) obs.update(dt);
@@ -425,6 +447,16 @@ function renderGame(ctx) {
     const camX = world.cameraX;
     const camY = world.cameraY;
 
+    // Zoom around the player's on-screen position so the focal point doesn't
+    // drift during the transition. HUD/debug draw outside this transform.
+    const scale = world.cameraScale;
+    const focalX = player.x + player.width / 2 - camX;
+    const focalY = player.y + player.height / 2 - camY;
+    ctx.save();
+    ctx.translate(focalX, focalY);
+    ctx.scale(scale, scale);
+    ctx.translate(-focalX, -focalY);
+
     // Draw ground tiles + lava (lower layer = sand + below-midline content)
     world.renderGround(ctx);
 
@@ -448,12 +480,15 @@ function renderGame(ctx) {
         return ay - by;
     });
 
-    // Render with camera offset
+    // Render with camera offset. Cull bounds buffered so zoom-out doesn't
+    // pop entities at the edge.
+    const cullBufX = game.width * 0.3;
+    const cullBufY = game.height * 0.3;
     for (const entity of entities) {
         const sx = entity.x - camX;
         const sy = entity.y - camY;
-        if (sx + entity.width < 0 || sx > game.width ||
-            sy + entity.height < 0 || sy > game.height) continue;
+        if (sx + entity.width < -cullBufX || sx > game.width + cullBufX ||
+            sy + entity.height < -cullBufY || sy > game.height + cullBufY) continue;
 
         entity.render(ctx, game, camX, camY);
     }
@@ -473,6 +508,8 @@ function renderGame(ctx) {
         t.basket.render(ctx, game, camX, camY);
         player.render(ctx, game, camX, camY);
     }
+
+    ctx.restore();
 
     // Stage name
     ctx.fillStyle = 'rgba(255,255,255,0.4)';

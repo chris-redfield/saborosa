@@ -53,6 +53,7 @@ class Player {
 
         // Wall interaction (Phase 5 — climbing / fall)
         this.surfaceState = 'ground'; // 'ground' | 'climbing' | 'falling'
+        this.onTop = false;           // true while standing on a cube top (drives Phase 6 zoom)
         this.climbSpeedFactor = 0.4;  // movement multiplier while on green (slower than sand)
 
         // Falling velocity — accelerates from fallStartSpeed up to fallMaxSpeed
