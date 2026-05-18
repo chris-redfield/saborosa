@@ -217,17 +217,24 @@ function updateGame(dt) {
         } else if (world.isFootprintOnRed && world.isFootprintOnRed(player)) {
             // Wall fall has overlapped a red zone. The classifier would keep
             // reporting WALL via outline-fallback, so use the footprint scan
-            // as the authoritative "touched red" signal. End the fall in place.
-            player.surfaceState = 'ground';
+            // as the authoritative "touched red" signal. Swap into climbing —
+            // the player is on green wall pixels, so they should be hugging
+            // the wall (not in ground state, which would only make sense if
+            // they had landed on a non-wall surface).
+            player.surfaceState = 'climbing';
             player.onTop = false;
         } else if (playerZone !== Zone.WALL) {
             player.surfaceState = 'ground';
             player.onTop = false;
         }
     } else if (!player.behindMountain) {
-        if (player.surfaceState === 'ground' && playerZone === Zone.WALL) {
-            // Entering a wall from ground: going up = climbing; any other
-            // direction = fall.
+        if (player.surfaceState === 'ground' && playerZone === Zone.WALL
+            && player.lastZone !== Zone.WALL) {
+            // Stepping ONTO a wall pixel from non-wall ground: going up =
+            // climbing, any other direction = fall. The lastZone check
+            // prevents this from re-firing when the player is parked on a
+            // green pixel because a fall just exited on red (the classifier
+            // reports WALL via outline-fallback at that boundary).
             if (dy < 0 && Math.abs(dy) >= Math.abs(dx)) {
                 player.surfaceState = 'climbing';
             } else {
