@@ -40,6 +40,15 @@
 
         input[type=file] { color: #aaa; font-size: 12px; }
 
+        select {
+            background: #0d1b2a;
+            color: #eee;
+            border: 1px solid #0f3460;
+            padding: 4px 6px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+
         button {
             background: #0f3460;
             color: #eee;
@@ -119,9 +128,13 @@
         <label>Padding (px):
             <input type="number" id="padding" value="2" min="0" max="20">
         </label>
-        <label title="When detection forms a clean grid, force every frame in the same column to share max(w) and max(h), anchored at bottom-center.">
-            <input type="checkbox" id="normalize-cols" checked>
-            Normalize column sizes
+        <label title="Force frames in the same row or column to share max(w) and max(h), anchored at bottom-center. Use 'row' when rows are directions, 'column' when columns are directions.">
+            Normalize:
+            <select id="normalize-mode">
+                <option value="row" selected>per row</option>
+                <option value="col">per column</option>
+                <option value="none">none</option>
+            </select>
         </label>
         <button id="detect-btn" class="primary">Detect Sprites</button>
         <button id="export-btn">Export JSON</button>
@@ -154,7 +167,7 @@
         const resultsDiv = document.getElementById('results');
         const statusEl = document.getElementById('status');
 
-        const DEFAULT_IMAGE = '../assets/saborosa-chat-002-2.jpeg';
+        const DEFAULT_IMAGE = '../assets/saborosa-chat-002-2.png';
 
         // --- Image loading ---
 
@@ -212,7 +225,11 @@
             return merged;
         }
 
-        function detect(bgTol, minGap, pad, normalize) {
+        // State produced by detect(), consumed by exportJSON()
+        let lastNCols = 0;
+        let lastNRows = 0;
+
+        function detect(bgTol, minGap, pad, normalizeMode) {
             const W = img.width;
             const H = img.height;
             ctx.drawImage(img, 0, 0);
@@ -277,36 +294,43 @@
                 perRowCounts.push(detected.length - before);
             }
 
-            // Per-column size normalization (only if a clean rectangular grid).
-            // For each column, every frame gets max(w) and max(h), anchored at
-            // bottom-center so the feet line stays put across animation frames.
+            // Grid sanity + size normalization. Only runs when detection forms
+            // a clean rectangular grid (same column count in every row band).
+            // Bottom-center anchor preserves the feet line across animation frames.
             let normalizeNote = '';
-            if (normalize && perRowCounts.length > 0) {
+            lastNCols = 0;
+            lastNRows = perRowCounts.length;
+            if (perRowCounts.length > 0) {
                 const ncols = perRowCounts[0];
                 const isClean = perRowCounts.every(c => c === ncols);
                 if (isClean && ncols > 0) {
+                    lastNCols = ncols;
                     const nrows = perRowCounts.length;
-                    const colMaxW = new Array(ncols).fill(0);
-                    const colMaxH = new Array(ncols).fill(0);
-                    for (let i = 0; i < detected.length; i++) {
-                        const c = i % ncols;
-                        if (detected[i].w > colMaxW[c]) colMaxW[c] = detected[i].w;
-                        if (detected[i].h > colMaxH[c]) colMaxH[c] = detected[i].h;
+                    if (normalizeMode === 'col') {
+                        // Every frame in column c shares maxW[c] × maxH[c].
+                        const maxW = new Array(ncols).fill(0);
+                        const maxH = new Array(ncols).fill(0);
+                        for (let i = 0; i < detected.length; i++) {
+                            const c = i % ncols;
+                            if (detected[i].w > maxW[c]) maxW[c] = detected[i].w;
+                            if (detected[i].h > maxH[c]) maxH[c] = detected[i].h;
+                        }
+                        applyNormalization(detected, ncols, (i) => i % ncols, maxW, maxH, W, H);
+                        normalizeNote = ` — normalized ${nrows}×${ncols} per-column (${maxW.map((w, i) => w + '×' + maxH[i]).join(', ')})`;
+                    } else if (normalizeMode === 'row') {
+                        // Every frame in row r shares maxW[r] × maxH[r].
+                        const maxW = new Array(nrows).fill(0);
+                        const maxH = new Array(nrows).fill(0);
+                        for (let i = 0; i < detected.length; i++) {
+                            const r = Math.floor(i / ncols);
+                            if (detected[i].w > maxW[r]) maxW[r] = detected[i].w;
+                            if (detected[i].h > maxH[r]) maxH[r] = detected[i].h;
+                        }
+                        applyNormalization(detected, ncols, (i) => Math.floor(i / ncols), maxW, maxH, W, H);
+                        normalizeNote = ` — normalized ${nrows}×${ncols} per-row (${maxW.map((w, i) => w + '×' + maxH[i]).join(', ')})`;
+                    } else {
+                        normalizeNote = ` — ${nrows}×${ncols} clean grid (no size normalization)`;
                     }
-                    for (let i = 0; i < detected.length; i++) {
-                        const c = i % ncols;
-                        const f = detected[i];
-                        const centerX = f.x + f.w / 2;
-                        const bottomY = f.y + f.h;
-                        const newW = colMaxW[c];
-                        const newH = colMaxH[c];
-                        let newX = Math.round(centerX - newW / 2);
-                        let newY = bottomY - newH;
-                        newX = Math.max(0, Math.min(newX, W - newW));
-                        newY = Math.max(0, Math.min(newY, H - newH));
-                        f.x = newX; f.y = newY; f.w = newW; f.h = newH;
-                    }
-                    normalizeNote = ` — normalized ${nrows}×${ncols} grid (per-column ${colMaxW.map((w, i) => w + '×' + colMaxH[i]).join(', ')})`;
                 } else {
                     normalizeNote = ` — uneven rows (${perRowCounts.join(', ')}), normalization skipped`;
                 }
@@ -315,6 +339,25 @@
             drawOverlay();
             renderResults();
             statusEl.textContent = `Detected ${detected.length} sprite(s) in ${rowBands.length} row(s)${normalizeNote}.`;
+        }
+
+        // Re-anchor each frame to its group's max size (bottom-center anchor).
+        // groupOf(i) returns the group index for frame i; maxW/maxH are arrays
+        // indexed by group.
+        function applyNormalization(frames, ncols, groupOf, maxW, maxH, W, H) {
+            for (let i = 0; i < frames.length; i++) {
+                const g = groupOf(i);
+                const f = frames[i];
+                const centerX = f.x + f.w / 2;
+                const bottomY = f.y + f.h;
+                const newW = maxW[g];
+                const newH = maxH[g];
+                let newX = Math.round(centerX - newW / 2);
+                let newY = bottomY - newH;
+                newX = Math.max(0, Math.min(newX, W - newW));
+                newY = Math.max(0, Math.min(newY, H - newH));
+                f.x = newX; f.y = newY; f.w = newW; f.h = newH;
+            }
         }
 
         // --- Rendering ---
@@ -362,8 +405,8 @@
             const bgTol = parseInt(document.getElementById('bg-tol').value, 10);
             const minGap = parseInt(document.getElementById('min-gap').value, 10);
             const pad = parseInt(document.getElementById('padding').value, 10);
-            const normalize = document.getElementById('normalize-cols').checked;
-            detect(bgTol, minGap, pad, normalize);
+            const normalizeMode = document.getElementById('normalize-mode').value;
+            detect(bgTol, minGap, pad, normalizeMode);
         });
 
         exportBtn.addEventListener('click', () => {
@@ -371,7 +414,12 @@
                 alert('Run "Detect Sprites" first.');
                 return;
             }
-            const data = JSON.stringify({ frames: detected }, null, 2);
+            // Include cols/rows so loaders can index frames as a grid without
+            // re-deriving the layout.
+            const payload = { frames: detected };
+            if (lastNCols > 0) payload.cols = lastNCols;
+            if (lastNRows > 0) payload.rows = lastNRows;
+            const data = JSON.stringify(payload, null, 2);
             const blob = new Blob([data], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
