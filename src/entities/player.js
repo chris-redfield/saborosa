@@ -111,14 +111,15 @@ class Player {
     loadSprites() {
         const spriteSheet = new SpriteSheet(this.game);
         const original = spriteSheet.loadSprites(this.width, this.height);
-        const coconut = spriteSheet.loadCoconutSprites(this.height);
-        // Each pack carries its own bounding box so the collision footprint
-        // can be resized when switching characters.
+        // Coconut is rendered 50% larger than the tomato. Bbox + collision
+        // footprint scale together via the shared colCfg ratios.
+        const COCONUT_HEIGHT = 164; // 109 * 1.5 = 163.5 → 164
+        const coconut = spriteSheet.loadCoconutSprites(COCONUT_HEIGHT);
         this.spritePacks = [
             { sprites: original.sprites, width: 145, height: 109 },
-            // Coconut bbox width matches the idle column's rendered width
-            // (col 9 source = 590×476, scaled to height 109 → ~135 wide).
-            { sprites: coconut.sprites,  width: 135, height: 109 }
+            // Width: 135 * 1.5 = 202.5 → 203. Same aspect as the idle column
+            // (590×476 source, height-scaled).
+            { sprites: coconut.sprites,  width: 203, height: COCONUT_HEIGHT }
         ];
         this.characterIndex = 0;
         this.sprites = this.spritePacks[0].sprites;
