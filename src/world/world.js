@@ -1072,6 +1072,7 @@ function getZoneDrift(zone) {
     switch (zone) {
         case Zone.RAMP_LEFT:  return { dx: -1.2, dy:  0.6 };
         case Zone.RAMP_RIGHT: return { dx:  1.2, dy:  0.6 };
+        case Zone.WALL:       return { dx:  0,   dy:  0.6 };  // climbing wall: gravity pulls down
         default:              return { dx:  0,   dy:  0   };
     }
 }
