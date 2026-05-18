@@ -193,6 +193,27 @@ class World {
         return Zone.NONE;
     }
 
+    // True if any of 5 footprint samples (center + 4 corners) classifies as
+    // RED. Used during a fall to abort when the player has overlapped a red
+    // region — single-point getZoneAt is unreliable here because its outline
+    // fallback can keep reporting WALL while the player drifts into red.
+    isFootprintOnRed(player) {
+        const cx0 = player.x + player.colOffX;
+        const cy0 = player.y + player.colOffY;
+        const cw = player.colW, ch = player.colH;
+        const pts = [
+            [cx0 + cw / 2, cy0 + ch / 2],
+            [cx0,         cy0],
+            [cx0 + cw,    cy0],
+            [cx0,         cy0 + ch],
+            [cx0 + cw,    cy0 + ch]
+        ];
+        for (const [sx, sy] of pts) {
+            if (this.getZoneAt(sx, sy) === Zone.RED) return true;
+        }
+        return false;
+    }
+
     _isWalkableBlock(bx, by) {
         if (!this._walkableBlocks) return this._isValidBlock(bx, by);
         return this._walkableBlocks.has(`${bx},${by}`);
@@ -1003,7 +1024,8 @@ const Zone = {
     RAMP_LEFT:  'RAMP_LEFT',   // yellow — pushes player left
     RAMP_RIGHT: 'RAMP_RIGHT',  // blue   — pushes player right
     DENSE_SAND: 'DENSE_SAND',  // gray   — slower walk, no sink
-    WALL:       'WALL',        // green & red — climbed slowly; fall off edge
+    WALL:       'WALL',        // green  — climbed slowly; fall off edge
+    RED:        'RED',         // red    — impassable; aborts in-flight falls
     NONE:       'NONE'         // outside the background image
 };
 
@@ -1035,7 +1057,7 @@ function classifyZoneColor(r, g, b) {
     }
 
     // Saturated: classify by hue
-    if (h < 20 || h >= 340) return Zone.WALKABLE;    // red — plain walkable
+    if (h < 20 || h >= 340) return Zone.RED;         // red — impassable wall
     if (h >= 40  && h < 80)  return Zone.RAMP_LEFT;  // yellow
     if (h >= 90  && h < 170) return Zone.WALL;       // green
     if (h >= 180 && h < 260) return Zone.RAMP_RIGHT; // blue

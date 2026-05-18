@@ -11,6 +11,7 @@ const ZONE_DEBUG_COLORS = {
     RAMP_RIGHT: '#3a8fd1',
     DENSE_SAND: '#808080',
     WALL:       '#3aa847',
+    RED:        '#d83333',
     NONE:       '#000000'
 };
 
@@ -213,6 +214,12 @@ function updateGame(dt) {
                 player.y = player.fallTargetY - player.colOffY - player.colH * 0.5;
                 player.fallTargetY = null;
             }
+        } else if (world.isFootprintOnRed && world.isFootprintOnRed(player)) {
+            // Wall fall has overlapped a red zone. The classifier would keep
+            // reporting WALL via outline-fallback, so use the footprint scan
+            // as the authoritative "touched red" signal. End the fall in place.
+            player.surfaceState = 'ground';
+            player.onTop = false;
         } else if (playerZone !== Zone.WALL) {
             player.surfaceState = 'ground';
             player.onTop = false;

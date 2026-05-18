@@ -442,6 +442,20 @@ class Player {
      * Supports chain pushing: rock A pushed into rock B pushes both.
      */
     _resolveAxis(testX, testY, delta, axis, obstacles) {
+        // 0. Red zones are impassable: any move whose destination feet center
+        // lands on RED is rejected. Falls have already been aborted in the
+        // state machine before reaching here, so the player is never moving
+        // *while* inside red — meaning a plain "dest is red → blocked" rule
+        // is enough; no escape flag needed.
+        const worldRef = this.game && this.game.world;
+        if (worldRef && worldRef.getZoneAt) {
+            const destFeetX = testX + this.colOffX + this.colW / 2;
+            const destFeetY = testY + this.colOffY + this.colH / 2;
+            if (worldRef.getZoneAt(destFeetX, destFeetY) === Zone.RED) {
+                return true;
+            }
+        }
+
         // 1. Collect all obstacles the player directly collides with
         const directHits = new Set();
         const pushChain = new Set();
