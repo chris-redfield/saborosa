@@ -443,12 +443,11 @@ class Player {
      */
     _resolveAxis(testX, testY, delta, axis, obstacles) {
         // 0. Red zones are impassable: any move whose destination feet center
-        // lands on RED is rejected. Falls have already been aborted in the
-        // state machine before reaching here, so the player is never moving
-        // *while* inside red — meaning a plain "dest is red → blocked" rule
-        // is enough; no escape flag needed.
+        // lands on RED is rejected. Skipped while behindMountain — same as
+        // ramp drift, climb, and the other zone-driven rules, the player
+        // isn't on the same plane as the painted terrain there.
         const worldRef = this.game && this.game.world;
-        if (worldRef && worldRef.getZoneAt) {
+        if (worldRef && worldRef.getZoneAt && !this.behindMountain) {
             const destFeetX = testX + this.colOffX + this.colW / 2;
             const destFeetY = testY + this.colOffY + this.colH / 2;
             if (worldRef.getZoneAt(destFeetX, destFeetY) === Zone.RED) {
