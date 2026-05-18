@@ -74,11 +74,12 @@ class SpriteSheet {
     }
 
     /**
-     * Loads the coconut character (saborosa-chat-002-2.jpeg).
+     * Loads the coconut character (saborosa-chat-002-2.png).
      *
-     * The JSON is a flat `frames` array — 5 columns × 5 rows in reading order.
-     * Row 0 is the idle pose for each of 5 directions. Side-facing directions
-     * are mirrored for the missing left side via the `flipped` flag.
+     * The JSON is a flat `frames` array indexed in reading order — 5 rows ×
+     * 10 columns. Rows are directions; the last column of each row is the
+     * idle pose, columns 0–8 are walk-cycle frames (wired later).
+     * Side-facing rows face LEFT, so they mirror to produce the right side.
      *
      * Render width is computed per-direction from the source aspect ratio so
      * the sprite doesn't distort; render height is uniform = targetHeight.
@@ -100,9 +101,11 @@ class SpriteSheet {
 
         if (!img || !data || !data.frames) return { sprites };
 
-        // Column index → primary direction + (optional) mirrored direction.
-        // Side-facing source poses face LEFT, so the mirror produces the right side.
-        const COLUMNS = [
+        const NCOLS = data.cols || 10;
+        const IDLE_COL = NCOLS - 1; // last column of each row holds the idle pose
+
+        // Row index → primary direction + (optional) mirrored direction.
+        const ROWS = [
             { dir: 'down',      mirror: null },
             { dir: 'down_left', mirror: 'down_right' },
             { dir: 'left',      mirror: 'right' },
@@ -110,8 +113,8 @@ class SpriteSheet {
             { dir: 'up',        mirror: null }
         ];
 
-        for (let c = 0; c < COLUMNS.length; c++) {
-            const f = data.frames[c]; // row 0
+        for (let r = 0; r < ROWS.length; r++) {
+            const f = data.frames[r * NCOLS + IDLE_COL];
             if (!f) continue;
             const renderW = Math.round(targetHeight * (f.w / f.h));
             const base = {
@@ -120,14 +123,14 @@ class SpriteSheet {
                 width: renderW, height: targetHeight,
                 flipped: false
             };
-            sprites[`${COLUMNS[c].dir}_idle`].push(base);
-            // Walk reuses idle until we wire in the walk-cycle frames (rows 1-4).
-            sprites[`${COLUMNS[c].dir}_walk`].push({ ...base });
+            sprites[`${ROWS[r].dir}_idle`].push(base);
+            // Walk reuses idle until we wire in the walk-cycle frames (cols 0–8).
+            sprites[`${ROWS[r].dir}_walk`].push({ ...base });
 
-            if (COLUMNS[c].mirror) {
+            if (ROWS[r].mirror) {
                 const mir = { ...base, flipped: true };
-                sprites[`${COLUMNS[c].mirror}_idle`].push(mir);
-                sprites[`${COLUMNS[c].mirror}_walk`].push({ ...mir });
+                sprites[`${ROWS[r].mirror}_idle`].push(mir);
+                sprites[`${ROWS[r].mirror}_walk`].push({ ...mir });
             }
         }
 
