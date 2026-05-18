@@ -10,12 +10,14 @@ class Player {
         this.height = 109;
         this.speed = 3;
 
-        // Isometric collision footprint from config
-        const colCfg = (game.getJSON('collision_config') || {}).character || { colW: 0.80, colH: 0.50, colOffX: 0.10, colOffY: 0.50 };
-        this.colW = Math.round(this.width * colCfg.colW);
-        this.colH = Math.round(this.height * colCfg.colH);
-        this.colOffX = Math.round(this.width * colCfg.colOffX);
-        this.colOffY = Math.round(this.height * colCfg.colOffY);
+        // Isometric collision footprint from config — cached so a character
+        // swap can re-apply the same ratios to a different bounding box.
+        this.colCfg = (game.getJSON('collision_config') || {}).character
+            || { colW: 0.80, colH: 0.50, colOffX: 0.10, colOffY: 0.50 };
+        this.colW = Math.round(this.width * this.colCfg.colW);
+        this.colH = Math.round(this.height * this.colCfg.colH);
+        this.colOffX = Math.round(this.width * this.colCfg.colOffX);
+        this.colOffY = Math.round(this.height * this.colCfg.colOffY);
         this.mass = this.colW * this.colH;
         this.pushing = false;
 
@@ -110,15 +112,40 @@ class Player {
         const spriteSheet = new SpriteSheet(this.game);
         const original = spriteSheet.loadSprites(this.width, this.height);
         const coconut = spriteSheet.loadCoconutSprites(this.height);
-        this.spritePacks = [original.sprites, coconut.sprites];
+        // Each pack carries its own bounding box so the collision footprint
+        // can be resized when switching characters.
+        this.spritePacks = [
+            { sprites: original.sprites, width: 145, height: 109 },
+            // Coconut bbox width matches the idle column's rendered width
+            // (col 9 source = 590×476, scaled to height 109 → ~135 wide).
+            { sprites: coconut.sprites,  width: 135, height: 109 }
+        ];
         this.characterIndex = 0;
-        this.sprites = this.spritePacks[0];
+        this.sprites = this.spritePacks[0].sprites;
     }
 
     cycleCharacter() {
+        // Preserve feet center across the swap — without this, changing the
+        // collision offsets would visually teleport the sprite by a few pixels.
+        const feetX = this.x + this.colOffX + this.colW / 2;
+        const feetY = this.y + this.colOffY + this.colH / 2;
+
         this.characterIndex = (this.characterIndex + 1) % this.spritePacks.length;
-        this.sprites = this.spritePacks[this.characterIndex];
-        console.log('Character switched to pack', this.characterIndex);
+        const pack = this.spritePacks[this.characterIndex];
+        this.sprites = pack.sprites;
+        this.width = pack.width;
+        this.height = pack.height;
+        this.colW = Math.round(this.width * this.colCfg.colW);
+        this.colH = Math.round(this.height * this.colCfg.colH);
+        this.colOffX = Math.round(this.width * this.colCfg.colOffX);
+        this.colOffY = Math.round(this.height * this.colCfg.colOffY);
+        this.mass = this.colW * this.colH;
+
+        // Re-anchor so the new footprint center matches the old feet position.
+        this.x = feetX - this.colOffX - this.colW / 2;
+        this.y = feetY - this.colOffY - this.colH / 2;
+
+        console.log(`Character ${this.characterIndex}: bbox ${this.width}x${this.height}, footprint ${this.colW}x${this.colH}`);
     }
 
     dash(currentTime, inputX, inputY) {
