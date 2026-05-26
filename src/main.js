@@ -455,7 +455,7 @@ function updateGame(dt) {
         //   carrying, hold ≥ THROW_HOLD_MS → crouch (charge) → release → throw
         //   carrying, hold ≥ POWER_HOLD_MS → release → power throw (cols 4–8)
         const THROW_HOLD_MS = 200;
-        const POWER_HOLD_MS = 2000;
+        const POWER_HOLD_MS = 1000;
         const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
             player._attackWasCarrying = !!player.liftedObject;
