@@ -88,16 +88,11 @@ class SpriteSheet {
         const img = this.game.getImage('coconut_sheet');
         const data = this.game.getJSON('coconut_sprites');
 
-        const sprites = {
-            down_idle: [], down_walk: [], down_grab: [],
-            up_idle: [], up_walk: [], up_grab: [],
-            right_idle: [], right_walk: [], right_grab: [],
-            left_idle: [], left_walk: [], left_grab: [],
-            down_right_idle: [], down_right_walk: [], down_right_grab: [],
-            down_left_idle: [], down_left_walk: [], down_left_grab: [],
-            up_right_idle: [], up_right_walk: [], up_right_grab: [],
-            up_left_idle: [], up_left_walk: [], up_left_grab: []
-        };
+        const sprites = {};
+        const ANIMS = ['idle', 'walk', 'grab', 'grab_heavy'];
+        const DIRS = ['down', 'up', 'right', 'left',
+                      'down_right', 'down_left', 'up_right', 'up_left'];
+        for (const d of DIRS) for (const a of ANIMS) sprites[`${d}_${a}`] = [];
 
         if (!img || !data || !data.frames) return { sprites };
 
@@ -105,9 +100,11 @@ class SpriteSheet {
         const IDLE_COL = NCOLS - 1; // last column of each row holds the idle pose
 
         // Animation → ordered column sequence within a row.
-        //   idle: last column (single frame)
-        //   grab: 9 → 0 → 1 → 2 (lift an object; last frame held while carrying)
+        //   idle:       last column (single frame)
+        //   grab:       9 → 0 → 1 → 2       (lift; last frame held while carrying)
+        //   grab_heavy: 9 → 0 → 1 → 2 → 3   (heavy lift; col 3 = flattened carry pose)
         const GRAB_COLS = [IDLE_COL, 0, 1, 2];
+        const GRAB_HEAVY_COLS = [IDLE_COL, 0, 1, 2, 3];
 
         // Row index → primary direction + (optional) mirrored direction.
         const ROWS = [
@@ -118,6 +115,15 @@ class SpriteSheet {
             { dir: 'up',        mirror: null }
         ];
 
+        // Single scale factor for ALL frames, derived from the idle column's
+        // source height (col 9 is uniform across rows). Applying the same
+        // factor to every frame's width AND height preserves both aspect ratio
+        // and relative size, so the idle renders exactly targetHeight tall
+        // while differently-shaped poses (e.g. the flattened heavy-carry frame)
+        // stay proportional instead of being stretched to a fixed height.
+        const refFrame = data.frames[IDLE_COL]; // row 0, idle column
+        const scale = (refFrame && refFrame.h) ? targetHeight / refFrame.h : 1;
+
         // Build a sprite-data record for (row, col), or null if missing.
         const makeSprite = (row, col, flipped) => {
             const f = data.frames[row * NCOLS + col];
@@ -125,8 +131,8 @@ class SpriteSheet {
             return {
                 image: img,
                 sx: f.x, sy: f.y, sw: f.w, sh: f.h,
-                width: Math.round(targetHeight * (f.w / f.h)),
-                height: targetHeight,
+                width: Math.round(f.w * scale),
+                height: Math.round(f.h * scale),
                 flipped
             };
         };
@@ -144,6 +150,10 @@ class SpriteSheet {
                 for (const c of GRAB_COLS) {
                     const s = makeSprite(r, c, flipped);
                     if (s) sprites[`${name}_grab`].push(s);
+                }
+                for (const c of GRAB_HEAVY_COLS) {
+                    const s = makeSprite(r, c, flipped);
+                    if (s) sprites[`${name}_grab_heavy`].push(s);
                 }
             }
         }

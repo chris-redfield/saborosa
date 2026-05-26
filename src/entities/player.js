@@ -113,6 +113,9 @@ class Player {
         this.grabFrame = 0;
         this.grabCounter = 0;
         this.grabSpeed = 0.25; // frames advanced per update tick (~0.27s for 4 frames @60fps)
+        // True when the lifted object is "heavy" (>50% of player mass) — uses
+        // the longer grab_heavy sequence with the flattened col-3 carry pose.
+        this.grabHeavy = false;
 
         // Sprites
         this.sprites = null;
@@ -216,7 +219,7 @@ class Player {
         // carry pose) when it completes; render keeps showing that while the
         // object is held.
         if (this.grabbing) {
-            const grabLen = (this.sprites && this.sprites[`${this.facing}_grab`]?.length) || 0;
+            const grabLen = (this.sprites && this.sprites[this.grabKey()]?.length) || 0;
             if (grabLen === 0) {
                 this.grabbing = false;
             } else {
@@ -390,10 +393,19 @@ class Player {
         return null;
     }
 
+    // The active grab animation key for the current facing — the longer
+    // grab_heavy sequence when carrying a heavy object, else the normal grab.
+    grabKey() {
+        return this.grabHeavy ? `${this.facing}_grab_heavy` : `${this.facing}_grab`;
+    }
+
     // Kick off the one-shot grab animation if the active sprite pack has grab
-    // frames for the current facing (coconut does, tomato doesn't).
+    // frames for the current facing (coconut does, tomato doesn't). Heavy
+    // objects (>50% of player mass) use the longer flattening sequence.
     startGrab() {
-        if (this.sprites && this.sprites[`${this.facing}_grab`]?.length) {
+        const obj = this.liftedObject;
+        this.grabHeavy = !!obj && obj.mass > this.mass * 0.5;
+        if (this.sprites && this.sprites[this.grabKey()]?.length) {
             this.grabbing = true;
             this.grabFrame = 0;
             this.grabCounter = 0;
@@ -691,10 +703,9 @@ class Player {
         const drawY = this.y - camY;
 
         let spriteData;
-        const grabKey = `${this.facing}_grab`;
         const walkKey = `${this.facing}_walk`;
         const idleKey = `${this.facing}_idle`;
-        const grabFrames = this.sprites[grabKey];
+        const grabFrames = this.sprites[this.grabKey()];
 
         if (this.grabbing && grabFrames && grabFrames.length > 0) {
             // Playing the pickup animation.
@@ -709,25 +720,33 @@ class Player {
             spriteData = this.sprites[idleKey][0];
         }
 
-        // When on sand, crop the bottom STACK_OFFSET pixels of the sprite
         const sinkAmount = this.onSand ? STACK_OFFSET : 0;
-        const visibleH = this.height - sinkAmount;
-        const srcCropRatio = sinkAmount / this.height;
 
         if (spriteData && spriteData.image) {
-            const cropSh = spriteData.sh * (1 - srcCropRatio);
+            // Each frame renders at its own width AND height (a single scale
+            // factor was baked in at load time), so poses with a different
+            // aspect — e.g. the flattened heavy-carry frame — stay
+            // proportionally sized instead of being stretched to a fixed
+            // height. Anchored at the BOTTOM of the bounding box so the feet
+            // stay planted; a shorter frame sits lower, not bigger.
             const renderW = spriteData.width;
-            // Center variable-width sprites on the collision footprint. When
-            // renderW === this.width (original character) the math collapses
-            // back to drawX so existing pixel placement is unchanged.
+            const renderH = spriteData.height;
+            const visibleH = renderH - sinkAmount;
+            const srcCropRatio = sinkAmount / renderH;
+            const cropSh = spriteData.sh * (1 - srcCropRatio);
+
+            // Center on the collision footprint when the sprite width differs
+            // from the bbox; otherwise collapse to drawX (original character).
             let offsetX = drawX;
             if (renderW !== this.width) {
                 const colCenter = drawX + this.colOffX + this.colW / 2;
                 offsetX = Math.round(colCenter - renderW / 2);
             }
+            const topY = drawY + this.height - renderH;
+
             ctx.save();
             if (spriteData.flipped) {
-                ctx.translate(offsetX + renderW, drawY);
+                ctx.translate(offsetX + renderW, topY);
                 ctx.scale(-1, 1);
                 ctx.drawImage(
                     spriteData.image,
@@ -738,17 +757,17 @@ class Player {
                 ctx.drawImage(
                     spriteData.image,
                     spriteData.sx, spriteData.sy, spriteData.sw, cropSh,
-                    offsetX, drawY, renderW, visibleH
+                    offsetX, topY, renderW, visibleH
                 );
             }
             ctx.restore();
         } else {
             ctx.fillStyle = '#ff6b35';
-            ctx.fillRect(drawX, drawY, this.width, visibleH);
+            ctx.fillRect(drawX, drawY, this.width, this.height - sinkAmount);
             ctx.fillStyle = '#fff';
             ctx.font = '10px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText('PLAYER', drawX + this.width / 2, drawY + visibleH / 2 + 4);
+            ctx.fillText('PLAYER', drawX + this.width / 2, drawY + (this.height - sinkAmount) / 2 + 4);
             ctx.textAlign = 'left';
         }
 
