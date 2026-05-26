@@ -452,8 +452,10 @@ function updateGame(dt) {
         // Space (attack):
         //   empty-handed press → pick up
         //   carrying, quick tap → gentle put-down
-        //   carrying, hold past THROW_HOLD_MS → crouch (charge) → release → throw
+        //   carrying, hold ≥ THROW_HOLD_MS → crouch (charge) → release → throw
+        //   carrying, hold ≥ POWER_HOLD_MS → release → power throw (cols 4–8)
         const THROW_HOLD_MS = 200;
+        const POWER_HOLD_MS = 2000;
         const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
             player._attackWasCarrying = !!player.liftedObject;
@@ -467,8 +469,10 @@ function updateGame(dt) {
                 if (player.liftedObject && held >= THROW_HOLD_MS) player.charging = true;
             } else {
                 // Released.
-                if (player.liftedObject && held >= THROW_HOLD_MS) {
-                    player.throwObject();
+                if (player.liftedObject && held >= POWER_HOLD_MS) {
+                    player.throwObject(true);  // charged power throw
+                } else if (player.liftedObject && held >= THROW_HOLD_MS) {
+                    player.throwObject(false); // normal throw
                 } else if (player.liftedObject && player._attackWasCarrying) {
                     // Tap while already carrying → gentle drop (the press that
                     // first picks an object up must not immediately drop it).

@@ -124,6 +124,13 @@ class Player {
         this._attackHoldStart = null; // timestamp Space went down (tap vs hold)
         this._attackWasCarrying = false; // were we carrying when Space went down?
 
+        // Power-throw animation (cols 4–8), played one-shot on a charged
+        // (≥2s) throw, then returns to idle.
+        this.throwAnimating = false;
+        this.throwAnimFrame = 0;
+        this.throwAnimCounter = 0;
+        this.throwAnimSpeed = 0.3;
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -246,6 +253,21 @@ class Player {
                 if (this.grabFrame >= grabLen) {
                     this.grabFrame = grabLen - 1;
                     this.grabbing = false;
+                }
+            }
+        }
+
+        // Power-throw animation (one-shot; returns to idle when finished).
+        if (this.throwAnimating) {
+            const len = (this.sprites && this.sprites[`${this.facing}_throw`]?.length) || 0;
+            if (len === 0) {
+                this.throwAnimating = false;
+            } else {
+                this.throwAnimCounter += this.throwAnimSpeed;
+                this.throwAnimFrame = Math.floor(this.throwAnimCounter);
+                if (this.throwAnimFrame >= len) {
+                    this.throwAnimFrame = len - 1;
+                    this.throwAnimating = false;
                 }
             }
         }
@@ -450,13 +472,14 @@ class Player {
     // FUTURE: distance should scale with object mass (heavier = shorter) and
     // with how long Space was held (charge time). For now it's fixed.
     // FUTURE: mid-flight collision with other objects / players.
-    throwObject() {
+    throwObject(power = false) {
         const obj = this.liftedObject;
         if (!obj) return null;
         const fv = this.getFacingVector();
-        let D = 260;   // ground distance in px (FIXED for now — see above)
-        const T = 42;  // flight duration in frames
-        const H = 140; // arc peak height in px (visual only)
+        // Power throw (≥2s charge) goes much farther / higher / longer flight.
+        let D = power ? 520 : 260; // ground distance in px (FIXED for now — see above)
+        const T = power ? 60 : 42;  // flight duration in frames
+        const H = power ? 210 : 140; // arc peak height in px (visual only)
 
         // Upward throws (any negative-y facing) read as travelling farther
         // because of the iso perspective illusion, so shorten them 30%.
@@ -476,6 +499,13 @@ class Player {
 
         this.liftedObject = null;
         this.charging = false;
+
+        // Power throw plays the big wind-up→release animation (cols 4–8).
+        if (power && this.sprites[`${this.facing}_throw`]?.length) {
+            this.throwAnimating = true;
+            this.throwAnimFrame = 0;
+            this.throwAnimCounter = 0;
+        }
         return obj;
     }
 
@@ -787,8 +817,12 @@ class Player {
         const idleKey = `${this.facing}_idle`;
         const grabFrames = this.sprites[this.grabKey()];
         const heavyFrames = this.sprites[`${this.facing}_grab_heavy`];
+        const throwFrames = this.sprites[`${this.facing}_throw`];
 
-        if (this.charging && this.liftedObject && heavyFrames && heavyFrames.length > 0) {
+        if (this.throwAnimating && throwFrames && throwFrames.length > 0) {
+            // Power-throw release motion (cols 4–8).
+            spriteData = throwFrames[Math.min(this.throwAnimFrame, throwFrames.length - 1)];
+        } else if (this.charging && this.liftedObject && heavyFrames && heavyFrames.length > 0) {
             // Throw wind-up: hold the flattened crouch (grab_heavy last frame).
             spriteData = heavyFrames[heavyFrames.length - 1];
         } else if (this.grabbing && grabFrames && grabFrames.length > 0) {
