@@ -323,14 +323,26 @@ class Player {
      */
     liftOrDrop(obstacles) {
         if (this.liftedObject) {
-            // Drop in front of the player based on facing direction
+            // Drop in front of the player, placed so the object's collision
+            // footprint just touches the player's footprint (the red box) in
+            // the facing direction — close, but not overlapping.
             const obj = this.liftedObject;
             const gap = 4;
             const fv = this.getFacingVector();
-            const cx = this.x + (this.width - obj.width) / 2;
-            const cy = this.y + (this.height - obj.height) / 2;
-            obj.x = cx + fv.x * (this.width / 2 + obj.width / 2 + gap);
-            obj.y = cy + fv.y * (this.height / 2 + obj.height / 2 + gap);
+            const oColW = obj.colW || obj.width;
+            const oColH = obj.colH || obj.height;
+            const oColOffX = obj.colOffX || 0;
+            const oColOffY = obj.colOffY || 0;
+            // Player footprint center
+            const pcx = this.x + this.colOffX + this.colW / 2;
+            const pcy = this.y + this.colOffY + this.colH / 2;
+            // Desired object footprint center: pushed out by the two half-
+            // footprints plus the gap so the boxes touch without overlapping.
+            const ocx = pcx + fv.x * (this.colW / 2 + oColW / 2 + gap);
+            const ocy = pcy + fv.y * (this.colH / 2 + oColH / 2 + gap);
+            // Convert footprint center → object top-left.
+            obj.x = ocx - oColOffX - oColW / 2;
+            obj.y = ocy - oColOffY - oColH / 2;
 
             // Stack onto the targeted rock if one exists
             let stacked = false;
