@@ -54,6 +54,17 @@ class Rock {
         this.fallStartSpeed = 1.5;
         this.fallMaxSpeed = 11;
         this.fallAccelPerSec = 15;
+
+        // Throwing (parabolic flight). Set by Player.throwObject; advanced in
+        // the main update loop. throwZ is a purely visual height offset — the
+        // ground position (x, y) advances normally and is what depth-sorts.
+        this.thrown = false;
+        this.throwZ = 0;
+        this.throwT = 0;
+        this.throwDur = 0;
+        this.throwH = 0;
+        this.throwVx = 0;
+        this.throwVy = 0;
     }
 
     getRect() {
@@ -66,7 +77,9 @@ class Rock {
 
     render(ctx, game, camX, camY) {
         const sx = this.x - camX;
-        const sy = this.y - camY;
+        // Arc height during a throw lifts the sprite visually (ground y is
+        // unchanged, so depth-sort and collision still use the ground spot).
+        const sy = this.y - camY - (this.throwZ || 0);
 
         // Sink into sand: scale the crop to the cube's height so small cubes
         // don't lose their whole base while big cubes still visibly settle.

@@ -371,6 +371,7 @@ function updateGame(dt) {
             if (obs === player) continue;
             if (obs === player.liftedObject) continue;
             if (obs.stackParent) continue;
+            if (obs.thrown) continue; // in-flight; handled by the throw pass
             if (obs.surfaceState === undefined) continue;
 
             const ocxF = obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2;
@@ -404,6 +405,21 @@ function updateGame(dt) {
             }
         }
     }
+
+    // Thrown-object flight: advance the ground position and the parabolic
+    // height each frame; land (and resolve the zone) when the arc completes.
+    // Iterates all entities (not `obstacles`) because a thrown object has
+    // isObstacle=false and so isn't in the obstacles list.
+    for (const obs of world.getAllEntities()) {
+        if (!obs.thrown) continue;
+        obs.throwT += 1; // FUTURE: dt-scale for frame-rate independence
+        obs.x += obs.throwVx;
+        obs.y += obs.throwVy;
+        const p = obs.throwT / obs.throwDur;
+        obs.throwZ = 4 * obs.throwH * p * (1 - p); // 0 at p=0/1, peak at p=0.5
+        if (obs.throwT >= obs.throwDur) landThrownObject(obs, world);
+    }
+
     player.update(dt);
     world.update(player);
 
@@ -433,9 +449,34 @@ function updateGame(dt) {
         // Update stack target cursor every frame while carrying
         player.updateStackTarget(obstacles);
 
-        // Lift / drop (Space)
+        // Space (attack):
+        //   empty-handed press → pick up
+        //   carrying, quick tap → gentle put-down
+        //   carrying, hold past THROW_HOLD_MS → crouch (charge) → release → throw
+        const THROW_HOLD_MS = 200;
+        const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
-            player.liftOrDrop(obstacles);
+            player._attackWasCarrying = !!player.liftedObject;
+            if (!player.liftedObject) player.liftOrDrop(obstacles); // try pickup
+            player._attackHoldStart = performance.now();
+        }
+        if (player._attackHoldStart != null) {
+            const held = performance.now() - player._attackHoldStart;
+            if (attackDown) {
+                // Wind up once held long enough (and only while carrying).
+                if (player.liftedObject && held >= THROW_HOLD_MS) player.charging = true;
+            } else {
+                // Released.
+                if (player.liftedObject && held >= THROW_HOLD_MS) {
+                    player.throwObject();
+                } else if (player.liftedObject && player._attackWasCarrying) {
+                    // Tap while already carrying → gentle drop (the press that
+                    // first picks an object up must not immediately drop it).
+                    player.liftOrDrop(obstacles);
+                }
+                player.charging = false;
+                player._attackHoldStart = null;
+            }
         }
     }
 
@@ -458,6 +499,33 @@ function updateGame(dt) {
             return;
         }
     }
+}
+
+// Settle a thrown object at the end of its arc. Respects zones: if the
+// landing footprint center is on RED or WALL, step the object back along its
+// flight vector until it reaches a valid surface (a simple "bounce off" so it
+// never settles on an impassable/wall tile).
+// FUTURE: proper collision response with other objects / players.
+function landThrownObject(obs, world) {
+    obs.throwZ = 0;
+    if (world.stage && world.stage.backgroundImage) {
+        const invalid = (z) => z === Zone.RED || z === Zone.WALL;
+        const centerZone = () => world.getZoneAt(
+            obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2,
+            obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2);
+        let guard = 0;
+        while (invalid(centerZone()) && guard++ < 200) {
+            obs.x -= obs.throwVx * 0.5;
+            obs.y -= obs.throwVy * 0.5;
+        }
+    }
+    obs.thrown = false;
+    obs.pushable = true;
+    obs.isObstacle = true;
+    obs.surfaceState = 'ground';
+    obs.throwT = 0;
+    obs.throwVx = 0;
+    obs.throwVy = 0;
 }
 
 function renderGame(ctx) {

@@ -118,6 +118,12 @@ class Player {
         // the longer grab_heavy sequence with the flattened col-3 carry pose.
         this.grabHeavy = false;
 
+        // Throw charging: true while Space is held past the throw threshold.
+        // Renders the flattened crouch (wind-up) pose. Released → throwObject.
+        this.charging = false;
+        this._attackHoldStart = null; // timestamp Space went down (tap vs hold)
+        this._attackWasCarrying = false; // were we carrying when Space went down?
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -438,6 +444,37 @@ class Player {
         }
     }
 
+    // Launch the carried object on a parabolic arc in the facing direction.
+    // Returns the thrown object (now detached) or null.
+    //
+    // FUTURE: distance should scale with object mass (heavier = shorter) and
+    // with how long Space was held (charge time). For now it's fixed.
+    // FUTURE: mid-flight collision with other objects / players.
+    throwObject() {
+        const obj = this.liftedObject;
+        if (!obj) return null;
+        const fv = this.getFacingVector();
+        const D = 260; // ground distance in px (FIXED for now — see above)
+        const T = 42;  // flight duration in frames
+        const H = 140; // arc peak height in px (visual only)
+
+        obj.thrown = true;
+        obj.pushable = false;
+        obj.isObstacle = false;
+        obj.surfaceState = 'ground'; // don't let cube-fall grab it on landing
+        obj.stackParent = null;
+        obj.throwT = 0;
+        obj.throwDur = T;
+        obj.throwH = H;
+        obj.throwVx = fv.x * D / T;
+        obj.throwVy = fv.y * D / T;
+        obj.throwZ = 0;
+
+        this.liftedObject = null;
+        this.charging = false;
+        return obj;
+    }
+
     // Play the grab sequence in reverse (carry pose → idle) on put-down.
     // grabHeavy is left as-is so the reverse matches the sequence that was
     // used to pick the object up.
@@ -745,9 +782,13 @@ class Player {
         const walkKey = `${this.facing}_walk`;
         const idleKey = `${this.facing}_idle`;
         const grabFrames = this.sprites[this.grabKey()];
+        const heavyFrames = this.sprites[`${this.facing}_grab_heavy`];
 
-        if (this.grabbing && grabFrames && grabFrames.length > 0) {
-            // Playing the pickup animation.
+        if (this.charging && this.liftedObject && heavyFrames && heavyFrames.length > 0) {
+            // Throw wind-up: hold the flattened crouch (grab_heavy last frame).
+            spriteData = heavyFrames[heavyFrames.length - 1];
+        } else if (this.grabbing && grabFrames && grabFrames.length > 0) {
+            // Playing the pickup/put-down animation.
             spriteData = grabFrames[Math.min(this.grabFrame, grabFrames.length - 1)];
         } else if (this.liftedObject && grabFrames && grabFrames.length > 0) {
             // Carrying — hold the last grab frame as the carry pose.
