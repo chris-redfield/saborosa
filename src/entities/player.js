@@ -110,6 +110,7 @@ class Player {
         // carrying). Only the coconut has grab frames; other packs fall back
         // to idle/walk.
         this.grabbing = false;
+        this.grabReverse = false; // true while playing the put-down (reverse) animation
         this.grabFrame = 0;
         this.grabCounter = 0;
         this.grabSpeed = 0.25; // frames advanced per update tick (~0.27s for 4 frames @60fps)
@@ -222,7 +223,18 @@ class Player {
             const grabLen = (this.sprites && this.sprites[this.grabKey()]?.length) || 0;
             if (grabLen === 0) {
                 this.grabbing = false;
+                this.grabReverse = false;
+            } else if (this.grabReverse) {
+                // Put-down: play backward to frame 0 (idle pose), then stop.
+                this.grabCounter -= this.grabSpeed;
+                this.grabFrame = Math.floor(this.grabCounter);
+                if (this.grabFrame <= 0) {
+                    this.grabFrame = 0;
+                    this.grabbing = false;
+                    this.grabReverse = false;
+                }
             } else {
+                // Pickup: play forward, hold the final (carry) frame.
                 this.grabCounter += this.grabSpeed;
                 this.grabFrame = Math.floor(this.grabCounter);
                 if (this.grabFrame >= grabLen) {
@@ -345,6 +357,7 @@ class Player {
                 if (fv.y < 0)  this.y = dr.y + dr.height - this.colOffY + 1;
             }
             this.liftedObject = null;
+            this.startDrop();
             return obj;
         }
 
@@ -407,8 +420,22 @@ class Player {
         this.grabHeavy = !!obj && obj.mass > this.mass * 0.5;
         if (this.sprites && this.sprites[this.grabKey()]?.length) {
             this.grabbing = true;
+            this.grabReverse = false;
             this.grabFrame = 0;
             this.grabCounter = 0;
+        }
+    }
+
+    // Play the grab sequence in reverse (carry pose → idle) on put-down.
+    // grabHeavy is left as-is so the reverse matches the sequence that was
+    // used to pick the object up.
+    startDrop() {
+        const len = (this.sprites && this.sprites[this.grabKey()]?.length) || 0;
+        if (len > 0) {
+            this.grabbing = true;
+            this.grabReverse = true;
+            this.grabFrame = len - 1;
+            this.grabCounter = len - 1;
         }
     }
 

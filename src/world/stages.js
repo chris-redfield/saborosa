@@ -68,7 +68,7 @@ const STAGES = {
         groundColor: '#9a9a9a',
         checkerboard: { tileSize: 77, color: '#7e7e7e', style: 'perspective' },
         terrainDepth: 30,
-        rockCount: [10, 20],
+        rockCount: [7, 14], // ~30% fewer (was [10, 20])
         // The original image (`stage3_bg`) is no longer drawn — it's only
         // kept here for zone classification (cached canvas). The visible
         // background is split into a lower (sand + below-midline) layer and
