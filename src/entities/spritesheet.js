@@ -89,20 +89,25 @@ class SpriteSheet {
         const data = this.game.getJSON('coconut_sprites');
 
         const sprites = {
-            down_idle: [], down_walk: [],
-            up_idle: [], up_walk: [],
-            right_idle: [], right_walk: [],
-            left_idle: [], left_walk: [],
-            down_right_idle: [], down_right_walk: [],
-            down_left_idle: [], down_left_walk: [],
-            up_right_idle: [], up_right_walk: [],
-            up_left_idle: [], up_left_walk: []
+            down_idle: [], down_walk: [], down_grab: [],
+            up_idle: [], up_walk: [], up_grab: [],
+            right_idle: [], right_walk: [], right_grab: [],
+            left_idle: [], left_walk: [], left_grab: [],
+            down_right_idle: [], down_right_walk: [], down_right_grab: [],
+            down_left_idle: [], down_left_walk: [], down_left_grab: [],
+            up_right_idle: [], up_right_walk: [], up_right_grab: [],
+            up_left_idle: [], up_left_walk: [], up_left_grab: []
         };
 
         if (!img || !data || !data.frames) return { sprites };
 
         const NCOLS = data.cols || 10;
         const IDLE_COL = NCOLS - 1; // last column of each row holds the idle pose
+
+        // Animation → ordered column sequence within a row.
+        //   idle: last column (single frame)
+        //   grab: 9 → 0 → 1 → 2 (lift an object; last frame held while carrying)
+        const GRAB_COLS = [IDLE_COL, 0, 1, 2];
 
         // Row index → primary direction + (optional) mirrored direction.
         const ROWS = [
@@ -113,24 +118,33 @@ class SpriteSheet {
             { dir: 'up',        mirror: null }
         ];
 
-        for (let r = 0; r < ROWS.length; r++) {
-            const f = data.frames[r * NCOLS + IDLE_COL];
-            if (!f) continue;
-            const renderW = Math.round(targetHeight * (f.w / f.h));
-            const base = {
+        // Build a sprite-data record for (row, col), or null if missing.
+        const makeSprite = (row, col, flipped) => {
+            const f = data.frames[row * NCOLS + col];
+            if (!f) return null;
+            return {
                 image: img,
                 sx: f.x, sy: f.y, sw: f.w, sh: f.h,
-                width: renderW, height: targetHeight,
-                flipped: false
+                width: Math.round(targetHeight * (f.w / f.h)),
+                height: targetHeight,
+                flipped
             };
-            sprites[`${ROWS[r].dir}_idle`].push(base);
-            // Walk reuses idle until we wire in the walk-cycle frames (cols 0–8).
-            sprites[`${ROWS[r].dir}_walk`].push({ ...base });
+        };
 
-            if (ROWS[r].mirror) {
-                const mir = { ...base, flipped: true };
-                sprites[`${ROWS[r].mirror}_idle`].push(mir);
-                sprites[`${ROWS[r].mirror}_walk`].push({ ...mir });
+        for (let r = 0; r < ROWS.length; r++) {
+            const { dir, mirror } = ROWS[r];
+            for (const flipped of (mirror ? [false, true] : [false])) {
+                const name = flipped ? mirror : dir;
+                const idle = makeSprite(r, IDLE_COL, flipped);
+                if (idle) {
+                    sprites[`${name}_idle`].push(idle);
+                    // Walk reuses idle until walk-cycle frames are authored.
+                    sprites[`${name}_walk`].push({ ...idle });
+                }
+                for (const c of GRAB_COLS) {
+                    const s = makeSprite(r, c, flipped);
+                    if (s) sprites[`${name}_grab`].push(s);
+                }
             }
         }
 

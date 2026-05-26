@@ -904,7 +904,7 @@ class World {
             for (let attempt = 0; attempt < MAX_ATTEMPTS && !placed; attempt++) {
                 const type = Math.floor(rand() * 6) + 1;
                 const scale = 0.25 + rand() * 0.35;
-                const size = Math.floor(100 * scale);
+                const size = Math.floor(195 * scale); // base 100 → 150 (+50%) → 195 (+30% more); now ~49–117px
                 const x = ox + margin + rand() * (BLOCK_W - margin * 2 - size);
                 const y = oy + margin + rand() * (BLOCK_H - margin * 2 - size);
 

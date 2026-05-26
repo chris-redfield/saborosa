@@ -97,11 +97,22 @@ class Player {
         // sand-to-mountain or mountain-to-sand transition.
         this.lastAboveMidline = false;
 
-        // Lifting
+        // Lifting. The object is anchored to the collision footprint (the red
+        // debug box) so it sits near the character's body center and scales
+        // with character size. liftOffsetY fine-tunes vertically (negative =
+        // higher).
         this.liftedObject = null;
-        this.liftOffsetX = 0;  // centered on player
-        this.liftOffsetY = -30; // above head
+        this.liftOffsetX = 0;
+        this.liftOffsetY = 0;
         this.stackTarget = null; // rock currently targeted for stacking
+
+        // Grab animation (one-shot, plays on pickup; last frame held while
+        // carrying). Only the coconut has grab frames; other packs fall back
+        // to idle/walk.
+        this.grabbing = false;
+        this.grabFrame = 0;
+        this.grabCounter = 0;
+        this.grabSpeed = 0.25; // frames advanced per update tick (~0.27s for 4 frames @60fps)
 
         // Sprites
         this.sprites = null;
@@ -201,11 +212,34 @@ class Player {
             this.animationCounter = 0;
         }
 
-        // Update lifted object position to follow player
+        // Advance the one-shot grab animation. Holds on the last frame (the
+        // carry pose) when it completes; render keeps showing that while the
+        // object is held.
+        if (this.grabbing) {
+            const grabLen = (this.sprites && this.sprites[`${this.facing}_grab`]?.length) || 0;
+            if (grabLen === 0) {
+                this.grabbing = false;
+            } else {
+                this.grabCounter += this.grabSpeed;
+                this.grabFrame = Math.floor(this.grabCounter);
+                if (this.grabFrame >= grabLen) {
+                    this.grabFrame = grabLen - 1;
+                    this.grabbing = false;
+                }
+            }
+        }
+
+        // Update lifted object position to follow player. Centered
+        // horizontally on the collision footprint. Vertically: the midpoint
+        // between the old above-head anchor (this.y - 30) and the
+        // footprint-center anchor — one notch lower than head, not all the
+        // way down to the body center.
         if (this.liftedObject) {
             const obj = this.liftedObject;
-            obj.x = this.x + (this.width - obj.width) / 2 + this.liftOffsetX;
-            obj.y = this.y + this.liftOffsetY;
+            obj.x = this.x + this.colOffX + (this.colW - obj.width) / 2 + this.liftOffsetX;
+            const aboveHeadY = this.y - 30;
+            const footprintY = this.y + this.colOffY - obj.height / 2;
+            obj.y = (aboveHeadY + footprintY) / 2 + this.liftOffsetY;
         }
     }
 
@@ -349,10 +383,21 @@ class Player {
                 }
                 this.liftedObject = obs;
                 obs.isObstacle = false;
+                this.startGrab();
                 return null;
             }
         }
         return null;
+    }
+
+    // Kick off the one-shot grab animation if the active sprite pack has grab
+    // frames for the current facing (coconut does, tomato doesn't).
+    startGrab() {
+        if (this.sprites && this.sprites[`${this.facing}_grab`]?.length) {
+            this.grabbing = true;
+            this.grabFrame = 0;
+            this.grabCounter = 0;
+        }
     }
 
     move(dx, dy, obstacles = []) {
@@ -646,10 +691,18 @@ class Player {
         const drawY = this.y - camY;
 
         let spriteData;
+        const grabKey = `${this.facing}_grab`;
         const walkKey = `${this.facing}_walk`;
         const idleKey = `${this.facing}_idle`;
+        const grabFrames = this.sprites[grabKey];
 
-        if (this.moving && this.sprites[walkKey] && this.sprites[walkKey].length > 0) {
+        if (this.grabbing && grabFrames && grabFrames.length > 0) {
+            // Playing the pickup animation.
+            spriteData = grabFrames[Math.min(this.grabFrame, grabFrames.length - 1)];
+        } else if (this.liftedObject && grabFrames && grabFrames.length > 0) {
+            // Carrying — hold the last grab frame as the carry pose.
+            spriteData = grabFrames[grabFrames.length - 1];
+        } else if (this.moving && this.sprites[walkKey] && this.sprites[walkKey].length > 0) {
             const frameIndex = Math.min(this.frame, this.sprites[walkKey].length - 1);
             spriteData = this.sprites[walkKey][frameIndex];
         } else if (this.sprites[idleKey] && this.sprites[idleKey].length > 0) {
