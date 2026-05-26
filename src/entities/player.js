@@ -454,9 +454,13 @@ class Player {
         const obj = this.liftedObject;
         if (!obj) return null;
         const fv = this.getFacingVector();
-        const D = 260; // ground distance in px (FIXED for now — see above)
+        let D = 260;   // ground distance in px (FIXED for now — see above)
         const T = 42;  // flight duration in frames
         const H = 140; // arc peak height in px (visual only)
+
+        // Upward throws (any negative-y facing) read as travelling farther
+        // because of the iso perspective illusion, so shorten them 30%.
+        if (fv.y < 0) D *= 0.7;
 
         obj.thrown = true;
         obj.pushable = false;
