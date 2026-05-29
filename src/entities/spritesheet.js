@@ -157,20 +157,22 @@ class SpriteSheet {
             scanCtx = c.getContext('2d', { willReadFrequently: true });
             if (scanCtx) scanCtx._canvas = c;
         } catch (e) { scanCtx = null; }
-        // bodyBaseline(frameIndex): { centroid, bottom } — scaled px from the
+        // bodyBaseline(image, frame): { centroid, bottom } — scaled px from the
         // green centroid / lowest green pixel to the frame's bottom edge (both
-        // 0 if unscannable). Cached per frame index.
+        // 0 if unscannable). Cached per frame by sheet + coordinates so it works
+        // across both the main sheet and the walk sheet.
         const baselineCache = {};
-        const bodyBaseline = (idx) => {
-            if (idx in baselineCache) return baselineCache[idx];
-            const f = data.frames[idx];
+        const bodyBaseline = (image, f) => {
+            if (!f || !image) return { centroid: 0, bottom: 0 };
+            const key = (image === img ? 'a' : 'b') + ':' + f.x + ',' + f.y;
+            if (key in baselineCache) return baselineCache[key];
             let res = { centroid: 0, bottom: 0 };
-            if (scanCtx && f) {
+            if (scanCtx) {
                 try {
                     const cv = scanCtx._canvas;
                     cv.width = f.w; cv.height = f.h;
                     scanCtx.clearRect(0, 0, f.w, f.h);
-                    scanCtx.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+                    scanCtx.drawImage(image, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
                     const d = scanCtx.getImageData(0, 0, f.w, f.h).data;
                     let sumY = 0, count = 0, low = -1;
                     for (let y = 0; y < f.h; y++) {
@@ -183,28 +185,28 @@ class SpriteSheet {
                     if (count > 0) res = { centroid: (f.h - sumY / count) * scale, bottom: (f.h - 1 - low) * scale };
                 } catch (e) { res = { centroid: 0, bottom: 0 }; }
             }
-            baselineCache[idx] = res;
+            baselineCache[key] = res;
             return res;
         };
 
-        // Build a sprite-data record for (row, col), or null if missing.
+        // Build a sprite-data record from any sheet for a given frame, or null.
         // vAlign keeps this frame's body on the same line as the row's idle
         // pose. Upright poses align by the green CENTROID (robust to an arm
         // occluding the ball's lower edge). A frame much flatter than idle is a
         // vertical squish (heavy-carry crouch) and aligns by the body BOTTOM
         // instead — so it compresses onto the ground rather than floating up,
-        // which centroid-alignment would do for a shorter body.
-        const makeSprite = (row, col, flipped, idleBase) => {
-            const idx = row * NCOLS + col;
-            const f = data.frames[idx];
+        // which centroid-alignment would do for a shorter body. Scale and the
+        // squish/idle references come from the main sheet, so frames from the
+        // walk sheet (same drawn resolution) stay consistent in size + baseline.
+        const makeSprite = (image, f, flipped, idleBase) => {
             if (!f) return null;
-            const base = bodyBaseline(idx);
+            const base = bodyBaseline(image, f);
             const squished = (f.h / f.w) < SQUISH_RATIO * idleAspect;
             const vAlign = squished
                 ? Math.round(base.bottom - idleBase.bottom)
                 : Math.round(base.centroid - idleBase.centroid);
             return {
-                image: img,
+                image,
                 sx: f.x, sy: f.y, sw: f.w, sh: f.h,
                 width: Math.round(f.w * scale),
                 height: Math.round(f.h * scale),
@@ -213,31 +215,48 @@ class SpriteSheet {
             };
         };
 
+        // Optional walk sheet: 4 cols × 5 rows, same row→direction order. The
+        // walk cycle is column 0 → idle → column 2 (per the design), looping.
+        const walkImg = this.game.getImage('coconut_walk_sheet');
+        const walkData = this.game.getJSON('coconut_walk_sprites');
+        const WALK_NCOLS = (walkData && walkData.cols) || 4;
+        const WALK_COLS = [0, 2]; // 1st & 3rd columns — the two stride poses
+        const walkFrame = (row, col) =>
+            (walkData && walkData.frames) ? walkData.frames[row * WALK_NCOLS + col] : null;
+
         for (let r = 0; r < ROWS.length; r++) {
             const { dir, mirror } = ROWS[r];
-            const idleBase = bodyBaseline(r * NCOLS + IDLE_COL);
+            const idleBase = bodyBaseline(img, data.frames[r * NCOLS + IDLE_COL]);
             for (const flipped of (mirror ? [false, true] : [false])) {
                 const name = flipped ? mirror : dir;
-                const idle = makeSprite(r, IDLE_COL, flipped, idleBase);
-                if (idle) {
-                    sprites[`${name}_idle`].push(idle);
-                    // Walk reuses idle until walk-cycle frames are authored.
+                const idle = makeSprite(img, data.frames[r * NCOLS + IDLE_COL], flipped, idleBase);
+                if (idle) sprites[`${name}_idle`].push(idle);
+
+                // Walk cycle: stride pose (col 0) → idle → stride pose (col 2),
+                // from the walk sheet. Falls back to a static idle frame if the
+                // walk sheet is missing or a frame can't be built.
+                const w0 = makeSprite(walkImg, walkFrame(r, WALK_COLS[0]), flipped, idleBase);
+                const w2 = makeSprite(walkImg, walkFrame(r, WALK_COLS[1]), flipped, idleBase);
+                if (w0 && idle && w2) {
+                    sprites[`${name}_walk`].push(w0, idle, w2);
+                } else if (idle) {
                     sprites[`${name}_walk`].push({ ...idle });
                 }
+
                 for (const c of GRAB_COLS) {
-                    const s = makeSprite(r, c, flipped, idleBase);
+                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_grab`].push(s);
                 }
                 for (const c of GRAB_HEAVY_COLS) {
-                    const s = makeSprite(r, c, flipped, idleBase);
+                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_grab_heavy`].push(s);
                 }
                 for (const c of THROW_COLS) {
-                    const s = makeSprite(r, c, flipped, idleBase);
+                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_throw`].push(s);
                 }
                 for (const c of ACTION_COLS) {
-                    const s = makeSprite(r, c, flipped, idleBase);
+                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_action`].push(s);
                 }
             }

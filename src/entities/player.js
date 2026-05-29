@@ -27,7 +27,7 @@ class Player {
         this.facing = 'down';
         this.moving = false;
         this.frame = 0;
-        this.animationSpeed = 0.15;
+        this.animationSpeed = 0.1125; // walk-cycle advance per tick (25% slower than 0.15)
         this.animationCounter = 0;
 
         // Diagonal facing tracking
