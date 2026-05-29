@@ -129,43 +129,99 @@ class SpriteSheet {
         const refFrame = data.frames[IDLE_COL]; // row 0, idle column
         const scale = (refFrame && refFrame.h) ? targetHeight / refFrame.h : 1;
 
+        // --- Body-baseline alignment ---------------------------------------
+        // Frames are tightly cropped, so a pose where the arms reach down/
+        // forward (the grab/action poses on down & side facings) leaves the
+        // green body sitting higher inside the box than in the idle pose.
+        // Bottom-anchoring the raw frame at render time would then shove the
+        // whole body upward. To keep the body planted, locate each frame's
+        // green body and store a vertical correction `vAlign` relative to that
+        // facing's idle frame; render shifts the frame down by it.
+        //
+        // The reference is the green CENTROID (centre of mass), not the lowest
+        // green pixel: in the grab/action poses a yellow arm crosses in front
+        // of the ball's lower edge, so the lowest visible green sits too high
+        // and under-corrects (worst on the sides). The centroid is robust to
+        // that occlusion. Wrapped in try/catch — if the canvas can't be read
+        // (tainted/unsupported), vAlign stays 0 and render falls back to the
+        // old raw bottom-anchoring.
+        let scanCtx = null;
+        try {
+            const c = document.createElement('canvas');
+            scanCtx = c.getContext('2d', { willReadFrequently: true });
+            if (scanCtx) scanCtx._canvas = c;
+        } catch (e) { scanCtx = null; }
+        // bodyBaseline(frameIndex): scaled px from the green centroid to the
+        // frame's bottom edge (0 if unscannable). Cached per frame index.
+        const baselineCache = {};
+        const bodyBaseline = (idx) => {
+            if (idx in baselineCache) return baselineCache[idx];
+            const f = data.frames[idx];
+            let val = 0;
+            if (scanCtx && f) {
+                try {
+                    const cv = scanCtx._canvas;
+                    cv.width = f.w; cv.height = f.h;
+                    scanCtx.clearRect(0, 0, f.w, f.h);
+                    scanCtx.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
+                    const d = scanCtx.getImageData(0, 0, f.w, f.h).data;
+                    let sumY = 0, count = 0;
+                    for (let y = 0; y < f.h; y++) {
+                        for (let x = 0; x < f.w; x++) {
+                            const i = (y * f.w + x) * 4;
+                            const R = d[i], G = d[i + 1], B = d[i + 2], A = d[i + 3];
+                            if (A > 128 && G > 90 && G > R + 20 && G > B + 20) { sumY += y; count++; }
+                        }
+                    }
+                    if (count > 0) val = (f.h - sumY / count) * scale;
+                } catch (e) { val = 0; }
+            }
+            baselineCache[idx] = val;
+            return val;
+        };
+
         // Build a sprite-data record for (row, col), or null if missing.
-        const makeSprite = (row, col, flipped) => {
-            const f = data.frames[row * NCOLS + col];
+        // idleBase is the row's idle centroid baseline; vAlign keeps this
+        // frame's body centred on the same line as that idle pose.
+        const makeSprite = (row, col, flipped, idleBase) => {
+            const idx = row * NCOLS + col;
+            const f = data.frames[idx];
             if (!f) return null;
             return {
                 image: img,
                 sx: f.x, sy: f.y, sw: f.w, sh: f.h,
                 width: Math.round(f.w * scale),
                 height: Math.round(f.h * scale),
+                vAlign: Math.round(bodyBaseline(idx) - idleBase),
                 flipped
             };
         };
 
         for (let r = 0; r < ROWS.length; r++) {
             const { dir, mirror } = ROWS[r];
+            const idleBase = bodyBaseline(r * NCOLS + IDLE_COL);
             for (const flipped of (mirror ? [false, true] : [false])) {
                 const name = flipped ? mirror : dir;
-                const idle = makeSprite(r, IDLE_COL, flipped);
+                const idle = makeSprite(r, IDLE_COL, flipped, idleBase);
                 if (idle) {
                     sprites[`${name}_idle`].push(idle);
                     // Walk reuses idle until walk-cycle frames are authored.
                     sprites[`${name}_walk`].push({ ...idle });
                 }
                 for (const c of GRAB_COLS) {
-                    const s = makeSprite(r, c, flipped);
+                    const s = makeSprite(r, c, flipped, idleBase);
                     if (s) sprites[`${name}_grab`].push(s);
                 }
                 for (const c of GRAB_HEAVY_COLS) {
-                    const s = makeSprite(r, c, flipped);
+                    const s = makeSprite(r, c, flipped, idleBase);
                     if (s) sprites[`${name}_grab_heavy`].push(s);
                 }
                 for (const c of THROW_COLS) {
-                    const s = makeSprite(r, c, flipped);
+                    const s = makeSprite(r, c, flipped, idleBase);
                     if (s) sprites[`${name}_throw`].push(s);
                 }
                 for (const c of ACTION_COLS) {
-                    const s = makeSprite(r, c, flipped);
+                    const s = makeSprite(r, c, flipped, idleBase);
                     if (s) sprites[`${name}_action`].push(s);
                 }
             }

@@ -897,7 +897,11 @@ class Player {
                 const colCenter = drawX + this.colOffX + this.colW / 2;
                 offsetX = Math.round(colCenter - renderW / 2);
             }
-            const topY = drawY + this.height - renderH;
+            // Bottom-anchor, then nudge by the frame's feet-baseline correction
+            // (coconut frames carry vAlign; others default to 0) so every pose
+            // plants its feet on the same line instead of jumping when a pose's
+            // tight crop puts the body higher in the box.
+            const topY = drawY + this.height - renderH + (spriteData.vAlign || 0);
 
             ctx.save();
             if (spriteData.flipped) {
