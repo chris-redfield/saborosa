@@ -128,6 +128,12 @@ class SpriteSheet {
         // stay proportional instead of being stretched to a fixed height.
         const refFrame = data.frames[IDLE_COL]; // row 0, idle column
         const scale = (refFrame && refFrame.h) ? targetHeight / refFrame.h : 1;
+        // Idle source aspect (h/w). A frame much flatter than this is a vertical
+        // squish (the heavy-carry crouch) and gets anchored differently — see
+        // makeSprite. SQUISH_RATIO 0.85 catches col 3 (~0.62) but not the
+        // throw-release frame (~0.71).
+        const idleAspect = (refFrame && refFrame.w) ? refFrame.h / refFrame.w : 1;
+        const SQUISH_RATIO = 0.85;
 
         // --- Body-baseline alignment ---------------------------------------
         // Frames are tightly cropped, so a pose where the arms reach down/
@@ -151,13 +157,14 @@ class SpriteSheet {
             scanCtx = c.getContext('2d', { willReadFrequently: true });
             if (scanCtx) scanCtx._canvas = c;
         } catch (e) { scanCtx = null; }
-        // bodyBaseline(frameIndex): scaled px from the green centroid to the
-        // frame's bottom edge (0 if unscannable). Cached per frame index.
+        // bodyBaseline(frameIndex): { centroid, bottom } — scaled px from the
+        // green centroid / lowest green pixel to the frame's bottom edge (both
+        // 0 if unscannable). Cached per frame index.
         const baselineCache = {};
         const bodyBaseline = (idx) => {
             if (idx in baselineCache) return baselineCache[idx];
             const f = data.frames[idx];
-            let val = 0;
+            let res = { centroid: 0, bottom: 0 };
             if (scanCtx && f) {
                 try {
                     const cv = scanCtx._canvas;
@@ -165,34 +172,43 @@ class SpriteSheet {
                     scanCtx.clearRect(0, 0, f.w, f.h);
                     scanCtx.drawImage(img, f.x, f.y, f.w, f.h, 0, 0, f.w, f.h);
                     const d = scanCtx.getImageData(0, 0, f.w, f.h).data;
-                    let sumY = 0, count = 0;
+                    let sumY = 0, count = 0, low = -1;
                     for (let y = 0; y < f.h; y++) {
                         for (let x = 0; x < f.w; x++) {
                             const i = (y * f.w + x) * 4;
                             const R = d[i], G = d[i + 1], B = d[i + 2], A = d[i + 3];
-                            if (A > 128 && G > 90 && G > R + 20 && G > B + 20) { sumY += y; count++; }
+                            if (A > 128 && G > 90 && G > R + 20 && G > B + 20) { sumY += y; count++; low = y; }
                         }
                     }
-                    if (count > 0) val = (f.h - sumY / count) * scale;
-                } catch (e) { val = 0; }
+                    if (count > 0) res = { centroid: (f.h - sumY / count) * scale, bottom: (f.h - 1 - low) * scale };
+                } catch (e) { res = { centroid: 0, bottom: 0 }; }
             }
-            baselineCache[idx] = val;
-            return val;
+            baselineCache[idx] = res;
+            return res;
         };
 
         // Build a sprite-data record for (row, col), or null if missing.
-        // idleBase is the row's idle centroid baseline; vAlign keeps this
-        // frame's body centred on the same line as that idle pose.
+        // vAlign keeps this frame's body on the same line as the row's idle
+        // pose. Upright poses align by the green CENTROID (robust to an arm
+        // occluding the ball's lower edge). A frame much flatter than idle is a
+        // vertical squish (heavy-carry crouch) and aligns by the body BOTTOM
+        // instead — so it compresses onto the ground rather than floating up,
+        // which centroid-alignment would do for a shorter body.
         const makeSprite = (row, col, flipped, idleBase) => {
             const idx = row * NCOLS + col;
             const f = data.frames[idx];
             if (!f) return null;
+            const base = bodyBaseline(idx);
+            const squished = (f.h / f.w) < SQUISH_RATIO * idleAspect;
+            const vAlign = squished
+                ? Math.round(base.bottom - idleBase.bottom)
+                : Math.round(base.centroid - idleBase.centroid);
             return {
                 image: img,
                 sx: f.x, sy: f.y, sw: f.w, sh: f.h,
                 width: Math.round(f.w * scale),
                 height: Math.round(f.h * scale),
-                vAlign: Math.round(bodyBaseline(idx) - idleBase),
+                vAlign,
                 flipped
             };
         };
