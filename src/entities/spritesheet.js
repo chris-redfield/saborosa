@@ -89,7 +89,7 @@ class SpriteSheet {
         const data = this.game.getJSON('coconut_sprites');
 
         const sprites = {};
-        const ANIMS = ['idle', 'walk', 'grab', 'grab_heavy', 'throw'];
+        const ANIMS = ['idle', 'walk', 'grab', 'grab_heavy', 'throw', 'action'];
         const DIRS = ['down', 'up', 'right', 'left',
                       'down_right', 'down_left', 'up_right', 'up_left'];
         for (const d of DIRS) for (const a of ANIMS) sprites[`${d}_${a}`] = [];
@@ -107,6 +107,9 @@ class SpriteSheet {
         const GRAB_HEAVY_COLS = [IDLE_COL, 0, 1, 2, 3];
         //   throw: 4 → 5 → 6 → 7 → 8   (charged power throw; returns to idle)
         const THROW_COLS = [4, 5, 6, 7, 8];
+        //   action: 0   (first column — the empty-handed "reach" gesture played
+        //   when Space is pressed with nothing in range to pick up)
+        const ACTION_COLS = [0];
 
         // Row index → primary direction + (optional) mirrored direction.
         const ROWS = [
@@ -160,6 +163,10 @@ class SpriteSheet {
                 for (const c of THROW_COLS) {
                     const s = makeSprite(r, c, flipped);
                     if (s) sprites[`${name}_throw`].push(s);
+                }
+                for (const c of ACTION_COLS) {
+                    const s = makeSprite(r, c, flipped);
+                    if (s) sprites[`${name}_action`].push(s);
                 }
             }
         }

@@ -470,7 +470,11 @@ function updateGame(dt) {
         const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
             player._attackWasCarrying = !!player.liftedObject;
-            if (!player.liftedObject) player.liftOrDrop(obstacles); // try pickup
+            if (!player.liftedObject) {
+                player.liftOrDrop(obstacles); // try pickup
+                // Nothing in range to lift → play the empty-handed gesture.
+                if (!player.liftedObject) player.startAction();
+            }
             player._attackHoldStart = performance.now();
         }
         if (player._attackHoldStart != null) {

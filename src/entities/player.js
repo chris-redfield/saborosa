@@ -131,6 +131,12 @@ class Player {
         this.throwAnimCounter = 0;
         this.throwAnimSpeed = 0.3;
 
+        // Empty-handed "action" gesture (coconut col 0). One-shot: held for a
+        // brief beat when Space is pressed with nothing in range, then idle.
+        this.actionAnimating = false;
+        this.actionTicks = 0;
+        this.actionHoldTicks = 18; // ~0.3s at 60fps fixed timestep
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -270,6 +276,12 @@ class Player {
                     this.throwAnimating = false;
                 }
             }
+        }
+
+        // Empty-handed action gesture (one-shot hold; returns to idle/walk).
+        if (this.actionAnimating) {
+            this.actionTicks--;
+            if (this.actionTicks <= 0) this.actionAnimating = false;
         }
 
         // Update lifted object position to follow player. Centered
@@ -418,14 +430,19 @@ class Player {
 
             let inRange = false;
             if (liftFv.x !== 0 && liftFv.y !== 0) {
-                // Diagonal: check both axes independently (generous)
+                // Diagonal: the object must be near the forward CORNER — within
+                // reach on BOTH axes. (Previously this OR'd the two axis checks,
+                // each of which is unbounded on the other axis, so a diagonal
+                // facing would grab any liftable object anywhere up/down the
+                // same column or across the same row — picking cubes up from
+                // clear across the map.)
                 const hOk = liftFv.x > 0
                     ? pr.x + pr.width + reach > r.x && pr.x < r.x
                     : pr.x - reach < r.x + r.width && pr.x > r.x;
                 const vOk = liftFv.y > 0
                     ? pr.y + pr.height + reach > r.y && pr.y < r.y
                     : pr.y - reach < r.y + r.height && pr.y > r.y;
-                inRange = hOk || vOk;
+                inRange = hOk && vOk;
             } else if (liftFv.y > 0)  { inRange = pr.y + pr.height + reach > r.y && pr.y < r.y && hOverlap; }
             else if (liftFv.y < 0)    { inRange = pr.y - reach < r.y + r.height && pr.y > r.y && hOverlap; }
             else if (liftFv.x > 0)    { inRange = pr.x + pr.width + reach > r.x && pr.x < r.x && vOverlap; }
@@ -463,6 +480,17 @@ class Player {
             this.grabReverse = false;
             this.grabFrame = 0;
             this.grabCounter = 0;
+        }
+    }
+
+    // Kick off the empty-handed action gesture if the active sprite pack has
+    // action frames for the current facing (coconut does, tomato doesn't —
+    // for those this is a no-op). Called when a pickup press finds nothing.
+    startAction() {
+        if (this.actionAnimating) return;
+        if (this.sprites && this.sprites[`${this.facing}_action`]?.length) {
+            this.actionAnimating = true;
+            this.actionTicks = this.actionHoldTicks;
         }
     }
 
@@ -840,6 +868,9 @@ class Player {
         } else if (this.moving && this.sprites[walkKey] && this.sprites[walkKey].length > 0) {
             const frameIndex = Math.min(this.frame, this.sprites[walkKey].length - 1);
             spriteData = this.sprites[walkKey][frameIndex];
+        } else if (this.actionAnimating && this.sprites[`${this.facing}_action`]?.length > 0) {
+            // Empty-handed "reach" gesture (coconut col 0); walking overrides it.
+            spriteData = this.sprites[`${this.facing}_action`][0];
         } else if (this.sprites[idleKey] && this.sprites[idleKey].length > 0) {
             spriteData = this.sprites[idleKey][0];
         }
