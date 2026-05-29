@@ -30,6 +30,7 @@ class InputHandler {
             'ShiftLeft': 'dash', 'ShiftRight': 'dash',
             'KeyR': 'run',
             'KeyP': 'pause',
+            'KeyM': 'mute',
 
             'Escape': 'escape',
             'KeyC': 'debug',

@@ -29,6 +29,11 @@ async function init() {
     game = new Game('game-canvas');
     await game.loadAssets();
 
+    // Background music — primed now, started on the first user gesture
+    // (browsers block autoplay until then).
+    game.audio.loadMusic('assets/MIKE.mp3');
+    game.audio.unlockOnFirstGesture();
+
     loadStage(STAGES[3]);
 
     game.onUpdate = (dt) => updateGame(dt);
@@ -100,6 +105,11 @@ function updateGame(dt) {
     // Cycle character sprite pack (1 = next pack)
     if (game.input.isKeyJustPressed('cycleCharacter')) {
         player.cycleCharacter();
+    }
+
+    // Toggle background music (M)
+    if (game.input.isKeyJustPressed('mute')) {
+        game.audio.toggleMute();
     }
 
     // Sample the zone under the player's footprint once — reused for sand,

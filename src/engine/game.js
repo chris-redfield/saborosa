@@ -35,6 +35,9 @@ class Game {
         // Input
         this.input = new InputHandler();
 
+        // Audio
+        this.audio = new AudioManager();
+
         // Assets
         this.assets = { images: {}, json: {}, loaded: false };
     }
