@@ -469,17 +469,23 @@ class Player {
     // Launch the carried object on a parabolic arc in the facing direction.
     // Returns the thrown object (now detached) or null.
     //
-    // FUTURE: distance should scale with object mass (heavier = shorter) and
-    // with how long Space was held (charge time). For now it's fixed.
+    // `charge` is 0..1, linear in how long Space was held (capped by the
+    // caller). Ground distance scales linearly with it: full charge throws the
+    // max distance, half the charge → half the distance. Arc height and flight
+    // duration ease up with charge too, so a light toss is small and quick and
+    // a full throw is big and long.
+    //
+    // FUTURE: distance should also scale with object mass (heavier = shorter).
     // FUTURE: mid-flight collision with other objects / players.
-    throwObject(power = false) {
+    throwObject(charge = 1) {
         const obj = this.liftedObject;
         if (!obj) return null;
+        const c = Math.max(0, Math.min(1, charge));
         const fv = this.getFacingVector();
-        // Power throw (≥2s charge) goes much farther / higher / longer flight.
-        let D = power ? 520 : 260; // ground distance in px (FIXED for now — see above)
-        const T = power ? 60 : 42;  // flight duration in frames
-        const H = power ? 210 : 140; // arc peak height in px (visual only)
+        const MAX_D = 520;                       // ground distance (px) at full charge
+        let D = MAX_D * c;
+        const T = Math.round(42 + (60 - 42) * c); // flight duration in frames
+        const H = 140 + (210 - 140) * c;          // arc peak height in px (visual only)
 
         // Upward throws (any negative-y facing) read as travelling farther
         // because of the iso perspective illusion, so shorten them 30%.
@@ -500,8 +506,8 @@ class Player {
         this.liftedObject = null;
         this.charging = false;
 
-        // Power throw plays the big wind-up→release animation (cols 4–8).
-        if (power && this.sprites[`${this.facing}_throw`]?.length) {
+        // Strong throws play the big wind-up→release animation (cols 4–8).
+        if (c >= 0.5 && this.sprites[`${this.facing}_throw`]?.length) {
             this.throwAnimating = true;
             this.throwAnimFrame = 0;
             this.throwAnimCounter = 0;

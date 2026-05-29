@@ -463,9 +463,10 @@ function updateGame(dt) {
         //   empty-handed press → pick up
         //   carrying, quick tap → gentle put-down
         //   carrying, hold ≥ THROW_HOLD_MS → crouch (charge) → release → throw
-        //   carrying, hold ≥ POWER_HOLD_MS → release → power throw (cols 4–8)
+        //   throw distance scales linearly with hold time, capped at
+        //   THROW_CHARGE_MS (full hold = max distance, half the time = half).
         const THROW_HOLD_MS = 200;
-        const POWER_HOLD_MS = 1000;
+        const THROW_CHARGE_MS = 2000; // hold time for a full-distance throw (cap)
         const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
             player._attackWasCarrying = !!player.liftedObject;
@@ -479,10 +480,10 @@ function updateGame(dt) {
                 if (player.liftedObject && held >= THROW_HOLD_MS) player.charging = true;
             } else {
                 // Released.
-                if (player.liftedObject && held >= POWER_HOLD_MS) {
-                    player.throwObject(true);  // charged power throw
-                } else if (player.liftedObject && held >= THROW_HOLD_MS) {
-                    player.throwObject(false); // normal throw
+                if (player.liftedObject && held >= THROW_HOLD_MS) {
+                    // Charge fraction 0..1: linear in hold time, capped.
+                    const charge = Math.min(held, THROW_CHARGE_MS) / THROW_CHARGE_MS;
+                    player.throwObject(charge);
                 } else if (player.liftedObject && player._attackWasCarrying) {
                     // Tap while already carrying → gentle drop (the press that
                     // first picks an object up must not immediately drop it).
