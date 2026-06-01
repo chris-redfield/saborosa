@@ -215,31 +215,15 @@ class SpriteSheet {
             };
         };
 
-        // Optional walk sheet: 4 cols × 5 rows, same row→direction order. The
-        // walk cycle is column 0 → idle → column 2 (per the design), looping.
-        const walkImg = this.game.getImage('coconut_walk_sheet');
-        const walkData = this.game.getJSON('coconut_walk_sprites');
-        const WALK_NCOLS = (walkData && walkData.cols) || 4;
-        const WALK_COLS = [0, 2]; // 1st & 3rd columns — the two stride poses
-        const walkFrame = (row, col) =>
-            (walkData && walkData.frames) ? walkData.frames[row * WALK_NCOLS + col] : null;
-
         for (let r = 0; r < ROWS.length; r++) {
             const { dir, mirror } = ROWS[r];
             const idleBase = bodyBaseline(img, data.frames[r * NCOLS + IDLE_COL]);
             for (const flipped of (mirror ? [false, true] : [false])) {
                 const name = flipped ? mirror : dir;
                 const idle = makeSprite(img, data.frames[r * NCOLS + IDLE_COL], flipped, idleBase);
-                if (idle) sprites[`${name}_idle`].push(idle);
-
-                // Walk cycle: stride pose (col 0) → idle → stride pose (col 2),
-                // from the walk sheet. Falls back to a static idle frame if the
-                // walk sheet is missing or a frame can't be built.
-                const w0 = makeSprite(walkImg, walkFrame(r, WALK_COLS[0]), flipped, idleBase);
-                const w2 = makeSprite(walkImg, walkFrame(r, WALK_COLS[1]), flipped, idleBase);
-                if (w0 && idle && w2) {
-                    sprites[`${name}_walk`].push(w0, idle, w2);
-                } else if (idle) {
+                if (idle) {
+                    sprites[`${name}_idle`].push(idle);
+                    // Walk reuses the idle frame until the walk sheet is remade.
                     sprites[`${name}_walk`].push({ ...idle });
                 }
 
