@@ -193,11 +193,23 @@ class Player {
     }
 
     update(dt) {
-        // Reverse force: the charge bar empties on its own. Drains a full bar
-        // over the same span the dash used to take to recharge, so doing
-        // nothing always settles the bar back to 0.
+        // Reverse force: the charge bar empties on its own, always settling
+        // back to 0. The drain is gentler while the bar is just getting going
+        // (≤25% → ~0.60/sec) and ramps up to the full ~0.87/sec at a full bar,
+        // so starting from empty is forgiving but holding a high bar still costs.
         if (this.dashCharge > 0) {
-            const drainPerSec = 1000 / (this.dashDuration + this.dashCooldown);
+            const maxDrain = 1000 / (this.dashDuration + this.dashCooldown); // ~0.87/sec
+            const minDrain = 0.60;  // gentler reverse force while low
+            const kneeAt = 0.25;    // below this, drain stays at minDrain
+            const rampEnd = 0.40;   // by this level, drain is back to full strength
+            let drainPerSec;
+            if (this.dashCharge <= kneeAt) {
+                drainPerSec = minDrain;
+            } else if (this.dashCharge >= rampEnd) {
+                drainPerSec = maxDrain;
+            } else {
+                drainPerSec = minDrain + (maxDrain - minDrain) * ((this.dashCharge - kneeAt) / (rampEnd - kneeAt));
+            }
             this.dashCharge = Math.max(0, this.dashCharge - drainPerSec * dt);
         }
 
