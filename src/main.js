@@ -97,9 +97,10 @@ function updateGame(dt) {
     const obstacles = world.getObstacles();
     const movement = game.input.getMovementVector();
 
-    // Dash
+    // Shift pumps the charge bar. There's no longer a one-shot directional
+    // dash — the bar's level continuously scales the player's move speed.
     if (game.input.isKeyJustPressed('dash')) {
-        player.dash(performance.now(), movement.x, movement.y);
+        player.chargeUp(); // fill force — pumps the charge bar against its drain
     }
 
     // Cycle character sprite pack (1 = next pack)
@@ -185,16 +186,15 @@ function updateGame(dt) {
     if (player.surfaceState === 'climbing') speedMult = player.climbSpeedFactor;
     else if (player.onSand) speedMult = player.sandSpeedFactor;
     else if (playerZone === Zone.DENSE_SAND) speedMult = player.sandSpeedFactor * 0.9;
-    if (player.running && !player.dashing) speedMult *= player.runSpeedFactor;
-    let dx, dy;
-    if (player.dashing) {
-        const dashVel = player.speed * player.dashSpeed * speedMult;
-        dx = player.dashDirection.x * dashVel;
-        dy = player.dashDirection.y * dashVel;
-    } else {
-        dx = movement.x * player.speed * speedMult;
-        dy = movement.y * player.speed * speedMult;
-    }
+    if (player.running) speedMult *= player.runSpeedFactor;
+
+    // Charge-driven speed: the bar scales the player up to dash speed at a full
+    // bar (50% bar → half dash speed). An empty bar falls back to normal walk
+    // speed, so the player must keep mashing Shift to stay fast.
+    speedMult *= Math.max(1, player.dashCharge * player.dashSpeed);
+
+    let dx = movement.x * player.speed * speedMult;
+    let dy = movement.y * player.speed * speedMult;
 
     // --- Wall state machine ---
     // Climbing is now strictly "the player is on a green (WALL) pixel."
@@ -318,8 +318,7 @@ function updateGame(dt) {
 
     // 3) Ramp drift applies whenever you're standing on terrain — ground,
     //    top of a cube, or a wall face. Falling is not drifted.
-    if (!player.dashing &&
-        (player.surfaceState === 'ground' || player.surfaceState === 'climbing')) {
+    if (player.surfaceState === 'ground' || player.surfaceState === 'climbing') {
         const drift = getZoneDrift(playerZone);
         dx += drift.dx;
         dy += drift.dy;
@@ -622,19 +621,27 @@ function renderGame(ctx) {
     ctx.font = '11px monospace';
     ctx.fillText(gameState.currentStage.name, 10, 16);
 
-    // Dash cooldown bar
+    // Dash charge bar — empty by default, drains on its own, pumped by Shift.
     if (!gameState.transition) {
         const barX = 10, barY = 24, barW = 60, barH = 6;
-        const now = performance.now();
-        const cdEnd = player.dashTimer;
-        const cdTotal = player.dashDuration + player.dashCooldown;
-        const remaining = Math.max(0, cdEnd - now);
-        const fill = 1 - remaining / cdTotal;
+        const fill = player.dashCharge;
 
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fillRect(barX, barY, barW, barH);
         ctx.fillStyle = fill >= 1 ? '#4f4' : '#2a2';
         ctx.fillRect(barX, barY, barW * fill, barH);
+
+        // Recharge pump: brighten the freshly-filled leading segment, then let
+        // it fade back to the regular green (player.rechargeFlash decays to 0).
+        const flash = player.rechargeFlash;
+        if (flash > 0 && fill > 0) {
+            const filledW = barW * fill;
+            const segW = Math.min(filledW, barW * 0.11);
+            ctx.globalAlpha = flash;
+            ctx.fillStyle = '#dfffdf';
+            ctx.fillRect(barX + filledW - segW, barY, segW, barH);
+            ctx.globalAlpha = 1;
+        }
     }
 
     // Debug overlay

@@ -36,14 +36,15 @@ class Player {
         this.lastDy = 0;
         this.diagGraceFrames = 0;
 
-        // Dash
-        this.dashing = false;
-        this.dashDirection = { x: 0, y: 0 };
-        this.dashSpeed = 5;        // multiplier of base speed
-        this.dashDuration = 150;   // ms
-        this.dashCooldown = 1000;  // ms
-        this.dashEndTime = 0;
-        this.dashTimer = 0;
+        // Dash (now a charge-driven speed boost, not a one-shot lunge)
+        this.dashSpeed = 5;        // speed multiplier at a full charge bar
+        this.dashDuration = 150;   // ms — retained only to size the bar drain rate
+        this.dashCooldown = 1000;  // ms — retained only to size the bar drain rate
+        // Charge bar: empty by default. A constant "reverse force" drains it
+        // (see update), while each dash-key press pumps it up (see chargeUp).
+        // The bar's level scales the player's move speed up to dashSpeed.
+        this.dashCharge = 0;    // 0..1 — what the bar displays
+        this.rechargeFlash = 0; // 0..1 highlight on the freshly-pumped segment, decays to 0
 
         // Run (sprint)
         this.running = false;
@@ -183,39 +184,26 @@ class Player {
         console.log(`Character ${this.characterIndex}: bbox ${this.width}x${this.height}, footprint ${this.colW}x${this.colH}`);
     }
 
-    dash(currentTime, inputX, inputY) {
-        if (this.dashing || currentTime < this.dashTimer) return false;
-
-        let dx = inputX;
-        let dy = inputY;
-
-        // Fall back to facing direction if no input
-        if (dx === 0 && dy === 0) {
-            const fv = this.getFacingVector();
-            dx = fv.x;
-            dy = fv.y;
-        }
-
-        // Normalize diagonal
-        if (dx !== 0 && dy !== 0) {
-            const len = Math.sqrt(dx * dx + dy * dy);
-            dx /= len;
-            dy /= len;
-        }
-
-        this.dashing = true;
-        this.dashDirection = { x: dx, y: dy };
-        this.dashEndTime = currentTime + this.dashDuration;
-        this.dashTimer = currentTime + this.dashDuration + this.dashCooldown;
-        return true;
+    // Fill force: each dash-key press pumps the charge bar up 11% and flashes
+    // the freshly-added segment. The bar drains continuously (see update), so
+    // it only climbs while the player keeps pressing faster than it empties.
+    chargeUp() {
+        this.dashCharge = Math.min(1, this.dashCharge + 0.11);
+        this.rechargeFlash = 1;
     }
 
     update(dt) {
-        // Dash timing
-        const now = performance.now();
-        if (this.dashing && now > this.dashEndTime) {
-            this.dashing = false;
-            this.dashDirection = { x: 0, y: 0 };
+        // Reverse force: the charge bar empties on its own. Drains a full bar
+        // over the same span the dash used to take to recharge, so doing
+        // nothing always settles the bar back to 0.
+        if (this.dashCharge > 0) {
+            const drainPerSec = 1000 / (this.dashDuration + this.dashCooldown);
+            this.dashCharge = Math.max(0, this.dashCharge - drainPerSec * dt);
+        }
+
+        // Fade the pump highlight back to the regular bar color.
+        if (this.rechargeFlash > 0) {
+            this.rechargeFlash = Math.max(0, this.rechargeFlash - dt / 0.4);
         }
 
         if (this.moving) {
@@ -940,8 +928,8 @@ class Player {
             ctx.fillStyle = 'lime';
             ctx.font = '10px monospace';
             const runInfo = this.running ? ' RUN' : '';
-            const dashInfo = this.dashing ? ' DASH' : (performance.now() < this.dashTimer ? ' cd' : '');
-            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${runInfo}${dashInfo} m:${this.mass}`, drawX, drawY - 4);
+            const chargeInfo = this.dashCharge > 0 ? ` chg:${Math.round(this.dashCharge * 100)}%` : '';
+            ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${runInfo}${chargeInfo} m:${this.mass}`, drawX, drawY - 4);
         }
 
         // Render lifted object above head
