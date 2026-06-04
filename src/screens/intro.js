@@ -16,17 +16,19 @@
  * All "game juice" (title entrance + idle bob, animated menu selection, and the
  * confirm punch) lives entirely in this file so the rest of the codebase stays
  * untouched: main.js just polls update() and gets 'START' once the punch
- * animation has finished playing.
+ * animation has finished playing. The animation tuning values come from
+ * window.INTRO_JUICE (src/screens/intro.config.js).
  */
 class IntroScreen {
     constructor(game) {
         this.game = game;
+        this.cfg = window.INTRO_JUICE;   // juice tuning (see intro.config.js)
         this.options = ['START', 'OPTIONS'];
         this.selected = 0;
         this.mode = 'menu';        // 'menu' | 'options'
         this.bgKey = 'intro_bg';
         this.scrollX = 0;          // background scroll offset (px), grows forever
-        this.scrollSpeed = 40;     // px/sec the camera pans across the background
+        this.scrollSpeed = this.cfg.scrollSpeed; // px/sec the camera pans across the background
         this.t = 0;                // elapsed time, for subtle animation
         this._held = {};           // per-action previous down-state, for edge detection
 
@@ -39,7 +41,7 @@ class IntroScreen {
         // before actually handing control to the game.
         this.starting = false;
         this.startT = 0;
-        this.startDur = 0.55;
+        this.startDur = this.cfg.punch.dur;
         this.flash = 0;            // 0..1 white screen flash, decays
         this._cover = null;        // black overlay that covers the START handoff
         this._coverReady = false;  // true once that overlay has actually painted
@@ -49,7 +51,7 @@ class IntroScreen {
         // letterbox/border around the canvas too we use a full-viewport DOM
         // overlay, created + driven + removed entirely here (no other file is
         // touched).
-        this.fadeDur = 0.9;
+        this.fadeDur = this.cfg.bootFadeDur;
         this._fade = null;
         this._fadeDone = false;
         this._makeFade();
@@ -101,7 +103,7 @@ class IntroScreen {
         s.zIndex = '9999';
         s.pointerEvents = 'none';
         s.opacity = '1';
-        s.transition = 'opacity 0.6s ease-out';
+        s.transition = `opacity ${this.cfg.reveal.fadeDur}s ease-out`;
         document.body.appendChild(el);
         this._cover = el;
         this._coverReady = false;
@@ -150,10 +152,10 @@ class IntroScreen {
         // selection-change pop + the flash regardless of mode.
         this.options.forEach((_, i) => {
             const target = i === this.selected ? 1 : 0;
-            this._optAnim[i] = this._approach(this._optAnim[i], target, 16, dt);
+            this._optAnim[i] = this._approach(this._optAnim[i], target, this.cfg.menu.selectEaseRate, dt);
         });
-        if (this.selPulse > 0) this.selPulse = Math.max(0, this.selPulse - dt / 0.22);
-        if (this.flash > 0) this.flash = Math.max(0, this.flash - dt / 0.35);
+        if (this.selPulse > 0) this.selPulse = Math.max(0, this.selPulse - dt / this.cfg.menu.pulseDecay);
+        if (this.flash > 0) this.flash = Math.max(0, this.flash - dt / this.cfg.punch.flashDecay);
 
         // Confirm punch in progress: swallow input, play it out, then go.
         if (this.starting) {
@@ -239,11 +241,12 @@ class IntroScreen {
         // Foreground (title + menu) is shaken as one group during the punch.
         ctx.save();
         if (this.starting) {
+            const p = this.cfg.punch;
             const k = 1 - this.startT / this.startDur;     // 1 → 0 over the punch
-            const amp = 14 * k * k;
+            const amp = p.shakeAmp * k * k;
             ctx.translate(
-                Math.sin(this.startT * 62) * amp,
-                Math.cos(this.startT * 53) * amp * 0.6
+                Math.sin(this.startT * p.shakeFreqX) * amp,
+                Math.cos(this.startT * p.shakeFreqY) * amp * p.shakeYScale
             );
         }
 
@@ -264,7 +267,7 @@ class IntroScreen {
 
         // White flash on confirm, drawn last so it covers the whole screen.
         if (this.flash > 0) {
-            ctx.fillStyle = `rgba(255,255,255,${0.7 * this.flash})`;
+            ctx.fillStyle = `rgba(255,255,255,${this.cfg.punch.flashStrength * this.flash})`;
             ctx.fillRect(0, 0, W, H);
         }
         // The fade-in from black is a DOM overlay (see _makeFade / _updateFade)
@@ -272,22 +275,23 @@ class IntroScreen {
     }
 
     _renderTitle(ctx, W, H) {
-        // Entrance: drop in from above with a slight overshoot + fade over ~0.7s.
-        const inP = Math.min(1, this.t / 0.7);
+        const T = this.cfg.title;
+        // Entrance: drop in from above with a slight overshoot + fade.
+        const inP = Math.min(1, this.t / T.enterDur);
         const eased = this._easeOutBack(inP);
-        const enterDy = (1 - eased) * -70;
-        let alpha = Math.min(1, this.t / 0.5);
+        const enterDy = (1 - eased) * -T.enterDrop;
+        let alpha = Math.min(1, this.t / T.fadeInDur);
         let scale = 1;
 
         // Idle: gentle vertical bob + breathing once it has settled.
-        const settled = Math.min(1, Math.max(0, (this.t - 0.5) / 0.5));
-        const bob = Math.sin(this.t * 1.6) * 6 * settled;
-        scale *= 1 + Math.sin(this.t * 1.2) * 0.012 * settled;
+        const settled = Math.min(1, Math.max(0, (this.t - T.settleDelay) / T.settleDur));
+        const bob = Math.sin(this.t * T.bobFreq) * T.bobAmp * settled;
+        scale *= 1 + Math.sin(this.t * T.breatheFreq) * T.breatheAmp * settled;
 
         // Confirm punch: title kicks bigger and fades out as we hand off.
         if (this.starting) {
             const k = this.startT / this.startDur;
-            scale *= 1 + this._easeOutCubic(k) * 0.35;
+            scale *= 1 + this._easeOutCubic(k) * T.punchKick;
             alpha *= 1 - k;
         }
 
@@ -305,26 +309,27 @@ class IntroScreen {
     }
 
     _renderMenu(ctx, W, H) {
+        const M = this.cfg.menu;
         const baseY = H * 0.60 + 30;
         const gap = 72;
         // Fade the whole menu out during the confirm punch.
-        const menuAlpha = this.starting ? Math.max(0, 1 - this.startT / (this.startDur * 0.6)) : 1;
+        const menuAlpha = this.starting ? Math.max(0, 1 - this.startT / (this.startDur * M.fadeOnStartFactor)) : 1;
 
         this.options.forEach((opt, i) => {
             const a = this._optAnim[i];                 // 0..1 selected-ness
             const sel = i === this.selected;
             const y = baseY + i * gap;
             // Selected item scales up a touch (+ a pop on change) and slides right.
-            const pulse = sel ? this.selPulse * 0.10 : 0;
-            const scale = this._lerp(1, 1.18, a) + pulse;
-            const slide = this._lerp(0, 6, a);
+            const pulse = sel ? this.selPulse * M.pulseScale : 0;
+            const scale = this._lerp(1, M.selScale, a) + pulse;
+            const slide = this._lerp(0, M.selSlide, a);
             const size = 38;
 
-            // Color glides white -> gold with selected-ness.
-            const r = Math.round(this._lerp(255, 255, a));
-            const g = Math.round(this._lerp(255, 209, a));
-            const b = Math.round(this._lerp(255, 102, a));
-            const baseAlpha = this._lerp(0.82, 1, a);
+            // Color glides white -> the selected (gold) color with selected-ness.
+            const r = Math.round(this._lerp(255, M.selColor[0], a));
+            const g = Math.round(this._lerp(255, M.selColor[1], a));
+            const b = Math.round(this._lerp(255, M.selColor[2], a));
+            const baseAlpha = this._lerp(M.idleAlpha, 1, a);
 
             ctx.save();
             ctx.translate(W / 2 + slide, y);
@@ -336,7 +341,7 @@ class IntroScreen {
             // Animated arrows breathe out from the text the more selected it is.
             if (a > 0.02) {
                 const w = ctx.measureText(opt).width;
-                const gapX = w / 2 + 26 + Math.sin(this.t * 4) * 3 * a;
+                const gapX = w / 2 + M.arrowGap + Math.sin(this.t * M.arrowBreatheFreq) * M.arrowBreatheAmp * a;
                 ctx.save();
                 ctx.globalAlpha = baseAlpha * menuAlpha * a;
                 ctx.fillText('▸', -gapX, 0);
