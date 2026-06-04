@@ -114,7 +114,7 @@ class IntroScreen {
     }
 
     _renderMenu(ctx, W, H) {
-        const baseY = H * 0.60;
+        const baseY = H * 0.60 + 30;
         const gap = 72;
         this.options.forEach((opt, i) => {
             const sel = i === this.selected;
@@ -126,7 +126,7 @@ class IntroScreen {
 
         ctx.font = '18px Georgia, serif';
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('↑ / ↓ to choose   ·   Space / Enter to select', W / 2, H * 0.9);
+        ctx.fillText('↑ / ↓ to choose   ·   Space / Enter to select', W / 2, H * 0.9 + 57);
     }
 
     _renderOptions(ctx, W, H) {
@@ -140,7 +140,7 @@ class IntroScreen {
 
         ctx.font = '18px Georgia, serif';
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('Esc / Space to go back', W / 2, H * 0.9);
+        ctx.fillText('Esc / Space to go back', W / 2, H * 0.9 + 30);
     }
 }
 
