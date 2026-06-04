@@ -425,9 +425,16 @@ class IntroScreen {
         ctx.shadowColor = 'rgba(0,0,0,0.6)';
         ctx.shadowBlur = 14;
         ctx.shadowOffsetY = 5;
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 96px Georgia, "Times New Roman", serif';
-        ctx.fillText('SABOROSA', 0, 0);
+        const img = this.game.getImage('intro_title');
+        if (img) {
+            const h = T.imgHeight;
+            const w = h * (img.naturalWidth / img.naturalHeight);
+            ctx.drawImage(img, -w / 2, -h / 2, w, h);
+        } else { // fallback while the art loads
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 96px Georgia, "Times New Roman", serif';
+            ctx.fillText('SABOROSA', 0, 0);
+        }
         ctx.restore();
     }
 
@@ -437,6 +444,7 @@ class IntroScreen {
         const gap = 72;
         // Fade the whole menu out during the confirm punch.
         const menuAlpha = this.starting ? Math.max(0, 1 - this.startT / (this.startDur * M.fadeOnStartFactor)) : 1;
+        const imgKeys = ['intro_start', 'intro_options'];
 
         this.options.forEach((opt, i) => {
             const a = this._optAnim[i];                 // 0..1 selected-ness
@@ -446,32 +454,42 @@ class IntroScreen {
             const pulse = sel ? this.selPulse * M.pulseScale : 0;
             const scale = this._lerp(1, M.selScale, a) + pulse;
             const slide = this._lerp(0, M.selSlide, a);
-            const size = 38;
-
-            // Color glides white -> the selected (gold) color with selected-ness.
-            const r = Math.round(this._lerp(255, M.selColor[0], a));
-            const g = Math.round(this._lerp(255, M.selColor[1], a));
-            const b = Math.round(this._lerp(255, M.selColor[2], a));
+            // Art is pre-colored, so selection reads through scale + opacity
+            // (unselected items dim toward idleAlpha) rather than a color tween.
             const baseAlpha = this._lerp(M.idleAlpha, 1, a);
 
             ctx.save();
             ctx.translate(W / 2 + slide, y);
             ctx.scale(scale, scale);
             ctx.globalAlpha = baseAlpha * menuAlpha;
-            ctx.font = `${a > 0.5 ? 'bold ' : ''}${size}px Georgia, serif`;
-            ctx.fillStyle = `rgb(${r},${g},${b})`;
 
-            // Animated arrows breathe out from the text the more selected it is.
-            if (a > 0.02) {
-                const w = ctx.measureText(opt).width;
-                const gapX = w / 2 + M.arrowGap + Math.sin(this.t * M.arrowBreatheFreq) * M.arrowBreatheAmp * a;
-                ctx.save();
-                ctx.globalAlpha = baseAlpha * menuAlpha * a;
-                ctx.fillText('▸', -gapX, 0);
-                ctx.fillText('◂', gapX, 0);
-                ctx.restore();
+            const img = this.game.getImage(imgKeys[i]);
+            let halfW;
+            if (img) {
+                const h = M.itemHeight;
+                const w = h * (img.naturalWidth / img.naturalHeight);
+                halfW = w / 2;
+                ctx.drawImage(img, -halfW, -h / 2, w, h);
+            } else { // fallback while the art loads
+                ctx.font = `${a > 0.5 ? 'bold ' : ''}38px Georgia, serif`;
+                ctx.fillStyle = '#ffd166';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(opt, 0, 0);
+                halfW = ctx.measureText(opt).width / 2;
             }
-            ctx.fillText(opt, 0, 0);
+
+            // A pointing hand sits to the LEFT of the selected word and breathes
+            // toward/away from it (same in/out motion the arrows used to have).
+            const hand = this.game.getImage('intro_hand');
+            if (hand && a > 0.02) {
+                const hh = M.handHeight;
+                const hw = hh * (hand.naturalWidth / hand.naturalHeight);
+                // Distance from the word's left edge to the hand's right edge,
+                // pulling closer as it breathes in.
+                const gapX = halfW + M.handGap - Math.sin(this.t * M.handBreatheFreq) * M.handBreatheAmp * a;
+                ctx.globalAlpha = baseAlpha * menuAlpha * a;
+                ctx.drawImage(hand, -gapX - hw, -hh / 2, hw, hh);
+            }
             ctx.restore();
         });
 

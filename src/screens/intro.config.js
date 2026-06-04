@@ -15,6 +15,7 @@ window.INTRO_JUICE = {
 
     // Title: entrance (drop-in + fade) then perpetual idle motion.
     title: {
+        imgHeight: 150,          // px — on-screen height of the SABOROSA art (width keeps aspect)
         enterDur: 0.7,           // sec — drop-in with slight overshoot
         enterDrop: 70,           // px it falls in from
         fadeInDur: 0.5,          // sec — opacity ramp
@@ -29,16 +30,17 @@ window.INTRO_JUICE = {
 
     // Menu: animated selection feel.
     menu: {
+        itemHeight: 52,          // px — on-screen height of each option's art (width keeps aspect)
         selectEaseRate: 16,      // how fast the highlight glides between items
         pulseDecay: 0.22,        // sec — per-change "pop" fade
         pulseScale: 0.10,        // extra scale on a selection change
         selScale: 1.18,          // selected item scale
         selSlide: 6,             // px — selected item slides right
         idleAlpha: 0.82,         // alpha of unselected items (selected = 1)
-        selColor: [255, 209, 102], // gold the selected item tweens to
-        arrowGap: 26,            // px — arrows sit this far from the text edge
-        arrowBreatheFreq: 4,     // rad/sec — arrow in/out
-        arrowBreatheAmp: 3,      // px — arrow in/out
+        handHeight: 46,          // px — on-screen height of the pointing-hand cursor
+        handGap: 28,             // px — base distance from the word's left edge
+        handBreatheFreq: 4,      // rad/sec — hand in/out motion
+        handBreatheAmp: 9,       // px — hand in/out amplitude
         fadeOnStartFactor: 0.6,  // menu fades over (punch.dur * this) during punch
     },
 
