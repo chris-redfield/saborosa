@@ -55,6 +55,86 @@ class IntroScreen {
         this._fade = null;
         this._fadeDone = false;
         this._makeFade();
+
+        // Atmosphere: drifting dust/pollen motes (see intro.config.js).
+        this._particles = [];
+        this._initParticles();
+
+        // Dev toggles (DOM buttons outside the canvas) for A/B-ing atmosphere.
+        this._vignetteOn = true;
+        this._pollenOn = true;
+        this._devButtons = [];
+        this._makeDevToggles();
+    }
+
+    _makeDevToggles() {
+        this._addToggle(() => `Vignette: ${this._vignetteOn ? 'ON' : 'OFF'}`,
+            () => { this._vignetteOn = !this._vignetteOn; });
+        this._addToggle(() => `Pollen: ${this._pollenOn ? 'ON' : 'OFF'}`,
+            () => { this._pollenOn = !this._pollenOn; });
+    }
+
+    // Stacks a labeled toggle button at the top-left, outside the canvas.
+    _addToggle(getLabel, onClick) {
+        if (typeof document === 'undefined' || !document.body) return;
+        const btn = document.createElement('button');
+        const s = btn.style;
+        s.position = 'fixed';
+        s.top = `${10 + this._devButtons.length * 34}px`;
+        s.left = '10px';
+        s.zIndex = '10000';
+        s.width = '150px';
+        s.padding = '6px 10px';
+        s.font = '13px monospace';
+        s.textAlign = 'left';
+        s.cursor = 'pointer';
+        s.border = '1px solid #888';
+        s.borderRadius = '4px';
+        s.background = '#222';
+        s.color = '#fff';
+        btn.textContent = getLabel();
+        btn.addEventListener('click', () => { onClick(); btn.textContent = getLabel(); btn.blur(); });
+        document.body.appendChild(btn);
+        this._devButtons.push(btn);
+    }
+
+    // Scatter the dust/pollen motes across the screen with randomized drift,
+    // sway and twinkle so they never look like a uniform grid.
+    _initParticles() {
+        const P = this.cfg.atmosphere.particles;
+        const { width: W, height: H } = this.game;
+        const rnd = (lo, hi) => lo + Math.random() * (hi - lo);
+        for (let i = 0; i < P.count; i++) {
+            this._particles.push({
+                x: Math.random() * W,
+                y: Math.random() * H,
+                r: rnd(P.minR, P.maxR),
+                driftX: rnd(P.minDriftX, P.maxDriftX),
+                vy: rnd(P.minVy, P.maxVy),
+                swayFreq: rnd(P.minSwayFreq, P.maxSwayFreq),
+                swayPhase: Math.random() * Math.PI * 2,
+                baseAlpha: rnd(P.minAlpha, P.maxAlpha),
+                twinkleFreq: rnd(P.minTwinkleFreq, P.maxTwinkleFreq),
+                twinklePhase: Math.random() * Math.PI * 2,
+            });
+        }
+    }
+
+    // Advance the motes; wrap them around the screen edges so the field is
+    // endless. Sway is applied at render time (purely visual), so wrapping
+    // stays based on the drifting anchor (x, y).
+    _updateParticles(dt) {
+        const P = this.cfg.atmosphere.particles;
+        const { width: W, height: H } = this.game;
+        const m = P.maxR * 2;
+        for (const p of this._particles) {
+            p.x += p.driftX * dt;
+            p.y += p.vy * dt;
+            if (p.x < -m) p.x = W + m;
+            else if (p.x > W + m) p.x = -m;
+            if (p.y < -m) p.y = H + m;
+            else if (p.y > H + m) p.y = -m;
+        }
     }
 
     _makeFade() {
@@ -116,6 +196,9 @@ class IntroScreen {
     // deferred so it lands AFTER the synchronous stage load — the screen stays
     // solid black through the load, then fades in. All contained in this file.
     _beginGameReveal() {
+        // Tear down the dev toggles when we leave the intro.
+        this._devButtons.forEach(b => b.remove());
+        this._devButtons = [];
         const el = this._cover;
         if (!el) return;
         el.addEventListener('transitionend', () => el.remove());
@@ -147,6 +230,7 @@ class IntroScreen {
         this.t += dt;
         this.scrollX += this.scrollSpeed * dt;
         this._updateFade();
+        this._updateParticles(dt);
 
         // Ease each option toward / away from "selected", and decay the
         // selection-change pop + the flash regardless of mode.
@@ -229,6 +313,41 @@ class IntroScreen {
         }
     }
 
+    // Darkened edges (radial gradient) to focus the eye on the center.
+    _renderVignette(ctx, W, H) {
+        if (!this._vignetteOn) return;
+        const v = this.cfg.atmosphere.vignette;
+        if (v.strength <= 0) return;
+        const cx = W / 2, cy = H / 2;
+        const outer = Math.hypot(W, H) / 2;
+        const g = ctx.createRadialGradient(cx, cy, outer * v.innerRadius, cx, cy, outer);
+        g.addColorStop(0, 'rgba(0,0,0,0)');
+        g.addColorStop(1, `rgba(0,0,0,${v.strength})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, W, H);
+    }
+
+    // Soft glowing dust/pollen motes, each twinkling and swaying.
+    _renderParticles(ctx) {
+        if (!this._pollenOn) return;
+        const P = this.cfg.atmosphere.particles;
+        const [cr, cg, cb] = P.color;
+        for (const p of this._particles) {
+            const tw = 1 + Math.sin(this.t * p.twinkleFreq + p.twinklePhase) * P.twinkleAmp;
+            const a = Math.max(0, Math.min(1, p.baseAlpha * tw));
+            if (a <= 0) continue;
+            const x = p.x + Math.sin(this.t * p.swayFreq + p.swayPhase) * P.swayAmp;
+            const rad = p.r * 2; // soft falloff radius
+            const g = ctx.createRadialGradient(x, p.y, 0, x, p.y, rad);
+            g.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+            g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(x, p.y, rad, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    }
+
     render(ctx) {
         const { width: W, height: H } = this.game;
 
@@ -237,6 +356,10 @@ class IntroScreen {
         this._drawScrollingBackground(ctx);
         ctx.fillStyle = 'rgba(0,0,0,0.30)';
         ctx.fillRect(0, 0, W, H);
+
+        // Atmosphere sits over the art but under the text (keeps it readable).
+        this._renderVignette(ctx, W, H);
+        this._renderParticles(ctx);
 
         // Foreground (title + menu) is shaken as one group during the punch.
         ctx.save();

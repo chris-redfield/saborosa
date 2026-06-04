@@ -57,4 +57,33 @@ window.INTRO_JUICE = {
     reveal: {
         fadeDur: 0.4,            // sec — black cover fades out to reveal the game
     },
+
+    // Atmosphere layers (depth/ambience). Set any group's strength/count to 0
+    // to disable that layer.
+    atmosphere: {
+        // Vignette: darkened edges that draw the eye to the center.
+        vignette: {
+            strength: 0.6,       // peak corner darkness (alpha); 0 = off
+            innerRadius: 0.35,   // fraction of half-diagonal where darkening starts
+        },
+        // Drifting dust / pollen motes floating through the air.
+        particles: {
+            count: 45,           // number of motes; 0 = off
+            minR: 1,             // px — mote radius range
+            maxR: 3,
+            minDriftX: -14,      // px/sec — horizontal drift range (gentle leftward)
+            maxDriftX: -4,
+            minVy: -22,          // px/sec — vertical drift (negative = floats up)
+            maxVy: -6,
+            swayAmp: 12,         // px — sideways sway amplitude
+            minSwayFreq: 0.4,    // rad/sec — sway speed range
+            maxSwayFreq: 1.1,
+            minAlpha: 0.12,      // base opacity range
+            maxAlpha: 0.5,
+            twinkleAmp: 0.25,    // opacity wobble (fraction of base)
+            minTwinkleFreq: 0.6, // rad/sec — twinkle speed range
+            maxTwinkleFreq: 1.8,
+            color: [255, 246, 214], // warm pollen tint
+        },
+    },
 };
