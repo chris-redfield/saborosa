@@ -81,9 +81,15 @@ class Game {
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
+                // stage3_bg stays the ORIGINAL colored image: it is never drawn,
+                // only sampled for zone classification (colors → Zone enum).
                 this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
-                this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
-                this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
+                // Displayed layers: colored base with the line-art ink already
+                // baked in offline (tools), so we still draw only two layers —
+                // no extra runtime blits. Overlay alpha matches the original, so
+                // behind-mountain detection is unchanged.
+                this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower-inked.png'),
+                this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay-inked.png'),
                 this.loadImage('cubes', 'assets/cor-saborosa-box-01.png'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json')
