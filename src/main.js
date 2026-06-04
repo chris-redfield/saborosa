@@ -488,7 +488,7 @@ function updateGame(dt) {
         //   carrying, hold ≥ THROW_HOLD_MS → crouch (charge) → release → throw
         //   throw distance scales linearly with hold time, capped at
         //   THROW_CHARGE_MS (full hold = max distance, half the time = half).
-        const THROW_HOLD_MS = 200;
+        const THROW_HOLD_MS = 300;
         const THROW_CHARGE_MS = 2000; // hold time for a full-distance throw (cap)
         const attackDown = game.input.isKeyDown('attack');
         if (game.input.isKeyJustPressed('attack')) {
