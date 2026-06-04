@@ -41,6 +41,45 @@ class IntroScreen {
         this.startT = 0;
         this.startDur = 0.55;
         this.flash = 0;            // 0..1 white screen flash, decays
+
+        // Fade-in from black: the whole window starts black and fades to clear
+        // to reveal the page. A canvas can only paint itself, so to cover the
+        // letterbox/border around the canvas too we use a full-viewport DOM
+        // overlay, created + driven + removed entirely here (no other file is
+        // touched).
+        this.fadeDur = 0.9;
+        this._fade = null;
+        this._fadeDone = false;
+        this._makeFade();
+    }
+
+    _makeFade() {
+        if (typeof document === 'undefined' || !document.body) return;
+        const el = document.createElement('div');
+        const s = el.style;
+        s.position = 'fixed';
+        s.left = '0';
+        s.top = '0';
+        s.width = '100vw';
+        s.height = '100vh';
+        s.background = '#000';
+        s.zIndex = '9999';
+        s.pointerEvents = 'none';
+        s.opacity = '1';
+        document.body.appendChild(el);
+        this._fade = el;
+    }
+
+    _updateFade() {
+        if (this._fadeDone || !this._fade) return;
+        if (this.t >= this.fadeDur) {
+            this._fade.remove();
+            this._fade = null;
+            this._fadeDone = true;
+            return;
+        }
+        const p = this._easeOutCubic(this.t / this.fadeDur);
+        this._fade.style.opacity = String(1 - p);
     }
 
     // --- small easing / math helpers ----------------------------------------
@@ -67,6 +106,7 @@ class IntroScreen {
     update(dt) {
         this.t += dt;
         this.scrollX += this.scrollSpeed * dt;
+        this._updateFade();
 
         // Ease each option toward / away from "selected", and decay the
         // selection-change pop + the flash regardless of mode.
@@ -179,6 +219,8 @@ class IntroScreen {
             ctx.fillStyle = `rgba(255,255,255,${0.7 * this.flash})`;
             ctx.fillRect(0, 0, W, H);
         }
+        // The fade-in from black is a DOM overlay (see _makeFade / _updateFade)
+        // so it can cover the whole window, not just this canvas.
     }
 
     _renderTitle(ctx, W, H) {
