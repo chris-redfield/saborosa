@@ -60,18 +60,31 @@ class IntroScreen {
         this._particles = [];
         this._initParticles();
 
-        // Dev toggles (DOM buttons outside the canvas) for A/B-ing atmosphere.
+        // Dev toggles (DOM buttons outside the canvas) for A/B-ing atmosphere
+        // and the yellow vs black-and-white art variants.
         this._vignetteOn = true;
         this._pollenOn = true;
+        this._titleBW = false;
+        this._menuBW = false;
+        this._handBW = false;
         this._devButtons = [];
         this._makeDevToggles();
     }
+
+    // Pick the yellow or black-and-white variant of an art key based on a flag.
+    _art(key, bw) { return bw ? `${key}_bw` : key; }
 
     _makeDevToggles() {
         this._addToggle(() => `Vignette: ${this._vignetteOn ? 'ON' : 'OFF'}`,
             () => { this._vignetteOn = !this._vignetteOn; });
         this._addToggle(() => `Pollen: ${this._pollenOn ? 'ON' : 'OFF'}`,
             () => { this._pollenOn = !this._pollenOn; });
+        this._addToggle(() => `Title: ${this._titleBW ? 'B&W' : 'YELLOW'}`,
+            () => { this._titleBW = !this._titleBW; });
+        this._addToggle(() => `Start/Options: ${this._menuBW ? 'B&W' : 'YELLOW'}`,
+            () => { this._menuBW = !this._menuBW; });
+        this._addToggle(() => `Hand: ${this._handBW ? 'B&W' : 'YELLOW'}`,
+            () => { this._handBW = !this._handBW; });
     }
 
     // Stacks a labeled toggle button at the top-left, outside the canvas.
@@ -425,7 +438,7 @@ class IntroScreen {
         ctx.shadowColor = 'rgba(0,0,0,0.6)';
         ctx.shadowBlur = 14;
         ctx.shadowOffsetY = 5;
-        const img = this.game.getImage('intro_title');
+        const img = this.game.getImage(this._art('intro_title', this._titleBW));
         if (img) {
             const h = T.imgHeight;
             const w = h * (img.naturalWidth / img.naturalHeight);
@@ -463,7 +476,7 @@ class IntroScreen {
             ctx.scale(scale, scale);
             ctx.globalAlpha = baseAlpha * menuAlpha;
 
-            const img = this.game.getImage(imgKeys[i]);
+            const img = this.game.getImage(this._art(imgKeys[i], this._menuBW));
             let halfW;
             if (img) {
                 const h = M.itemHeight;
@@ -480,7 +493,7 @@ class IntroScreen {
 
             // A pointing hand sits to the LEFT of the selected word and breathes
             // toward/away from it (same in/out motion the arrows used to have).
-            const hand = this.game.getImage('intro_hand');
+            const hand = this.game.getImage(this._art('intro_hand', this._handBW));
             if (hand && a > 0.02) {
                 const hh = M.handHeight;
                 const hw = hh * (hand.naturalWidth / hand.naturalHeight);
