@@ -19,6 +19,10 @@ const gameState = {
     player: null,
     world: null,
     currentStage: null,
+    // Active screen: 'intro' (title + scrolling bg) | 'playing'. The intro's
+    // OPTIONS sub-screen is handled inside the IntroScreen itself.
+    screen: 'intro',
+    intro: null,
     // Basket ascent transition
     transition: null // { basket, targetStage, basketY, startY, speed, phase }
 };
@@ -34,13 +38,22 @@ async function init() {
     game.audio.loadMusic('assets/MIKE.mp3');
     game.audio.unlockOnFirstGesture();
 
-    loadStage(STAGES[3]);
+    // Start on the intro/title screen. The stage is loaded lazily when the
+    // player picks START (see updateGame), so we don't pay for it up front.
+    gameState.intro = new IntroScreen(game);
+    gameState.screen = 'intro';
+    // The canvas is displayed at a fractional scale; the stylesheet's
+    // image-rendering: pixelated makes the browser scale it nearest-neighbor,
+    // which drops whole columns at non-integer scales and shows as faint
+    // vertical seams over the detailed scrolling art. Smooth scaling fixes it
+    // for the intro; gameplay restores the crisp look when START is pressed.
+    game.canvas.style.imageRendering = 'auto';
 
     game.onUpdate = (dt) => updateGame(dt);
     game.onRender = (ctx) => renderGame(ctx);
 
     game.start();
-    console.log('Game started! WASD to move. E near portal to travel. Hold C for debug.');
+    console.log('Intro screen ready. ↑/↓ to choose, Space/Enter to select.');
 }
 
 function loadStage(stage) {
@@ -67,6 +80,17 @@ function loadStage(stage) {
 }
 
 function updateGame(dt) {
+    // Intro/title screen runs its own update; START loads the stage and hands
+    // control to gameplay. OPTIONS is handled inside the IntroScreen.
+    if (gameState.screen === 'intro') {
+        const choice = gameState.intro.update(dt);
+        if (choice === 'START') {
+            loadStage(STAGES[3]);
+            gameState.screen = 'playing';
+        }
+        return;
+    }
+
     const player = gameState.player;
     const world = gameState.world;
 
@@ -547,6 +571,11 @@ function landThrownObject(obs, world) {
 }
 
 function renderGame(ctx) {
+    if (gameState.screen === 'intro') {
+        gameState.intro.render(ctx);
+        return;
+    }
+
     const world = gameState.world;
     const player = gameState.player;
     const camX = world.cameraX;

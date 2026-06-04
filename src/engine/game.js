@@ -81,6 +81,7 @@ class Game {
                 this.loadImage('rock2', 'assets/rock2.png'),
                 this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
+                this.loadImage('intro_bg', 'assets/intro-bg.jpg'),
                 this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
