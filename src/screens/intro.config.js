@@ -44,6 +44,22 @@ window.INTRO_JUICE = {
         fadeOnStartFactor: 0.6,  // menu fades over (punch.dur * this) during punch
     },
 
+    // OPTIONS sub-screen (VOLUME with OFF / ON, selected by a thumbs-up hand).
+    options: {
+        volumeY: 0.58,           // fraction of screen height — VOLUME label center
+        valueY: 0.72,            // fraction of screen height — OFF / ON center
+        volumeHeight: 52,        // px — on-screen height of the VOLUME label art (matches menu.itemHeight)
+        valueHeight: 52,         // px — on-screen height of the OFF / ON art (matches menu.itemHeight)
+        valueSpread: 150,        // px — half-distance between the OFF and ON centers
+        idleAlpha: 0.7,          // dim factor for the unselected value
+        valueSelScale: 1.12,     // scale bump on the selected value
+        selectEaseRate: 16,      // how fast the thumb glides between OFF and ON
+        thumbHeight: 96,         // px — on-screen height of the thumbs-up cursor
+        thumbGap: 14,            // px — base gap from the value's bottom to the thumb
+        thumbBreatheFreq: 4,     // rad/sec — thumb up/down motion
+        thumbBreatheAmp: 8,      // px — thumb up/down amplitude
+    },
+
     // Confirm punch when START is pressed.
     punch: {
         dur: 0.55,               // sec — total punch length before handoff

@@ -37,6 +37,10 @@ class IntroScreen {
         // and 0 for the rest so the highlight glides instead of snapping.
         this._optAnim = this.options.map((_, i) => (i === this.selected ? 1 : 0));
         this.selPulse = 0;         // 0..1 pop kick on each selection change, decays
+        // OPTIONS sub-screen volume choice. _volAnim eases 0 (OFF) .. 1 (ON) so
+        // the thumbs-up cursor glides between the two values.
+        this._volumeOn = true;
+        this._volAnim = 1;
         // Confirm punch: once START is chosen we play a short flash/shake/kick
         // before actually handing control to the game.
         this.starting = false;
@@ -253,6 +257,8 @@ class IntroScreen {
         });
         if (this.selPulse > 0) this.selPulse = Math.max(0, this.selPulse - dt / this.cfg.menu.pulseDecay);
         if (this.flash > 0) this.flash = Math.max(0, this.flash - dt / this.cfg.punch.flashDecay);
+        // Glide the volume thumb toward the chosen value.
+        this._volAnim = this._approach(this._volAnim, this._volumeOn ? 1 : 0, this.cfg.options.selectEaseRate, dt);
 
         // Confirm punch in progress: swallow input, play it out, then go.
         if (this.starting) {
@@ -282,6 +288,8 @@ class IntroScreen {
         const eInteract = this._edge('interact');
         const confirm = eAttack || eConfirm || eInteract;
         const back = this._edge('escape');
+        const left = this._edge('left');
+        const right = this._edge('right');
 
         if (this.mode === 'menu') {
             if (up || down) {
@@ -301,6 +309,9 @@ class IntroScreen {
                 }
             }
         } else { // options
+            // OFF sits on the left, ON on the right — pick directly.
+            if (left) this._volumeOn = false;
+            if (right) this._volumeOn = true;
             if (confirm || back) this.mode = 'menu';
         }
         return null;
@@ -514,18 +525,55 @@ class IntroScreen {
         ctx.restore();
     }
 
-    _renderOptions(ctx, W, H) {
-        ctx.font = 'bold 44px Georgia, serif';
-        ctx.fillStyle = '#ffd166';
-        ctx.fillText('OPTIONS', W / 2, H * 0.58);
+    // Draw an image centered at (x, y) scaled to a target height, keeping aspect.
+    _drawImageCentered(ctx, img, x, y, h, alpha) {
+        if (!img) return 0;
+        const w = h * (img.naturalWidth / img.naturalHeight);
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+        ctx.restore();
+        return w;
+    }
 
-        ctx.font = '24px Georgia, serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.82)';
-        ctx.fillText('Coming soon', W / 2, H * 0.66);
+    _renderOptions(ctx, W, H) {
+        const O = this.cfg.options;
+        const cx = W / 2;
+        const volY = H * O.volumeY;
+        const valY = H * O.valueY;
+
+        // VOLUME label.
+        this._drawImageCentered(ctx, this.game.getImage('intro_volume'), cx, volY, O.volumeHeight, 1);
+
+        // OFF (left) and ON (right). Selected-ness crossfades with the thumb glide.
+        const offX = cx - O.valueSpread;
+        const onX = cx + O.valueSpread;
+        const onAmt = this._volAnim;        // 1 when ON selected
+        const offAmt = 1 - this._volAnim;   // 1 when OFF selected
+        const drawValue = (img, x, amt) => {
+            const scale = this._lerp(1, O.valueSelScale, amt);
+            const alpha = this._lerp(O.idleAlpha, 1, amt);
+            this._drawImageCentered(ctx, img, x, valY, O.valueHeight * scale, alpha);
+        };
+        drawValue(this.game.getImage('intro_off'), offX, offAmt);
+        drawValue(this.game.getImage('intro_on'), onX, onAmt);
+
+        // Thumbs-up cursor under the selected value, gliding between OFF and ON
+        // and breathing up toward it.
+        const thumb = this.game.getImage('intro_thumb');
+        if (thumb) {
+            const hh = O.thumbHeight;
+            const hw = hh * (thumb.naturalWidth / thumb.naturalHeight);
+            const handX = this._lerp(offX, onX, this._volAnim);
+            const valBottom = valY + O.valueHeight / 2;
+            const breathe = -Math.abs(Math.sin(this.t * O.thumbBreatheFreq)) * O.thumbBreatheAmp;
+            const topY = valBottom + O.thumbGap + breathe;
+            ctx.drawImage(thumb, handX - hw / 2, topY, hw, hh);
+        }
 
         ctx.font = '18px Georgia, serif';
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('Esc / Space to go back', W / 2, H * 0.9 + 30);
+        ctx.fillText('← / → to choose   ·   Esc to go back', cx, H * 0.9 + 30);
     }
 }
 
