@@ -56,7 +56,12 @@ class AudioManager {
     }
 
     toggleMute() {
-        this.muted = !this.muted;
+        return this.setMuted(!this.muted);
+    }
+
+    // Explicitly set the muted state (used by the intro's VOLUME OFF/ON).
+    setMuted(m) {
+        this.muted = !!m;
         if (this.music) this.music.volume = this.muted ? 0 : this.musicVolume;
         return this.muted;
     }

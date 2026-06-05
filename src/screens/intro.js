@@ -37,10 +37,10 @@ class IntroScreen {
         // and 0 for the rest so the highlight glides instead of snapping.
         this._optAnim = this.options.map((_, i) => (i === this.selected ? 1 : 0));
         this.selPulse = 0;         // 0..1 pop kick on each selection change, decays
-        // OPTIONS sub-screen volume choice. _volAnim eases 0 (OFF) .. 1 (ON) so
-        // the thumbs-up cursor glides between the two values.
-        this._volumeOn = true;
-        this._volAnim = 1;
+        // OPTIONS sub-screen volume choice, synced to the real audio state.
+        // _volAnim eases 0 (OFF) .. 1 (ON) so the thumb glides between values.
+        this._volumeOn = !(this.game.audio && this.game.audio.muted);
+        this._volAnim = this._volumeOn ? 1 : 0;
         // Confirm punch: once START is chosen we play a short flash/shake/kick
         // before actually handing control to the game.
         this.starting = false;
@@ -77,6 +77,18 @@ class IntroScreen {
 
     // Pick the yellow or black-and-white variant of an art key based on a flag.
     _art(key, bw) { return bw ? `${key}_bw` : key; }
+
+    // Apply the OFF/ON choice to the game audio. Tolerant of an older cached
+    // AudioManager (falls back to toggleMute, or just the muted flag) so a
+    // missing method can never crash the render loop.
+    _applyVolume() {
+        const audio = this.game.audio;
+        if (!audio) return;
+        const muted = !this._volumeOn;
+        if (typeof audio.setMuted === 'function') audio.setMuted(muted);
+        else if (audio.muted !== muted && typeof audio.toggleMute === 'function') audio.toggleMute();
+        else audio.muted = muted;
+    }
 
     _makeDevToggles() {
         this._addToggle(() => `Vignette: ${this._vignetteOn ? 'ON' : 'OFF'}`,
@@ -309,9 +321,12 @@ class IntroScreen {
                 }
             }
         } else { // options
-            // OFF sits on the left, ON on the right — pick directly.
-            if (left) this._volumeOn = false;
-            if (right) this._volumeOn = true;
+            // OFF sits on the left, ON on the right — pick directly, and apply
+            // it to the live game audio (OFF = muted) so the choice carries over.
+            if (left || right) {
+                this._volumeOn = right ? true : false;
+                this._applyVolume();
+            }
             if (confirm || back) this.mode = 'menu';
         }
         return null;
@@ -470,6 +485,15 @@ class IntroScreen {
         const menuAlpha = this.starting ? Math.max(0, 1 - this.startT / (this.startDur * M.fadeOnStartFactor)) : 1;
         const imgKeys = ['intro_start', 'intro_options'];
 
+        // Entrance: START (i=0) slides in from the right, OPTIONS (i=1) from the
+        // left, with the same easeOutBack overshoot the title uses, then fade in.
+        const enterT = this.t - M.enterDelay;
+        const enterP = Math.min(1, Math.max(0, enterT / M.enterDur));
+        const enterEase = this._easeOutBack(enterP);
+        const enterAlpha = Math.min(1, Math.max(0, enterT / (M.enterDur * 0.6)));
+        // Hand pops in only after the words have arrived.
+        const handP = Math.min(1, Math.max(0, (enterT - M.enterDur) / M.handEnterDur));
+
         this.options.forEach((opt, i) => {
             const a = this._optAnim[i];                 // 0..1 selected-ness
             const sel = i === this.selected;
@@ -478,14 +502,17 @@ class IntroScreen {
             const pulse = sel ? this.selPulse * M.pulseScale : 0;
             const scale = this._lerp(1, M.selScale, a) + pulse;
             const slide = this._lerp(0, M.selSlide, a);
+            // Off-screen start: +offset (right) for START, -offset (left) for OPTIONS.
+            const dir = i === 0 ? 1 : -1;
+            const enterX = (1 - enterEase) * dir * M.enterOffset;
             // Art is pre-colored, so selection reads through scale + opacity
             // (unselected items dim toward idleAlpha) rather than a color tween.
             const baseAlpha = this._lerp(M.idleAlpha, 1, a);
 
             ctx.save();
-            ctx.translate(W / 2 + slide, y);
+            ctx.translate(W / 2 + slide + enterX, y);
             ctx.scale(scale, scale);
-            ctx.globalAlpha = baseAlpha * menuAlpha;
+            ctx.globalAlpha = baseAlpha * menuAlpha * enterAlpha;
 
             const img = this.game.getImage(this._art(imgKeys[i], this._menuBW));
             let halfW;
@@ -505,13 +532,15 @@ class IntroScreen {
             // A pointing hand sits to the LEFT of the selected word and breathes
             // toward/away from it (same in/out motion the arrows used to have).
             const hand = this.game.getImage(this._art('intro_hand', this._handBW));
-            if (hand && a > 0.02) {
-                const hh = M.handHeight;
+            if (hand && a > 0.02 && handP > 0) {
+                // Pop in with a slight overshoot after the words have arrived.
+                const popScale = this._easeOutBack(handP);
+                const hh = M.handHeight * popScale;
                 const hw = hh * (hand.naturalWidth / hand.naturalHeight);
                 // Distance from the word's left edge to the hand's right edge,
                 // pulling closer as it breathes in.
                 const gapX = halfW + M.handGap - Math.sin(this.t * M.handBreatheFreq) * M.handBreatheAmp * a;
-                ctx.globalAlpha = baseAlpha * menuAlpha * a;
+                ctx.globalAlpha = baseAlpha * menuAlpha * a * handP;
                 ctx.drawImage(hand, -gapX - hw, -hh / 2, hw, hh);
             }
             ctx.restore();

@@ -31,6 +31,12 @@ window.INTRO_JUICE = {
     // Menu: animated selection feel.
     menu: {
         itemHeight: 52,          // px — on-screen height of each option's art (width keeps aspect)
+        // Entrance on load: START slides in from the right, OPTIONS from the left
+        // (same easeOutBack overshoot as the title drop), then the hand pops in.
+        enterDur: 0.6,           // sec — slide-in duration
+        enterDelay: 0.2,         // sec — wait after load before the menu slides in
+        enterOffset: 130,        // px — how far the words travel in from the sides
+        handEnterDur: 0.3,       // sec — hand pop-in once the words have arrived
         selectEaseRate: 16,      // how fast the highlight glides between items
         pulseDecay: 0.22,        // sec — per-change "pop" fade
         pulseScale: 0.10,        // extra scale on a selection change
