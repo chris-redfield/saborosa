@@ -37,7 +37,7 @@ window.INTRO_JUICE = {
         selScale: 1.18,          // selected item scale
         selSlide: 6,             // px — selected item slides right
         idleAlpha: 0.82,         // alpha of unselected items (selected = 1)
-        handHeight: 46,          // px — on-screen height of the pointing-hand cursor
+        handHeight: 37,          // px — on-screen height of the pointing-hand cursor
         handGap: 28,             // px — base distance from the word's left edge
         handBreatheFreq: 4,      // rad/sec — hand in/out motion
         handBreatheAmp: 9,       // px — hand in/out amplitude
@@ -54,7 +54,7 @@ window.INTRO_JUICE = {
         idleAlpha: 0.7,          // dim factor for the unselected value
         valueSelScale: 1.12,     // scale bump on the selected value
         selectEaseRate: 16,      // how fast the thumb glides between OFF and ON
-        thumbHeight: 96,         // px — on-screen height of the thumbs-up cursor
+        thumbHeight: 57,         // px — on-screen height of the thumbs-up cursor (30% under original)
         thumbGap: 14,            // px — base gap from the value's bottom to the thumb
         thumbBreatheFreq: 4,     // rad/sec — thumb up/down motion
         thumbBreatheAmp: 8,      // px — thumb up/down amplitude

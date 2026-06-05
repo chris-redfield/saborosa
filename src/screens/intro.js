@@ -573,7 +573,7 @@ class IntroScreen {
 
         ctx.font = '18px Georgia, serif';
         ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('← / → to choose   ·   Esc to go back', cx, H * 0.9 + 30);
+        ctx.fillText('← / → to choose   ·   Esc to go back', cx, H * 0.9 + 57);
     }
 }
 
