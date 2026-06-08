@@ -71,6 +71,7 @@ class IntroScreen {
         this._titleBW = false;
         this._menuBW = false;
         this._handBW = false;
+        this._titleBob = true;     // idle bob on the SABOROSA title
         this._devButtons = [];
         this._makeDevToggles();
     }
@@ -101,6 +102,8 @@ class IntroScreen {
             () => { this._menuBW = !this._menuBW; });
         this._addToggle(() => `Hand: ${this._handBW ? 'B&W' : 'YELLOW'}`,
             () => { this._handBW = !this._handBW; });
+        this._addToggle(() => `Title bob: ${this._titleBob ? 'ON' : 'OFF'}`,
+            () => { this._titleBob = !this._titleBob; });
     }
 
     // Stacks a labeled toggle button at the top-left, outside the canvas.
@@ -447,8 +450,8 @@ class IntroScreen {
 
         // Idle: gentle vertical bob + breathing once it has settled.
         const settled = Math.min(1, Math.max(0, (this.t - T.settleDelay) / T.settleDur));
-        const bob = Math.sin(this.t * T.bobFreq) * T.bobAmp * settled;
-        scale *= 1 + Math.sin(this.t * T.breatheFreq) * T.breatheAmp * settled;
+        const bob = this._titleBob ? Math.sin(this.t * T.bobFreq) * T.bobAmp * settled : 0;
+        if (this._titleBob) scale *= 1 + Math.sin(this.t * T.breatheFreq) * T.breatheAmp * settled;
 
         // Confirm punch: title kicks bigger and fades out as we hand off.
         if (this.starting) {
