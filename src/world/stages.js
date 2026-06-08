@@ -88,8 +88,8 @@ const STAGES = {
         // smoothing makes the steps feel like an eased transition.
         cameraZoomThresholds: [5000, 2500],
         cameraZoomScales: [1.0, 0.88, 0.78],
-        spawnX: 7900, // 7900
-        spawnY: 3800, // 3800
+        spawnX: 2500, // 7900
+        spawnY: 5200, // 3800
         safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },
         portals: [
             { x: 8160, y: 740, targetStage: 2, label: 'Sand Bank' }
