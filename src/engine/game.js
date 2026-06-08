@@ -85,6 +85,12 @@ class Game {
                 this.loadImage('intro_title', 'assets/intro-title.png'),
                 this.loadImage('intro_start', 'assets/intro-start.png'),
                 this.loadImage('intro_options', 'assets/intro-options.png'),
+                // Transparent line-art word variants (from saborosa-letras-02),
+                // used for UNSELECTED menu items when that toggle is on.
+                this.loadImage('intro_start_white', 'assets/intro-start-white.png'),
+                this.loadImage('intro_start_red', 'assets/intro-start-red.png'),
+                this.loadImage('intro_options_white', 'assets/intro-options-white.png'),
+                this.loadImage('intro_options_red', 'assets/intro-options-red.png'),
                 this.loadImage('intro_hand', 'assets/intro-hand.png'),
                 this.loadImage('intro_title_bw', 'assets/intro-title-bw.png'),
                 this.loadImage('intro_start_bw', 'assets/intro-start-bw.png'),

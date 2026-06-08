@@ -72,6 +72,11 @@ class IntroScreen {
         this._menuBW = false;
         this._handBW = false;
         this._titleBob = true;     // idle bob on the SABOROSA title
+        // Style for UNSELECTED menu words: 'standard' (current yellow art),
+        // 'white' or 'red' (transparent line-art variants from letras-02).
+        // The selected word always uses the standard art.
+        this._unselStyles = ['standard', 'white', 'red'];
+        this._unselStyle = 'standard';
         this._devButtons = [];
         this._makeDevToggles();
     }
@@ -104,6 +109,11 @@ class IntroScreen {
             () => { this._handBW = !this._handBW; });
         this._addToggle(() => `Title bob: ${this._titleBob ? 'ON' : 'OFF'}`,
             () => { this._titleBob = !this._titleBob; });
+        this._addToggle(() => `Unselected: ${this._unselStyle.toUpperCase()}`,
+            () => {
+                const i = this._unselStyles.indexOf(this._unselStyle);
+                this._unselStyle = this._unselStyles[(i + 1) % this._unselStyles.length];
+            });
     }
 
     // Stacks a labeled toggle button at the top-left, outside the canvas.
@@ -517,7 +527,12 @@ class IntroScreen {
             ctx.scale(scale, scale);
             ctx.globalAlpha = baseAlpha * menuAlpha * enterAlpha;
 
-            const img = this.game.getImage(this._art(imgKeys[i], this._menuBW));
+            // Unselected words can switch to a transparent line-art variant
+            // (white/red); the selected word always uses the standard art.
+            const key = (!sel && this._unselStyle !== 'standard')
+                ? `${imgKeys[i]}_${this._unselStyle}`
+                : this._art(imgKeys[i], this._menuBW);
+            const img = this.game.getImage(key);
             let halfW;
             if (img) {
                 const h = M.itemHeight;
