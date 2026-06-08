@@ -77,6 +77,10 @@ const STAGES = {
         backgroundImage: 'stage3_bg',
         backgroundLowerImage: 'stage3_lower',
         backgroundOverlayImage: 'stage3_overlay',
+        // Decorative map assets placed via tools/map-editor.html. `objects` is
+        // the loaded placements JSON key; `objectDefs` the sprite/collision defs.
+        objects: 'painted_isle_objects',
+        objectDefs: 'mapobject_defs',
         // Image 4679x3624 (AR ~1.291). Fit to 9x9 walkable height (6480px),
         // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
         // in the 11520-wide walkable area (margin ~1577 each side).

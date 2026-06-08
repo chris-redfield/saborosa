@@ -105,7 +105,12 @@ class Game {
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
                 this.loadImage('cubes', 'assets/cor-saborosa-box-01.png'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
-                this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json')
+                this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json'),
+                // Decorative map assets (plants/trees/grass/etc.) + their defs
+                // and placements, both authored in tools/map-editor.html.
+                this.loadImage('mapobjects_sheet', 'assets/saborosa-assets-001.png'),
+                this.loadJSON('mapobject_defs', 'assets/saborosa-assets-001-sprites.json'),
+                this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json')
             ]);
             // Cube sheet uses a solid white background. Key it out so the
             // sprites composite cleanly over the stage art.

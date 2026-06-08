@@ -977,6 +977,22 @@ class World {
             }
         }
 
+        // Decorative map assets placed via the map editor. Each placement is
+        // spawned into the block its world position falls in (mirrors liveRocks).
+        if (this.stage.objects && this.stage.objectDefs) {
+            const data = this.game.getJSON(this.stage.objects);
+            const defs = this.game.getJSON(this.stage.objectDefs);
+            if (data && data.objects && defs && defs.assets) {
+                for (const o of data.objects) {
+                    const def = defs.assets[o.id];
+                    if (!def) continue;
+                    if (Math.floor(o.x / BLOCK_W) === bx && Math.floor(o.y / BLOCK_H) === by) {
+                        block.addEntity(new MapObject(this.game, def, o));
+                    }
+                }
+            }
+        }
+
         // Test: add a big rock (too heavy to push) in walkable blocks
         if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
             block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, 80, 1));

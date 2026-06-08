@@ -1,0 +1,81 @@
+{
+  "objects": [
+    {
+      "id": "plant_00",
+      "x": 2777,
+      "y": 4369,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "plant_00",
+      "x": 2229,
+      "y": 4160,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "plant_01",
+      "x": 3028,
+      "y": 4280,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "grass_02",
+      "x": 4135,
+      "y": 5148,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "tree_01",
+      "x": 3072,
+      "y": 4668,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "shape_00",
+      "x": 3554,
+      "y": 4573,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "shape_01",
+      "x": 3740,
+      "y": 5391,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "shape_00",
+      "x": 5976,
+      "y": 3784,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "plant_00",
+      "x": 6318,
+      "y": 1805,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "fruit_00",
+      "x": 7193,
+      "y": 1776,
+      "scale": 0.6,
+      "flipX": false
+    },
+    {
+      "id": "grass_01",
+      "x": 6798,
+      "y": 3491,
+      "scale": 0.6,
+      "flipX": false
+    }
+  ]
+}
