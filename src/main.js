@@ -41,6 +41,45 @@ async function init() {
 
     game.start();
     console.log('Game started! WASD to move. E near portal to travel. Hold C for debug.');
+
+    makeMapStyleToggle();
+}
+
+// Map art style toggle. Default is the colored map with the line-art ink baked
+// on top (the *-inked layers). Clicking switches to the pure black-and-white
+// line-art (*-bw layers, same alpha → zoning + mountain occlusion unchanged).
+// Swaps the keys on the live stage so the change shows on the next frame.
+let mapStyleBW = false;
+function applyMapStyle() {
+    const stage = gameState.currentStage;
+    if (!stage || !stage.backgroundLowerImage) return;
+    stage.backgroundLowerImage = mapStyleBW ? 'stage3_lower_bw' : 'stage3_lower';
+    stage.backgroundOverlayImage = mapStyleBW ? 'stage3_overlay_bw' : 'stage3_overlay';
+}
+function makeMapStyleToggle() {
+    if (typeof document === 'undefined' || !document.body) return;
+    const btn = document.createElement('button');
+    const label = () => `Map: ${mapStyleBW ? 'B&W' : 'COLOR'}`;
+    const s = btn.style;
+    s.position = 'fixed';
+    s.top = '10px';
+    s.right = '10px';
+    s.zIndex = '10000';
+    s.padding = '6px 10px';
+    s.font = '13px monospace';
+    s.cursor = 'pointer';
+    s.border = '1px solid #888';
+    s.borderRadius = '4px';
+    s.background = '#222';
+    s.color = '#fff';
+    btn.textContent = label();
+    btn.addEventListener('click', () => {
+        mapStyleBW = !mapStyleBW;
+        applyMapStyle();
+        btn.textContent = label();
+        btn.blur();
+    });
+    document.body.appendChild(btn);
 }
 
 function loadStage(stage) {

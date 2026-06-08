@@ -90,6 +90,10 @@ class Game {
                 // behind-mountain detection is unchanged.
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower-inked.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay-inked.png'),
+                // Pure black-and-white line-art variants (same alpha as above, so
+                // zoning + mountain occlusion are unchanged). Toggled at runtime.
+                this.loadImage('stage3_lower_bw', 'assets/cor-saborosa-fundo-02-lower-bw.png'),
+                this.loadImage('stage3_overlay_bw', 'assets/cor-saborosa-fundo-02-overlay-bw.png'),
                 this.loadImage('cubes', 'assets/cor-saborosa-box-01.png'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json')
