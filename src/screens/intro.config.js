@@ -87,7 +87,7 @@ window.INTRO_JUICE = {
     atmosphere: {
         // Vignette: darkened edges that draw the eye to the center.
         vignette: {
-            strength: 0.6,       // peak corner darkness (alpha); 0 = off
+            strength: 0.25,      // peak corner darkness (alpha); 0 = off
             innerRadius: 0.35,   // fraction of half-diagonal where darkening starts
         },
         // Drifting dust / pollen motes floating through the air.
