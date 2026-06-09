@@ -63,13 +63,28 @@ const BG = A + 'cor-saborosa-fundo-02-lower.png';
 const OVERLAY = A + 'cor-saborosa-fundo-02-overlay.png';
 const DEFS = A + 'saborosa-assets-001-sprites.json';
 const OBJS = A + 'painted-isle-objects.json';
+const LIVEROCK_SHEET = A + 'saborosa-cha-001.png';   // liverock animation sheet
 // Must match STAGES[3].backgroundImageRect in src/world/stages.js
 const RECT = { x: 1577, y: 0, w: 8366, h: 6480 };
 const FIXED_SCALE = 0.6;   // all assets placed at this scale (dialed-in value)
 
+// Special (non-sheet) assets: animated entities the game spawns by id instead
+// of as a static MapObject. The living rock uses its own sheet + the pos1_idle
+// frame for preview; its real collision/animation come from the game at runtime
+// (collision-config.json `liverock`), so `col` here is reference-only.
+const SPECIAL = {
+  // defaultScale 1 = native size, matching how it appears on the Sand Bank map
+  // (same ratio to the player, which is the same size on every map).
+  liverock: { x: 574, y: 214, w: 253, h: 169, sheet: 'liverock', defaultScale: 1,
+              col: { offX: 0.02, offY: 0.31, w: 0.92, h: 0.52 } }
+};
+// Resolve an asset def (sheet asset or special) and the image it draws from.
+function assetDef(id) { return defs.assets[id] || SPECIAL[id]; }
+function imgFor(d) { return d && d.sheet === 'liverock' ? liverockImg : sheetImg; }
+
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
-let sheetImg = null, bgImg = null, overlayImg = null;
+let sheetImg = null, bgImg = null, overlayImg = null, liverockImg = null;
 let defs = { sheet: 'saborosa-assets-001.png', assets: {} };
 let objects = [];                 // { id, x, y, scale, flipX }
 let mode = 'place';               // 'place' | 'col'
@@ -99,7 +114,7 @@ function fit() {
 // ---- loading ----
 function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; }); }
 async function boot() {
-  [sheetImg, bgImg, overlayImg] = await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(OVERLAY)]);
+  [sheetImg, bgImg, overlayImg, liverockImg] = await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(OVERLAY), loadImg(LIVEROCK_SHEET)]);
   try { defs = await (await fetch(DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
   try {
     const o = await (await fetch(OBJS, { cache: 'no-cache' })).json();
@@ -114,13 +129,13 @@ function status(t) { document.getElementById('status').textContent = t; }
 // ---- thumbnails ----
 function buildThumbs() {
   const host = document.getElementById('thumbs'); host.innerHTML = '';
-  for (const [id, d] of Object.entries(defs.assets)) {
+  for (const [id, d] of Object.entries({ ...defs.assets, ...SPECIAL })) {
     const el = document.createElement('div'); el.className = 'thumb'; el.dataset.id = id;
     const c = document.createElement('canvas'); c.width = 80; c.height = 64;
     const cc = c.getContext('2d');
     const s = Math.min(c.width / d.w, c.height / d.h);
     const dw = d.w * s, dh = d.h * s;
-    cc.drawImage(sheetImg, d.x, d.y, d.w, d.h, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+    cc.drawImage(imgFor(d), d.x, d.y, d.w, d.h, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
     const sp = document.createElement('span'); sp.textContent = id;
     el.appendChild(c); el.appendChild(sp);
     el.onclick = () => {
@@ -152,16 +167,16 @@ function draw() {
   const order = objects.map((o, i) => i).sort((a, b) => bottom(objects[a]) - bottom(objects[b]));
   for (const i of order) drawObject(objects[i], i === selected);
 }
-function bottom(o) { const d = defs.assets[o.id]; return o.y + d.h * (o.scale || 1); }
+function bottom(o) { const d = assetDef(o.id); return o.y + d.h * (o.scale || 1); }
 
 function drawObject(o, sel) {
-  const d = defs.assets[o.id]; if (!d) return;
+  const d = assetDef(o.id); if (!d) return;
   const sc = o.scale || 1, w = d.w * sc, h = d.h * sc;
   const [sx, sy] = w2s(o.x, o.y);
   const zw = w * view.zoom, zh = h * view.zoom;
   ctx.save();
-  if (o.flipX) { ctx.translate(sx + zw, sy); ctx.scale(-1, 1); ctx.drawImage(sheetImg, d.x, d.y, d.w, d.h, 0, 0, zw, zh); }
-  else ctx.drawImage(sheetImg, d.x, d.y, d.w, d.h, sx, sy, zw, zh);
+  if (o.flipX) { ctx.translate(sx + zw, sy); ctx.scale(-1, 1); ctx.drawImage(imgFor(d), d.x, d.y, d.w, d.h, 0, 0, zw, zh); }
+  else ctx.drawImage(imgFor(d), d.x, d.y, d.w, d.h, sx, sy, zw, zh);
   ctx.restore();
   // collision box (red) — mirrored when flipped
   const col = d.col || { offX: .2, offY: .78, w: .6, h: .2 };
@@ -177,12 +192,12 @@ function drawObject(o, sel) {
 let colView = null;  // { ax, ay, scale } sprite placement on screen
 function drawColMode() {
   if (!colAsset) { ctx.fillStyle = '#8fa'; ctx.fillText('Pick an asset from the sidebar to edit its collision box.', 20, 30); return; }
-  const d = defs.assets[colAsset];
+  const d = assetDef(colAsset);
   const pad = 60, availW = cv.width - pad * 2, availH = cv.height - pad * 2;
   const s = Math.min(availW / d.w, availH / d.h);
   const ax = (cv.width - d.w * s) / 2, ay = (cv.height - d.h * s) / 2;
   colView = { ax, ay, scale: s };
-  ctx.drawImage(sheetImg, d.x, d.y, d.w, d.h, ax, ay, d.w * s, d.h * s);
+  ctx.drawImage(imgFor(d), d.x, d.y, d.w, d.h, ax, ay, d.w * s, d.h * s);
   ctx.strokeStyle = '#345'; ctx.strokeRect(ax, ay, d.w * s, d.h * s);
   const col = d.col;
   ctx.fillStyle = 'rgba(233,69,96,0.25)'; ctx.strokeStyle = '#e94560';
@@ -196,15 +211,16 @@ function inspect() {
   const el = document.getElementById('inspect');
   if (mode === 'col') {
     if (!colAsset) { el.innerHTML = '<div class="hint">Pick an asset to edit collision.</div>'; return; }
-    const c = defs.assets[colAsset].col;
-    el.innerHTML = `<b>${colAsset}</b> collision (normalized)
+    const c = assetDef(colAsset).col;
+    const note = SPECIAL[colAsset] ? '<div class="hint">live entity — real collision lives in collision-config.json; this is reference only</div>' : '';
+    el.innerHTML = `<b>${colAsset}</b> collision (normalized)${note}
       ${slider('offX', c.offX)}${slider('offY', c.offY)}${slider('cw', c.w)}${slider('ch', c.h)}`;
     bindCol();
     return;
   }
   if (selected < 0) { el.innerHTML = '<div class="hint">Brush: ' + (brush || 'none') + '. Click map to place.</div>'; return; }
   const o = objects[selected];
-  el.innerHTML = `<b>${o.id}</b> #${selected} <span class="hint">scale ${FIXED_SCALE}</span>
+  el.innerHTML = `<b>${o.id}</b> #${selected} <span class="hint">scale ${o.scale}</span>
     <div class="row"><label style="margin:0"><input id="flip" type="checkbox" ${o.flipX ? 'checked' : ''}> flip X</label>
     <button id="del" style="margin-left:auto">Delete</button></div>`;
   document.getElementById('flip').onchange = e => { o.flipX = e.target.checked; draw(); };
@@ -217,7 +233,7 @@ function slider(name, v) {
 function bindCol() {
   document.querySelectorAll('#inspect input[type=range]').forEach(inp => {
     inp.oninput = e => {
-      const k = e.target.dataset.k, v = parseFloat(e.target.value), c = defs.assets[colAsset].col;
+      const k = e.target.dataset.k, v = parseFloat(e.target.value), c = assetDef(colAsset).col;
       ({ offX: () => c.offX = v, offY: () => c.offY = v, cw: () => c.w = v, ch: () => c.h = v })[k]();
       document.getElementById('lbl_' + k).textContent = v.toFixed(2);
       draw();
@@ -244,7 +260,7 @@ cv.addEventListener('mousedown', e => {
   const [wx, wy] = s2w(mx, my);
   const order = objects.map((o, i) => i).sort((a, b) => bottom(objects[b]) - bottom(objects[a]));
   for (const i of order) {
-    const o = objects[i], d = defs.assets[o.id], sc = o.scale || 1;
+    const o = objects[i], d = assetDef(o.id), sc = o.scale || 1;
     if (wx >= o.x && wx <= o.x + d.w * sc && wy >= o.y && wy <= o.y + d.h * sc) {
       selected = i; brush = null; refreshThumbSel(); inspect();
       drag = { mode: 'move', sx: mx, sy: my, ox: o.x, oy: o.y, moved: false };
@@ -253,8 +269,9 @@ cv.addEventListener('mousedown', e => {
   }
   // empty space + active brush -> place (anchor bottom-center)
   if (brush) {
-    const d = defs.assets[brush];
-    const o = { id: brush, x: Math.round(wx - d.w * FIXED_SCALE / 2), y: Math.round(wy - d.h * FIXED_SCALE), scale: FIXED_SCALE, flipX: false };
+    const d = assetDef(brush);
+    const sc = d.defaultScale || FIXED_SCALE;
+    const o = { id: brush, x: Math.round(wx - d.w * sc / 2), y: Math.round(wy - d.h * sc), scale: sc, flipX: false };
     objects.push(o); selected = objects.length - 1; inspect(); draw();
     status(objects.length + ' placed');
   } else { selected = -1; inspect(); draw(); }

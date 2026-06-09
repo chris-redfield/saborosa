@@ -3,7 +3,7 @@
  * Slowly cycles through 4 sprite positions, creating a circling animation.
  */
 class LiveRock {
-    constructor(game, x, y) {
+    constructor(game, x, y, opts = {}) {
         this.game = game;
         this.x = x;
         this.y = y;
@@ -11,6 +11,10 @@ class LiveRock {
         this.isObstacle = true;
         this.pushable = true;
         this.liftable = false; // can't be lifted
+        // Optional placement transform (used by map-editor placements). Existing
+        // stage.liveRocks callers omit opts → scale 1, no flip (unchanged).
+        this.scale = opts.scale || 1;
+        this.flipX = !!opts.flipX;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
 
         // Stacking
@@ -29,21 +33,22 @@ class LiveRock {
         this.hitFrameDuration = 400; // ms to show pos4 on collision
         this._loadSprites();
 
-        // Dimensions from sprite data (like the character)
+        // Dimensions from sprite data (like the character), times placement scale.
         if (this.spriteFrames.length > 0) {
             const f = this.spriteFrames[0];
-            this.width = f.sw;
-            this.height = f.sh;
+            this.width = Math.round(f.sw * this.scale);
+            this.height = Math.round(f.sh * this.scale);
         } else {
-            this.width = 50;
-            this.height = 50;
+            this.width = Math.round(50 * this.scale);
+            this.height = Math.round(50 * this.scale);
         }
 
         // Isometric collision footprint from config
         const colCfg = (game.getJSON('collision_config') || {}).liverock || { colW: 0.92, colH: 0.52, colOffX: 0.02, colOffY: 0.31 };
         this.colW = Math.round(this.width * colCfg.colW);
         this.colH = Math.round(this.height * colCfg.colH);
-        this.colOffX = Math.round(this.width * colCfg.colOffX);
+        const offX = Math.round(this.width * colCfg.colOffX);
+        this.colOffX = this.flipX ? (this.width - offX - this.colW) : offX;
         this.colOffY = Math.round(this.height * colCfg.colOffY);
         this.mass = this.colW * this.colH;
     }
@@ -112,7 +117,15 @@ class LiveRock {
 
         if (activeFrame) {
             const s = activeFrame;
-            ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, sx, sy, this.width, this.height);
+            if (this.flipX) {
+                ctx.save();
+                ctx.translate(sx + this.width, sy);
+                ctx.scale(-1, 1);
+                ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, 0, 0, this.width, this.height);
+                ctx.restore();
+            } else {
+                ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, sx, sy, this.width, this.height);
+            }
         } else {
             ctx.fillStyle = '#a04030';
             ctx.fillRect(sx, sy, this.width, this.height);

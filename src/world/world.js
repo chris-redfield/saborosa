@@ -984,11 +984,15 @@ class World {
             const defs = this.game.getJSON(this.stage.objectDefs);
             if (data && data.objects && defs && defs.assets) {
                 for (const o of data.objects) {
+                    if (Math.floor(o.x / BLOCK_W) !== bx || Math.floor(o.y / BLOCK_H) !== by) continue;
+                    if (o.id === 'liverock') {
+                        // Animated entity, not a static crop — spawn the real LiveRock.
+                        block.addEntity(new LiveRock(this.game, o.x, o.y, { scale: o.scale, flipX: o.flipX }));
+                        continue;
+                    }
                     const def = defs.assets[o.id];
                     if (!def) continue;
-                    if (Math.floor(o.x / BLOCK_W) === bx && Math.floor(o.y / BLOCK_H) === by) {
-                        block.addEntity(new MapObject(this.game, def, o));
-                    }
+                    block.addEntity(new MapObject(this.game, def, o));
                 }
             }
         }
