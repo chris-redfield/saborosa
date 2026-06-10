@@ -110,7 +110,13 @@ class Game {
                 // and placements, both authored in tools/map-editor.html.
                 this.loadImage('mapobjects_sheet', 'assets/saborosa-assets-001.png'),
                 this.loadJSON('mapobject_defs', 'assets/saborosa-assets-001-sprites.json'),
-                this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json')
+                this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json'),
+
+                // Ambient no-collision FX (assets-003) — shadows/clippy twinkle,
+                // the ball ping-pongs. Spawned around the player by FxManager;
+                // tuned in tools/fx-lab.html.
+                this.loadImage('fx_sheet', 'assets/saborosa-assets-003.png'),
+                this.loadJSON('fx_defs', 'assets/saborosa-assets-003-fx.json')
             ]);
             // Cube sheet uses a solid white background. Key it out so the
             // sprites composite cleanly over the stage art.

@@ -77,6 +77,10 @@ function loadStage(stage) {
 
     // Background for areas outside blocks
     game.backgroundColor = stage.sandColor || (stage.type === 'finite' ? '#0a0500' : stage.groundColor);
+
+    // Ambient no-collision FX (shadows/clippy twinkle, balls ping-pong) that
+    // randomly pop in around the player. Fresh per stage.
+    gameState.fxManager = new FxManager(game);
 }
 
 function updateGame(dt) {
@@ -93,6 +97,14 @@ function updateGame(dt) {
 
     const player = gameState.player;
     const world = gameState.world;
+
+    // Ambient FX: pop in / flicker around the player's viewport. Driven off the
+    // player center + current zoom so the scatter box tracks what's on screen.
+    if (gameState.fxManager) {
+        gameState.fxManager.update(dt,
+            player.x + player.width / 2, player.y + player.height / 2,
+            world.cameraScale);
+    }
 
     // --- Basket ascent transition ---
     if (gameState.transition) {
@@ -626,6 +638,10 @@ function renderGame(ctx) {
 
         entity.render(ctx, game, camX, camY);
     }
+
+    // Ambient FX drawn above the scenery (no collision, no depth sort) —
+    // shimmering shadows/clippy and ping-ponging balls popping around the view.
+    if (gameState.fxManager) gameState.fxManager.render(ctx, camX, camY);
 
     // Fall-behind: when the player has dropped below the mountain silhouette,
     // draw the upper layer AFTER the player so the mountain occludes them.

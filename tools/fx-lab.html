@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — FX Lab</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#23233f; --line:#33335a; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:#e8e8f2; font:13px/1.4 'Segoe UI',sans-serif; display:flex; height:100vh; overflow:hidden; }
+  #stage { flex:1; position:relative; overflow:hidden; background:
+      linear-gradient(45deg,#202038 25%,transparent 25%),linear-gradient(-45deg,#202038 25%,transparent 25%),
+      linear-gradient(45deg,transparent 75%,#202038 75%),linear-gradient(-45deg,transparent 75%,#202038 75%);
+      background-size:24px 24px; background-position:0 0,0 12px,12px -12px,-12px 0; }
+  #sheet { position:absolute; left:0; top:0; transform-origin:0 0; }
+  #side { width:340px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; padding:12px; }
+  h1 { font-size:15px; margin:0 0 4px; color:var(--accent); letter-spacing:1px; }
+  .sub { color:#9aa; font-size:11px; margin-bottom:10px; }
+  .grp { border:1px solid var(--line); border-radius:6px; padding:10px; margin-bottom:12px; }
+  .grp h2 { font-size:12px; margin:0 0 8px; color:var(--accent); text-transform:uppercase; letter-spacing:1px; }
+  label { display:flex; justify-content:space-between; align-items:center; gap:8px; margin:6px 0; color:#cdd; }
+  label span.v { color:var(--accent); font-variant-numeric:tabular-nums; min-width:42px; text-align:right; }
+  input[type=range] { flex:1; accent-color:var(--accent); }
+  button { background:#2d2d50; color:#e8e8f2; border:1px solid var(--line); border-radius:5px; padding:6px 10px; cursor:pointer; font-size:12px; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#10101c; border-color:var(--accent); }
+  button.hot { background:var(--hot); color:#fff; border-color:var(--hot); width:100%; padding:9px; font-weight:bold; }
+  .toggles { display:flex; gap:6px; }
+  .toggles button { flex:1; }
+  .row { display:flex; align-items:center; gap:6px; padding:4px 0; border-top:1px solid var(--line); }
+  .row:first-child { border-top:none; }
+  .swatch { width:14px; height:14px; border-radius:3px; flex:0 0 auto; }
+  .row select { flex:1; background:#2d2d50; color:#e8e8f2; border:1px solid var(--line); border-radius:4px; padding:3px; }
+  .row .cnt { color:#9aa; min-width:46px; text-align:right; font-size:11px; }
+  #animCv { width:100%; background:#10101c; border:1px solid var(--line); border-radius:6px; display:block; image-rendering:auto; }
+  .anim-bg { display:flex; gap:6px; margin-top:6px; }
+  .anim-bg button { flex:1; font-size:11px; padding:4px; }
+  .hint { color:#778; font-size:11px; margin-top:6px; }
+  #readout { color:#9aa; font-size:11px; margin:6px 0; }
+  #sel { color:var(--accent); font-size:11px; min-height:14px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="sheet"></canvas>
+</div>
+
+<div id="side">
+  <h1>FX LAB</h1>
+  <div class="sub">inspect · experiment · animate the no-collision FX assets</div>
+
+  <div class="grp">
+    <h2>Sheet</h2>
+    <div class="toggles">
+      <button id="bBold" class="on">Bold (003)</button>
+      <button id="bFaint">Faint (V2)</button>
+    </div>
+    <div class="hint">V2 is faint — detection uses the alpha channel, so both work the same.</div>
+  </div>
+
+  <div class="grp">
+    <h2>Detect</h2>
+    <label>Alpha threshold <input type="range" id="sAlpha" min="2" max="200" value="20"><span class="v" id="vAlpha">20</span></label>
+    <label>Min area <input type="range" id="sArea" min="1" max="400" value="40"><span class="v" id="vArea">40</span></label>
+    <label>Merge dist <input type="range" id="sMerge" min="0" max="60" value="6"><span class="v" id="vMerge">6</span></label>
+    <label>Row gap <input type="range" id="sRow" min="20" max="200" value="70"><span class="v" id="vRow">70</span></label>
+    <div id="readout">—</div>
+    <div id="sel">click a box to inspect</div>
+    <div class="toggles" style="margin-top:8px;">
+      <button id="bMerge">Merge selected (M)</button>
+      <button id="bDelete">Delete (Del)</button>
+    </div>
+    <div class="hint">Shift-click boxes to select several (e.g. shadows 1.0 + 1.1), then Merge into one entity.</div>
+  </div>
+
+  <div class="grp">
+    <h2>Rows</h2>
+    <div id="rows"></div>
+    <div class="hint">Set each row's category. The row marked <b>ball</b> becomes the animation sequence (left→right = frame order).</div>
+  </div>
+
+  <div class="grp">
+    <h2>Animate / Flicker</h2>
+    <canvas id="animCv" width="300" height="180"></canvas>
+    <div class="anim-bg">
+      <button data-bg="checker" class="on">checker</button>
+      <button data-bg="black">black</button>
+      <button data-bg="map">map</button>
+    </div>
+    <label>Source
+      <select id="animSrc" style="flex:1;background:#2d2d50;color:#e8e8f2;border:1px solid var(--line);border-radius:4px;padding:3px;"></select>
+    </label>
+    <label>Mode
+      <select id="animMode" style="flex:1;background:#2d2d50;color:#e8e8f2;border:1px solid var(--line);border-radius:4px;padding:3px;">
+        <option value="pingpong" selected>ping-pong (grow &amp; shrink)</option>
+        <option value="loop">loop (grow &amp; restart)</option>
+        <option value="grow">grow &amp; pop (flicker)</option>
+      </select>
+    </label>
+    <label>FPS <input type="range" id="sFps" min="1" max="30" value="10"><span class="v" id="vFps">10</span></label>
+    <label>Scale <input type="range" id="sScale" min="10" max="200" value="60"><span class="v" id="vScale">0.6</span></label>
+    <label>Opacity flicker <input type="range" id="sFlick" min="0" max="100" value="0"><span class="v" id="vFlick">0%</span></label>
+    <label>Pop gap (ms) <input type="range" id="sGap" min="0" max="2000" value="600"><span class="v" id="vGap">600</span></label>
+    <div class="hint">"grow &amp; pop" plays the sequence once, hides for the pop-gap (± jitter), repeats — a twinkle on the map.</div>
+  </div>
+
+  <div class="grp">
+    <h2>Entity FX (non-ball)</h2>
+    <canvas id="efxCv" width="300" height="180"></canvas>
+    <div class="efx-bg anim-bg">
+      <button data-bg="checker" class="on">checker</button>
+      <button data-bg="black">black</button>
+      <button data-bg="map">map</button>
+    </div>
+    <label>Entity
+      <select id="efxEntity" style="flex:1;background:#2d2d50;color:#e8e8f2;border:1px solid var(--line);border-radius:4px;padding:3px;"></select>
+    </label>
+    <label>Effect
+      <select id="efxType" style="flex:1;background:#2d2d50;color:#e8e8f2;border:1px solid var(--line);border-radius:4px;padding:3px;">
+        <option value="fade">fade pulse (breathe)</option>
+        <option value="blink">blink (on/off)</option>
+        <option value="twinkle">twinkle (random shimmer)</option>
+        <option value="pop">pop (appear &amp; vanish)</option>
+        <option value="scale">scale pulse</option>
+      </select>
+    </label>
+    <label>Speed (Hz) <input type="range" id="eSpeed" min="1" max="60" value="10"><span class="v" id="vESpeed">1.0</span></label>
+    <label>Min opacity <input type="range" id="eMin" min="0" max="100" value="0"><span class="v" id="vEMin">0%</span></label>
+    <label>Scale amt <input type="range" id="eScaleAmt" min="0" max="80" value="15"><span class="v" id="vEScaleAmt">0.15</span></label>
+    <label>Pop gap (ms) <input type="range" id="ePopGap" min="0" max="2500" value="900"><span class="v" id="vEPopGap">900</span></label>
+    <label>View scale <input type="range" id="eView" min="20" max="120" value="80"><span class="v" id="vEView">0.80</span></label>
+    <div class="hint">Each non-ball entity is standalone — pick one and try effects. Uses the same bg toggle above. Chosen effect is saved as <b>entityFx</b> on export.</div>
+  </div>
+
+  <button id="export" class="hot">Export FX defs JSON</button>
+  <div class="hint">Saves boxes per row + the animation frame list to <b>assets/saborosa-assets-003-fx.json</b> (collision:false).</div>
+</div>
+
+<script>
+const SHEETS = { bold:'../assets/saborosa-assets-003.png', faint:'../assets/saborosa-assets-003-V2.png' };
+const MAP_BG = '../assets/cor-saborosa-fundo-02-lower.png';
+const DETECT_SCALE = 0.25;                 // downscale for fast component detection
+const ROW_COLORS = ['#53d8fb','#e94560','#7CFC00','#ffd166','#c792ea','#ff8c42','#4dd0e1'];
+
+const stage = document.getElementById('stage');
+const sheetCv = document.getElementById('sheet');
+const sctx = sheetCv.getContext('2d');
+
+let curSheet = 'bold';
+let img = null;            // current full-res sheet image
+let mapImg = null;
+let det = { scale:DETECT_SCALE };
+let rows = [];             // [{ boxes:[{x,y,w,h}], cat, color }]  full-res boxes
+let selection = [];        // [{row, idx}] — current multi-selection
+let view = { scale:1, ox:0, oy:0 };
+
+const P = { alpha:20, area:40, merge:6, rowGap:70 };
+
+// ---- image loading ----
+function load(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+
+async function setSheet(which){
+  curSheet = which;
+  img = await load(SHEETS[which]);
+  fitView();
+  detect();
+}
+
+function fitView(){
+  if(!img) return;
+  const sw = stage.clientWidth, sh = stage.clientHeight;
+  view.scale = Math.min(sw/img.width, sh/img.height) * 0.98;
+  view.ox = (sw - img.width*view.scale)/2;
+  view.oy = (sh - img.height*view.scale)/2;
+  sheetCv.width = img.width; sheetCv.height = img.height;
+  sheetCv.style.transform = `translate(${view.ox}px,${view.oy}px) scale(${view.scale})`;
+}
+
+// ---- detection: downscale -> alpha mask -> 8-conn flood fill -> box merge -> rows ----
+function detect(){
+  if(!img) return;
+  const sc = det.scale;
+  const w = Math.round(img.width*sc), h = Math.round(img.height*sc);
+  const off = document.createElement('canvas'); off.width=w; off.height=h;
+  const octx = off.getContext('2d');
+  octx.drawImage(img, 0,0, w,h);
+  const data = octx.getImageData(0,0,w,h).data;
+
+  // alpha mask
+  const mask = new Uint8Array(w*h);
+  for(let i=0;i<w*h;i++) mask[i] = data[i*4+3] > P.alpha ? 1 : 0;
+
+  // 8-connected flood fill -> component bounding boxes (in small px)
+  const label = new Int32Array(w*h).fill(0);
+  const stack = [];
+  let comps = [];
+  for(let y=0;y<h;y++) for(let x=0;x<w;x++){
+    const idx = y*w+x;
+    if(!mask[idx] || label[idx]) continue;
+    let minx=x,maxx=x,miny=y,maxy=y,area=0;
+    const id = comps.length+1;
+    stack.length=0; stack.push(idx); label[idx]=id;
+    while(stack.length){
+      const p = stack.pop(); const px=p%w, py=(p/w)|0; area++;
+      if(px<minx)minx=px; if(px>maxx)maxx=px; if(py<miny)miny=py; if(py>maxy)maxy=py;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        if(!dx&&!dy) continue;
+        const nx=px+dx, ny=py+dy;
+        if(nx<0||ny<0||nx>=w||ny>=h) continue;
+        const np=ny*w+nx;
+        if(mask[np] && !label[np]){ label[np]=id; stack.push(np); }
+      }
+    }
+    comps.push({x:minx,y:miny,w:maxx-minx+1,h:maxy-miny+1,area});
+  }
+
+  // filter by area, then merge boxes whose gap <= merge dist (iterative)
+  let boxes = comps.filter(c=>c.area >= P.area);
+  let merged = true;
+  while(merged){
+    merged = false;
+    for(let i=0;i<boxes.length;i++){
+      for(let j=i+1;j<boxes.length;j++){
+        if(boxGap(boxes[i],boxes[j]) <= P.merge){
+          boxes[i] = unionBox(boxes[i],boxes[j]);
+          boxes.splice(j,1); merged=true; j--;
+        }
+      }
+    }
+  }
+
+  // scale boxes back to full-res
+  const full = boxes.map(b=>({ x:Math.round(b.x/sc), y:Math.round(b.y/sc), w:Math.round(b.w/sc), h:Math.round(b.h/sc) }));
+
+  // cluster into rows by y-center gap, sort each row left->right
+  full.sort((a,b)=>(a.y+a.h/2)-(b.y+b.h/2));
+  const grp = []; let cur=[]; let lastC=null;
+  for(const b of full){
+    const c = b.y+b.h/2;
+    if(lastC===null || c-lastC < P.rowGap* (1/sc) /* rowGap in detect px -> full */) cur.push(b);
+    else { grp.push(cur); cur=[b]; }
+    lastC = c;
+  }
+  if(cur.length) grp.push(cur);
+
+  // build rows, preserve previous categories by index, default heuristic
+  rows = grp.map((bx,i)=>{
+    bx.sort((a,b)=>a.x-b.x);
+    const prev = rows[i];
+    let cat = prev ? prev.cat : 'shadow';
+    if(!prev){
+      if(i===grp.length-1) cat='ball';
+      else if(i===grp.length-2) cat='clip';
+    }
+    return { boxes:bx, cat, color:ROW_COLORS[i%ROW_COLORS.length] };
+  });
+
+  const total = rows.reduce((s,r)=>s+r.boxes.length,0);
+  document.getElementById('readout').textContent = `${total} assets · ${rows.length} rows`;
+  selection = [];
+  document.getElementById('sel').textContent = 'click a box · shift-click to multi-select · M=merge';
+  renderRows();
+  renderSheet();
+  rebuildAnimSrc();
+}
+
+function boxGap(a,b){
+  const dx = Math.max(0, Math.max(a.x-(b.x+b.w), b.x-(a.x+a.w)));
+  const dy = Math.max(0, Math.max(a.y-(b.y+b.h), b.y-(a.y+a.h)));
+  return Math.max(dx,dy);
+}
+function unionBox(a,b){
+  const x=Math.min(a.x,b.x), y=Math.min(a.y,b.y);
+  const x2=Math.max(a.x+a.w,b.x+b.w), y2=Math.max(a.y+a.h,b.y+b.h);
+  return {x,y,w:x2-x,h:y2-y,area:(a.area||0)+(b.area||0)};
+}
+
+// ---- sheet render with overlays ----
+function renderSheet(){
+  if(!img) return;
+  sctx.clearRect(0,0,sheetCv.width,sheetCv.height);
+  sctx.drawImage(img,0,0);
+  const lw = 3/view.scale;
+  rows.forEach((r,ri)=>{
+    r.boxes.forEach((b,bi)=>{
+      const isSel = selection.some(s=>s.row===ri && s.idx===bi);
+      sctx.lineWidth = isSel ? lw*2.5 : lw;
+      sctx.strokeStyle = isSel ? '#fff' : (r.cat==='ignore' ? '#555' : r.color);
+      sctx.strokeRect(b.x,b.y,b.w,b.h);
+      sctx.fillStyle = r.color;
+      sctx.font = `${22/view.scale}px monospace`;
+      sctx.fillText(`${ri}.${bi}`, b.x+3, b.y-4/view.scale);
+    });
+  });
+}
+
+// click to select a box (shift-click = add/remove from multi-selection)
+sheetCv.addEventListener('click', e=>{
+  const rect = sheetCv.getBoundingClientRect();
+  const x = (e.clientX-rect.left)/view.scale;
+  const y = (e.clientY-rect.top)/view.scale;
+  for(let ri=0;ri<rows.length;ri++) for(let bi=0;bi<rows[ri].boxes.length;bi++){
+    const b=rows[ri].boxes[bi];
+    if(x>=b.x&&x<=b.x+b.w&&y>=b.y&&y<=b.y+b.h){
+      const hitI = selection.findIndex(s=>s.row===ri && s.idx===bi);
+      if(e.shiftKey){ if(hitI>=0) selection.splice(hitI,1); else selection.push({row:ri,idx:bi}); }
+      else selection = [{row:ri,idx:bi}];
+      updateSelText(); renderSheet(); return;
+    }
+  }
+  if(!e.shiftKey){ selection=[]; updateSelText(); renderSheet(); }
+});
+
+function updateSelText(){
+  const el=document.getElementById('sel');
+  if(selection.length===0){ el.textContent='click a box · shift-click to multi-select · M=merge'; return; }
+  if(selection.length===1){ const s=selection[0], b=rows[s.row].boxes[s.idx];
+    el.textContent=`[${s.row}.${s.idx}] ${rows[s.row].cat}  x:${b.x} y:${b.y} w:${b.w} h:${b.h}`; return; }
+  el.textContent=`${selection.length} selected · press M to merge · Del to delete`;
+}
+
+// merge all selected boxes into one (placed in the lowest-index row), or delete them
+function mergeSelected(){
+  if(selection.length<2) return;
+  const picked = selection.map(s=>rows[s.row].boxes[s.idx]);
+  let u = picked[0]; for(let i=1;i<picked.length;i++) u=unionBox(u,picked[i]);
+  const targetRow = Math.min(...selection.map(s=>s.row));
+  // remove originals (delete from highest idx first per row to keep indices valid)
+  const byRow={}; selection.forEach(s=>{ (byRow[s.row]=byRow[s.row]||[]).push(s.idx); });
+  Object.keys(byRow).forEach(r=>{ byRow[r].sort((a,b)=>b-a).forEach(i=>rows[r].boxes.splice(i,1)); });
+  rows[targetRow].boxes.push({x:u.x,y:u.y,w:u.w,h:u.h});
+  rows[targetRow].boxes.sort((a,b)=>a.x-b.x);
+  rows = rows.filter(r=>r.boxes.length);   // drop now-empty rows
+  selection=[]; updateSelText(); renderSheet(); rebuildAnimSrc();
+}
+function deleteSelected(){
+  if(!selection.length) return;
+  const byRow={}; selection.forEach(s=>{ (byRow[s.row]=byRow[s.row]||[]).push(s.idx); });
+  Object.keys(byRow).forEach(r=>{ byRow[r].sort((a,b)=>b-a).forEach(i=>rows[r].boxes.splice(i,1)); });
+  rows = rows.filter(r=>r.boxes.length);
+  selection=[]; updateSelText(); renderRows(); renderSheet(); rebuildAnimSrc();
+}
+window.addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
+  if(e.key==='m'||e.key==='M') mergeSelected();
+  if(e.key==='Delete'||e.key==='Backspace'||e.key==='d') deleteSelected();
+});
+
+// ---- rows panel ----
+function renderRows(){
+  const el = document.getElementById('rows');
+  el.innerHTML='';
+  rows.forEach((r,i)=>{
+    const div=document.createElement('div'); div.className='row';
+    const sw=document.createElement('div'); sw.className='swatch'; sw.style.background=r.color;
+    const sel=document.createElement('select');
+    ['shadow','clip','ball','ignore'].forEach(c=>{
+      const o=document.createElement('option'); o.value=c; o.textContent=c; if(c===r.cat)o.selected=true; sel.appendChild(o);
+    });
+    sel.onchange=()=>{ r.cat=sel.value; renderSheet(); rebuildAnimSrc(); };
+    const cnt=document.createElement('div'); cnt.className='cnt'; cnt.textContent=`${r.boxes.length} ·r${i}`;
+    div.append(sw,sel,cnt); el.appendChild(div);
+  });
+}
+
+// ===== animation / flicker preview =====
+const animCv=document.getElementById('animCv'); const actx=animCv.getContext('2d');
+let animBg='checker';
+let A = { src:'auto', mode:'pingpong', fps:10, scale:0.6, flick:0, gap:600 };
+let frameI=0, dir=1, lastT=0, popHiddenUntil=0, popped=false;
+
+function rebuildAnimSrc(){
+  const sel=document.getElementById('animSrc');
+  const prev=sel.value;
+  sel.innerHTML='<option value="auto">auto (ball row)</option>';
+  rows.forEach((r,i)=>{
+    const o=document.createElement('option'); o.value='row'+i; o.textContent=`row ${i} (${r.cat}, ${r.boxes.length})`; sel.appendChild(o);
+    r.boxes.forEach((b,bi)=>{ const o2=document.createElement('option'); o2.value=`${i}.${bi}`; o2.textContent=`  · single ${i}.${bi}`; sel.appendChild(o2); });
+  });
+  if([...sel.options].some(o=>o.value===prev)) sel.value=prev; else sel.value='auto';
+  A.src=sel.value;
+  rebuildEntitySrc();
+}
+
+function currentFrames(){
+  if(!rows.length) return [];
+  if(A.src==='auto'){ const r=rows.find(r=>r.cat==='ball'); return r?r.boxes:[]; }
+  if(A.src.startsWith('row')){ const i=+A.src.slice(3); return rows[i]?rows[i].boxes:[]; }
+  const [ri,bi]=A.src.split('.').map(Number);
+  return rows[ri]&&rows[ri].boxes[bi] ? [rows[ri].boxes[bi]] : [];
+}
+
+function drawAnimBg(){
+  const w=animCv.width,h=animCv.height;
+  if(animBg==='black'){ actx.fillStyle='#000'; actx.fillRect(0,0,w,h); return; }
+  if(animBg==='map' && mapImg){ actx.drawImage(mapImg, 2000,3000, w*4,h*4, 0,0, w,h); return; }
+  // checker
+  const s=12; for(let y=0;y<h;y+=s) for(let x=0;x<w;x+=s){ actx.fillStyle=((x/s+y/s)&1)?'#202038':'#191930'; actx.fillRect(x,y,s,s); }
+}
+
+function tick(t){
+  requestAnimationFrame(tick);
+  renderEfx(t);
+  if(!img) return;
+  const w=animCv.width,h=animCv.height;
+  actx.clearRect(0,0,w,h); drawAnimBg();
+  const frames=currentFrames();
+  if(!frames.length) return;
+
+  if(!lastT) lastT=t;
+  const step=1000/A.fps;
+
+  let visible=true, alpha=1;
+  if(A.mode==='grow'){
+    // play 0..n-1 once, then hide for gap (+jitter), repeat
+    if(t<popHiddenUntil){ visible=false; }
+    else {
+      if(t-lastT>=step){ lastT=t; frameI++; if(frameI>=frames.length){ frameI=0; popHiddenUntil=t+A.gap*(0.5+Math.random()); } }
+    }
+  } else if(A.mode==='pingpong'){
+    if(t-lastT>=step){ lastT=t; frameI+=dir; if(frameI>=frames.length-1){frameI=frames.length-1;dir=-1;} else if(frameI<=0){frameI=0;dir=1;} }
+  } else { // loop
+    if(t-lastT>=step){ lastT=t; frameI=(frameI+1)%frames.length; }
+  }
+  if(A.flick>0){ alpha = 1 - (A.flick/100) * (0.5+0.5*Math.sin(t/90)); }
+
+  if(!visible) return;
+  const f=frames[Math.min(frameI,frames.length-1)];
+  // Fit the LARGEST frame of the sequence into the preview box (with padding),
+  // then apply the scale slider relative to that fit so nothing gets cropped.
+  const pad=16;
+  const maxW=Math.max(...frames.map(b=>b.w)), maxH=Math.max(...frames.map(b=>b.h));
+  const fit=Math.min((w-pad)/maxW,(h-pad)/maxH);
+  const s=fit*A.scale;
+  const dw=f.w*s, dh=f.h*s;
+  actx.globalAlpha=alpha;
+  actx.drawImage(img, f.x,f.y,f.w,f.h, (w-dw)/2,(h-dh)/2, dw,dh);
+  actx.globalAlpha=1;
+}
+requestAnimationFrame(tick);
+
+// ===== Entity FX preview (single non-ball entity + flicker effect) =====
+const efxCv=document.getElementById('efxCv'); const ectx=efxCv.getContext('2d');
+let EFX = { entity:'', type:'fade', speedHz:1.0, minA:0, scaleAmt:0.15, popGap:900, view:0.80 };
+let efxHiddenUntil=0, efxShownAt=0;
+let efxBg='checker';
+
+// dropdown of every non-ball, non-ignore box ("row.idx — category")
+function rebuildEntitySrc(){
+  const sel=document.getElementById('efxEntity'); const prev=sel.value;
+  sel.innerHTML='';
+  rows.forEach((r,i)=>{ if(r.cat==='ball'||r.cat==='ignore') return;
+    r.boxes.forEach((b,bi)=>{ const o=document.createElement('option'); o.value=`${i}.${bi}`; o.textContent=`${i}.${bi} — ${r.cat}`; sel.appendChild(o); });
+  });
+  if([...sel.options].some(o=>o.value===prev)) sel.value=prev;
+  else if(sel.options.length) sel.value=sel.options[0].value;
+  EFX.entity = sel.value || '';
+}
+
+function efxBox(){
+  if(!EFX.entity) return null;
+  const [ri,bi]=EFX.entity.split('.').map(Number);
+  return rows[ri] && rows[ri].boxes[bi] ? rows[ri].boxes[bi] : null;
+}
+
+function drawEfxBg(){
+  const w=efxCv.width,h=efxCv.height;
+  if(efxBg==='black'){ ectx.fillStyle='#000'; ectx.fillRect(0,0,w,h); return; }
+  if(efxBg==='map' && mapImg){ ectx.drawImage(mapImg, 2000,3000, w*4,h*4, 0,0, w,h); return; }
+  const s=12; for(let y=0;y<h;y+=s) for(let x=0;x<w;x+=s){ ectx.fillStyle=((x/s+y/s)&1)?'#202038':'#191930'; ectx.fillRect(x,y,s,s); }
+}
+
+function renderEfx(t){
+  const w=efxCv.width,h=efxCv.height;
+  ectx.clearRect(0,0,w,h); drawEfxBg();
+  const b=efxBox(); if(!b||!img) return;
+  const ph = t/1000 * EFX.speedHz;           // phase in cycles
+  let alpha=1, sc=1;
+  switch(EFX.type){
+    case 'fade':    alpha = EFX.minA + (1-EFX.minA)*(0.5+0.5*Math.sin(ph*2*Math.PI)); break;
+    case 'blink':   alpha = (Math.sin(ph*2*Math.PI) > 0) ? 1 : EFX.minA; break;
+    case 'twinkle': alpha = EFX.minA + (1-EFX.minA)*(0.55+0.45*Math.sin(ph*2*Math.PI))*(0.6+0.4*Math.random()); break;
+    case 'scale':   sc = 1 + EFX.scaleAmt*Math.sin(ph*2*Math.PI); break;
+    case 'pop': {
+      // appear (fade+scale in) -> peak -> vanish, then hidden for popGap (+jitter)
+      if(t < efxHiddenUntil) return;                   // in the hidden gap
+      const life = 1000/Math.max(EFX.speedHz,0.001);   // one pop lifetime (Hz)
+      if(efxShownAt===0 || efxShownAt>t) efxShownAt=t;  // (re)start a pop
+      const k=(t-efxShownAt)/life;                      // 0..1 across the pop
+      if(k>=1){ efxHiddenUntil=t+EFX.popGap*(0.5+Math.random()); efxShownAt=0; return; }
+      const env=Math.sin(k*Math.PI);                    // 0 -> 1 -> 0 envelope
+      alpha = EFX.minA + (1-EFX.minA)*env;
+      sc = 0.6 + 0.4*env + EFX.scaleAmt*env;
+      break;
+    }
+  }
+  const pad=16, fit=Math.min((w-pad)/b.w,(h-pad)/b.h)*EFX.view, dw=b.w*fit*sc, dh=b.h*fit*sc;
+  ectx.globalAlpha=Math.max(0,Math.min(1,alpha));
+  ectx.drawImage(img, b.x,b.y,b.w,b.h, (w-dw)/2,(h-dh)/2, dw,dh);
+  ectx.globalAlpha=1;
+}
+
+// ---- export ----
+function exportJSON(){
+  const out = {
+    sheets: { bold:'saborosa-assets-003.png', faint:'saborosa-assets-003-V2.png' },
+    collision: false,
+    detect: { scale:det.scale, alpha:P.alpha, area:P.area, merge:P.merge, rowGap:P.rowGap },
+    rows: rows.map((r,i)=>({ index:i, category:r.cat, boxes:r.boxes.map(b=>({x:b.x,y:b.y,w:b.w,h:b.h})) })),
+    animation: (()=>{ const r=rows.find(r=>r.cat==='ball'); return { mode:A.mode, fps:A.fps, frames: r?r.boxes.map(b=>({x:b.x,y:b.y,w:b.w,h:b.h})):[] }; })(),
+    entityFx: { type:EFX.type, speedHz:EFX.speedHz, minOpacity:EFX.minA, scaleAmt:EFX.scaleAmt, popGap:EFX.popGap }
+  };
+  const txt=JSON.stringify(out,null,2);
+  const blob=new Blob([txt],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='saborosa-assets-003-fx.json'; a.click();
+  navigator.clipboard && navigator.clipboard.writeText(txt);
+}
+
+// ---- wire controls ----
+function bindRange(id,vid,fn,fmt){
+  const s=document.getElementById(id), v=document.getElementById(vid);
+  s.oninput=()=>{ fn(+s.value); v.textContent=fmt?fmt(+s.value):s.value; };
+}
+bindRange('sAlpha','vAlpha',v=>{P.alpha=v;detect();});
+bindRange('sArea','vArea',v=>{P.area=v;detect();});
+bindRange('sMerge','vMerge',v=>{P.merge=v;detect();});
+bindRange('sRow','vRow',v=>{P.rowGap=v;detect();});
+bindRange('sFps','vFps',v=>{A.fps=v;});
+bindRange('sScale','vScale',v=>{A.scale=v/100;},v=>(v/100).toFixed(2));
+bindRange('sFlick','vFlick',v=>{A.flick=v;},v=>v+'%');
+bindRange('sGap','vGap',v=>{A.gap=v;});
+bindRange('eSpeed','vESpeed',v=>{EFX.speedHz=v/10;},v=>(v/10).toFixed(1));
+bindRange('eMin','vEMin',v=>{EFX.minA=v/100;},v=>v+'%');
+bindRange('eScaleAmt','vEScaleAmt',v=>{EFX.scaleAmt=v/100;},v=>(v/100).toFixed(2));
+bindRange('ePopGap','vEPopGap',v=>{EFX.popGap=v;});
+bindRange('eView','vEView',v=>{EFX.view=v/100;},v=>(v/100).toFixed(2));
+document.getElementById('efxEntity').onchange=e=>{ EFX.entity=e.target.value; efxHiddenUntil=0; efxShownAt=0; };
+document.getElementById('efxType').onchange=e=>{ EFX.type=e.target.value; efxHiddenUntil=0; efxShownAt=0; };
+
+document.getElementById('bBold').onclick=()=>{ setSheet('bold'); document.getElementById('bBold').classList.add('on'); document.getElementById('bFaint').classList.remove('on'); };
+document.getElementById('bFaint').onclick=()=>{ setSheet('faint'); document.getElementById('bFaint').classList.add('on'); document.getElementById('bBold').classList.remove('on'); };
+document.getElementById('animSrc').onchange=e=>{ A.src=e.target.value; frameI=0; };
+document.getElementById('animMode').onchange=e=>{ A.mode=e.target.value; frameI=0; dir=1; popHiddenUntil=0; };
+// background toggles — scoped per panel (the entity-FX row also has class .anim-bg for styling)
+function wireBgRow(sel, set){
+  const btns=document.querySelectorAll(sel+' button');
+  btns.forEach(b=>b.onclick=()=>{ set(b.dataset.bg); btns.forEach(x=>x.classList.remove('on')); b.classList.add('on'); });
+}
+wireBgRow('.anim-bg:not(.efx-bg)', v=>animBg=v);
+wireBgRow('.efx-bg', v=>efxBg=v);
+document.getElementById('export').onclick=exportJSON;
+document.getElementById('bMerge').onclick=mergeSelected;
+document.getElementById('bDelete').onclick=deleteSelected;
+window.addEventListener('resize',()=>{ fitView(); renderSheet(); });
+
+// ---- boot ----
+(async()=>{ mapImg = await load(MAP_BG).catch(()=>null); await setSheet('bold'); })();
+</script>
+</body>
+</html>
