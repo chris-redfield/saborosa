@@ -81,10 +81,12 @@ const STAGES = {
         // the loaded placements JSON key; `objectDefs` the sprite/collision defs.
         objects: 'painted_isle_objects',
         objectDefs: 'mapobject_defs',
-        // Image 4679x3624 (AR ~1.291). Fit to 9x9 walkable height (6480px),
-        // preserving aspect: w = 6480 * 1.291 = 8366. Centered horizontally
-        // in the 11520-wide walkable area (margin ~1577 each side).
-        backgroundImageRect: { x: 1577, y: 0, w: 8366, h: 6480 },
+        // Image 8314x6112 (AR ~1.360). Fit to 9x9 walkable height (6480px),
+        // preserving aspect: w = 6480 * 1.360 = 8815. Centered horizontally
+        // in the 11520-wide walkable area (margin ~1352 each side). The rect is
+        // world-space, so it tracks the image's aspect ratio, not its pixel
+        // resolution — the PNGs can be downscaled freely without touching this.
+        backgroundImageRect: { x: 1352, y: 0, w: 8815, h: 6480 },
         // Camera zoom bands keyed off feetY (world coords). Two Y thresholds
         // → three altitude zones. As the player walks north (smaller Y) and
         // crosses a threshold, the target scale steps further out. Walking
@@ -92,8 +94,8 @@ const STAGES = {
         // smoothing makes the steps feel like an eased transition.
         cameraZoomThresholds: [5000, 2500],
         cameraZoomScales: [1.0, 0.88, 0.78],
-        spawnX: 2500, // 7900
-        spawnY: 5200, // 3800
+        spawnX: 3255, // 7900
+        spawnY: 4725, // 3800
         safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },
         portals: [
             { x: 8160, y: 740, targetStage: 2, label: 'Sand Bank' }

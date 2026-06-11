@@ -57,23 +57,45 @@ class World {
     // Classification runs in HSV space to tolerate hand-drawn color variance
     // and anti-aliased edges.
 
+    // Rasterize an image into a backing canvas and read its pixels. The canvas
+    // is capped to MAX_SAMPLE_PX total pixels (preserving aspect) so an oversized
+    // source can't blow the browser's max-canvas-area limit (~124M px on Firefox)
+    // — over the limit getImageData throws and we'd lose all zone data. Sampling
+    // resolution is independent of gameplay: callers map via the returned w/h, so
+    // a downscaled sample classifies identically. `smooth=false` keeps flat zone
+    // colors pure (nearest-neighbor) instead of blending region edges.
+    _sampleImage(img, smooth) {
+        const MAX_SAMPLE_PX = 100 * 1000 * 1000; // safety margin under Firefox's ~124M
+        let w = img.naturalWidth, h = img.naturalHeight;
+        const total = w * h;
+        if (total > MAX_SAMPLE_PX) {
+            const k = Math.sqrt(MAX_SAMPLE_PX / total);
+            w = Math.max(1, Math.floor(w * k));
+            h = Math.max(1, Math.floor(h * k));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const c = canvas.getContext('2d');
+        c.imageSmoothingEnabled = !!smooth;
+        c.drawImage(img, 0, 0, w, h);
+        try {
+            return c.getImageData(0, 0, w, h);
+        } catch (err) {
+            console.error('Image sampling failed:', err);
+            return null;
+        }
+    }
+
     _ensureZoneData() {
         if (this._zoneData !== undefined) return;
         this._zoneData = null;
         if (!this.stage.backgroundImage) return;
         const img = this.game.getImage(this.stage.backgroundImage);
         if (!img || !img.naturalWidth) return;
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const c = canvas.getContext('2d');
-        c.drawImage(img, 0, 0);
-        try {
-            this._zoneData = c.getImageData(0, 0, canvas.width, canvas.height);
-        } catch (err) {
-            console.error('Zone data sampling failed:', err);
-            this._zoneData = null;
-        }
+        // Nearest-neighbor (smooth=false): zones are decided by flat color, so we
+        // must not let downscaling blend region borders into in-between hues.
+        this._zoneData = this._sampleImage(img, false);
     }
 
     // World-Y of the image midline. Used as both the "high zone" boundary
@@ -97,19 +119,10 @@ class World {
         const img = this.game.getImage(key);
         if (!img || !img.naturalWidth) return;
 
-        const w = img.naturalWidth;
-        const h = img.naturalHeight;
-        const c = document.createElement('canvas');
-        c.width = w;
-        c.height = h;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        try {
-            const id = ctx.getImageData(0, 0, w, h);
-            this._mountainOverlayData = { data: id.data, w, h };
-        } catch (err) {
-            console.error('Mountain overlay sampling failed:', err);
-        }
+        // Alpha is the mountain silhouette; smoothing is fine here. Same size cap
+        // as the zone canvas so a huge overlay can't exceed the max-canvas limit.
+        const id = this._sampleImage(img, true);
+        if (id) this._mountainOverlayData = { data: id.data, w: id.width, h: id.height };
     }
 
     // True if any opaque overlay pixel overlaps the player's sprite bbox.
