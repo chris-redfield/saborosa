@@ -161,6 +161,50 @@ class World {
         return false;
     }
 
+    // Blit one full-map background layer (sand / lower / overlay), but ONLY the
+    // slice currently on screen. These layers are large (the zoning-res master,
+    // ~8314x6112) and drawn inside the camera's scale transform; blitting the
+    // whole image every frame makes Chrome re-resample all ~50M px per layer per
+    // frame (very choppy). Source-subrect culling keeps the work proportional to
+    // the viewport. `rect` is the layer's world-space rect.
+    _drawStageLayer(ctx, img, rect) {
+        const cx = this.cameraX, cy = this.cameraY;
+        // Default to the whole layer; narrow to the visible slice if we can read
+        // back the active camera transform (drawImage args live in world-minus-
+        // camera space, so invert device->that space, then add camera to get world).
+        let wx0 = rect.x, wy0 = rect.y, wx1 = rect.x + rect.w, wy1 = rect.y + rect.h;
+        const t = (typeof ctx.getTransform === 'function') ? ctx.getTransform() : null;
+        const inv = (t && typeof t.inverse === 'function') ? t.inverse() : null;
+        if (inv && typeof inv.transformPoint === 'function') {
+            const W = this.game.width, H = this.game.height;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            for (const [dx, dy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
+                const p = inv.transformPoint(new DOMPoint(dx, dy));
+                if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+                if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+            }
+            const pad = 2; // guard against rounding seams at the slice edges
+            wx0 = Math.max(wx0, minX + cx - pad); wy0 = Math.max(wy0, minY + cy - pad);
+            wx1 = Math.min(wx1, maxX + cx + pad); wy1 = Math.min(wy1, maxY + cy + pad);
+        }
+        if (wx1 <= wx0 || wy1 <= wy0) return; // layer fully off screen
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        const sx = (wx0 - rect.x) / rect.w * iw;
+        const sy = (wy0 - rect.y) / rect.h * ih;
+        const sw = (wx1 - wx0) / rect.w * iw;
+        const sh = (wy1 - wy0) / rect.h * ih;
+        ctx.drawImage(img, sx, sy, sw, sh, wx0 - cx, wy0 - cy, wx1 - wx0, wy1 - wy0);
+    }
+
+    _stageRect() {
+        let rect = this.stage.backgroundImageRect;
+        if (!rect) {
+            const b = this._getStageBounds();
+            rect = { x: b.x, y: b.y, w: b.w, h: b.h };
+        }
+        return rect;
+    }
+
     // Mountain-silhouette overlay (transparent below the midline). Drawn on
     // top of the player when fall-behind detection fires.
     renderOverlay(ctx) {
@@ -169,10 +213,7 @@ class World {
         if (!img || !img.naturalWidth) return;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return;
-        ctx.drawImage(img,
-            Math.round(rect.x - this.cameraX),
-            Math.round(rect.y - this.cameraY),
-            rect.w, rect.h);
+        this._drawStageLayer(ctx, img, rect);
     }
 
     getZoneAt(wx, wy) {
@@ -460,32 +501,13 @@ class World {
         const cy = this.cameraY;
 
         if (this.stage.backgroundImage) {
-            // Lower layer (sand + small islands + sand-above-midline). The
-            // upper mountain layer is drawn separately by main.js so it can
-            // sit on either side of the player.
-            let rect = this.stage.backgroundImageRect;
-            if (!rect) {
-                const b = this._getStageBounds();
-                rect = { x: b.x, y: b.y, w: b.w, h: b.h };
-            }
-            // Flat sand backdrop first (the island art above is mostly
-            // transparent and needs something behind it).
-            if (this.stage.backgroundSandImage) {
-                const sand = this.game.getImage(this.stage.backgroundSandImage);
-                if (sand) ctx.drawImage(sand,
-                    Math.round(rect.x - cx), Math.round(rect.y - cy),
-                    rect.w, rect.h);
-            }
-            // Lower layer (island below the silhouette / sand + below-midline).
-            // The upper mountain layer is drawn separately by main.js so it can
-            // sit on either side of the player.
+            const rect = this._stageRect();
+            // Opaque lower layer (island ground with the sand backdrop baked in,
+            // below the silhouette). The upper mountain layer is drawn separately
+            // by main.js so it can sit on either side of the player.
             const lowerKey = this.stage.backgroundLowerImage || this.stage.backgroundImage;
             const img = this.game.getImage(lowerKey);
-            if (img) {
-                ctx.drawImage(img,
-                    Math.round(rect.x - cx), Math.round(rect.y - cy),
-                    rect.w, rect.h);
-            }
+            if (img && img.naturalWidth) this._drawStageLayer(ctx, img, rect);
 
             if (this.game.showDebug) {
                 for (const block of Object.values(this.blocks)) {

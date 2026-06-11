@@ -104,10 +104,10 @@ class Game {
                 this.loadImage('stage3_bg', 'assets/saborosa-fundo-base-V2.png'),
                 // DISPLAYED island art: the real, detailed map split into lower /
                 // overlay by the V2 silhouette (tools/build-island-art.py) so the
-                // fall-behind line matches zoning. Drawn over the sand backdrop.
+                // fall-behind line matches zoning. The sand backdrop is baked into
+                // the (opaque) lower offline, so runtime draws just these two.
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-fim-island-01-lower.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-fim-island-01-overlay.png'),
-                this.loadImage('stage3_sand', 'assets/saborosa-fundo-base-fim-back-01.png'),
                 // The old colored zoning map, kept as a DISPLAY alternative for the
                 // map-art toggle (and as the solid silhouette used for occlusion).
                 this.loadImage('stage3_lower_color', 'assets/saborosa-fundo-base-V2-lower.png'),

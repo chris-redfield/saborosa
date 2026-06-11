@@ -69,8 +69,6 @@ function applyMapStyle() {
     if (!stage || !stage.backgroundLowerImage) return;
     stage.backgroundLowerImage = mapStyleColor ? 'stage3_lower_color' : 'stage3_lower';
     stage.backgroundOverlayImage = mapStyleColor ? 'stage3_overlay_color' : 'stage3_overlay';
-    // The old colored map paints its own sand; the real art needs the backdrop.
-    stage.backgroundSandImage = mapStyleColor ? null : 'stage3_sand';
 }
 function makeMapStyleToggle() {
     if (typeof document === 'undefined' || !document.body) return;

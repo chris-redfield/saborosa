@@ -51,23 +51,28 @@ def main():
     over_a  = np.minimum(ia, stencil).astype(np.uint8)            # inside silhouette
     lower_a = np.minimum(ia, 255 - stencil).astype(np.uint8)      # outside silhouette
 
-    over = isl.copy();  over[..., 3]  = over_a
-    lower = isl.copy(); lower[..., 3] = lower_a
+    over = isl.copy();  over[..., 3]  = over_a   # mountain — stays transparent
+    lower = isl.copy(); lower[..., 3] = lower_a   # ground   — composited onto sand
 
-    # Palette-quantize the display layers: dense line-art ink (brown/black on
-    # transparent) doesn't compress as flat-color PNG, so a 256-color octree
-    # palette is near-lossless here but ~12x smaller (~13MB -> ~1MB). Alpha is
-    # preserved by FASTOCTREE. (Occlusion reads the solid V2 overlay, not these,
-    # so the quantized edges never affect zoning/behind-mountain.)
-    def save_quant(arr, path):
-        Image.fromarray(arr, 'RGBA').quantize(
-            colors=256, method=Image.FASTOCTREE).save(path, optimize=True)
-    save_quant(over,  OUT_OVER)
-    save_quant(lower, OUT_LOWER)
+    # OFFLINE compositing: flatten the sand backdrop + the lower island art into
+    # ONE OPAQUE layer. This is the perf fix — at runtime we then draw just two
+    # layers (opaque lower + transparent overlay), never a separate sand blit and
+    # never a full-canvas alpha blend. The overlay must stay transparent (it's
+    # drawn over the player during fall-behind), so only the lower is baked.
+    sand = Image.open(SAND).convert('RGBA').resize(TARGET, Image.LANCZOS)
+    baked_lower = Image.alpha_composite(sand, Image.fromarray(lower, 'RGBA')).convert('RGB')
 
-    # Keep the whole stage at one resolution: downscale the flat sand backdrop
-    # and the island source in place to the stencil size too.
-    Image.open(SAND).convert('RGB').resize(TARGET, Image.LANCZOS).save(SAND, optimize=True)
+    # Palette-quantize: dense line-art ink doesn't compress as flat-color PNG, so
+    # a 256-color octree palette is near-lossless here but far smaller. Occlusion
+    # reads the solid V2 overlay (not these), so quantized edges never affect
+    # zoning/behind-mountain.
+    baked_lower.quantize(colors=256, method=Image.FASTOCTREE).save(OUT_LOWER, optimize=True)
+    Image.fromarray(over, 'RGBA').quantize(
+        colors=256, method=Image.FASTOCTREE).save(OUT_OVER, optimize=True)
+
+    # Keep the whole stage at one resolution: downscale the sand + island source
+    # in place to the stencil size too.
+    sand.convert('RGB').save(SAND, optimize=True)
     island.save(ISLAND, optimize=True)
 
     print(f'target {TARGET[0]}x{TARGET[1]}')
