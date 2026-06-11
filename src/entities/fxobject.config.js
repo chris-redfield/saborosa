@@ -26,10 +26,14 @@ window.FX_JUICE = {
     // Fraction of spawns that are the ping-pong ball (the rest are twinkles).
     ballChance: 0.2,
 
-    // Fraction of spawns drawn from the FAINT (V2) sheet vs the BOLD sheet.
-    // Boxes are identical between the two — this only changes the art style.
-    //   0.5 = even mix · 0 = all bold · 1 = all faint
-    faintChance: 0.5,
+    // Which art sheet(s) the in-game FX spawn from:
+    //   'faint' = the V2 (faint outline) sheet only   ← default
+    //   'bold'  = the bold (assets-003) sheet only
+    //   'both'  = mix of the two (each spawn picks one at random)
+    // The bold sheet is only loaded by the game when this is 'bold'/'both'
+    // (boxes are shared, so only the art style differs). Both sheets always
+    // live in tools/fx-lab.html for inspection regardless of this setting.
+    sheets: 'faint',
 
     // ── SIZE ────────────────────────────────────────────────────────────────
     // World scale. assets-003 crops are large (tallest shadow streak is 1760px

@@ -893,32 +893,40 @@ class World {
         const sz = this.stage.safeZone;
         const safeRadius = sz ? sz.radius : 0;
 
-        // Rocks
+        // Blocks (formerly "rocks"). Pick a random block-kind variant from the
+        // assets-002 defs and place it at its FIXED size (no random scaling).
+        // `prop`-kind defs are excluded here — they're hand-placed, not spawned.
+        const blockData = this.game.getJSON('block_defs');
+        const blockList = (blockData && blockData.assets)
+            ? Object.values(blockData.assets).filter(d => d.kind === 'block')
+            : [];
         const [minRocks, maxRocks] = this.stage.rockCount;
         const rockCount = minRocks + Math.floor(rand() * (maxRocks - minRocks + 1));
         const margin = this.stage.type === 'finite' ? 60 : 30;
 
         const MAX_ATTEMPTS = 30;
-        for (let i = 0; i < rockCount; i++) {
+        for (let i = 0; blockList.length && i < rockCount; i++) {
             let placed = false;
             for (let attempt = 0; attempt < MAX_ATTEMPTS && !placed; attempt++) {
-                const type = Math.floor(rand() * 6) + 1;
-                const scale = 0.25 + rand() * 0.35;
-                const size = Math.floor(195 * scale); // base 100 → 150 (+50%) → 195 (+30% more); now ~49–117px
-                const x = ox + margin + rand() * (BLOCK_W - margin * 2 - size);
-                const y = oy + margin + rand() * (BLOCK_H - margin * 2 - size);
+                const def = blockList[Math.floor(rand() * blockList.length)];
+                // Build the candidate up front so its fixed width/height drive
+                // the placement bounds and footprint sampling.
+                const rock = new Rock(this.game, 0, 0, def);
+                const w = rock.width, h = rock.height;
+                const x = ox + margin + rand() * (BLOCK_W - margin * 2 - w);
+                const y = oy + margin + rand() * (BLOCK_H - margin * 2 - h);
 
                 // Skip if in safe zone
                 if (safeRadius > 0 && sz) {
-                    const dx = (x + size / 2) - sz.x;
-                    const dy = (y + size / 2) - sz.y;
+                    const dx = (x + w / 2) - sz.x;
+                    const dy = (y + h / 2) - sz.y;
                     if (Math.sqrt(dx * dx + dy * dy) < safeRadius) continue;
                 }
 
                 // Skip if outside diamond terrain boundary
                 if (this.stage.terrainShape === 'diamond') {
                     const d = this._getDiamondGeometry(bx, by);
-                    if (Math.abs(x + size / 2 - d.cx) / d.hw + Math.abs(y + size / 2 - d.cy) / d.hh > 0.85) continue;
+                    if (Math.abs(x + w / 2 - d.cx) / d.hw + Math.abs(y + h / 2 - d.cy) / d.hh > 0.85) continue;
                 }
 
                 // Zone-gated stages: footprint must be fully on gray (dense sand).
@@ -926,11 +934,11 @@ class World {
                 // point is not DENSE_SAND. Prevents stray placements on walls
                 // when the single-center sample hits a black outline pixel.
                 if (this.stage.backgroundImage) {
-                    const fx = x + size / 2;
-                    const fTop = y + size * 0.5;
-                    const fBot = y + size * 1.0;
-                    const fLeft = x + size * 0.1;
-                    const fRight = x + size * 0.9;
+                    const fx = x + w / 2;
+                    const fTop = y + h * 0.5;
+                    const fBot = y + h * 1.0;
+                    const fLeft = x + w * 0.1;
+                    const fRight = x + w * 0.9;
                     const samples = [
                         [fx, (fTop + fBot) / 2],
                         [fLeft, fTop], [fRight, fTop],
@@ -950,8 +958,8 @@ class World {
                         const pbx = Math.floor(p.x / BLOCK_W);
                         const pby = Math.floor(p.y / BLOCK_H);
                         if (pbx === bx && pby === by) {
-                            const dx = (x + size / 2) - (p.x + 24);
-                            const dy = (y + size / 2) - (p.y + 32);
+                            const dx = (x + w / 2) - (p.x + 24);
+                            const dy = (y + h / 2) - (p.y + 32);
                             if (Math.sqrt(dx * dx + dy * dy) < 80) {
                                 overlapsPortal = true;
                                 break;
@@ -961,7 +969,8 @@ class World {
                 }
                 if (overlapsPortal) continue;
 
-                block.addEntity(new Rock(this.game, x, y, size, type));
+                rock.x = x; rock.y = y;
+                block.addEntity(rock);
                 placed = true;
             }
         }
@@ -977,12 +986,16 @@ class World {
             }
         }
 
-        // Decorative map assets placed via the map editor. Each placement is
-        // spawned into the block its world position falls in (mirrors liveRocks).
-        if (this.stage.objects && this.stage.objectDefs) {
+        // Hand-placed assets from the map editor. Each placement is spawned into
+        // the block its world position falls in (mirrors liveRocks). Ids resolve
+        // against the 001 decorative defs first, then the assets-002 block defs.
+        // A `block`-kind asset placed here becomes a pickable Rock; a `prop`-kind
+        // (or any 001 asset) becomes a static, non-pickable MapObject.
+        if (this.stage.objects) {
             const data = this.game.getJSON(this.stage.objects);
-            const defs = this.game.getJSON(this.stage.objectDefs);
-            if (data && data.objects && defs && defs.assets) {
+            const mapDefs = this.stage.objectDefs ? this.game.getJSON(this.stage.objectDefs) : null;
+            const blockDefs = this.game.getJSON('block_defs');
+            if (data && data.objects) {
                 for (const o of data.objects) {
                     if (Math.floor(o.x / BLOCK_W) !== bx || Math.floor(o.y / BLOCK_H) !== by) continue;
                     if (o.id === 'liverock') {
@@ -990,16 +1003,29 @@ class World {
                         block.addEntity(new LiveRock(this.game, o.x, o.y, { scale: o.scale, flipX: o.flipX }));
                         continue;
                     }
-                    const def = defs.assets[o.id];
+                    let def = (mapDefs && mapDefs.assets) ? mapDefs.assets[o.id] : null;
+                    let sheet = 'mapobjects_sheet';
+                    if (!def && blockDefs && blockDefs.assets) {
+                        def = blockDefs.assets[o.id];
+                        sheet = 'block_sheet';
+                    }
                     if (!def) continue;
-                    block.addEntity(new MapObject(this.game, def, o));
+                    if (def.kind === 'block') {
+                        block.addEntity(new Rock(this.game, o.x, o.y, def, { flipX: o.flipX }));
+                    } else {
+                        block.addEntity(new MapObject(this.game, def, o, sheet));
+                    }
                 }
             }
         }
 
-        // Test: add a big rock (too heavy to push) in walkable blocks
+        // Test: add a fixed block (heavier variants resist pushing) in walkable blocks
         if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
-            block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, 80, 1));
+            const bd = this.game.getJSON('block_defs');
+            const def = (bd && bd.assets)
+                ? (bd.assets.block_00 || Object.values(bd.assets).find(d => d.kind === 'block'))
+                : null;
+            if (def) block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, def));
         }
 
         // Add portals that belong to this block

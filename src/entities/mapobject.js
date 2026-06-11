@@ -9,19 +9,21 @@
  *                                   main.js renders the player behind it when
  *                                   above and in front when below
  *
- * The visual is a crop of the shared asset sheet (game image 'mapobjects_sheet')
- * described by a def { x, y, w, h, col } from saborosa-assets-001-sprites.json.
- * `col` is the normalized red-collision box (the rest of the sprite is freely
- * passable / "green"). Each placement may scale and flip the sprite; the
- * collision box scales with it and mirrors when flipped.
+ * The visual is a crop of an asset sheet (default game image 'mapobjects_sheet',
+ * or another key passed as `sheetKey` — e.g. 'block_sheet' for the assets-002
+ * "prop" structures) described by a def { x, y, w, h, col }. `col` is the
+ * normalized red-collision box (the rest of the sprite is freely passable /
+ * "green"). Each placement may scale and flip the sprite; the collision box
+ * scales with it and mirrors when flipped.
  */
 class MapObject {
-    constructor(game, def, placement) {
+    constructor(game, def, placement, sheetKey = 'mapobjects_sheet') {
         this.game = game;
         this.entityType = 'mapobject';
         this.isObstacle = true;
         this.pushable = false;   // static — Player blocks outright on contact
         this.liftable = false;
+        this.sheetKey = sheetKey;
 
         // Sheet crop.
         this.sx = def.x; this.sy = def.y; this.sw = def.w; this.sh = def.h;
@@ -59,7 +61,7 @@ class MapObject {
     render(ctx, game, camX, camY) {
         const sx = Math.round(this.x - camX);
         const sy = Math.round(this.y - camY);
-        const sheet = game.getImage('mapobjects_sheet');
+        const sheet = game.getImage(this.sheetKey);
 
         if (sheet) {
             if (this.flipX) {

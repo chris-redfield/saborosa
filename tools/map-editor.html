@@ -45,7 +45,8 @@
   <span class="tab" id="tabCol">Collision</span>
   <button id="fit">Fit</button>
   <button id="exportObjs">⬇ placements</button>
-  <button id="exportDefs">⬇ asset defs</button>
+  <button id="exportDefs">⬇ 001 defs</button>
+  <button id="exportDefs2">⬇ 002 defs</button>
   <span class="hint">Space+drag pan · wheel zoom · Del removes · click thumb = brush</span>
   <span id="status"></span>
 </div>
@@ -64,9 +65,18 @@ const OVERLAY = A + 'cor-saborosa-fundo-02-overlay.png';
 const DEFS = A + 'saborosa-assets-001-sprites.json';
 const OBJS = A + 'painted-isle-objects.json';
 const LIVEROCK_SHEET = A + 'saborosa-cha-001.png';   // liverock animation sheet
+// Blocks/props sheet (assets-002): pickable blocks + the placeable tower/stack/
+// platform props. Authored by tools/build-block-defs.py. Loaded here too so any
+// of them can be hand-placed on the map.
+const SHEET2 = A + 'saborosa-assets-002.png';
+const DEFS2 = A + 'saborosa-assets-002-sprites.json';
 // Must match STAGES[3].backgroundImageRect in src/world/stages.js
 const RECT = { x: 1577, y: 0, w: 8366, h: 6480 };
-const FIXED_SCALE = 0.6;   // all assets placed at this scale (dialed-in value)
+const FIXED_SCALE = 0.3;   // assets-001 assets placed at this scale (halved from 0.6)
+// assets-002 are high-res; this matches BLOCK_SCALE in src/entities/environment.js
+// so the editor preview equals the in-game size. (A placed `block` ignores its
+// scale in-game and always uses BLOCK_SCALE; a `prop` honors this scale.)
+const BLOCK_PREVIEW_SCALE = 0.14;
 
 // Special (non-sheet) assets: animated entities the game spawns by id instead
 // of as a static MapObject. The living rock uses its own sheet + the pos1_idle
@@ -78,14 +88,21 @@ const SPECIAL = {
   liverock: { x: 574, y: 214, w: 253, h: 169, sheet: 'liverock', defaultScale: 1,
               col: { offX: 0.02, offY: 0.31, w: 0.92, h: 0.52 } }
 };
-// Resolve an asset def (sheet asset or special) and the image it draws from.
-function assetDef(id) { return defs.assets[id] || SPECIAL[id]; }
-function imgFor(d) { return d && d.sheet === 'liverock' ? liverockImg : sheetImg; }
+// Resolve an asset def (001 sheet, 002 block/prop sheet, or special) and the
+// image it draws from. 002 defs are tagged `sheet:'block'` at load.
+function assetDef(id) { return defs.assets[id] || blockDefs.assets[id] || SPECIAL[id]; }
+function imgFor(d) {
+  if (!d) return sheetImg;
+  if (d.sheet === 'liverock') return liverockImg;
+  if (d.sheet === 'block') return blockImg;
+  return sheetImg;
+}
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
-let sheetImg = null, bgImg = null, overlayImg = null, liverockImg = null;
+let sheetImg = null, bgImg = null, overlayImg = null, liverockImg = null, blockImg = null;
 let defs = { sheet: 'saborosa-assets-001.png', assets: {} };
+let blockDefs = { sheet: 'saborosa-assets-002.png', assets: {} };  // assets-002 blocks/props
 let objects = [];                 // { id, x, y, scale, flipX }
 let mode = 'place';               // 'place' | 'col'
 let brush = null;                 // active asset id for placing
@@ -114,22 +131,28 @@ function fit() {
 // ---- loading ----
 function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; }); }
 async function boot() {
-  [sheetImg, bgImg, overlayImg, liverockImg] = await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(OVERLAY), loadImg(LIVEROCK_SHEET)]);
+  [sheetImg, bgImg, overlayImg, liverockImg, blockImg] =
+    await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(OVERLAY), loadImg(LIVEROCK_SHEET), loadImg(SHEET2)]);
   try { defs = await (await fetch(DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
+  try { blockDefs = await (await fetch(DEFS2, { cache: 'no-cache' })).json(); } catch (e) {}
+  // Tag each 002 def so imgFor()/placement know its sheet + preview size.
+  // (Both tags are editor-only and stripped on export.)
+  for (const d of Object.values(blockDefs.assets || {})) { d.sheet = 'block'; d.defaultScale = BLOCK_PREVIEW_SCALE; }
   try {
     const o = await (await fetch(OBJS, { cache: 'no-cache' })).json();
     if (o && o.objects) objects = o.objects;
   } catch (e) {}
   buildThumbs();
   resize(); fit();
-  status(`${Object.keys(defs.assets).length} assets · ${objects.length} placed`);
+  const n = Object.keys(defs.assets).length + Object.keys(blockDefs.assets).length;
+  status(`${n} assets · ${objects.length} placed`);
 }
 function status(t) { document.getElementById('status').textContent = t; }
 
 // ---- thumbnails ----
 function buildThumbs() {
   const host = document.getElementById('thumbs'); host.innerHTML = '';
-  for (const [id, d] of Object.entries({ ...defs.assets, ...SPECIAL })) {
+  for (const [id, d] of Object.entries({ ...defs.assets, ...blockDefs.assets, ...SPECIAL })) {
     const el = document.createElement('div'); el.className = 'thumb'; el.dataset.id = id;
     const c = document.createElement('canvas'); c.width = 80; c.height = 64;
     const cc = c.getContext('2d');
@@ -286,7 +309,7 @@ window.addEventListener('mousemove', e => {
     o.y = Math.round(drag.oy + (my - drag.sy) / view.zoom);
     drag.moved = true; draw();
   } else if (drag.mode === 'colbox') {
-    const v = colView, d = defs.assets[colAsset];
+    const v = colView, d = assetDef(colAsset);
     const x0 = Math.min(drag.x0, mx), y0 = Math.min(drag.y0, my);
     const x1 = Math.max(drag.x0, mx), y1 = Math.max(drag.y0, my);
     const c = d.col;
@@ -327,7 +350,16 @@ function download(name, obj) {
   navigator.clipboard && navigator.clipboard.writeText(json);
 }
 document.getElementById('exportObjs').onclick = () => { download('painted-isle-objects.json', { objects }); status('exported placements (also copied)'); };
-document.getElementById('exportDefs').onclick = () => { download('saborosa-assets-001-sprites.json', defs); status('exported asset defs (also copied)'); };
+document.getElementById('exportDefs').onclick = () => { download('saborosa-assets-001-sprites.json', defs); status('exported 001 defs (also copied)'); };
+document.getElementById('exportDefs2').onclick = () => {
+  // Strip the editor-only tags (sheet/defaultScale) so the file matches the
+  // build-block-defs.py output; keep x/y/w/h/kind/col.
+  const clean = { sheet: blockDefs.sheet, assets: {} };
+  for (const [id, d] of Object.entries(blockDefs.assets)) {
+    const { sheet, defaultScale, ...rest } = d; clean.assets[id] = rest;
+  }
+  download('saborosa-assets-002-sprites.json', clean); status('exported 002 defs (also copied)');
+};
 
 boot();
 </script>

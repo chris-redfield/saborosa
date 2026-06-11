@@ -1,41 +1,48 @@
-// Cube sprite regions on `assets/cor-saborosa-box-01.png` (after whiteout).
-// Each cube has a different top/side color combo. Detected via tight bbox
-// over non-white pixels. Some orientations are taller, some wider.
-const CUBE_REGIONS = [
-    { x:   0, y:   0, w: 361, h: 422 },  // cube 1: gray top, green face, blue side
-    { x: 432, y:   0, w: 361, h: 422 },  // cube 2: green top, yellow face, blue side
-    { x: 859, y:   0, w: 361, h: 422 },  // cube 3: yellow top, red face, blue side
-    { x: 518, y: 452, w: 361, h: 422 },  // cube 4: blue top, green face, yellow side
-    { x:   0, y: 513, w: 422, h: 361 },  // cube 5: gray top, green face, blue side (low)
-    { x: 972, y: 513, w: 422, h: 361 }   // cube 6: yellow top, green face, red side (low)
-];
+// Global size for every block variant. The block sheet (saborosa-assets-002)
+// is high-res (~580–1020px native per crop), so this scales them down to world
+// px. It is FIXED — blocks are no longer randomly sized like the old cubes;
+// each variant keeps the sheet's relative proportions (a 3-crate row stays ~3x
+// a single crate). 0.14 puts the smallest crate at ~80px, matching the old
+// cube's small end. Tune this one number to make every block bigger/smaller.
+const BLOCK_SCALE = 0.14;
 
 /**
- * Rock - Environment obstacle with collision
+ * Rock - a pickable/throwable block. Driven by a def from block_defs
+ * (assets/saborosa-assets-002-sprites.json): { x, y, w, h, kind:'block', col }.
+ * The sheet crop + collision box come from the def; size is def * BLOCK_SCALE.
+ * Only `block`-kind defs become Rocks (props become MapObjects instead).
+ *
+ * The class name stays `Rock` so the player's push/lift/throw/stack code and
+ * the depth sort keep working unchanged — those key off width, height, the
+ * collision box and mass, which are all still here.
  */
 class Rock {
-    constructor(game, x, y, size, type) {
+    constructor(game, x, y, def, opts = {}) {
         this.game = game;
         this.x = x;
         this.y = y;
         this.entityType = 'environment';
         this.isObstacle = true;
         this.pushable = true;
+        this.flipX = !!opts.flipX;   // editor-placed blocks may mirror; random spawns don't
 
-        // Pick a cube region based on type (1..6). Modulo so any integer works.
-        const regionIdx = (((type - 1) % CUBE_REGIONS.length) + CUBE_REGIONS.length) % CUBE_REGIONS.length;
-        this.cubeRegion = CUBE_REGIONS[regionIdx];
+        // Sheet crop comes straight from the def.
+        this.def = def;
+        this.sx = def.x; this.sy = def.y; this.sw = def.w; this.sh = def.h;
 
-        // Width from caller; height scaled to preserve the cube's aspect ratio.
-        this.width = size;
-        this.height = Math.round(size * this.cubeRegion.h / this.cubeRegion.w);
+        // Fixed world size (preserves the crop's aspect ratio).
+        this.width = Math.round(def.w * BLOCK_SCALE);
+        this.height = Math.round(def.h * BLOCK_SCALE);
 
-        // Isometric collision footprint from config
-        const colCfg = (game.getJSON('collision_config') || {}).rock || { colW: 1.00, colH: 0.50, colOffX: 0.00, colOffY: 0.50 };
-        this.colW = Math.round(this.width * colCfg.colW);
-        this.colH = Math.round(this.height * colCfg.colH);
-        this.colOffX = Math.round(this.width * colCfg.colOffX);
-        this.colOffY = Math.round(this.height * colCfg.colOffY);
+        // Red collision footprint from the def's normalized `col` box (offX/offY/
+        // w/h as fractions of the sprite). Mirror offX when flipped so the box
+        // stays under the same visual feature.
+        const col = def.col || { offX: 0.20, offY: 0.78, w: 0.60, h: 0.20 };
+        this.colW = Math.round(this.width * col.w);
+        this.colH = Math.round(this.height * col.h);
+        const offX = Math.round(this.width * col.offX);
+        this.colOffX = this.flipX ? (this.width - offX - this.colW) : offX;
+        this.colOffY = Math.round(this.height * col.offY);
         this.mass = this.colW * this.colH;
         this._rect = { x: 0, y: 0, width: 0, height: 0 };
 
@@ -46,7 +53,7 @@ class Rock {
         // Visual sink (mirrors player.onSand) — cropped render when on sand.
         this.onSand = false;
 
-        // Falling (zone-driven stages). When a cube ends up on a WALL pixel,
+        // Falling (zone-driven stages). When a block ends up on a WALL pixel,
         // it falls until it hits a non-wall zone. Mirror of the player's
         // falling state. pushable flips to false during the fall.
         this.surfaceState = 'ground'; // 'ground' | 'falling'
@@ -81,19 +88,25 @@ class Rock {
         // unchanged, so depth-sort and collision still use the ground spot).
         const sy = this.y - camY - (this.throwZ || 0);
 
-        // Sink into sand: scale the crop to the cube's height so small cubes
-        // don't lose their whole base while big cubes still visibly settle.
-        // Player sinks ~17.4% of its height (19/109); cubes sink deeper
-        // (~0.30 of cube height) so the base reads as buried.
+        // Sink into sand: keep the TOP of the sprite and bury the base, scaling
+        // the crop to the block's height so small blocks don't lose their whole
+        // base while big ones still visibly settle (~0.30 of block height).
         const sinkAmount = this.onSand ? Math.round(this.height * 0.30) : 0;
         const visibleH = this.height - sinkAmount;
         const srcCropRatio = sinkAmount / this.height;
 
-        const sheet = game.getImage('cubes');
-        if (sheet && this.cubeRegion) {
-            const r = this.cubeRegion;
-            const cropSh = r.h * (1 - srcCropRatio);
-            ctx.drawImage(sheet, r.x, r.y, r.w, cropSh, sx, sy, this.width, visibleH);
+        const sheet = game.getImage('block_sheet');
+        if (sheet) {
+            const cropSh = this.sh * (1 - srcCropRatio);
+            if (this.flipX) {
+                ctx.save();
+                ctx.translate(sx + this.width, sy);
+                ctx.scale(-1, 1);
+                ctx.drawImage(sheet, this.sx, this.sy, this.sw, cropSh, 0, 0, this.width, visibleH);
+                ctx.restore();
+            } else {
+                ctx.drawImage(sheet, this.sx, this.sy, this.sw, cropSh, sx, sy, this.width, visibleH);
+            }
         } else {
             ctx.fillStyle = '#787878';
             ctx.fillRect(sx, sy, this.width, visibleH);

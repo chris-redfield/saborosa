@@ -8,7 +8,8 @@
  * the effects dialed in by tools/fx-lab.html.
  *
  * Defs come from assets/saborosa-assets-003-fx.json (game.getJSON('fx_defs')),
- * sprites from game.getImage('fx_sheet'). No block/obstacle/collision wiring —
+ * sprites from the faint and/or bold sheet per the config `sheets` knob
+ * ('fx_sheet_faint' / 'fx_sheet'). No block/obstacle/collision wiring —
  * the manager owns the instances and draws them directly inside the camera
  * transform (see main.js renderGame), so the player walks right through them.
  *
@@ -37,7 +38,7 @@ class FxObject {
         this.scale = scale;
         this.kind = kind;                    // 'ball' | 'twinkle'
         this.frames = frames;                // [{x,y,w,h}] — 1 for twinkle, N for ball
-        this.sheetKey = sheetKey || BOLD_KEY; // bold or faint art (boxes are shared)
+        this.sheetKey = sheetKey || FAINT_KEY; // in-game only the faint (V2) sheet is loaded
 
         const cfg = window.FX_JUICE || {};
         this.tw = cfg.twinkle || FX_DEFAULTS.twinkle;
@@ -118,7 +119,14 @@ class FxManager {
         this.gapJitter = pick(opts.spawnGapJitter, cfg.spawnGapJitter, 3.0);
         this.spawnTimer = 0;                                        // fire the first one promptly
         this.ballChance = pick(opts.ballChance, cfg.ballChance, 0.2);
-        this.faintChance = pick(opts.faintChance, cfg.faintChance, 0.5);
+        // Which sheet(s) to draw from (config 'sheets': faint | bold | both).
+        // Filter to the ones actually loaded so we never pick a missing sheet.
+        const mode = pick(opts.sheets, cfg.sheets, 'faint');
+        const wanted = mode === 'bold' ? [BOLD_KEY]
+                     : mode === 'both' ? [BOLD_KEY, FAINT_KEY]
+                     : [FAINT_KEY];
+        this.sheetKeys = wanted.filter(k => game.getImage(k));
+        if (!this.sheetKeys.length) this.sheetKeys = [FAINT_KEY];
         this.baseScale = pick(opts.scale, cfg.scale, 0.15);
         this.scaleJitter = pick(opts.scaleJitter, cfg.scaleJitter, 0.5);
         this.spread = pick(opts.spread, cfg.spread, 0.85);          // fraction of half-view to scatter across
@@ -150,7 +158,7 @@ class FxManager {
         const useBall = this.ballFrames.length && Math.random() < this.ballChance;
         const frames = useBall ? this.ballFrames : [this.singles[(Math.random() * this.singles.length) | 0]];
         const sc = this.baseScale * this.unit * (0.8 + Math.random() * this.scaleJitter);
-        const sheetKey = Math.random() < this.faintChance ? FAINT_KEY : BOLD_KEY;
+        const sheetKey = this.sheetKeys[(Math.random() * this.sheetKeys.length) | 0];
         this.list.push(new FxObject(this.game, px, py, sc, useBall ? 'ball' : 'twinkle', frames, sheetKey));
     }
 

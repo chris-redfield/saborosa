@@ -71,7 +71,7 @@ class Game {
 
     async loadAssets() {
         try {
-            await Promise.all([
+            const loads = [
                 this.loadImage('character_sheet', 'assets/saborosa-cha-001.png'),
                 this.loadJSON('character_sprites', 'assets/saborosa-cha-001-sprites.json'),
                 this.loadImage('liverock_sheet', 'assets/saborosa-cha-001.png'),
@@ -103,7 +103,12 @@ class Game {
                 this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
-                this.loadImage('cubes', 'assets/cor-saborosa-box-01.png'),
+                // Pickable/throwable blocks + the placeable "prop" structures
+                // (platform/big-stack/tower). One transparent sheet; the defs
+                // tag each crop kind:'block' (random-spawned Rock) or 'prop'
+                // (hand-placed MapObject). Authored via tools/build-block-defs.py.
+                this.loadImage('block_sheet', 'assets/saborosa-assets-002.png'),
+                this.loadJSON('block_defs', 'assets/saborosa-assets-002-sprites.json'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json'),
                 // Decorative map assets (plants/trees/grass/etc.) + their defs
@@ -114,27 +119,35 @@ class Game {
 
                 // Ambient no-collision FX (assets-003) — shadows/clippy twinkle,
                 // the ball ping-pongs. Spawned around the player by FxManager;
-                // tuned in tools/fx-lab.html.
-                // Downscaled 4x for the game (full-res originals are kept for
-                // tools/fx-lab.html). Boxes are pre-scaled in the -small defs,
-                // which carry a "downscale" factor FxManager uses to keep the
-                // on-screen size identical. Regenerate via tools/downscale-fx.py.
-                this.loadImage('fx_sheet', 'assets/saborosa-assets-003-small.png'),
+                // tuned in tools/fx-lab.html. Downscaled 4x for the game; boxes
+                // are pre-scaled in the -small defs (which carry a "downscale"
+                // factor). Regenerate via tools/downscale-fx.py.
                 this.loadImage('fx_sheet_faint', 'assets/saborosa-assets-003-V2-small.png'),
                 this.loadJSON('fx_defs', 'assets/saborosa-assets-003-fx-small.json')
-            ]);
-            // Cube sheet uses a solid white background. Key it out so the
-            // sprites composite cleanly over the stage art.
-            this._makeWhiteTransparent('cubes');
+            ];
+
+            // FX sheet selection is config-driven (window.FX_JUICE.sheets in
+            // fxobject.config.js): 'faint' (default) | 'bold' | 'both'. Only load
+            // the bold sheet when the config actually uses it — by default it's
+            // off (the faint/V2 sheet only). Both sheets always live in fx-lab.
+            const fxSheets = (window.FX_JUICE && window.FX_JUICE.sheets) || 'faint';
+            const fxWarm = ['fx_sheet_faint'];
+            if (fxSheets === 'bold' || fxSheets === 'both') {
+                loads.push(this.loadImage('fx_sheet', 'assets/saborosa-assets-003-small.png'));
+                fxWarm.push('fx_sheet');
+            }
+
+            await Promise.all(loads);
+            // The block sheet (assets-002) is already transparent, so no
+            // white-keying is needed (unlike the old cube sheet).
             // Coconut sheet was pre-processed offline (PIL matte extraction)
             // into a PNG with proper anti-aliased alpha, so no runtime keying.
 
-            // The FX sheets are huge (~4960x7016, ~35MP each). The browser
-            // defers their decode + GPU upload until the FIRST draw, which
-            // otherwise freezes the game ~1s the first time a flicker object
-            // renders. Force the decode here, during the load, so that cost is
-            // paid up front instead of mid-gameplay.
-            await this._warmImages(['fx_sheet', 'fx_sheet_faint']);
+            // The FX sheet's decode + GPU upload is deferred by the browser
+            // until the FIRST draw, which otherwise freezes the game ~1s the
+            // first time a flicker object renders. Force the decode here, during
+            // the load, so that cost is paid up front instead of mid-gameplay.
+            await this._warmImages(fxWarm);
 
             this.assets.loaded = true;
             console.log('Assets loaded');
