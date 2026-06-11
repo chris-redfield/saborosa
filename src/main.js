@@ -54,6 +54,48 @@ async function init() {
 
     game.start();
     console.log('Intro screen ready. ↑/↓ to choose, Space/Enter to select.');
+
+    makeMapStyleToggle();
+}
+
+// Map-art toggle: switch the DISPLAYED stage-3 layers between the real island
+// art (over the sand backdrop) and the old colored zoning map ("the old one").
+// Only swaps the drawn layer keys + the sand backdrop on the live stage — the
+// zoning source and the occlusion silhouette are untouched, so gameplay is
+// identical either way. Takes effect on the next frame.
+let mapStyleColor = false; // false = real island art (default), true = old colored map
+function applyMapStyle() {
+    const stage = gameState.currentStage;
+    if (!stage || !stage.backgroundLowerImage) return;
+    stage.backgroundLowerImage = mapStyleColor ? 'stage3_lower_color' : 'stage3_lower';
+    stage.backgroundOverlayImage = mapStyleColor ? 'stage3_overlay_color' : 'stage3_overlay';
+    // The old colored map paints its own sand; the real art needs the backdrop.
+    stage.backgroundSandImage = mapStyleColor ? null : 'stage3_sand';
+}
+function makeMapStyleToggle() {
+    if (typeof document === 'undefined' || !document.body) return;
+    const btn = document.createElement('button');
+    const label = () => `Map: ${mapStyleColor ? 'ZONING' : 'REAL'}`;
+    const s = btn.style;
+    s.position = 'fixed';
+    s.top = '10px';
+    s.right = '10px';
+    s.zIndex = '10000';
+    s.padding = '6px 10px';
+    s.font = '13px monospace';
+    s.cursor = 'pointer';
+    s.border = '1px solid #888';
+    s.borderRadius = '4px';
+    s.background = '#222';
+    s.color = '#fff';
+    btn.textContent = label();
+    btn.addEventListener('click', () => {
+        mapStyleColor = !mapStyleColor;
+        applyMapStyle();
+        btn.textContent = label();
+        btn.blur();
+    });
+    document.body.appendChild(btn);
 }
 
 function loadStage(stage) {

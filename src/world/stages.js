@@ -77,6 +77,14 @@ const STAGES = {
         backgroundImage: 'stage3_bg',
         backgroundLowerImage: 'stage3_lower',
         backgroundOverlayImage: 'stage3_overlay',
+        // Flat sand backdrop drawn behind the island (the island art is mostly
+        // transparent). Cleared by the map-art toggle when showing the old map.
+        backgroundSandImage: 'stage3_sand',
+        // Solid mountain silhouette used for behind-mountain occlusion. Kept
+        // separate from the DISPLAYED overlay because the island overlay has
+        // line-art gaps — occlusion must read the solid V2 silhouette so it
+        // stays correct regardless of which art the toggle is showing.
+        backgroundSilhouetteImage: 'stage3_overlay_color',
         // Decorative map assets placed via tools/map-editor.html. `objects` is
         // the loaded placements JSON key; `objectDefs` the sprite/collision defs.
         objects: 'painted_isle_objects',

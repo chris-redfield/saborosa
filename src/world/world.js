@@ -114,7 +114,9 @@ class World {
     _ensureMountainOverlayData() {
         if (this._mountainOverlayData !== undefined) return;
         this._mountainOverlayData = null;
-        const key = this.stage.backgroundOverlayImage;
+        // Occlusion uses the SOLID silhouette, not the displayed overlay (which
+        // may be gappy line-art) — see backgroundSilhouetteImage in stages.js.
+        const key = this.stage.backgroundSilhouetteImage || this.stage.backgroundOverlayImage;
         if (!key) return;
         const img = this.game.getImage(key);
         if (!img || !img.naturalWidth) return;
@@ -461,14 +463,25 @@ class World {
             // Lower layer (sand + small islands + sand-above-midline). The
             // upper mountain layer is drawn separately by main.js so it can
             // sit on either side of the player.
+            let rect = this.stage.backgroundImageRect;
+            if (!rect) {
+                const b = this._getStageBounds();
+                rect = { x: b.x, y: b.y, w: b.w, h: b.h };
+            }
+            // Flat sand backdrop first (the island art above is mostly
+            // transparent and needs something behind it).
+            if (this.stage.backgroundSandImage) {
+                const sand = this.game.getImage(this.stage.backgroundSandImage);
+                if (sand) ctx.drawImage(sand,
+                    Math.round(rect.x - cx), Math.round(rect.y - cy),
+                    rect.w, rect.h);
+            }
+            // Lower layer (island below the silhouette / sand + below-midline).
+            // The upper mountain layer is drawn separately by main.js so it can
+            // sit on either side of the player.
             const lowerKey = this.stage.backgroundLowerImage || this.stage.backgroundImage;
             const img = this.game.getImage(lowerKey);
             if (img) {
-                let rect = this.stage.backgroundImageRect;
-                if (!rect) {
-                    const b = this._getStageBounds();
-                    rect = { x: b.x, y: b.y, w: b.w, h: b.h };
-                }
                 ctx.drawImage(img,
                     Math.round(rect.x - cx), Math.round(rect.y - cy),
                     rect.w, rect.h);
