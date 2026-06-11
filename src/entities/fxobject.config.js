@@ -13,18 +13,23 @@
  */
 window.FX_JUICE = {
     // ── FREQUENCY ───────────────────────────────────────────────────────────
-    // How many FX are alive on screen at once. THIS is the master "how many /
-    // how often" dial — each one lives ~1 cycle then vanishes and is instantly
-    // replaced, so a higher count = a busier, more frequent effect.
-    //   7  = current (deliberately ridiculous, for dialing in the look)
-    //   2  = sparse / occasional
-    //   0  = off
-    // To make them RARER without fewer-on-screen, also raise the lifetimes below
-    // (longer-lived = slower turnover = fewer pop-ins per second).
-    count: 7,
+    // MAX number of FX alive on screen at once (a cap, not a target). 0 = off.
+    count: 2,
+
+    // How OFTEN a new one pops in: a random quiet gap between appearances. THIS
+    // is what leaves the screen empty between FX — raise it for rarer pop-ins,
+    // lower it toward 0 for a constant stream. A pop-in fires every
+    //   spawnGapMin .. spawnGapMin+spawnGapJitter  seconds (when under `count`).
+    spawnGapMin: 2.0,      // sec — minimum quiet gap
+    spawnGapJitter: 3.0,   // sec — random extra on top (so the timing varies)
 
     // Fraction of spawns that are the ping-pong ball (the rest are twinkles).
     ballChance: 0.2,
+
+    // Fraction of spawns drawn from the FAINT (V2) sheet vs the BOLD sheet.
+    // Boxes are identical between the two — this only changes the art style.
+    //   0.5 = even mix · 0 = all bold · 1 = all faint
+    faintChance: 0.5,
 
     // ── SIZE ────────────────────────────────────────────────────────────────
     // World scale. assets-003 crops are large (tallest shadow streak is 1760px

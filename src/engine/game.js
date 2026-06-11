@@ -115,19 +115,47 @@ class Game {
                 // Ambient no-collision FX (assets-003) — shadows/clippy twinkle,
                 // the ball ping-pongs. Spawned around the player by FxManager;
                 // tuned in tools/fx-lab.html.
-                this.loadImage('fx_sheet', 'assets/saborosa-assets-003.png'),
-                this.loadJSON('fx_defs', 'assets/saborosa-assets-003-fx.json')
+                // Downscaled 4x for the game (full-res originals are kept for
+                // tools/fx-lab.html). Boxes are pre-scaled in the -small defs,
+                // which carry a "downscale" factor FxManager uses to keep the
+                // on-screen size identical. Regenerate via tools/downscale-fx.py.
+                this.loadImage('fx_sheet', 'assets/saborosa-assets-003-small.png'),
+                this.loadImage('fx_sheet_faint', 'assets/saborosa-assets-003-V2-small.png'),
+                this.loadJSON('fx_defs', 'assets/saborosa-assets-003-fx-small.json')
             ]);
             // Cube sheet uses a solid white background. Key it out so the
             // sprites composite cleanly over the stage art.
             this._makeWhiteTransparent('cubes');
             // Coconut sheet was pre-processed offline (PIL matte extraction)
             // into a PNG with proper anti-aliased alpha, so no runtime keying.
+
+            // The FX sheets are huge (~4960x7016, ~35MP each). The browser
+            // defers their decode + GPU upload until the FIRST draw, which
+            // otherwise freezes the game ~1s the first time a flicker object
+            // renders. Force the decode here, during the load, so that cost is
+            // paid up front instead of mid-gameplay.
+            await this._warmImages(['fx_sheet', 'fx_sheet_faint']);
+
             this.assets.loaded = true;
             console.log('Assets loaded');
         } catch (err) {
             console.error('Asset load error:', err);
             this.assets.loaded = true;
+        }
+    }
+
+    // Force-decode (and lightly GPU-warm) the given images so their first
+    // real draw doesn't hitch. Used for the very large FX sheets.
+    async _warmImages(keys) {
+        const scratch = document.createElement('canvas');
+        scratch.width = scratch.height = 2;
+        const sctx = scratch.getContext('2d');
+        for (const key of keys) {
+            const img = this.getImage(key);
+            if (!img) continue;
+            try { if (img.decode) await img.decode(); } catch (e) { /* already decoded / unsupported */ }
+            // Touch a pixel so the canvas backend prepares the texture too.
+            try { sctx.drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1); } catch (e) { /* ignore */ }
         }
     }
 
