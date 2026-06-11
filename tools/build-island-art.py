@@ -60,15 +60,17 @@ def main():
     # never a full-canvas alpha blend. The overlay must stay transparent (it's
     # drawn over the player during fall-behind), so only the lower is baked.
     sand = Image.open(SAND).convert('RGBA').resize(TARGET, Image.LANCZOS)
-    baked_lower = Image.alpha_composite(sand, Image.fromarray(lower, 'RGBA')).convert('RGB')
+    baked_lower = Image.alpha_composite(sand, Image.fromarray(lower, 'RGBA'))
 
-    # Palette-quantize: dense line-art ink doesn't compress as flat-color PNG, so
-    # a 256-color octree palette is near-lossless here but far smaller. Occlusion
-    # reads the solid V2 overlay (not these), so quantized edges never affect
-    # zoning/behind-mountain.
-    baked_lower.quantize(colors=256, method=Image.FASTOCTREE).save(OUT_LOWER, optimize=True)
-    Image.fromarray(over, 'RGBA').quantize(
-        colors=256, method=Image.FASTOCTREE).save(OUT_OVER, optimize=True)
+    # IMPORTANT: save TRUECOLOR (RGBA), NOT palette/indexed ('P'). Chrome does
+    # NOT keep a cached GPU texture for indexed-PNG sources drawn to a 2D canvas
+    # — it re-decodes them on every drawImage, so per-frame cost scales with the
+    # pixels drawn and collapses FPS to ~1. The V2 layers are RGBA and stay
+    # smooth; matching that format is the fix. (Trade-off: ~13MB/layer vs ~1MB
+    # quantized. See BUG.md — ImageBitmap-at-load could restore the small
+    # download later without the indexed-source penalty.)
+    baked_lower.save(OUT_LOWER, optimize=True)
+    Image.fromarray(over, 'RGBA').save(OUT_OVER, optimize=True)
 
     # Keep the whole stage at one resolution: downscale the sand + island source
     # in place to the stencil size too.

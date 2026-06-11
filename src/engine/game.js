@@ -38,8 +38,12 @@ class Game {
         // Audio
         this.audio = new AudioManager();
 
-        // Assets
-        this.assets = { images: {}, json: {}, loaded: false };
+        // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
+        // an ImageBitmap is decoded ONCE and stays GPU-resident, so per-frame
+        // drawImage never re-decodes/re-uploads the source — Chrome re-decodes
+        // plain <img> sources of large canvases under a moving transform, which
+        // tanked FPS (see BUG.md). `bitmapPending` guards duplicate creation.
+        this.assets = { images: {}, json: {}, bitmaps: {}, bitmapPending: {}, loaded: false };
     }
 
     scaleCanvas() {
@@ -67,6 +71,25 @@ class Game {
 
     getJSON(key) {
         return this.assets.json[key] || null;
+    }
+
+    // Drawable for the BIG stage layers: returns the ImageBitmap when ready,
+    // else the plain image while kicking off bitmap creation in the background
+    // (so rarely-used layers, e.g. the map-style toggle's alternates, don't
+    // cost ~200MB up front). Callers must size via (naturalWidth || width):
+    // ImageBitmap has width/height only.
+    getDrawable(key) {
+        const bm = this.assets.bitmaps[key];
+        if (bm) return bm;
+        const img = this.assets.images[key];
+        if (img && img.naturalWidth && !this.assets.bitmapPending[key]
+            && typeof createImageBitmap === 'function') {
+            this.assets.bitmapPending[key] = true;
+            createImageBitmap(img)
+                .then(b => { this.assets.bitmaps[key] = b; })
+                .catch(() => { /* keep drawing the plain image */ });
+        }
+        return img;
     }
 
     async loadAssets() {
@@ -158,6 +181,21 @@ class Game {
             // the load, so that cost is paid up front instead of mid-gameplay.
             await this._warmImages(fxWarm);
 
+            // Pre-build ImageBitmaps for the two DISPLAYED stage-3 layers so the
+            // first gameplay frame already draws GPU-resident bitmaps (the toggle
+            // alternates upgrade lazily via getDrawable). Decode-once here is the
+            // Chrome fix for the moving-camera FPS collapse — see BUG.md.
+            if (typeof createImageBitmap === 'function') {
+                await Promise.all(['stage3_lower', 'stage3_overlay'].map(k => {
+                    const img = this.assets.images[k];
+                    if (!img) return null;
+                    this.assets.bitmapPending[k] = true;
+                    return createImageBitmap(img)
+                        .then(b => { this.assets.bitmaps[k] = b; })
+                        .catch(() => {});
+                }));
+            }
+
             this.assets.loaded = true;
             console.log('Assets loaded');
         } catch (err) {
@@ -219,6 +257,15 @@ class Game {
 
         this.deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
+
+        // Clamp the frame delta. The fixed-timestep catch-up below runs one
+        // update per `frameTime` of elapsed real time; without a ceiling, a
+        // single slow frame (a one-off image decode, getImageData, GC, or a
+        // backgrounded tab) inflates the accumulator, runs dozens of updates,
+        // slows the next frame further, and spirals to ~1 FPS permanently.
+        // Capping the delta means a hitch costs at most a brief stutter that
+        // recovers, instead of collapsing the loop.
+        if (this.deltaTime > 100) this.deltaTime = 100;
 
         // FPS
         this.frameCount++;

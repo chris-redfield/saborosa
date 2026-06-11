@@ -27,6 +27,11 @@ const gameState = {
     transition: null // { basket, targetStage, basketY, startY, speed, phase }
 };
 
+// Visible world AABB for the current frame, recomputed in renderGame and passed
+// to the big-layer draws (renderGround/renderOverlay). One reused object — the
+// per-frame render path must not allocate (see BUG.md).
+const _viewRect = { x0: 0, y0: 0, x1: 0, y1: 0 };
+
 async function init() {
     console.log('Initializing Saborosa...');
 
@@ -634,8 +639,19 @@ function renderGame(ctx) {
     ctx.scale(scale, scale);
     ctx.translate(-focalX, -focalY);
 
+    // Visible world AABB under the transform above (device point d maps to
+    // world p = cam + focal + (d - focal)/scale). The big background layers
+    // blit only this slice — bounding the per-frame rasterization to the
+    // viewport is the Chrome moving-camera fix (BUG.md). `_viewRect` is reused
+    // every frame: the render path must stay allocation-free.
+    const invS = 1 / scale;
+    _viewRect.x0 = camX + focalX * (1 - invS);
+    _viewRect.x1 = camX + focalX + (game.width - focalX) * invS;
+    _viewRect.y0 = camY + focalY * (1 - invS);
+    _viewRect.y1 = camY + focalY + (game.height - focalY) * invS;
+
     // Draw ground tiles + lava (lower layer = sand + below-midline content)
-    world.renderGround(ctx);
+    world.renderGround(ctx, _viewRect);
 
     // Mountain layer order depends on the player.behindMountain state, set
     // when fall-behind starts and cleared when the player walks out of the
@@ -643,7 +659,7 @@ function renderGame(ctx) {
     // mountain). Behind: drawn last so the mountain occludes the sprite.
     const hasOverlay = world.stage && world.stage.backgroundOverlayImage;
     if (hasOverlay && !player.behindMountain) {
-        world.renderOverlay(ctx);
+        world.renderOverlay(ctx, _viewRect);
     }
 
     // Collect all renderables, depth-sort by bottom edge
@@ -679,7 +695,7 @@ function renderGame(ctx) {
     // Half-opacity so the player remains visible through the silhouette.
     if (hasOverlay && player.behindMountain) {
         ctx.globalAlpha = 0.5;
-        world.renderOverlay(ctx);
+        world.renderOverlay(ctx, _viewRect);
         ctx.globalAlpha = 1;
     }
 

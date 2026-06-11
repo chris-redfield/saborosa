@@ -65,7 +65,14 @@ class World {
     // a downscaled sample classifies identically. `smooth=false` keeps flat zone
     // colors pure (nearest-neighbor) instead of blending region edges.
     _sampleImage(img, smooth) {
-        const MAX_SAMPLE_PX = 100 * 1000 * 1000; // safety margin under Firefox's ~124M
+        // Cap the sample canvas well below the source size. Two reasons: stay
+        // under the browser max-canvas-area limit (~124M px on Firefox), and —
+        // more importantly for perf — keep the one-time getImageData cheap. At
+        // ~50M px the readback is a ~200MB copy that hitches the frame it runs
+        // on (and on Chrome that hitch could spiral the loop). Zones/occlusion
+        // are region-based, so ~6M px is plenty; callers map via the returned
+        // w/h, so a downscaled sample classifies identically.
+        const MAX_SAMPLE_PX = 6 * 1000 * 1000;
         let w = img.naturalWidth, h = img.naturalHeight;
         const total = w * h;
         if (total > MAX_SAMPLE_PX) {
@@ -161,39 +168,35 @@ class World {
         return false;
     }
 
-    // Blit one full-map background layer (sand / lower / overlay), but ONLY the
-    // slice currently on screen. These layers are large (the zoning-res master,
-    // ~8314x6112) and drawn inside the camera's scale transform; blitting the
-    // whole image every frame makes Chrome re-resample all ~50M px per layer per
-    // frame (very choppy). Source-subrect culling keeps the work proportional to
-    // the viewport. `rect` is the layer's world-space rect.
-    _drawStageLayer(ctx, img, rect) {
-        const cx = this.cameraX, cy = this.cameraY;
-        // Default to the whole layer; narrow to the visible slice if we can read
-        // back the active camera transform (drawImage args live in world-minus-
-        // camera space, so invert device->that space, then add camera to get world).
-        let wx0 = rect.x, wy0 = rect.y, wx1 = rect.x + rect.w, wy1 = rect.y + rect.h;
-        const t = (typeof ctx.getTransform === 'function') ? ctx.getTransform() : null;
-        const inv = (t && typeof t.inverse === 'function') ? t.inverse() : null;
-        if (inv && typeof inv.transformPoint === 'function') {
-            const W = this.game.width, H = this.game.height;
-            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-            for (const [dx, dy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
-                const p = inv.transformPoint(new DOMPoint(dx, dy));
-                if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-                if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-            }
-            const pad = 2; // guard against rounding seams at the slice edges
-            wx0 = Math.max(wx0, minX + cx - pad); wy0 = Math.max(wy0, minY + cy - pad);
-            wx1 = Math.min(wx1, maxX + cx + pad); wy1 = Math.min(wy1, maxY + cy + pad);
+    // Blit one full-map background layer (lower / overlay) at its world rect,
+    // drawing ONLY the slice inside `view` (the visible world AABB, computed
+    // once per frame by main.js — no per-frame allocation anywhere here).
+    // Bounding the rasterized area to the viewport is the Chrome fix: a moving
+    // camera changes the transform every frame, so a full-image blit makes
+    // Chrome re-rasterize the whole ~57M-px layer per frame (see BUG.md).
+    // Falls back to the plain full blit when no view is given.
+    _drawStageLayer(ctx, img, rect, view) {
+        if (!view) {
+            ctx.drawImage(img,
+                Math.round(rect.x - this.cameraX),
+                Math.round(rect.y - this.cameraY),
+                rect.w, rect.h);
+            return;
         }
+        const PAD = 2; // world px, hides sampling seams at the slice edges
+        const wx0 = Math.max(rect.x, view.x0 - PAD);
+        const wy0 = Math.max(rect.y, view.y0 - PAD);
+        const wx1 = Math.min(rect.x + rect.w, view.x1 + PAD);
+        const wy1 = Math.min(rect.y + rect.h, view.y1 + PAD);
         if (wx1 <= wx0 || wy1 <= wy0) return; // layer fully off screen
-        const iw = img.naturalWidth, ih = img.naturalHeight;
-        const sx = (wx0 - rect.x) / rect.w * iw;
-        const sy = (wy0 - rect.y) / rect.h * ih;
-        const sw = (wx1 - wx0) / rect.w * iw;
-        const sh = (wy1 - wy0) / rect.h * ih;
-        ctx.drawImage(img, sx, sy, sw, sh, wx0 - cx, wy0 - cy, wx1 - wx0, wy1 - wy0);
+        // ImageBitmap (the normal case via getDrawable) has width/height only.
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        ctx.drawImage(img,
+            (wx0 - rect.x) / rect.w * iw, (wy0 - rect.y) / rect.h * ih,
+            (wx1 - wx0) / rect.w * iw, (wy1 - wy0) / rect.h * ih,
+            wx0 - this.cameraX, wy0 - this.cameraY,
+            wx1 - wx0, wy1 - wy0);
     }
 
     _stageRect() {
@@ -206,14 +209,15 @@ class World {
     }
 
     // Mountain-silhouette overlay (transparent below the midline). Drawn on
-    // top of the player when fall-behind detection fires.
-    renderOverlay(ctx) {
+    // top of the player when fall-behind detection fires. `view` = visible
+    // world AABB from main.js (culls the blit to the on-screen slice).
+    renderOverlay(ctx, view) {
         if (!this.stage.backgroundOverlayImage) return;
-        const img = this.game.getImage(this.stage.backgroundOverlayImage);
-        if (!img || !img.naturalWidth) return;
+        const img = this.game.getDrawable(this.stage.backgroundOverlayImage);
+        if (!img || !(img.naturalWidth || img.width)) return;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return;
-        this._drawStageLayer(ctx, img, rect);
+        this._drawStageLayer(ctx, img, rect, view);
     }
 
     getZoneAt(wx, wy) {
@@ -495,8 +499,9 @@ class World {
 
     /**
      * Render the ground for all loaded blocks, then ground-layer entities (lava).
+     * `view` = visible world AABB from main.js (culls the big-layer blit).
      */
-    renderGround(ctx) {
+    renderGround(ctx, view) {
         const cx = this.cameraX;
         const cy = this.cameraY;
 
@@ -506,8 +511,8 @@ class World {
             // below the silhouette). The upper mountain layer is drawn separately
             // by main.js so it can sit on either side of the player.
             const lowerKey = this.stage.backgroundLowerImage || this.stage.backgroundImage;
-            const img = this.game.getImage(lowerKey);
-            if (img && img.naturalWidth) this._drawStageLayer(ctx, img, rect);
+            const img = this.game.getDrawable(lowerKey);
+            if (img && (img.naturalWidth || img.width)) this._drawStageLayer(ctx, img, rect, view);
 
             if (this.game.showDebug) {
                 for (const block of Object.values(this.blocks)) {

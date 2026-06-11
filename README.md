@@ -389,6 +389,41 @@ Faces are **not static**. Gameplay events can mutate them — a yellow ramp coul
 
 Related mechanic: **the camera zooms out as the player climbs higher**. The further above the ground plane the player goes (via stacking, walls, platforms), the more of the world becomes visible — giving a sense of scale and risk as they ascend.
 
+## Performance: Chrome FPS Collapse (solved)
+
+When the real island background art landed (large 8314x6112 layers drawn each
+frame), Chrome's FPS collapsed as soon as the player moved — while Firefox
+stayed smooth. The camera transform changes every frame during movement, so
+Chrome couldn't reuse its cached raster and **re-rasterized the entire ~57M-px
+layers on every `drawImage`** (a stationary camera was fine, which was the
+decisive clue).
+
+### The fix (two parts, both in the render path)
+
+1. **Viewport culling, allocation-free** — `main.js renderGame` computes the
+   visible world AABB once per frame into a single reused `_viewRect` object
+   (analytically from `scale/focal/cam`; no `getTransform()`/`DOMPoint`, which
+   allocate per frame). `world._drawStageLayer()` then blits **only the
+   on-screen slice** via 9-arg `drawImage` (2px pad against seams). Per-frame
+   rasterization drops from ~57M px per layer to ~1M px, independent of source
+   size.
+2. **ImageBitmap decode-once** — `game.getDrawable(key)` serves the big stage
+   layers as GPU-resident `ImageBitmap`s (built eagerly for the two active
+   island layers in `loadAssets()`, lazily for the map-style toggle's
+   alternates). No per-draw decode/upload of large sources.
+
+Two hardening fixes from the investigation were kept: the game loop **clamps
+`deltaTime` to 100ms** so a slow frame can't spiral the fixed-timestep catch-up
+into a permanent ~1 FPS lock, and the one-time zone/silhouette `getImageData`
+sampling is capped at **6M px** so it can't hitch the frame it runs on.
+
+Red herrings (tried, did not fix it): converting the layers from palette to
+RGBA PNG, and reverting culling to a full-image blit (made it worse — cost
+scales with pixels rasterized).
+
+**Rule of thumb:** never full-blit a huge image under a per-frame-changing
+canvas transform — cull to the viewport and draw from an `ImageBitmap`.
+
 ## Constants
 
 | Constant | Value | Description |
