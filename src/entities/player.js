@@ -456,6 +456,10 @@ class Player {
                 }
                 this.liftedObject = obs;
                 obs.isObstacle = false;
+                // Lifted out of the sand: drop the sink crop so the whole
+                // sprite shows while carried. It re-evaluates (and reappears)
+                // once dropped/thrown back onto sand.
+                if ('onSand' in obs) obs.onSand = false;
                 this.startGrab();
                 return null;
             }
