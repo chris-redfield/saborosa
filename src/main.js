@@ -133,7 +133,7 @@ function updateGame(dt) {
     const obstacles = world.getObstacles();
     const movement = game.input.getMovementVector();
 
-    // Shift pumps the charge bar. There's no longer a one-shot directional
+    // Ctrl pumps the charge bar. There's no longer a one-shot directional
     // dash — the bar's level continuously scales the player's move speed.
     if (game.input.isKeyJustPressed('dash')) {
         player.chargeUp(); // fill force — pumps the charge bar against its drain
@@ -226,7 +226,7 @@ function updateGame(dt) {
 
     // Charge-driven speed: the bar scales the player up to dash speed at a full
     // bar (50% bar → half dash speed). An empty bar falls back to normal walk
-    // speed, so the player must keep mashing Shift to stay fast.
+    // speed, so the player must keep mashing Ctrl to stay fast.
     speedMult *= Math.max(1, player.dashCharge * player.dashSpeed);
 
     let dx = movement.x * player.speed * speedMult;
@@ -555,26 +555,15 @@ function updateGame(dt) {
     }
 }
 
-// Settle a thrown object at the end of its arc. Respects zones: if the landing
-// footprint center is on RED (impassable), step the object back along its flight
-// vector until it clears it (a simple "bounce off"). WALL (green) is NOT bounced
-// — the object settles where it lands and the per-frame fall logic above takes
-// over, so it falls straight down in place exactly like the player does (no
-// teleport to the zone edge).
+// Settle a thrown object at the end of its arc. The object lands exactly where
+// its arc ended — no bounce-back. The per-frame zone logic then takes over:
+//   WALL (green)       -> falls straight down in place, like the player
+//   RAMP (yellow/blue) -> slides via zone drift
+//   RED (no-go)        -> no drift and no fall, so it just stops there as if it
+//                         had hit solid ground
 // FUTURE: proper collision response with other objects / players.
 function landThrownObject(obs, world) {
     obs.throwZ = 0;
-    if (world.stage && world.stage.backgroundImage) {
-        const invalid = (z) => z === Zone.RED;
-        const centerZone = () => world.getZoneAt(
-            obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2,
-            obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2);
-        let guard = 0;
-        while (invalid(centerZone()) && guard++ < 200) {
-            obs.x -= obs.throwVx * 0.5;
-            obs.y -= obs.throwVy * 0.5;
-        }
-    }
     obs.thrown = false;
     obs.pushable = true;
     obs.isObstacle = true;
@@ -668,7 +657,7 @@ function renderGame(ctx) {
     ctx.font = '11px monospace';
     ctx.fillText(gameState.currentStage.name, 10, 16);
 
-    // Dash charge bar — empty by default, drains on its own, pumped by Shift.
+    // Dash charge bar — empty by default, drains on its own, pumped by Ctrl.
     if (!gameState.transition) {
         const barX = 10, barY = 24, barW = 60, barH = 6;
         const fill = player.dashCharge;

@@ -28,7 +28,7 @@ class InputHandler {
             'Space': 'attack',
             'Enter': 'confirm', 'NumpadEnter': 'confirm',
             'KeyE': 'interact',
-            'ShiftLeft': 'dash', 'ShiftRight': 'dash',
+            'ControlLeft': 'dash', 'ControlRight': 'dash',
             'KeyR': 'run',
             'KeyP': 'pause',
             'KeyM': 'mute',
