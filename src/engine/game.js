@@ -100,9 +100,9 @@ class Game {
                 this.loadImage('intro_off', 'assets/intro-off.png'),
                 this.loadImage('intro_on', 'assets/intro-on.png'),
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
-                this.loadImage('stage3_bg', 'assets/cor-saborosa-fundo-02.png'),
-                this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-02-lower.png'),
-                this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-02-overlay.png'),
+                this.loadImage('stage3_bg', 'assets/saborosa-fundo-base-V2.png'),
+                this.loadImage('stage3_lower', 'assets/saborosa-fundo-base-V2-lower.png'),
+                this.loadImage('stage3_overlay', 'assets/saborosa-fundo-base-V2-overlay.png'),
                 // Pickable/throwable blocks + the placeable "prop" structures
                 // (platform/big-stack/tower). One transparent sheet; the defs
                 // tag each crop kind:'block' (random-spawned Rock) or 'prop'

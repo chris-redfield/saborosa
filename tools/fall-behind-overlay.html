@@ -18,7 +18,7 @@
 </head>
 <body>
 <h1>Fall-Behind Layer Builder</h1>
-<p>Source: <code>../assets/cor-saborosa-fundo-02.png</code></p>
+<p>Source: <code>../assets/saborosa-fundo-base-V2.png</code></p>
 <p>
     Splits the source into two transparent PNGs that, stacked, reconstruct the original:
     <code>upper</code> = mountain silhouette above the midline (sand and below-midline pixels transparent);
@@ -94,7 +94,7 @@ const downloadCanvas = (canvas, name) => () => {
 document.getElementById('build').onclick = async () => {
     document.getElementById('log').textContent = '';
     const img = new Image();
-    img.src = '../assets/cor-saborosa-fundo-02.png';
+    img.src = '../assets/saborosa-fundo-base-V2.png';
     log('Loading source...');
     await img.decode();
     const w = img.naturalWidth, h = img.naturalHeight;
@@ -169,8 +169,8 @@ document.getElementById('build').onclick = async () => {
     const dlL = document.getElementById('dl-lower');
     dlU.disabled = false;
     dlL.disabled = false;
-    dlU.onclick = downloadCanvas(upper, 'cor-saborosa-fundo-02-overlay.png');
-    dlL.onclick = downloadCanvas(lower, 'cor-saborosa-fundo-02-lower.png');
+    dlU.onclick = downloadCanvas(upper, 'saborosa-fundo-base-V2-overlay.png');
+    dlL.onclick = downloadCanvas(lower, 'saborosa-fundo-base-V2-lower.png');
     log('Ready. Save both PNGs into assets/.');
 };
 </script>
