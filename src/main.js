@@ -133,7 +133,7 @@ function updateGame(dt) {
     const obstacles = world.getObstacles();
     const movement = game.input.getMovementVector();
 
-    // Ctrl pumps the charge bar. There's no longer a one-shot directional
+    // Shift pumps the charge bar. There's no longer a one-shot directional
     // dash — the bar's level continuously scales the player's move speed.
     if (game.input.isKeyJustPressed('dash')) {
         player.chargeUp(); // fill force — pumps the charge bar against its drain
@@ -226,7 +226,7 @@ function updateGame(dt) {
 
     // Charge-driven speed: the bar scales the player up to dash speed at a full
     // bar (50% bar → half dash speed). An empty bar falls back to normal walk
-    // speed, so the player must keep mashing Ctrl to stay fast.
+    // speed, so the player must keep mashing Shift to stay fast.
     speedMult *= Math.max(1, player.dashCharge * player.dashSpeed);
 
     let dx = movement.x * player.speed * speedMult;
@@ -657,7 +657,7 @@ function renderGame(ctx) {
     ctx.font = '11px monospace';
     ctx.fillText(gameState.currentStage.name, 10, 16);
 
-    // Dash charge bar — empty by default, drains on its own, pumped by Ctrl.
+    // Dash charge bar — empty by default, drains on its own, pumped by Shift.
     if (!gameState.transition) {
         const barX = 10, barY = 24, barW = 60, barH = 6;
         const fill = player.dashCharge;
