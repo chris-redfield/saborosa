@@ -555,15 +555,17 @@ function updateGame(dt) {
     }
 }
 
-// Settle a thrown object at the end of its arc. Respects zones: if the
-// landing footprint center is on RED or WALL, step the object back along its
-// flight vector until it reaches a valid surface (a simple "bounce off" so it
-// never settles on an impassable/wall tile).
+// Settle a thrown object at the end of its arc. Respects zones: if the landing
+// footprint center is on RED (impassable), step the object back along its flight
+// vector until it clears it (a simple "bounce off"). WALL (green) is NOT bounced
+// — the object settles where it lands and the per-frame fall logic above takes
+// over, so it falls straight down in place exactly like the player does (no
+// teleport to the zone edge).
 // FUTURE: proper collision response with other objects / players.
 function landThrownObject(obs, world) {
     obs.throwZ = 0;
     if (world.stage && world.stage.backgroundImage) {
-        const invalid = (z) => z === Zone.RED || z === Zone.WALL;
+        const invalid = (z) => z === Zone.RED;
         const centerZone = () => world.getZoneAt(
             obs.x + (obs.colOffX || 0) + (obs.colW || obs.width) / 2,
             obs.y + (obs.colOffY || 0) + (obs.colH || obs.height) / 2);
