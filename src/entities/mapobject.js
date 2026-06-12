@@ -64,14 +64,16 @@ class MapObject {
         const sheet = game.getDrawable(this.sheetKey);
 
         if (sheet) {
+            // Defs coords are author-resolution; the game sheet is downscaled.
+            const S = game.getSheetScale(this.sheetKey);
             if (this.flipX) {
                 ctx.save();
                 ctx.translate(sx + this.width, sy);
                 ctx.scale(-1, 1);
-                ctx.drawImage(sheet, this.sx, this.sy, this.sw, this.sh, 0, 0, this.width, this.height);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, this.sh * S, 0, 0, this.width, this.height);
                 ctx.restore();
             } else {
-                ctx.drawImage(sheet, this.sx, this.sy, this.sw, this.sh, sx, sy, this.width, this.height);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, this.sh * S, sx, sy, this.width, this.height);
             }
         } else {
             ctx.fillStyle = '#5a7d3a';

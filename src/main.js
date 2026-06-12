@@ -162,9 +162,10 @@ function updateGame(dt) {
         if (choice === 'START') {
             loadStage(STAGES[3]);
             gameState.screen = 'playing';
-            // Leave the intro music behind: gameplay runs the bass track.
+            // Leave the intro music behind: gameplay runs the bass track,
+            // 30% quieter than the intro song (user-tuned).
             // (Stage-to-stage travel later keeps it — this only fires once.)
-            game.audio.switchMusic('assets/bass.mp3');
+            game.audio.switchMusic('assets/bass.mp3', 0.7);
         }
         return;
     }

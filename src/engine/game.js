@@ -4,7 +4,11 @@
 class Game {
     constructor(canvasId) {
         this.canvas = document.getElementById(canvasId);
-        this.ctx = this.canvas.getContext('2d');
+        // alpha:false = opaque canvas. The game fills the full frame every
+        // tick, so page-show-through is never used — declaring it lets the
+        // browser skip blending the canvas over the page when presenting,
+        // which is a real cost on software-rendered (no-GPU) machines.
+        this.ctx = this.canvas.getContext('2d', { alpha: false });
 
         this.width = 1280;
         this.height = 720;
@@ -37,6 +41,18 @@ class Game {
 
         // Audio
         this.audio = new AudioManager();
+
+        // Sheet-pixel scale of the GAME's sheet files relative to the defs'
+        // authoring coordinates. The defs JSONs (and the map editor) stay at
+        // full author resolution; the game ships downscaled '-game' sheets
+        // (tools/downscale-sheets.py), so crop rects are multiplied by this
+        // factor at draw time: getSheetScale(key). Keep in sync with the
+        // factors in that script.
+        this.sheetScales = {
+            block_sheet: 0.25,
+            mapobjects_sheet: 0.45,
+            coconut_sheet: 0.45
+        };
 
         // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
         // an ImageBitmap is decoded ONCE and stays GPU-resident, so per-frame
@@ -71,6 +87,12 @@ class Game {
 
     getJSON(key) {
         return this.assets.json[key] || null;
+    }
+
+    // Factor mapping defs-JSON (author-resolution) crop coordinates onto the
+    // game's possibly-downscaled sheet file. 1 for sheets shipped at full res.
+    getSheetScale(key) {
+        return this.sheetScales[key] || 1;
     }
 
     // Drawable for the BIG stage layers: returns the ImageBitmap when ready,
@@ -141,13 +163,20 @@ class Game {
                 // (platform/big-stack/tower). One transparent sheet; the defs
                 // tag each crop kind:'block' (random-spawned Rock) or 'prop'
                 // (hand-placed MapObject). Authored via tools/build-block-defs.py.
-                this.loadImage('block_sheet', 'assets/saborosa-assets-002.png'),
+                //
+                // The GAME loads the '-game' downscaled sheet copies (made by
+                // tools/downscale-sheets.py): these draw at small scales, and
+                // author-resolution sheets made weak CPUs read 10-50x more
+                // source px than rendered (PERFORMANCE.md C8). The defs keep
+                // author-res coordinates — mapped via sheetScales below. The
+                // editor/tools keep using the original full-res sheets.
+                this.loadImage('block_sheet', 'assets/saborosa-assets-002-game.png'),
                 this.loadJSON('block_defs', 'assets/saborosa-assets-002-sprites.json'),
-                this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2.png'),
+                this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2-game.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json'),
                 // Decorative map assets (plants/trees/grass/etc.) + their defs
                 // and placements, both authored in tools/map-editor.html.
-                this.loadImage('mapobjects_sheet', 'assets/saborosa-assets-001.png'),
+                this.loadImage('mapobjects_sheet', 'assets/saborosa-assets-001-game.png'),
                 this.loadJSON('mapobject_defs', 'assets/saborosa-assets-001-sprites.json'),
                 this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json'),
 

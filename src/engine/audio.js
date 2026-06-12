@@ -10,28 +10,38 @@ class AudioManager {
     constructor() {
         this.music = null;
         this.musicVolume = 0.5;
+        // Per-track loudness factor on top of musicVolume — lets one song play
+        // quieter than another without touching the global volume/mute knobs.
+        this.trackScale = 1;
         this.muted = false;
         this._started = false;
+    }
+
+    _applyVolume() {
+        if (this.music) {
+            this.music.volume = this.muted ? 0 : this.musicVolume * this.trackScale;
+        }
     }
 
     loadMusic(src) {
         const audio = new Audio();
         audio.src = src;
         audio.loop = true;
-        audio.volume = this.musicVolume;
         audio.preload = 'auto';
         this.music = audio;
+        this._applyVolume();
     }
 
     // Swap to a different track (e.g. intro music → gameplay music). Pauses
     // the current one; if playback was already unlocked by a user gesture the
     // new track starts immediately, otherwise it becomes the track that the
     // first-gesture unlock will start. Volume/mute settings carry over.
-    switchMusic(src) {
+    // `trackScale` plays this track at a fraction of the music volume.
+    switchMusic(src, trackScale = 1) {
         const wasPlaying = this._started;
         if (this.music) this.music.pause();
+        this.trackScale = trackScale;
         this.loadMusic(src);
-        this.music.volume = this.muted ? 0 : this.musicVolume;
         if (wasPlaying) {
             this._started = false; // re-arm playMusic for the new element
             this.playMusic();
@@ -67,7 +77,7 @@ class AudioManager {
 
     setVolume(v) {
         this.musicVolume = Math.max(0, Math.min(1, v));
-        if (this.music) this.music.volume = this.muted ? 0 : this.musicVolume;
+        this._applyVolume();
     }
 
     toggleMute() {
@@ -77,7 +87,7 @@ class AudioManager {
     // Explicitly set the muted state (used by the intro's VOLUME OFF/ON).
     setMuted(m) {
         this.muted = !!m;
-        if (this.music) this.music.volume = this.muted ? 0 : this.musicVolume;
+        this._applyVolume();
         return this.muted;
     }
 }

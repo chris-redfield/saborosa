@@ -98,14 +98,16 @@ class Rock {
         const sheet = game.getDrawable('block_sheet');
         if (sheet) {
             const cropSh = this.sh * (1 - srcCropRatio);
+            // Defs coords are author-resolution; the game sheet is downscaled.
+            const S = game.getSheetScale('block_sheet');
             if (this.flipX) {
                 ctx.save();
                 ctx.translate(sx + this.width, sy);
                 ctx.scale(-1, 1);
-                ctx.drawImage(sheet, this.sx, this.sy, this.sw, cropSh, 0, 0, this.width, visibleH);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, 0, 0, this.width, visibleH);
                 ctx.restore();
             } else {
-                ctx.drawImage(sheet, this.sx, this.sy, this.sw, cropSh, sx, sy, this.width, visibleH);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, sx, sy, this.width, visibleH);
             }
         } else {
             ctx.fillStyle = '#787878';

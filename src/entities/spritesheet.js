@@ -101,6 +101,14 @@ class SpriteSheet {
 
         if (!img || !data || !data.frames) return { sprites };
 
+        // The JSON frames are author-resolution; the game ships a downscaled
+        // '-game' sheet. Map every frame onto sheet pixels ONCE here — all the
+        // math below (crops, draw scale, baseline scans) then runs in one
+        // consistent coordinate space.
+        const S = this.game.getSheetScale('coconut_sheet');
+        const frames = data.frames.map(f =>
+            f && { x: f.x * S, y: f.y * S, w: f.w * S, h: f.h * S });
+
         const NCOLS = data.cols || 10;
         const IDLE_COL = NCOLS - 1; // last column of each row holds the idle pose
 
@@ -131,7 +139,7 @@ class SpriteSheet {
         // and relative size, so the idle renders exactly targetHeight tall
         // while differently-shaped poses (e.g. the flattened heavy-carry frame)
         // stay proportional instead of being stretched to a fixed height.
-        const refFrame = data.frames[IDLE_COL]; // row 0, idle column
+        const refFrame = frames[IDLE_COL]; // row 0, idle column
         const scale = (refFrame && refFrame.h) ? targetHeight / refFrame.h : 1;
         // Idle source aspect (h/w). A frame much flatter than this is a vertical
         // squish (the heavy-carry crouch) and gets anchored differently — see
@@ -222,10 +230,10 @@ class SpriteSheet {
 
         for (let r = 0; r < ROWS.length; r++) {
             const { dir, mirror } = ROWS[r];
-            const idleBase = bodyBaseline(img, data.frames[r * NCOLS + IDLE_COL]);
+            const idleBase = bodyBaseline(img, frames[r * NCOLS + IDLE_COL]);
             for (const flipped of (mirror ? [false, true] : [false])) {
                 const name = flipped ? mirror : dir;
-                const idle = makeSprite(img, data.frames[r * NCOLS + IDLE_COL], flipped, idleBase);
+                const idle = makeSprite(img, frames[r * NCOLS + IDLE_COL], flipped, idleBase);
                 if (idle) {
                     sprites[`${name}_idle`].push(idle);
                     // Walk reuses the idle frame until the walk sheet is remade.
@@ -233,19 +241,19 @@ class SpriteSheet {
                 }
 
                 for (const c of GRAB_COLS) {
-                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
+                    const s = makeSprite(img, frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_grab`].push(s);
                 }
                 for (const c of GRAB_HEAVY_COLS) {
-                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
+                    const s = makeSprite(img, frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_grab_heavy`].push(s);
                 }
                 for (const c of THROW_COLS) {
-                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
+                    const s = makeSprite(img, frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_throw`].push(s);
                 }
                 for (const c of ACTION_COLS) {
-                    const s = makeSprite(img, data.frames[r * NCOLS + c], flipped, idleBase);
+                    const s = makeSprite(img, frames[r * NCOLS + c], flipped, idleBase);
                     if (s) sprites[`${name}_action`].push(s);
                 }
             }
