@@ -47,6 +47,26 @@ class PerfMonitor {
         this.longIn5s = 0;
         this._bucketLong = 0;
         this._bucketStart = 0;
+
+        // One-time GPU probe so remote screenshots reveal the hardware tier.
+        // "SwiftShader" / "llvmpipe" / "no webgl" = Chrome fell back to
+        // SOFTWARE rendering (old/blacklisted video chip) — the case the
+        // software-raster optimizations target. chrome://gpu is authoritative.
+        this.gpuInfo = '';
+        try {
+            const c = document.createElement('canvas');
+            const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+            if (gl) {
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                this.gpuInfo = String(ext
+                    ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)
+                    : gl.getParameter(gl.RENDERER) || '');
+                const lose = gl.getExtension('WEBGL_lose_context');
+                if (lose) lose.loseContext();
+            } else {
+                this.gpuInfo = 'no webgl (software rendering likely)';
+            }
+        } catch (e) { /* leave blank */ }
     }
 
     _section(name) {
@@ -155,6 +175,7 @@ class PerfMonitor {
         if (performance.memory) {
             lines.push(`heap ${(performance.memory.usedJSHeapSize / 1048576) | 0}MB (js only, chrome)`);
         }
+        if (this.gpuInfo) lines.push(`gpu ${this.gpuInfo.slice(0, 44)}`);
 
         const lh = 14, pad = 8, w = 318;
         const h = lines.length * lh + pad * 2;
