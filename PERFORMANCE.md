@@ -1,8 +1,33 @@
-# Performance Plan — make Saborosa lightweight (incl. no-GPU machines)
+# Performance Plan — make Saborosa lightweight (weak/old hardware)
 
-Goal: smooth gameplay on weak hardware — specifically machines with **no GPU**
-(software-rendered canvas) and little RAM. Current state: perfect on a GPU
-machine, laggy on a no-GPU machine.
+## ✅ RESOLVED (2026-06-13, perf4.jpeg): locked 60fps on the test machine
+
+Final readout on the previously-lagging machine, same scene that measured
+1084ms/frame at the start: **frame 16.7 (max 16.7), fps 60, work 2.1ms,
+entities 0.6ms (was 974), ground 0.7ms (was 85.5), upd/frame 1, long(5s) 0.**
+
+The `gpu` HUD line settled the hardware question: `ATI Radeon HD…` — an OLD
+GPU with tiny VRAM (256–512MB era), NOT software rendering. Root cause across
+the whole saga: **total decoded-image footprint (~1.3GB images + ~370MB
+sheets) could never fit that VRAM**, so textures were evicted/re-uploaded
+(and decode-cache thrashed) every frame. Every fix below reduced footprint or
+per-frame image work; once the full set fit (~75MB), the old card ran 60fps.
+
+What got it there, in order of impact:
+1. Sheet + layer **ImageBitmap decode-once** (+ freeing the <img> copies).
+2. **Offline right-sizing**: island layers at 0.4x; sprite sheets' `-game`
+   copies at 0.25–0.45x (matched to max draw scale). 368MB sheets → 55MB.
+3. **Sample-once-then-free** zoning/silhouette masters; lazy toggle layers.
+4. **Viewport-culled** background blits; opaque canvas (`alpha:false`).
+5. Loop hardening: `deltaTime` clamp (no catch-up spiral).
+
+Phase 2 (smoothing-off) and the low-res mode were NOT needed — left below as
+contingencies for even weaker targets (true software rendering / mobile).
+
+---
+
+Goal (original): smooth gameplay on weak hardware. Initial state: perfect on
+a modern GPU machine, ~1fps on the test machine.
 
 ---
 
