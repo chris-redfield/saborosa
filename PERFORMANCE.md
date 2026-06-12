@@ -210,13 +210,28 @@ Remaining from that readout, in order: `ground` ~90ms + `overlay` ~41ms →
 Phase 2 (smoothing off needs a visual OK from the user; opaque canvas is
 free); after that the frame should fit even a weak CPU's budget.
 
-**Next structural step (C8, not yet done): offline sheet downscale.** The
-block sheet is drawn at BLOCK_SCALE 0.14 — we ship ~7x oversized pixels
-(132MB decoded for sprites rendered at 14%). Pre-scaling sheets offline
-(e.g. 0.25x) cuts sheet memory ~16x, BUT defs JSONs store sheet-px coords —
-needs a `sheetScale` factor in the defs (or regenerated defs) + map-editor
-coordination. Respect the asset rules: offline, resolution only, no
-post-processing.
+**Second readout after the ImageBitmap fix (perf2.jpeg):** frame 1084→350ms,
+entities 974→260ms for 8 drawn (~32ms/sprite). Decode thrash gone; what
+remains is **source-read amplification**: sheets shipped at author resolution
+but drawn at 0.14–0.31 scale → software raster reads 10–50x more source px
+than it renders, per sprite, per frame. Plus ground 85.5ms (layer blit).
+
+**C8 — offline sheet downscale. DONE (2026-06-13):**
+- `tools/downscale-sheets.py` emits `-game` copies (Lanczos only, originals
+  untouched, defs JSONs untouched): assets-002 @0.25 (132→8MB decoded),
+  assets-001 @0.45 (132→26MB), coconut @0.45 (104→21MB). Factors keep ≥1.5x
+  headroom over each sheet's max in-game draw scale (0.14 / 0.30 / 0.31).
+- Game loads the `-game` files; `game.sheetScales` + `getSheetScale(key)` map
+  author-res defs coords onto them at draw (environment.js, mapobject.js,
+  spritesheet.js coconut loader — which rescales its frames array once).
+- Editor/def tools keep using the full-res originals; re-run the script after
+  any sheet art change.
+- ALSO: canvas context is now `{ alpha: false }` (opaque — skips canvas-over-
+  page blending at present time; zero visual change, helps software raster).
+
+Expected next readout: `entities` a few ms, sheets ~55MB decoded total.
+Remaining lever after that: `ground` ~85ms → smoothing-off for the two layer
+blits (NEEDS USER VISUAL OK — changes sampling of the upscaled art).
 
 ## 5. CPU audit — code-read findings (2026-06-13, pending HUD confirmation)
 
