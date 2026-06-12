@@ -61,7 +61,7 @@ class MapObject {
     render(ctx, game, camX, camY) {
         const sx = Math.round(this.x - camX);
         const sy = Math.round(this.y - camY);
-        const sheet = game.getImage(this.sheetKey);
+        const sheet = game.getDrawable(this.sheetKey);
 
         if (sheet) {
             if (this.flipX) {

@@ -29,7 +29,7 @@ class Portal {
         const sy = this.y - camY;
         const cx = sx + this.width / 2;
 
-        const sprite = game.getImage('fruit_basket');
+        const sprite = game.getDrawable('fruit_basket');
         if (sprite) {
             ctx.drawImage(sprite, sx, sy, this.width, this.height);
         } else {

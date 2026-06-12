@@ -94,7 +94,7 @@ class FxObject {
     }
 
     render(ctx, camX, camY) {
-        const img = this.game.getImage(this.sheetKey);
+        const img = this.game.getDrawable(this.sheetKey);
         if (!img) return;
         const f = this.frames[Math.min(this.frameI, this.frames.length - 1)];
         const dw = f.w * this.scale, dh = f.h * this.scale;
@@ -125,7 +125,7 @@ class FxManager {
         const wanted = mode === 'bold' ? [BOLD_KEY]
                      : mode === 'both' ? [BOLD_KEY, FAINT_KEY]
                      : [FAINT_KEY];
-        this.sheetKeys = wanted.filter(k => game.getImage(k));
+        this.sheetKeys = wanted.filter(k => game.getDrawable(k));
         if (!this.sheetKeys.length) this.sheetKeys = [FAINT_KEY];
         this.baseScale = pick(opts.scale, cfg.scale, 0.15);
         this.scaleJitter = pick(opts.scaleJitter, cfg.scaleJitter, 0.5);

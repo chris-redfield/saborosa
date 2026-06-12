@@ -95,7 +95,7 @@ class Rock {
         const visibleH = this.height - sinkAmount;
         const srcCropRatio = sinkAmount / this.height;
 
-        const sheet = game.getImage('block_sheet');
+        const sheet = game.getDrawable('block_sheet');
         if (sheet) {
             const cropSh = this.sh * (1 - srcCropRatio);
             if (this.flipX) {

@@ -183,7 +183,99 @@ moving with `long(5s)` ≤ 1; game loads with < 500MB total decoded image memory
 
 ---
 
-## 5. Already fixed earlier (kept, see README "Performance" section)
+## 4b. MEASURED — friend's no-GPU machine HUD readout (perf.jpeg, 2026-06-13)
+
+`fps 1, frame ~1084ms | work 1074.9, other 9.3 | update 3.1 | render ~1071 |
+ground 89.8 | overlay ~41 avg | entities ~974 (13/209 drawn) | upd/frame 6 |
+zone 2199 | heap 51MB`
+
+Reading: it's OUR JS (`other` tiny), update side is CHEAP even at 6 catch-up
+steps (C1/C2 are minor), and **`entities` is the fire: ~70ms PER SPRITE.**
+
+**Root cause (C7): sprite-sheet decode thrash.** assets-001 (132MB decoded),
+assets-002 (132MB) and the coconut sheet (104MB) lived as plain <img> sources;
+on a low-memory no-GPU machine Chrome's discardable decode cache evicts them
+between frames → every drawImage re-decodes a ~35M-px PNG. Same family as the
+original background bug, on the sheets we hadn't converted.
+
+**FIX (implemented 2026-06-13):** extended the ImageBitmap decode-once pattern
+to ALL per-frame-drawn images — block/mapobjects/coconut/character/liverock
+sheets, fx sheet, basket — created eagerly in `loadAssets`; every consumer
+(environment, mapobject, liverock, portal, spritesheet incl. the coconut
+bodyBaseline scan, fxobject) now draws via `game.getDrawable()`; the <img>
+behind the three ≥100MB sheets is freed (no duplicate copy). Expected:
+`entities` ~970ms → low single digits ms.
+
+Remaining from that readout, in order: `ground` ~90ms + `overlay` ~41ms →
+Phase 2 (smoothing off needs a visual OK from the user; opaque canvas is
+free); after that the frame should fit even a weak CPU's budget.
+
+**Next structural step (C8, not yet done): offline sheet downscale.** The
+block sheet is drawn at BLOCK_SCALE 0.14 — we ship ~7x oversized pixels
+(132MB decoded for sprites rendered at 14%). Pre-scaling sheets offline
+(e.g. 0.25x) cuts sheet memory ~16x, BUT defs JSONs store sheet-px coords —
+needs a `sheetScale` factor in the defs (or regenerated defs) + map-editor
+coordination. Respect the asset rules: offline, resolution only, no
+post-processing.
+
+## 5. CPU audit — code-read findings (2026-06-13, pending HUD confirmation)
+
+Read of every per-frame path (update + render), ranked by expected cost on a
+weak CPU. These all land in the HUD's `update` line (and `long(5s)` for the
+allocation ones). The HUD's `drawn a/b` denominator shows the REAL entity
+count N — read it before sizing any of this work.
+
+### C1. Finite stages keep the WHOLE island alive — and scan it 3x per frame
+`loadSurrounding` on a finite stage generates ALL `_validBlocks` (stage 3:
+11x11 = **121 blocks**), each spawning up to `rockCount` [7,14] rocks (gray-
+zone gated) + placements + sand. Then EVERY frame:
+- `getObstacles()` — full 121-block walk, builds a fresh array (update, 1x)
+- `getAllEntities()` — same walk, fresh array (throw pass, 1x — even when
+  nothing is thrown)
+- `getAllEntities().filter(...)` + `.sort(closure)` — again at render
+Fix sketch: cache the flat entity/obstacle lists on World, invalidate in
+`addEntity`/`removeEntity` (they change rarely); keep a tiny `thrown` set for
+the throw pass; reuse one array + hoisted comparator at render.
+
+### C2. Whole-island per-frame physics (drift + fall + animate loops)
+Three O(N) loops over ALL obstacles every update tick (main.js ~460-585):
+drift (1 `getZoneAt` each), wall-fall (another `getZoneAt` each), animate.
+Worst: every rock RESTING on a ramp zone calls `applyObstacleDrift` =
+**O(N) AABB scan each** → K ramp-resters × N total tests/frame, 60Hz, even
+for rocks far off-screen. Fix sketch: skip drift/fall for obstacles outside
+camera bounds + margin (they're invisible; freezing them is fine), or stagger
+far blocks every Nth frame. Multiplied by `upd/frame` on slow machines (R5).
+
+### C3. Input handler allocates on every query
+`isKeyDown`/`isKeyJustPressed` run `Object.entries(keyMap)` (~17 pairs) +
+`Object.entries(gamepadMap)` PER CALL; player movement + dash/run/attack/
+interact checks ≈ 10+ calls per update → ~1–2k short-lived pair-arrays per
+second feeding GC. Fix sketch: build `action → [codes]` reverse maps once in
+the constructor; queries become tiny array loops, zero allocation.
+
+### C4. `_getStageBounds()` recomputed every frame
+`world.update` camera clamp calls it each frame: 121-entry loop + fresh
+object. Static per stage → compute once in the constructor.
+
+### C5. Micro-allocations in the loop
+rAF callback closure per frame (`(t) => this.gameLoop(t)` — bind once);
+render-path `filter` array (covered by C1). Individually trivial; together
+they set GC cadence — visible as `long(5s)` > 0 with sawtooth `heap`.
+
+### C6. Render path verdict: already lean on stage 3
+Two culled bitmap blits + ~10–40 sprite draws + ≤7 FX. The remaining render
+lever on no-GPU is Phase 2 (smoothing off for the layer blits, opaque canvas).
+NOTE for stages 1–2 (no background image): the perspective-checkerboard +
+terrain-depth path redraws many vector shapes per block per frame — heavy on
+CPU; revisit only when those stages matter.
+
+### Cost reality-check
+None of C1–C5 is huge alone (~1–3ms combined on a weak CPU, est.); they
+matter because (a) software rendering already eats most of the 16.7ms budget,
+and (b) `upd/frame` ≥ 2 on slow machines doubles the update-side items.
+Priority: C1+C2 (structural, biggest), then C3/C4/C5 (mechanical, quick).
+
+## 6. Already fixed earlier (kept, see README "Performance" section)
 - Viewport-culled 9-arg blits of the big layers (allocation-free view AABB).
 - ImageBitmap decode-once for displayed layers.
 - `deltaTime` clamp (no spiral-of-death lock).

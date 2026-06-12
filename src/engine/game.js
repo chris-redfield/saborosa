@@ -188,18 +188,31 @@ class Game {
             // alternates upgrade lazily via getDrawable). Decode-once here is the
             // Chrome fix for the moving-camera FPS collapse — see BUG.md.
             if (typeof createImageBitmap === 'function') {
-                await Promise.all(['stage3_lower', 'stage3_overlay'].map(k => {
+                // Decode-once bitmaps for every image drawn per frame: the two
+                // stage layers AND all sprite sheets. Plain <img> sources live
+                // in the browser's DISCARDABLE decode cache — on low-memory
+                // no-GPU machines the big sheets (assets-001/002 ~132MB,
+                // coconut ~104MB decoded) get evicted between frames and
+                // re-decoded on EVERY drawImage (~70ms per sprite, measured
+                // ~900ms/frame on a test machine — PERFORMANCE.md C7).
+                // ImageBitmaps are decoded once and stay raster-ready.
+                const WARM = ['stage3_lower', 'stage3_overlay',
+                              'block_sheet', 'mapobjects_sheet', 'coconut_sheet',
+                              'character_sheet', 'liverock_sheet',
+                              'fx_sheet_faint', 'fruit_basket'];
+                // Free the <img> behind the BIG ones (≥100MB decoded) so no
+                // duplicate copy stays resident. Small sheets keep their <img>
+                // as a fallback. Everything draws via getDrawable().
+                const FREE = new Set(['stage3_lower', 'stage3_overlay',
+                                      'block_sheet', 'mapobjects_sheet', 'coconut_sheet']);
+                await Promise.all(WARM.map(k => {
                     const img = this.assets.images[k];
                     if (!img) return null;
                     this.assets.bitmapPending[k] = true;
                     return createImageBitmap(img)
                         .then(b => {
                             this.assets.bitmaps[k] = b;
-                            // The bitmap is the drawable now — drop the <img>
-                            // so we don't keep a duplicate decoded copy
-                            // (~47MB each) resident. Nothing else reads these
-                            // keys via getImage.
-                            this.assets.images[k] = null;
+                            if (FREE.has(k)) this.assets.images[k] = null;
                         })
                         .catch(() => {});
                 }));

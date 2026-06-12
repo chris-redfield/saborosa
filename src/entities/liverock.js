@@ -55,7 +55,7 @@ class LiveRock {
 
     _loadSprites() {
         const json = this.game.getJSON('liverock_sprites');
-        const img = this.game.getImage('liverock_sheet');
+        const img = this.game.getDrawable('liverock_sheet');
         if (!json || !img) return;
 
         // pos1-3 are the normal cycle frames

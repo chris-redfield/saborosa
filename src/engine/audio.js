@@ -23,6 +23,21 @@ class AudioManager {
         this.music = audio;
     }
 
+    // Swap to a different track (e.g. intro music → gameplay music). Pauses
+    // the current one; if playback was already unlocked by a user gesture the
+    // new track starts immediately, otherwise it becomes the track that the
+    // first-gesture unlock will start. Volume/mute settings carry over.
+    switchMusic(src) {
+        const wasPlaying = this._started;
+        if (this.music) this.music.pause();
+        this.loadMusic(src);
+        this.music.volume = this.muted ? 0 : this.musicVolume;
+        if (wasPlaying) {
+            this._started = false; // re-arm playMusic for the new element
+            this.playMusic();
+        }
+    }
+
     // Begin playback. Safe to call repeatedly — only the first successful call
     // (after a user gesture) actually starts the track.
     playMusic() {

@@ -38,8 +38,9 @@ async function init() {
     game = new Game('game-canvas');
     await game.loadAssets();
 
-    // Background music — primed now, started on the first user gesture
-    // (browsers block autoplay until then).
+    // Intro music (MIKE) — primed now, started on the first user gesture
+    // (browsers block autoplay until then). Gameplay switches to the bass
+    // track when START is picked — see the intro branch in updateGame.
     game.audio.loadMusic('assets/MIKE.mp3');
     game.audio.unlockOnFirstGesture();
 
@@ -161,6 +162,9 @@ function updateGame(dt) {
         if (choice === 'START') {
             loadStage(STAGES[3]);
             gameState.screen = 'playing';
+            // Leave the intro music behind: gameplay runs the bass track.
+            // (Stage-to-stage travel later keeps it — this only fires once.)
+            game.audio.switchMusic('assets/bass.mp3');
         }
         return;
     }

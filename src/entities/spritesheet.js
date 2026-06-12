@@ -10,7 +10,9 @@ class SpriteSheet {
     }
 
     loadSprites(targetWidth, targetHeight) {
-        const img = this.game.getImage('character_sheet');
+        // getDrawable: ImageBitmap (decode-once) — sprite records capture this
+        // reference and draw it every frame.
+        const img = this.game.getDrawable('character_sheet');
         const data = this.game.getJSON('character_sprites');
 
         const sprites = {
@@ -85,7 +87,10 @@ class SpriteSheet {
      * the sprite doesn't distort; render height is uniform = targetHeight.
      */
     loadCoconutSprites(targetHeight) {
-        const img = this.game.getImage('coconut_sheet');
+        // getDrawable: ImageBitmap (decode-once). The <img> behind this key is
+        // freed after load (~104MB decoded) — the bitmap is the only copy,
+        // used both for the bodyBaseline scan below and per-frame draws.
+        const img = this.game.getDrawable('coconut_sheet');
         const data = this.game.getJSON('coconut_sprites');
 
         const sprites = {};
