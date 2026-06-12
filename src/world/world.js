@@ -94,15 +94,33 @@ class World {
         }
     }
 
+    // One-time pixel samples (zone map, silhouette) are cached on `game` keyed
+    // by image key, and their big source image is FREED after sampling — those
+    // masters (~190MB decoded each) are never drawn, so keeping them resident
+    // only feeds memory pressure on weak machines (PERFORMANCE.md R3). The
+    // cache survives World re-creation on stage reload, so the image is never
+    // needed again. main.js warms these at loadStage so the one-time decode
+    // happens during the load, not mid-gameplay.
+    _sampleOnce(key, smooth) {
+        const cache = this.game._sampleCache || (this.game._sampleCache = {});
+        if (cache[key] !== undefined) return cache[key];
+        const img = this.game.getImage(key);
+        if (!img || !img.naturalWidth) return null;
+        const id = this._sampleImage(img, smooth);
+        if (id) {
+            cache[key] = id;
+            this.game.assets.images[key] = null; // one-time read — free it
+        }
+        return id;
+    }
+
     _ensureZoneData() {
         if (this._zoneData !== undefined) return;
         this._zoneData = null;
         if (!this.stage.backgroundImage) return;
-        const img = this.game.getImage(this.stage.backgroundImage);
-        if (!img || !img.naturalWidth) return;
         // Nearest-neighbor (smooth=false): zones are decided by flat color, so we
         // must not let downscaling blend region borders into in-between hues.
-        this._zoneData = this._sampleImage(img, false);
+        this._zoneData = this._sampleOnce(this.stage.backgroundImage, false);
     }
 
     // World-Y of the image midline. Used as both the "high zone" boundary
@@ -125,12 +143,12 @@ class World {
         // may be gappy line-art) — see backgroundSilhouetteImage in stages.js.
         const key = this.stage.backgroundSilhouetteImage || this.stage.backgroundOverlayImage;
         if (!key) return;
-        const img = this.game.getImage(key);
-        if (!img || !img.naturalWidth) return;
 
         // Alpha is the mountain silhouette; smoothing is fine here. Same size cap
         // as the zone canvas so a huge overlay can't exceed the max-canvas limit.
-        const id = this._sampleImage(img, true);
+        // Sampled once then the source image is freed (the map toggle lazily
+        // re-loads it for display if needed — the sample here is kept either way).
+        const id = this._sampleOnce(key, true);
         if (id) this._mountainOverlayData = { data: id.data, w: id.width, h: id.height };
     }
 
@@ -142,6 +160,7 @@ class World {
     // is handled for free because we're checking the polygon's own pixels
     // — there is no rectangular bbox heuristic anywhere in the path.
     isSpriteBehindMountain(wx, wy, ww, wh) {
+        if (window.PERF) window.PERF.count('behind');
         this._ensureMountainOverlayData();
         const od = this._mountainOverlayData;
         if (!od) return false;
@@ -221,6 +240,7 @@ class World {
     }
 
     getZoneAt(wx, wy) {
+        if (window.PERF) window.PERF.count('zone');
         this._ensureZoneData();
         if (!this._zoneData) return Zone.WALKABLE;
         const rect = this.stage.backgroundImageRect;

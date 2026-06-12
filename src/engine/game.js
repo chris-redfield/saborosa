@@ -131,9 +131,11 @@ class Game {
                 // the (opaque) lower offline, so runtime draws just these two.
                 this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-fim-island-01-lower.png'),
                 this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-fim-island-01-overlay.png'),
-                // The old colored zoning map, kept as a DISPLAY alternative for the
-                // map-art toggle (and as the solid silhouette used for occlusion).
-                this.loadImage('stage3_lower_color', 'assets/saborosa-fundo-base-V2-lower.png'),
+                // V2 overlay: loaded ONLY as the one-time source for the solid
+                // occlusion silhouette — sampled at stage load, then freed (see
+                // world._ensureMountainOverlayData). Its display role (and
+                // stage3_lower_color's) is lazy-loaded by the map toggle on
+                // first use, so the V2 pair never sits decoded during play.
                 this.loadImage('stage3_overlay_color', 'assets/saborosa-fundo-base-V2-overlay.png'),
                 // Pickable/throwable blocks + the placeable "prop" structures
                 // (platform/big-stack/tower). One transparent sheet; the defs
@@ -191,7 +193,14 @@ class Game {
                     if (!img) return null;
                     this.assets.bitmapPending[k] = true;
                     return createImageBitmap(img)
-                        .then(b => { this.assets.bitmaps[k] = b; })
+                        .then(b => {
+                            this.assets.bitmaps[k] = b;
+                            // The bitmap is the drawable now — drop the <img>
+                            // so we don't keep a duplicate decoded copy
+                            // (~47MB each) resident. Nothing else reads these
+                            // keys via getImage.
+                            this.assets.images[k] = null;
+                        })
                         .catch(() => {});
                 }));
             }
@@ -255,6 +264,11 @@ class Game {
     gameLoop(currentTime) {
         if (!this.running) return;
 
+        // Perf HUD bookkeeping (hold C to view). Must be the first thing in the
+        // frame so rAF-to-rAF time is measured cleanly.
+        const PERF = window.PERF;
+        if (PERF) PERF.frame(currentTime);
+
         this.deltaTime = currentTime - this.lastTime;
         this.lastTime = currentTime;
 
@@ -284,17 +298,28 @@ class Game {
         // Fixed timestep
         this.accumulator += this.deltaTime;
         let didUpdate = false;
+        let updates = 0;
+        if (PERF) PERF.begin('update');
         while (this.accumulator >= this.frameTime) {
             if (this.onUpdate) this.onUpdate(this.frameTime / 1000);
             this.accumulator -= this.frameTime;
             didUpdate = true;
+            updates++;
+        }
+        if (PERF) {
+            PERF.end('update');
+            // >1 sustained means the machine renders slower than 60Hz and pays
+            // for it AGAIN in catch-up updates (cost multiplies on slow machines).
+            PERF.note('upd/frame', updates);
         }
         if (didUpdate) this.input.clearFrameState();
 
         // Render
+        if (PERF) PERF.begin('render');
         this.ctx.fillStyle = this.backgroundColor;
         this.ctx.fillRect(0, 0, this.width, this.height);
         if (this.onRender) this.onRender(this.ctx);
+        if (PERF) PERF.end('render');
 
         requestAnimationFrame((t) => this.gameLoop(t));
     }

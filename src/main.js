@@ -64,11 +64,22 @@ async function init() {
 }
 
 // Map-art toggle: switch the DISPLAYED stage-3 layers between the real island
-// art (over the sand backdrop) and the old colored zoning map ("the old one").
-// Only swaps the drawn layer keys + the sand backdrop on the live stage — the
-// zoning source and the occlusion silhouette are untouched, so gameplay is
-// identical either way. Takes effect on the next frame.
+// art and the old colored zoning map ("the old one"). Only swaps the drawn
+// layer keys on the live stage — the zoning source and the occlusion
+// silhouette are untouched, so gameplay is identical either way.
+//
+// The V2 colored pair is NOT loaded at boot (it would sit ~390MB decoded for a
+// debug feature — PERFORMANCE.md R3c). It loads on the FIRST toggle only.
 let mapStyleColor = false; // false = real island art (default), true = old colored map
+let zoningLayersLoaded = false;
+async function ensureZoningLayers() {
+    if (zoningLayersLoaded) return;
+    await Promise.all([
+        game.loadImage('stage3_lower_color', 'assets/saborosa-fundo-base-V2-lower.png'),
+        game.loadImage('stage3_overlay_color', 'assets/saborosa-fundo-base-V2-overlay.png'),
+    ]);
+    zoningLayersLoaded = true;
+}
 function applyMapStyle() {
     const stage = gameState.currentStage;
     if (!stage || !stage.backgroundLowerImage) return;
@@ -92,8 +103,12 @@ function makeMapStyleToggle() {
     s.background = '#222';
     s.color = '#fff';
     btn.textContent = label();
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
         mapStyleColor = !mapStyleColor;
+        if (mapStyleColor && !zoningLayersLoaded) {
+            btn.textContent = 'Map: loading…';
+            await ensureZoningLayers();
+        }
         applyMapStyle();
         btn.textContent = label();
         btn.blur();
@@ -119,6 +134,16 @@ function loadStage(stage) {
     const bx = Math.floor(gameState.player.x / BLOCK_W);
     const by = Math.floor(gameState.player.y / BLOCK_H);
     gameState.world.loadSurrounding(bx, by);
+
+    // Warm the one-time pixel samples NOW (zone map + occlusion silhouette).
+    // This forces the big master images to decode + sample during stage load —
+    // not on the first mid-gameplay lookup, which would hitch a frame — and
+    // frees them right after (world._sampleOnce). Runtime never touches the
+    // masters again; all image scaling is done offline (build-island-art.py).
+    if (stage.backgroundImage) {
+        gameState.world.getZoneAt(stage.spawnX, stage.spawnY);
+        gameState.world.isSpriteBehindMountain(stage.spawnX, stage.spawnY, 1, 1);
+    }
 
     // Background for areas outside blocks
     game.backgroundColor = stage.sandColor || (stage.type === 'finite' ? '#0a0500' : stage.groundColor);
@@ -650,8 +675,12 @@ function renderGame(ctx) {
     _viewRect.y0 = camY + focalY * (1 - invS);
     _viewRect.y1 = camY + focalY + (game.height - focalY) * invS;
 
+    const PERF = window.PERF;
+
     // Draw ground tiles + lava (lower layer = sand + below-midline content)
+    if (PERF) PERF.begin('ground');
     world.renderGround(ctx, _viewRect);
+    if (PERF) PERF.end('ground');
 
     // Mountain layer order depends on the player.behindMountain state, set
     // when fall-behind starts and cleared when the player walks out of the
@@ -659,11 +688,14 @@ function renderGame(ctx) {
     // mountain). Behind: drawn last so the mountain occludes the sprite.
     const hasOverlay = world.stage && world.stage.backgroundOverlayImage;
     if (hasOverlay && !player.behindMountain) {
+        if (PERF) PERF.begin('overlay');
         world.renderOverlay(ctx, _viewRect);
+        if (PERF) PERF.end('overlay');
     }
 
     // Collect all renderables, depth-sort by bottom edge
     // Exclude lifted object (player renders it on top of themselves)
+    if (PERF) PERF.begin('entities');
     const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
     entities.push(player);
     // Stacked rocks use their parent's bottom edge + 1 so they render in front
@@ -677,6 +709,7 @@ function renderGame(ctx) {
     // pop entities at the edge.
     const cullBufX = game.width * 0.3;
     const cullBufY = game.height * 0.3;
+    let drawnEntities = 0;
     for (const entity of entities) {
         const sx = entity.x - camX;
         const sy = entity.y - camY;
@@ -684,19 +717,28 @@ function renderGame(ctx) {
             sy + entity.height < -cullBufY || sy > game.height + cullBufY) continue;
 
         entity.render(ctx, game, camX, camY);
+        drawnEntities++;
+    }
+    if (PERF) {
+        PERF.end('entities');
+        PERF.note('drawn', `${drawnEntities}/${entities.length}`);
     }
 
     // Ambient FX drawn above the scenery (no collision, no depth sort) —
     // shimmering shadows/clippy and ping-ponging balls popping around the view.
+    if (PERF) PERF.begin('fx');
     if (gameState.fxManager) gameState.fxManager.render(ctx, camX, camY);
+    if (PERF) PERF.end('fx');
 
     // Fall-behind: when the player has dropped below the mountain silhouette,
     // draw the upper layer AFTER the player so the mountain occludes them.
     // Half-opacity so the player remains visible through the silhouette.
     if (hasOverlay && player.behindMountain) {
+        if (PERF) PERF.begin('overlay');
         ctx.globalAlpha = 0.5;
         world.renderOverlay(ctx, _viewRect);
         ctx.globalAlpha = 1;
+        if (PERF) PERF.end('overlay');
     }
 
     // During transition, draw the basket on top of everything (it's ascending)
@@ -763,6 +805,10 @@ function renderGame(ctx) {
         ctx.fillStyle = '#fff';
         ctx.font = '10px monospace';
         ctx.fillText(zone, screenFeetX + 10, screenFeetY + 14);
+
+        // Perf panel (top right): per-section frame timings, counters, heap.
+        // See PERFORMANCE.md for how to read it and the optimization plan.
+        if (PERF) PERF.render(ctx, game);
     }
 }
 
