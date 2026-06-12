@@ -43,6 +43,11 @@ async function init() {
     // track when START is picked — see the intro branch in updateGame.
     game.audio.loadMusic('assets/MIKE.mp3');
     game.audio.unlockOnFirstGesture();
+    // Altitude layer: beats joins the bass while the player is above the
+    // mountain-split line (driven per-frame in updateGame). Plays at 0.21 of
+    // the music volume (user-tuned in steps: 0.6 → 0.3 → −30% more). The
+    // bass is NOT ducked — both run at their own constant levels.
+    game.audio.loadLayer('assets/beats.mp3', 0.21);
 
     // Start on the intro/title screen. The stage is loaded lazily when the
     // player picks START (see updateGame), so we don't pay for it up front.
@@ -249,6 +254,13 @@ function updateGame(dt) {
     const midlineWorldY = (world.stage && world.stage.backgroundImage)
         ? world.getMidlineWorldY() : null;
     const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
+
+    // Altitude audio layer: the beats track plays ON TOP of the bass while the
+    // player is above the mountain-split line, and stops below it (the bass
+    // alone remains). Channel-style: pausing keeps its position. The calls
+    // no-op unless the state flips, so per-frame driving is free.
+    if (aboveMidline) game.audio.playLayer();
+    else game.audio.stopLayer();
 
     // Walk-back-behind: feet just stepped onto an opaque overlay pixel from
     // a transparent one while above the midline. Slip behind, no climb.

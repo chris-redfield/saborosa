@@ -13,6 +13,12 @@ class AudioManager {
         // Per-track loudness factor on top of musicVolume — lets one song play
         // quieter than another without touching the global volume/mute knobs.
         this.trackScale = 1;
+        // Optional second looping track layered ON TOP of the music, like a
+        // stem/channel (e.g. the altitude "beats" layer). Play/stop keeps its
+        // position, so re-entering feels like unmuting a channel.
+        this.layer = null;
+        this.layerScale = 1;
+        this._layerOn = false;
         this.muted = false;
         this._started = false;
     }
@@ -20,6 +26,9 @@ class AudioManager {
     _applyVolume() {
         if (this.music) {
             this.music.volume = this.muted ? 0 : this.musicVolume * this.trackScale;
+        }
+        if (this.layer) {
+            this.layer.volume = this.muted ? 0 : this.musicVolume * this.layerScale;
         }
     }
 
@@ -46,6 +55,32 @@ class AudioManager {
             this._started = false; // re-arm playMusic for the new element
             this.playMusic();
         }
+    }
+
+    // Prime the layered track (doesn't play yet — playLayer/stopLayer drive it).
+    loadLayer(src, trackScale = 1) {
+        const a = new Audio();
+        a.src = src;
+        a.loop = true;
+        a.preload = 'auto';
+        this.layer = a;
+        this.layerScale = trackScale;
+        this._layerOn = false;
+        this._applyVolume();
+    }
+
+    // Both are cheap to call every frame — they no-op unless the state flips.
+    playLayer() {
+        if (!this.layer || this._layerOn) return;
+        this._layerOn = true;
+        const p = this.layer.play();
+        if (p && p.catch) p.catch(() => { this._layerOn = false; });
+    }
+
+    stopLayer() {
+        if (!this.layer || !this._layerOn) return;
+        this._layerOn = false;
+        this.layer.pause(); // keeps position — resumes where it left off
     }
 
     // Begin playback. Safe to call repeatedly — only the first successful call
