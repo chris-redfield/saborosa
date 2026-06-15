@@ -59,8 +59,14 @@ class MapObject {
     }
 
     render(ctx, game, camX, camY) {
-        const sx = Math.round(this.x - camX);
-        const sy = Math.round(this.y - camY);
+        // Match Rock/Player: render at the raw sub-pixel screen position. The
+        // whole world scrolls at fractional precision (cameraX tracks the
+        // fractional player position; the background pans its source rect
+        // sub-pixel). Rounding here alone made placed props snap in 1-px steps
+        // while everything else slid smoothly — they appeared to jitter/swim
+        // against the ground as the camera moved.
+        const sx = this.x - camX;
+        const sy = this.y - camY;
         const sheet = game.getDrawable(this.sheetKey);
 
         if (sheet) {
