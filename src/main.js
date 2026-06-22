@@ -70,6 +70,58 @@ async function init() {
 
     game.start();
     console.log('Intro screen ready. ↑/↓ to choose, Space/Enter to select.');
+
+    makeMapStyleToggle();
+}
+
+// Debug map-view toggle (top-right, outside the canvas): swap the displayed
+// stage-3 background between the real island art (stage3_background) and the
+// flat ZONE map (V2), to inspect the color-coded zones. Gameplay is identical —
+// only the drawn base changes; zones, occlusion and fall-behind are untouched.
+//
+// The zone map is loaded for DISPLAY lazily on the first toggle: at boot V2 is
+// sampled for zones then its <img> is freed, so a fresh copy is needed to draw
+// it (it would otherwise sit ~90MB decoded for a debug-only feature).
+let showZoneMap = false; // false = real island art (default), true = zone map
+let zoneMapDisplayLoaded = false;
+async function ensureZoneMapDisplay() {
+    if (zoneMapDisplayLoaded) return;
+    await game.loadImage('stage3_zonemap', 'assets/saborosa-fundo-base-V2.png');
+    zoneMapDisplayLoaded = true;
+}
+function applyMapStyle() {
+    const stage = gameState.currentStage;
+    if (!stage || !stage.backgroundLowerImage) return;
+    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : 'stage3_background';
+}
+function makeMapStyleToggle() {
+    if (typeof document === 'undefined' || !document.body) return;
+    const btn = document.createElement('button');
+    const label = () => `Map: ${showZoneMap ? 'ZONING' : 'REAL'}`;
+    const s = btn.style;
+    s.position = 'fixed';
+    s.top = '10px';
+    s.right = '10px';
+    s.zIndex = '10000';
+    s.padding = '6px 10px';
+    s.font = '13px monospace';
+    s.cursor = 'pointer';
+    s.border = '1px solid #888';
+    s.borderRadius = '4px';
+    s.background = '#222';
+    s.color = '#fff';
+    btn.textContent = label();
+    btn.addEventListener('click', async () => {
+        showZoneMap = !showZoneMap;
+        if (showZoneMap && !zoneMapDisplayLoaded) {
+            btn.textContent = 'Map: loading…';
+            await ensureZoneMapDisplay();
+        }
+        applyMapStyle();
+        btn.textContent = label();
+        btn.blur();
+    });
+    document.body.appendChild(btn);
 }
 
 function loadStage(stage) {

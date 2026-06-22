@@ -60,8 +60,7 @@
 <script>
 const A = '../assets/';
 const SHEET = A + 'saborosa-assets-001.png';
-const BG = A + 'saborosa-fundo-base-V2-lower.png';
-const OVERLAY = A + 'saborosa-fundo-base-V2-overlay.png';
+const BG = A + 'cor-saborosa-fundo-fim-island-01-combined.png'; // the real game background
 const DEFS = A + 'saborosa-assets-001-sprites.json';
 const OBJS = A + 'painted-isle-objects.json';
 const LIVEROCK_SHEET = A + 'saborosa-cha-001.png';   // liverock animation sheet
@@ -100,7 +99,7 @@ function imgFor(d) {
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
-let sheetImg = null, bgImg = null, overlayImg = null, liverockImg = null, blockImg = null;
+let sheetImg = null, bgImg = null, liverockImg = null, blockImg = null;
 let defs = { sheet: 'saborosa-assets-001.png', assets: {} };
 let blockDefs = { sheet: 'saborosa-assets-002.png', assets: {} };  // assets-002 blocks/props
 let objects = [];                 // { id, x, y, scale, flipX }
@@ -131,8 +130,8 @@ function fit() {
 // ---- loading ----
 function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; }); }
 async function boot() {
-  [sheetImg, bgImg, overlayImg, liverockImg, blockImg] =
-    await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(OVERLAY), loadImg(LIVEROCK_SHEET), loadImg(SHEET2)]);
+  [sheetImg, bgImg, liverockImg, blockImg] =
+    await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(LIVEROCK_SHEET), loadImg(SHEET2)]);
   try { defs = await (await fetch(DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
   try { blockDefs = await (await fetch(DEFS2, { cache: 'no-cache' })).json(); } catch (e) {}
   // Tag each 002 def so imgFor()/placement know its sheet + preview size.
@@ -181,8 +180,6 @@ function draw() {
   const [bx, by] = w2s(RECT.x, RECT.y);
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(bgImg, bx, by, RECT.w * view.zoom, RECT.h * view.zoom);
-  // Mountain overlay, drawn on top at the same rect (matches the game).
-  if (overlayImg) ctx.drawImage(overlayImg, bx, by, RECT.w * view.zoom, RECT.h * view.zoom);
 
   if (mode === 'col') { drawColMode(); return; }
 
