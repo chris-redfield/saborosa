@@ -294,7 +294,7 @@ class IntroScreen {
         if (this.starting) {
             this.startT += dt;
             // Keep edge state fresh so a held key doesn't re-fire post-load.
-            this._edge('attack'); this._edge('confirm'); this._edge('interact');
+            this._edge('lift'); this._edge('confirm'); this._edge('interact');
             this._edge('up'); this._edge('down'); this._edge('escape');
             if (this.startT >= this.startDur) {
                 // Black out the whole window, but DON'T hand off to the game
@@ -313,10 +313,10 @@ class IntroScreen {
         const up = this._edge('up');
         const down = this._edge('down');
         // Evaluate every confirm key so each one's edge-state stays current.
-        const eAttack = this._edge('attack');
+        const eLift = this._edge('lift');
         const eConfirm = this._edge('confirm');
         const eInteract = this._edge('interact');
-        const confirm = eAttack || eConfirm || eInteract;
+        const confirm = eLift || eConfirm || eInteract;
         const back = this._edge('escape');
         const left = this._edge('left');
         const right = this._edge('right');

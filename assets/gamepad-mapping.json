@@ -1,0 +1,37 @@
+{
+  "id": "2dc8-310a-8BitDo Ultimate 2C Wireless Controller",
+  "mapping": "standard",
+  "buttonCount": 17,
+  "axisCount": 4,
+  "deadzone": 0.45,
+  "axes": {
+    "moveX": 0,
+    "moveY": 1,
+    "invertX": false,
+    "invertY": false
+  },
+  "buttons": {
+    "up": 12,
+    "down": 13,
+    "left": 14,
+    "right": 15,
+    "lift": 2,
+    "interact": 3,
+    "dash": 5,
+    "pause": 9,
+    "mute": 8,
+    "cycleCharacter": 4
+  },
+  "gamepadMap": {
+    "2": "lift",
+    "3": "interact",
+    "4": "cycleCharacter",
+    "5": "dash",
+    "8": "mute",
+    "9": "pause",
+    "12": "up",
+    "13": "down",
+    "14": "left",
+    "15": "right"
+  }
+}

@@ -207,6 +207,18 @@ class Game {
             }
 
             await Promise.all(loads);
+
+            // Optional controller mapping authored in tools/gamepad-mapper.html.
+            // Best-effort: a 404 / parse error just leaves input.js on its
+            // built-in defaults, so the file is purely additive.
+            try {
+                const res = await fetch('assets/gamepad-mapping.json', { cache: 'no-cache' });
+                if (res.ok) {
+                    this.input.applyMapping(await res.json());
+                    console.log('Gamepad mapping loaded:', this.input.gamepadId || '(no id)');
+                }
+            } catch (e) { /* no mapping file — keep defaults */ }
+
             // The block sheet (assets-002) is already transparent, so no
             // white-keying is needed (unlike the old cube sheet).
             // Coconut sheet was pre-processed offline (PIL matte extraction)

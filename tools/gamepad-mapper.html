@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Gamepad Mapper</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; min-height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.5 monospace; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; position:sticky; top:0; z-index:5; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:inherit; }
+  button:hover { background:#2c3e63; }
+  button:disabled { opacity:.4; cursor:default; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #status { margin-left:auto; color:var(--ok); }
+  #wrap { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:14px; max-width:1100px; }
+  .card { background:var(--panel); border:1px solid #0c1226; border-radius:6px; padding:12px; }
+  .card h3 { margin:0 0 8px; color:var(--accent); font-size:13px; }
+  #info { grid-column:1 / -1; }
+  #info .id { color:#fff; word-break:break-all; }
+  #info .pill { display:inline-block; background:#0e1730; border:1px solid #2a3a5a;
+                border-radius:10px; padding:1px 8px; margin-right:6px; color:#9ab; }
+  #info .pill.live { border-color:var(--ok); color:var(--ok); }
+  #info .pill.dead { border-color:var(--hot); color:var(--hot); }
+  /* raw buttons */
+  #btns { display:grid; grid-template-columns:repeat(6,1fr); gap:5px; }
+  .btn { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px; padding:5px 2px;
+         text-align:center; font-size:11px; }
+  .btn.on { background:var(--accent); color:#04222b; border-color:var(--accent); font-weight:bold; }
+  .btn small { display:block; color:#7a8aa8; font-size:9px; }
+  .btn.on small { color:#04343f; }
+  /* axes */
+  .axis { display:flex; align-items:center; gap:8px; margin:4px 0; }
+  .axis label { width:48px; color:#9ab; }
+  .bar { flex:1; height:12px; background:#0e1730; border:1px solid #2a3a5a; border-radius:6px;
+         position:relative; overflow:hidden; }
+  .bar i { position:absolute; top:0; bottom:0; width:2px; background:var(--accent); left:50%; }
+  .bar u { position:absolute; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%;
+           background:var(--hot); left:50%; transition:left .03s linear; }
+  .axis .val { width:50px; text-align:right; color:#cfe; }
+  /* bind table */
+  table { width:100%; border-collapse:collapse; }
+  td, th { padding:4px 6px; border-bottom:1px solid #22304f; text-align:left; }
+  th { color:#7a8aa8; font-weight:normal; font-size:11px; }
+  td.act { color:#cfe; }
+  td.key { color:#7a8aa8; font-size:11px; }
+  td.bound { color:var(--ok); font-weight:bold; }
+  td.bound.none { color:#55617a; font-weight:normal; }
+  tr.listening { background:#2a1422; }
+  tr.listening td.bound { color:var(--hot); }
+  .sec { color:var(--accent); font-size:11px; padding-top:8px; }
+  #out { grid-column:1 / -1; }
+  #out textarea { width:100%; height:200px; background:#0c1020; color:#bfe; border:1px solid #2a3a5a;
+                  border-radius:4px; font:12px/1.4 monospace; padding:8px; resize:vertical; }
+  kbd { background:#0e1730; border:1px solid #2a3a5a; border-radius:3px; padding:0 4px; color:#cfe; }
+  #prompt { grid-column:1 / -1; background:#2a1422; border:1px solid var(--hot); border-radius:6px;
+            padding:14px; text-align:center; font-size:16px; color:#fff; display:none; }
+  #prompt b { color:var(--hot); font-size:22px; }
+  #prompt .sub { color:#caa; font-size:12px; margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>GAMEPAD MAPPER</b>
+  <button id="guided">▶ Guided bind</button>
+  <button id="detectStick">🕹 Detect stick</button>
+  <button id="clear">Clear</button>
+  <button id="export">⬇ mapping.json</button>
+  <span class="hint">Connect a controller and press any button to wake it. Esc cancels a bind.</span>
+  <span id="status"></span>
+</div>
+
+<div id="wrap">
+  <div class="card" id="info">
+    <h3>Controller</h3>
+    <div id="infoBody" class="hint">No gamepad detected — plug one in and press a button.</div>
+  </div>
+
+  <div id="prompt"></div>
+
+  <div class="card">
+    <h3>Live buttons</h3>
+    <div id="btns" class="hint">—</div>
+    <h3 style="margin-top:12px">Live axes</h3>
+    <div id="axes" class="hint">—</div>
+    <div class="axis" style="margin-top:8px">
+      <label>deadzone</label>
+      <input id="dead" type="range" min="0" max="0.9" step="0.05" value="0.45" style="flex:1">
+      <span class="val" id="deadVal">0.45</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Bindings</h3>
+    <table>
+      <thead><tr><th>Action</th><th>Keyboard</th><th>Button</th><th></th></tr></thead>
+      <tbody id="bindRows"></tbody>
+    </table>
+    <div class="hint" style="margin-top:8px">Click <kbd>Listen</kbd> on a row, then press the pad button.
+      Movement also reads the left stick (axes below).</div>
+  </div>
+
+  <div class="card" id="out">
+    <h3>Exported mapping</h3>
+    <textarea id="outText" readonly></textarea>
+    <div class="hint">Same JSON is copied to the clipboard on Export. <code>gamepadMap</code> is the
+      index→action object that drops into <code>src/engine/input.js</code>.</div>
+  </div>
+</div>
+
+<script>
+// Game actions (names match src/engine/input.js keyMap). `dir` flags directions
+// that ALSO read from the stick axes; `key` is the keyboard equivalent shown for
+// reference. Order = the guided-bind sequence.
+const ACTIONS = [
+  { id:'up',    key:'W / ↑',  dir:true,  group:'Movement' },
+  { id:'down',  key:'S / ↓',  dir:true,  group:'Movement' },
+  { id:'left',  key:'A / ←',  dir:true,  group:'Movement' },
+  { id:'right', key:'D / →',  dir:true,  group:'Movement' },
+  { id:'lift',          key:'Space', group:'Actions' },  // lift / charge / throw a rock
+  { id:'interact',      key:'E',     group:'Actions' },  // board the basket to ascend
+  { id:'confirm',       key:'Enter', group:'Actions' },
+  { id:'dash',          key:'Shift', group:'Actions' },
+  { id:'run',           key:'R',     group:'Actions' },
+  { id:'pause',         key:'P',     group:'System'  },
+  { id:'mute',          key:'M',     group:'System'  },
+  { id:'escape',        key:'Esc',   group:'System'  },
+  { id:'debug',         key:'C',     group:'System'  },
+  { id:'cycleCharacter',key:'1',     group:'System'  },
+];
+
+// State
+let pad = null;                 // active Gamepad snapshot
+let padIndex = null;            // navigator.getGamepads() index
+let prevPressed = [];           // edge detection
+const binding = {};             // action -> button index
+const axesCfg = { moveX:0, moveY:1, invertX:false, invertY:false };
+let deadzone = 0.45;
+let listenAction = null;        // action currently waiting for a press
+let guidedQueue = null;         // array of remaining actions for guided flow
+let stickDetect = null;         // { maxAbs:[], untilFrames }
+
+const $ = id => document.getElementById(id);
+
+// ---- build the bind table ----
+function buildRows() {
+  const tb = $('bindRows'); tb.innerHTML = '';
+  let group = null;
+  for (const a of ACTIONS) {
+    if (a.group !== group) {
+      group = a.group;
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="sec" colspan="4">${group}</td>`;
+      tb.appendChild(tr);
+    }
+    const tr = document.createElement('tr'); tr.dataset.act = a.id;
+    tr.innerHTML =
+      `<td class="act">${a.id}</td><td class="key">${a.key}</td>` +
+      `<td class="bound none">—</td>` +
+      `<td><button data-listen="${a.id}">Listen</button></td>`;
+    tb.appendChild(tr);
+  }
+  tb.querySelectorAll('button[data-listen]').forEach(b =>
+    b.onclick = () => startListen(b.dataset.listen));
+  refreshRows();
+}
+function refreshRows() {
+  for (const a of ACTIONS) {
+    const tr = $('bindRows').querySelector(`tr[data-act="${a.id}"]`);
+    if (!tr) continue;
+    const cell = tr.querySelector('.bound');
+    const has = binding[a.id] !== undefined;
+    cell.textContent = has ? ('B' + binding[a.id]) : '—';
+    cell.classList.toggle('none', !has);
+    tr.classList.toggle('listening', listenAction === a.id);
+  }
+}
+
+function startListen(action) {
+  listenAction = action; guidedQueue = null; showPrompt(action);
+  refreshRows();
+}
+function cancelListen() {
+  listenAction = null; guidedQueue = null; hidePrompt(); refreshRows();
+}
+function bindButton(action, index) {
+  binding[action] = index;
+  // If this index was bound elsewhere, that's allowed (e.g. attack/confirm share).
+  if (guidedQueue) {
+    const next = guidedQueue.shift();
+    if (next) { listenAction = next; showPrompt(next); }
+    else { listenAction = null; hidePrompt(); status('Guided bind complete.'); }
+  } else {
+    listenAction = null; hidePrompt();
+  }
+  refreshRows(); emit();
+}
+
+function showPrompt(action) {
+  const a = ACTIONS.find(x => x.id === action);
+  const p = $('prompt'); p.style.display = 'block';
+  p.innerHTML = `Press the button for <b>${action}</b>` +
+    `<div class="sub">keyboard: ${a ? a.key : ''} · press <kbd>Esc</kbd> (keyboard) to skip/cancel</div>`;
+}
+function hidePrompt() { $('prompt').style.display = 'none'; }
+
+// ---- guided + stick ----
+$('guided').onclick = () => {
+  if (!pad) { status('No gamepad. Press a button first.'); return; }
+  guidedQueue = ACTIONS.map(a => a.id);
+  listenAction = guidedQueue.shift();
+  showPrompt(listenAction); refreshRows();
+};
+$('detectStick').onclick = () => {
+  if (!pad) { status('No gamepad. Press a button first.'); return; }
+  stickDetect = { maxAbs: new Array(pad.axes.length).fill(0), frames: 180 };
+  status('Roll the left stick in full circles…');
+};
+$('clear').onclick = () => {
+  for (const k of Object.keys(binding)) delete binding[k];
+  axesCfg.moveX = 0; axesCfg.moveY = 1; axesCfg.invertX = axesCfg.invertY = false;
+  cancelListen(); refreshRows(); emit(); status('Cleared.');
+};
+$('dead').oninput = e => { deadzone = parseFloat(e.target.value); $('deadVal').textContent = deadzone.toFixed(2); emit(); };
+
+window.addEventListener('keydown', e => { if (e.code === 'Escape') cancelListen(); });
+window.addEventListener('gamepadconnected', e => status('Connected: ' + e.gamepad.id));
+window.addEventListener('gamepaddisconnected', () => status('Gamepad disconnected.'));
+function status(t) { $('status').textContent = t; }
+
+// ---- poll loop ----
+function poll() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  let gp = null;
+  // Prefer the one we're already tracking; else first connected.
+  if (padIndex !== null && pads[padIndex]) gp = pads[padIndex];
+  if (!gp) for (let i = 0; i < pads.length; i++) if (pads[i]) { gp = pads[i]; padIndex = i; break; }
+  pad = gp;
+
+  renderInfo();
+  renderButtons();
+  renderAxes();
+
+  if (gp) {
+    // Edge-detect presses for binding.
+    gp.buttons.forEach((b, i) => {
+      const now = b.pressed || b.value > 0.5;
+      const was = prevPressed[i];
+      if (now && !was && listenAction) bindButton(listenAction, i);
+      prevPressed[i] = now;
+    });
+    // Stick auto-detect: track per-axis travel, pick the two most active.
+    if (stickDetect) {
+      gp.axes.forEach((v, i) => { stickDetect.maxAbs[i] = Math.max(stickDetect.maxAbs[i], Math.abs(v)); });
+      if (--stickDetect.frames <= 0) {
+        const ranked = stickDetect.maxAbs.map((m, i) => [m, i]).sort((a, b) => b[0] - a[0]);
+        if (ranked.length >= 2 && ranked[0][0] > 0.4) {
+          const a0 = ranked[0][1], a1 = ranked[1][1];
+          axesCfg.moveX = Math.min(a0, a1); axesCfg.moveY = Math.max(a0, a1);
+          status(`Stick → axes ${axesCfg.moveX} (X) / ${axesCfg.moveY} (Y).`);
+          emit();
+        } else status('Stick not detected — move it more.');
+        stickDetect = null;
+      }
+    }
+  }
+  requestAnimationFrame(poll);
+}
+
+function renderInfo() {
+  const el = $('infoBody');
+  if (!pad) { el.innerHTML = '<span class="hint">No gamepad detected — plug one in and press a button.</span>'; return; }
+  el.innerHTML =
+    `<div class="id">${pad.id}</div>` +
+    `<div style="margin-top:6px">` +
+      `<span class="pill live">slot ${pad.index}</span>` +
+      `<span class="pill">mapping: ${pad.mapping || 'non-standard'}</span>` +
+      `<span class="pill">${pad.buttons.length} buttons</span>` +
+      `<span class="pill">${pad.axes.length} axes</span>` +
+    `</div>`;
+}
+function renderButtons() {
+  const host = $('btns');
+  if (!pad) { host.textContent = '—'; return; }
+  if (host.children.length !== pad.buttons.length) {
+    host.innerHTML = '';
+    pad.buttons.forEach((_, i) => {
+      const d = document.createElement('div'); d.className = 'btn';
+      d.innerHTML = `B${i}<small>0.00</small>`; host.appendChild(d);
+    });
+  }
+  pad.buttons.forEach((b, i) => {
+    const d = host.children[i];
+    const on = b.pressed || b.value > 0.5;
+    d.classList.toggle('on', on);
+    d.querySelector('small').textContent = b.value.toFixed(2);
+  });
+}
+function renderAxes() {
+  const host = $('axes');
+  if (!pad) { host.textContent = '—'; return; }
+  if (host.children.length !== pad.axes.length) {
+    host.innerHTML = '';
+    pad.axes.forEach((_, i) => {
+      const row = document.createElement('div'); row.className = 'axis';
+      row.innerHTML = `<label>axis ${i}</label><div class="bar"><i></i><u></u></div><span class="val">0.00</span>`;
+      host.appendChild(row);
+    });
+  }
+  pad.axes.forEach((v, i) => {
+    const row = host.children[i];
+    const dead = Math.abs(v) < deadzone;
+    row.querySelector('u').style.left = (50 + v * 50) + '%';
+    row.querySelector('u').style.background = dead ? '#55617a' : 'var(--hot)';
+    row.querySelector('.val').textContent = v.toFixed(2);
+    const isMove = i === axesCfg.moveX || i === axesCfg.moveY;
+    row.querySelector('label').style.color = isMove ? 'var(--accent)' : '#9ab';
+  });
+}
+
+// ---- export ----
+function buildMapping() {
+  // index -> action (the orientation src/engine/input.js's gamepadMap uses).
+  const gamepadMap = {};
+  for (const [act, idx] of Object.entries(binding)) gamepadMap[idx] = act;
+  return {
+    id: pad ? pad.id : null,
+    mapping: pad ? (pad.mapping || 'non-standard') : null,
+    buttonCount: pad ? pad.buttons.length : null,
+    axisCount: pad ? pad.axes.length : null,
+    deadzone,
+    axes: { ...axesCfg },
+    buttons: { ...binding },   // action -> index
+    gamepadMap                 // index -> action (paste-ready)
+  };
+}
+function emit() { $('outText').value = JSON.stringify(buildMapping(), null, 2); }
+
+$('export').onclick = () => {
+  const json = JSON.stringify(buildMapping(), null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'gamepad-mapping.json'; a.click(); URL.revokeObjectURL(a.href);
+  if (navigator.clipboard) navigator.clipboard.writeText(json);
+  status('Exported gamepad-mapping.json (also copied).');
+};
+
+buildRows(); emit(); poll();
+</script>
+</body>
+</html>

@@ -122,8 +122,8 @@ class Player {
         // Throw charging: true while Space is held past the throw threshold.
         // Renders the flattened crouch (wind-up) pose. Released → throwObject.
         this.charging = false;
-        this._attackHoldStart = null; // timestamp Space went down (tap vs hold)
-        this._attackWasCarrying = false; // were we carrying when Space went down?
+        this._liftHoldStart = null; // timestamp Space went down (tap vs hold)
+        this._liftWasCarrying = false; // were we carrying when Space went down?
 
         // Power-throw animation (cols 4–8), played one-shot on a charged
         // (≥2s) throw, then returns to idle.

@@ -664,7 +664,7 @@ function updateGame(dt) {
         // Update stack target cursor every frame while carrying
         player.updateStackTarget(obstacles);
 
-        // Space (attack):
+        // Space (lift):
         //   empty-handed press → pick up
         //   carrying, quick tap → gentle put-down
         //   carrying, hold ≥ THROW_HOLD_MS → crouch (charge) → release → throw
@@ -672,19 +672,19 @@ function updateGame(dt) {
         //   THROW_CHARGE_MS (full hold = max distance, half the time = half).
         const THROW_HOLD_MS = 300;
         const THROW_CHARGE_MS = 2000; // hold time for a full-distance throw (cap)
-        const attackDown = game.input.isKeyDown('attack');
-        if (game.input.isKeyJustPressed('attack')) {
-            player._attackWasCarrying = !!player.liftedObject;
+        const liftDown = game.input.isKeyDown('lift');
+        if (game.input.isKeyJustPressed('lift')) {
+            player._liftWasCarrying = !!player.liftedObject;
             if (!player.liftedObject) {
                 player.liftOrDrop(obstacles); // try pickup
                 // Nothing in range to lift → play the empty-handed gesture.
                 if (!player.liftedObject) player.startAction();
             }
-            player._attackHoldStart = performance.now();
+            player._liftHoldStart = performance.now();
         }
-        if (player._attackHoldStart != null) {
-            const held = performance.now() - player._attackHoldStart;
-            if (attackDown) {
+        if (player._liftHoldStart != null) {
+            const held = performance.now() - player._liftHoldStart;
+            if (liftDown) {
                 // Wind up once held long enough (and only while carrying).
                 if (player.liftedObject && held >= THROW_HOLD_MS) player.charging = true;
             } else {
@@ -693,13 +693,13 @@ function updateGame(dt) {
                     // Charge fraction 0..1: linear in hold time, capped.
                     const charge = Math.min(held, THROW_CHARGE_MS) / THROW_CHARGE_MS;
                     player.throwObject(charge);
-                } else if (player.liftedObject && player._attackWasCarrying) {
+                } else if (player.liftedObject && player._liftWasCarrying) {
                     // Tap while already carrying → gentle drop (the press that
                     // first picks an object up must not immediately drop it).
                     player.liftOrDrop(obstacles);
                 }
                 player.charging = false;
-                player._attackHoldStart = null;
+                player._liftHoldStart = null;
             }
         }
     }
