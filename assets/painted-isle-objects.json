@@ -244,6 +244,22 @@
       "y": 3356,
       "scale": 0.14,
       "flipX": false
+    },
+    {
+      "id": "s_0",
+      "x": 5348,
+      "y": 1766,
+      "scale": 0.4,
+      "flipX": false,
+      "kind": "letter"
+    },
+    {
+      "id": "b_2",
+      "x": 7205,
+      "y": 2745,
+      "scale": 0.4,
+      "flipX": false,
+      "kind": "letter"
     }
   ]
 }

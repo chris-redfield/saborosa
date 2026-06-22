@@ -1135,6 +1135,14 @@ class World {
                         block.addEntity(new LiveRock(this.game, o.x, o.y, { scale: o.scale, flipX: o.flipX }));
                         continue;
                     }
+                    // Decorative SABOROSA letters: a separate def set, spawned as
+                    // non-colliding bob/flicker Letter entities (not MapObjects).
+                    const letterDefs = this.game.getJSON('letter_defs');
+                    if (o.kind === 'letter' || (letterDefs && letterDefs.assets && letterDefs.assets[o.id])) {
+                        const ld = letterDefs && letterDefs.assets ? letterDefs.assets[o.id] : null;
+                        if (ld) block.addEntity(new Letter(this.game, ld, o));
+                        continue;
+                    }
                     let def = (mapDefs && mapDefs.assets) ? mapDefs.assets[o.id] : null;
                     let sheet = 'mapobjects_sheet';
                     if (!def && blockDefs && blockDefs.assets) {

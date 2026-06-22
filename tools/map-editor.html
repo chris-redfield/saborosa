@@ -69,13 +69,21 @@ const LIVEROCK_SHEET = A + 'saborosa-cha-001.png';   // liverock animation sheet
 // of them can be hand-placed on the map.
 const SHEET2 = A + 'saborosa-assets-002.png';
 const DEFS2 = A + 'saborosa-assets-002-sprites.json';
+// Decorative SABOROSA letters (assets/saborosa-letters.png). Placed as
+// `kind:'letter'` objects that the game spawns as bob/flicker Letter entities
+// (non-colliding). Authored by tools/build-letter-defs.py.
+const LETTER_SHEET = A + 'saborosa-letters.png';
+const LETTER_DEFS = A + 'saborosa-letters-sprites.json';
 // Must match STAGES[3].backgroundImageRect in src/world/stages.js
-const RECT = { x: 1577, y: 0, w: 8366, h: 6480 };
+const RECT = { x: 1352, y: 0, w: 8815, h: 6480 };
 const FIXED_SCALE = 0.3;   // assets-001 assets placed at this scale (halved from 0.6)
 // assets-002 are high-res; this matches BLOCK_SCALE in src/entities/environment.js
 // so the editor preview equals the in-game size. (A placed `block` ignores its
 // scale in-game and always uses BLOCK_SCALE; a `prop` honors this scale.)
 const BLOCK_PREVIEW_SCALE = 0.14;
+// Default scale a letter is placed at (full-res glyphs ~470px tall). The letter
+// inspector exposes a per-placement scale slider to size each one.
+const LETTER_DEFAULT_SCALE = 1;
 
 // Special (non-sheet) assets: animated entities the game spawns by id instead
 // of as a static MapObject. The living rock uses its own sheet + the pos1_idle
@@ -89,19 +97,22 @@ const SPECIAL = {
 };
 // Resolve an asset def (001 sheet, 002 block/prop sheet, or special) and the
 // image it draws from. 002 defs are tagged `sheet:'block'` at load.
-function assetDef(id) { return defs.assets[id] || blockDefs.assets[id] || SPECIAL[id]; }
+function assetDef(id) { return defs.assets[id] || blockDefs.assets[id] || letterDefs.assets[id] || SPECIAL[id]; }
 function imgFor(d) {
   if (!d) return sheetImg;
   if (d.sheet === 'liverock') return liverockImg;
   if (d.sheet === 'block') return blockImg;
+  if (d.sheet === 'letter') return letterImg;
   return sheetImg;
 }
+function isLetter(id) { return !!(letterDefs.assets && letterDefs.assets[id]); }
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
-let sheetImg = null, bgImg = null, liverockImg = null, blockImg = null;
+let sheetImg = null, bgImg = null, liverockImg = null, blockImg = null, letterImg = null;
 let defs = { sheet: 'saborosa-assets-001.png', assets: {} };
 let blockDefs = { sheet: 'saborosa-assets-002.png', assets: {} };  // assets-002 blocks/props
+let letterDefs = { sheet: 'saborosa-letters.png', assets: {} };    // SABOROSA glyphs
 let objects = [];                 // { id, x, y, scale, flipX }
 let mode = 'place';               // 'place' | 'col'
 let brush = null;                 // active asset id for placing
@@ -130,20 +141,23 @@ function fit() {
 // ---- loading ----
 function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; }); }
 async function boot() {
-  [sheetImg, bgImg, liverockImg, blockImg] =
-    await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(LIVEROCK_SHEET), loadImg(SHEET2)]);
+  [sheetImg, bgImg, liverockImg, blockImg, letterImg] =
+    await Promise.all([loadImg(SHEET), loadImg(BG), loadImg(LIVEROCK_SHEET), loadImg(SHEET2), loadImg(LETTER_SHEET)]);
   try { defs = await (await fetch(DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
   try { blockDefs = await (await fetch(DEFS2, { cache: 'no-cache' })).json(); } catch (e) {}
+  try { letterDefs = await (await fetch(LETTER_DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
   // Tag each 002 def so imgFor()/placement know its sheet + preview size.
   // (Both tags are editor-only and stripped on export.)
   for (const d of Object.values(blockDefs.assets || {})) { d.sheet = 'block'; d.defaultScale = BLOCK_PREVIEW_SCALE; }
+  // Same for letter glyphs (their game placements carry kind:'letter').
+  for (const d of Object.values(letterDefs.assets || {})) { d.sheet = 'letter'; d.defaultScale = LETTER_DEFAULT_SCALE; }
   try {
     const o = await (await fetch(OBJS, { cache: 'no-cache' })).json();
     if (o && o.objects) objects = o.objects;
   } catch (e) {}
   buildThumbs();
   resize(); fit();
-  const n = Object.keys(defs.assets).length + Object.keys(blockDefs.assets).length;
+  const n = Object.keys(defs.assets).length + Object.keys(blockDefs.assets).length + Object.keys(letterDefs.assets).length;
   status(`${n} assets · ${objects.length} placed`);
 }
 function status(t) { document.getElementById('status').textContent = t; }
@@ -151,7 +165,7 @@ function status(t) { document.getElementById('status').textContent = t; }
 // ---- thumbnails ----
 function buildThumbs() {
   const host = document.getElementById('thumbs'); host.innerHTML = '';
-  for (const [id, d] of Object.entries({ ...defs.assets, ...blockDefs.assets, ...SPECIAL })) {
+  for (const [id, d] of Object.entries({ ...defs.assets, ...blockDefs.assets, ...letterDefs.assets, ...SPECIAL })) {
     const el = document.createElement('div'); el.className = 'thumb'; el.dataset.id = id;
     const c = document.createElement('canvas'); c.width = 80; c.height = 64;
     const cc = c.getContext('2d');
@@ -198,6 +212,12 @@ function drawObject(o, sel) {
   if (o.flipX) { ctx.translate(sx + zw, sy); ctx.scale(-1, 1); ctx.drawImage(imgFor(d), d.x, d.y, d.w, d.h, 0, 0, zw, zh); }
   else ctx.drawImage(imgFor(d), d.x, d.y, d.w, d.h, sx, sy, zw, zh);
   ctx.restore();
+  // Letters are decorative (no collision in-game) — no red box, just the
+  // selection outline below.
+  if (isLetter(o.id)) {
+    if (sel) { ctx.strokeStyle = '#53d8fb'; ctx.lineWidth = 1.5; ctx.strokeRect(sx, sy, zw, zh); }
+    return;
+  }
   // collision box (red) — mirrored when flipped
   const col = d.col || { offX: .2, offY: .78, w: .6, h: .2 };
   const cw = w * col.w, ch = h * col.h;
@@ -240,9 +260,16 @@ function inspect() {
   }
   if (selected < 0) { el.innerHTML = '<div class="hint">Brush: ' + (brush || 'none') + '. Click map to place.</div>'; return; }
   const o = objects[selected];
-  el.innerHTML = `<b>${o.id}</b> #${selected} <span class="hint">scale ${o.scale}</span>
+  el.innerHTML = `<b>${o.id}</b> #${selected}${o.kind === 'letter' ? ' <span class="hint">letter · bob+flicker, no collision</span>' : ''}
+    <label>scale <span id="lbl_scale">${(o.scale || 1).toFixed(2)}</span></label>
+    <input id="scale" type="range" min="0.1" max="3" step="0.05" value="${o.scale || 1}">
     <div class="row"><label style="margin:0"><input id="flip" type="checkbox" ${o.flipX ? 'checked' : ''}> flip X</label>
     <button id="del" style="margin-left:auto">Delete</button></div>`;
+  document.getElementById('scale').oninput = e => {
+    o.scale = parseFloat(e.target.value);
+    document.getElementById('lbl_scale').textContent = o.scale.toFixed(2);
+    draw();
+  };
   document.getElementById('flip').onchange = e => { o.flipX = e.target.checked; draw(); };
   document.getElementById('del').onclick = () => { objects.splice(selected, 1); selected = -1; inspect(); draw(); status(objects.length + ' placed'); };
 }
@@ -292,6 +319,7 @@ cv.addEventListener('mousedown', e => {
     const d = assetDef(brush);
     const sc = d.defaultScale || FIXED_SCALE;
     const o = { id: brush, x: Math.round(wx - d.w * sc / 2), y: Math.round(wy - d.h * sc), scale: sc, flipX: false };
+    if (isLetter(brush)) o.kind = 'letter';   // spawned as a bob/flicker Letter in-game
     objects.push(o); selected = objects.length - 1; inspect(); draw();
     status(objects.length + ' placed');
   } else { selected = -1; inspect(); draw(); }

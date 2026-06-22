@@ -177,6 +177,15 @@ class Game {
                 this.loadJSON('mapobject_defs', 'assets/saborosa-assets-001-sprites.json'),
                 this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json'),
 
+                // Decorative SABOROSA letters scattered across the scenery (placed
+                // in the map editor, spawned as non-colliding Letter entities that
+                // bob + flicker). Two small sheets share one coordinate set: the
+                // yellow fill and a white-fill copy, crossfaded for the flicker.
+                // Authored via tools/build-letter-defs.py.
+                this.loadImage('letters_sheet', 'assets/saborosa-letters.png'),
+                this.loadImage('letters_white_sheet', 'assets/saborosa-letters-white.png'),
+                this.loadJSON('letter_defs', 'assets/saborosa-letters-sprites.json'),
+
                 // Ambient no-collision FX (assets-003) — shadows/clippy twinkle,
                 // the ball ping-pongs. Spawned around the player by FxManager;
                 // tuned in tools/fx-lab.html. Downscaled 4x for the game; boxes
