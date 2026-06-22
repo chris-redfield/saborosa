@@ -133,23 +133,69 @@ class World {
         return rect.y + rect.h * 0.5;
     }
 
-    // Cache the overlay PNG's pixel data once at first use. The overlay is
-    // the actual mountain silhouette as drawn on screen, so its alpha
-    // channel is the source of truth for "is this pixel mountain?"
-    _ensureMountainOverlayData() {
-        if (this._mountainOverlayData !== undefined) return;
-        this._mountainOverlayData = null;
-        // Occlusion uses the SOLID silhouette, not the displayed overlay (which
-        // may be gappy line-art) — see backgroundSilhouetteImage in stages.js.
-        const key = this.stage.backgroundSilhouetteImage || this.stage.backgroundOverlayImage;
-        if (!key) return;
+    // Generate the mountain-occlusion layer ONCE, in memory, from the two
+    // shipped files: the displayed background (stage3_background) masked by the
+    // mountain region read from the zone map (stage3_bg / V2). The mountain =
+    // island pixels ABOVE the image midline (the old lower/overlay split line),
+    // i.e. every V2 pixel above the midline that isn't the flat tan backdrop.
+    // The result is the island ART for the mountain, transparent elsewhere —
+    // drawn opaquely on top of the player when they're behind it (renderOverlay).
+    // Built at the zone-sample resolution so it aligns 1:1 with the zone data
+    // and stays small (~24MB) — it only ever covers the player, so the slight
+    // upscale vs the always-sharp base background is invisible in play.
+    _ensureMountainOverlay() {
+        if (this._mountainOverlay !== undefined) return;
+        this._mountainOverlay = null;
+        if (!this.stage.mountainOcclusion) return;
+        this._ensureZoneData();
+        const zd = this._zoneData;
+        const bgKey = this.stage.backgroundLowerImage;
+        if (!zd || !bgKey) return;
+        const bg = this.game.getDrawable(bgKey);
+        if (!bg || !(bg.naturalWidth || bg.width)) return;
 
-        // Alpha is the mountain silhouette; smoothing is fine here. Same size cap
-        // as the zone canvas so a huge overlay can't exceed the max-canvas limit.
-        // Sampled once then the source image is freed (the map toggle lazily
-        // re-loads it for display if needed — the sample here is kept either way).
-        const id = this._sampleOnce(key, true);
-        if (id) this._mountainOverlayData = { data: id.data, w: id.width, h: id.height };
+        // Build the mountain MASK from the (small) zone map: alpha 255 where a
+        // pixel is ABOVE the midline AND island (not the flat backdrop), else 0.
+        const zw = zd.width, zh = zd.height, zdata = zd.data;
+        const mask = document.createElement('canvas');
+        mask.width = zw; mask.height = zh;
+        const mc = mask.getContext('2d');
+        const mImg = mc.createImageData(zw, zh);
+        const md = mImg.data;
+        const midRow = zh * 0.5;
+        for (let py = 0; py < zh; py++) {
+            const above = py < midRow;
+            const row = py * zw;
+            for (let px = 0; px < zw; px++) {
+                const i = (row + px) * 4;
+                if (above && !isZoneBackdrop(zdata[i], zdata[i + 1], zdata[i + 2])) {
+                    md[i + 3] = 255; // mountain (rgb stays 0; only alpha is read)
+                }
+            }
+        }
+        mc.putImageData(mImg, 0, 0);
+
+        // Composite at the background's NATIVE resolution so the occlusion layer
+        // is pixel-identical to the base mountain (no sharpness pop when it draws
+        // on top during fall-behind). Keep only the masked pixels via a GPU
+        // destination-in blit — no big getImageData readback; the upscaled mask
+        // gives soft silhouette edges. Resident footprint ≈ the old shipped
+        // overlay (memory parity).
+        const w = bg.naturalWidth || bg.width;
+        const h = bg.naturalHeight || bg.height;
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const c = canvas.getContext('2d');
+        c.drawImage(bg, 0, 0, w, h);
+        c.globalCompositeOperation = 'destination-in';
+        c.imageSmoothingEnabled = true;
+        c.drawImage(mask, 0, 0, w, h);
+        c.globalCompositeOperation = 'source-over';
+
+        this._mountainOverlay = canvas; // drawn directly; upgraded to a bitmap below
+        if (typeof createImageBitmap === 'function') {
+            createImageBitmap(canvas).then(b => { this._mountainOverlay = b; }).catch(() => {});
+        }
     }
 
     // True if any opaque overlay pixel overlaps the player's sprite bbox.
@@ -161,27 +207,35 @@ class World {
     // — there is no rectangular bbox heuristic anywhere in the path.
     isSpriteBehindMountain(wx, wy, ww, wh) {
         if (window.PERF) window.PERF.count('behind');
-        this._ensureMountainOverlayData();
-        const od = this._mountainOverlayData;
-        if (!od) return false;
+        // The mountain mask is read straight from the zone map (V2): a pixel is
+        // mountain when it's ABOVE the midline and is island (not the flat tan
+        // backdrop). Same definition the occlusion overlay is generated from, so
+        // what's tested matches what's drawn — no separate silhouette file.
+        this._ensureZoneData();
+        const zd = this._zoneData;
+        if (!zd) return false;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return false;
+        const w = zd.width, h = zd.height, data = zd.data;
+        const midRow = h * 0.5;
 
-        const px0 = Math.max(0, Math.floor((wx - rect.x) / rect.w * od.w));
-        const px1 = Math.min(od.w - 1, Math.floor((wx + ww - rect.x) / rect.w * od.w));
-        const py0 = Math.max(0, Math.floor((wy - rect.y) / rect.h * od.h));
-        const py1 = Math.min(od.h - 1, Math.floor((wy + wh - rect.y) / rect.h * od.h));
+        const px0 = Math.max(0, Math.floor((wx - rect.x) / rect.w * w));
+        const px1 = Math.min(w - 1, Math.floor((wx + ww - rect.x) / rect.w * w));
+        const py0 = Math.max(0, Math.floor((wy - rect.y) / rect.h * h));
+        const py1 = Math.min(h - 1, Math.floor((wy + wh - rect.y) / rect.h * h));
         if (px0 > px1 || py0 > py1) return false;
 
-        // Step samples across the bbox — sprite is small enough that a
-        // 2-pixel step is well under any sliver the overlay could have.
+        // Step samples across the bbox — sprite is small enough that a 2-pixel
+        // step is well under any sliver the mask could have.
         const STEP = 2;
-        const data = od.data;
-        const w = od.w;
         for (let py = py0; py <= py1; py += STEP) {
+            if (py >= midRow) continue; // below the midline is never mountain
             const rowOff = py * w;
             for (let px = px0; px <= px1; px += STEP) {
-                if (data[(rowOff + px) * 4 + 3] > 0) return true;
+                const i = (rowOff + px) * 4;
+                if (!isZoneBackdrop(data[i], data[i + 1], data[i + 2])) {
+                    return true; // island pixel above the midline = mountain
+                }
             }
         }
         return false;
@@ -231,8 +285,9 @@ class World {
     // top of the player when fall-behind detection fires. `view` = visible
     // world AABB from main.js (culls the blit to the on-screen slice).
     renderOverlay(ctx, view) {
-        if (!this.stage.backgroundOverlayImage) return;
-        const img = this.game.getDrawable(this.stage.backgroundOverlayImage);
+        if (!this.stage.mountainOcclusion) return;
+        this._ensureMountainOverlay();
+        const img = this._mountainOverlay;
         if (!img || !(img.naturalWidth || img.width)) return;
         const rect = this.stage.backgroundImageRect;
         if (!rect) return;
@@ -1137,6 +1192,15 @@ class World {
 
 // Zone enum — physical behavior encoded by background color.
 // See PLAN.md and README.md "Color-Coded Terrain Zones".
+// The zone map's flat backdrop OUTSIDE the island (~(198,194,182)). The map is
+// sampled nearest-neighbor so this color stays pure (no blended edges), letting
+// a tight tolerance separate "off the island" from any island face/outline.
+// Mountain-occlusion logic treats every above-midline pixel that is NOT this
+// backdrop as mountain (see _ensureMountainOverlay / isSpriteBehindMountain).
+function isZoneBackdrop(r, g, b) {
+    return Math.abs(r - 198) < 24 && Math.abs(g - 194) < 24 && Math.abs(b - 182) < 24;
+}
+
 const Zone = {
     WALKABLE:   'WALKABLE',    // black outline fallback / uncategorized
     SAND:       'SAND',        // beige background — sinks + slows (regular sand)

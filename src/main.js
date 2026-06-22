@@ -70,61 +70,6 @@ async function init() {
 
     game.start();
     console.log('Intro screen ready. ↑/↓ to choose, Space/Enter to select.');
-
-    makeMapStyleToggle();
-}
-
-// Map-art toggle: switch the DISPLAYED stage-3 layers between the real island
-// art and the old colored zoning map ("the old one"). Only swaps the drawn
-// layer keys on the live stage — the zoning source and the occlusion
-// silhouette are untouched, so gameplay is identical either way.
-//
-// The V2 colored pair is NOT loaded at boot (it would sit ~390MB decoded for a
-// debug feature — PERFORMANCE.md R3c). It loads on the FIRST toggle only.
-let mapStyleColor = false; // false = real island art (default), true = old colored map
-let zoningLayersLoaded = false;
-async function ensureZoningLayers() {
-    if (zoningLayersLoaded) return;
-    await Promise.all([
-        game.loadImage('stage3_lower_color', 'assets/saborosa-fundo-base-V2-lower.png'),
-        game.loadImage('stage3_overlay_color', 'assets/saborosa-fundo-base-V2-overlay.png'),
-    ]);
-    zoningLayersLoaded = true;
-}
-function applyMapStyle() {
-    const stage = gameState.currentStage;
-    if (!stage || !stage.backgroundLowerImage) return;
-    stage.backgroundLowerImage = mapStyleColor ? 'stage3_lower_color' : 'stage3_lower';
-    stage.backgroundOverlayImage = mapStyleColor ? 'stage3_overlay_color' : 'stage3_overlay';
-}
-function makeMapStyleToggle() {
-    if (typeof document === 'undefined' || !document.body) return;
-    const btn = document.createElement('button');
-    const label = () => `Map: ${mapStyleColor ? 'ZONING' : 'REAL'}`;
-    const s = btn.style;
-    s.position = 'fixed';
-    s.top = '10px';
-    s.right = '10px';
-    s.zIndex = '10000';
-    s.padding = '6px 10px';
-    s.font = '13px monospace';
-    s.cursor = 'pointer';
-    s.border = '1px solid #888';
-    s.borderRadius = '4px';
-    s.background = '#222';
-    s.color = '#fff';
-    btn.textContent = label();
-    btn.addEventListener('click', async () => {
-        mapStyleColor = !mapStyleColor;
-        if (mapStyleColor && !zoningLayersLoaded) {
-            btn.textContent = 'Map: loading…';
-            await ensureZoningLayers();
-        }
-        applyMapStyle();
-        btn.textContent = label();
-        btn.blur();
-    });
-    document.body.appendChild(btn);
 }
 
 function loadStage(stage) {
@@ -154,6 +99,9 @@ function loadStage(stage) {
     if (stage.backgroundImage) {
         gameState.world.getZoneAt(stage.spawnX, stage.spawnY);
         gameState.world.isSpriteBehindMountain(stage.spawnX, stage.spawnY, 1, 1);
+        // Generate the in-memory mountain-occlusion layer now (one-time pixel
+        // read), not on the first fall-behind mid-gameplay.
+        gameState.world._ensureMountainOverlay();
     }
 
     // Background for areas outside blocks
@@ -241,15 +189,13 @@ function updateGame(dt) {
     const realZone = world.getZoneAt(feetX, feetY);
 
     // Sample the mountain overlay's alpha in a small box around the feet —
-    // true when ANY pixel in the box is opaque. Source of truth for
-    // fall-behind / walk-back-behind: can't disagree with what's drawn,
-    // and a small box (rather than 1x1) absorbs pinhole holes inside the
-    // overlay caused by the generation-tool classifier marking bright-gray
-    // pixels as SAND (transparent). Without the absorption the trigger
-    // could fire when the feet landed exactly on such a hole.
+    // true when ANY pixel in the box is mountain. Source of truth for
+    // fall-behind / walk-back-behind. A small box (rather than 1x1) absorbs
+    // pinhole gaps in the mask so the trigger can't fire on a single stray
+    // non-island pixel.
     const FEET_BOX = 8; // image pixels — wide enough to cover anti-alias holes,
                         //                 narrow enough to flip cleanly on real sand
-    const onMountain = (world.stage && world.stage.backgroundOverlayImage
+    const onMountain = (world.stage && world.stage.mountainOcclusion
         && world.isSpriteBehindMountain)
         ? world.isSpriteBehindMountain(
             feetX - FEET_BOX / 2, feetY - FEET_BOX / 2,
@@ -704,16 +650,11 @@ function renderGame(ctx) {
     world.renderGround(ctx, _viewRect);
     if (PERF) PERF.end('ground');
 
-    // Mountain layer order depends on the player.behindMountain state, set
-    // when fall-behind starts and cleared when the player walks out of the
-    // column shadow. Default: upper drawn first (player walks in front of
-    // mountain). Behind: drawn last so the mountain occludes the sprite.
-    const hasOverlay = world.stage && world.stage.backgroundOverlayImage;
-    if (hasOverlay && !player.behindMountain) {
-        if (PERF) PERF.begin('overlay');
-        world.renderOverlay(ctx, _viewRect);
-        if (PERF) PERF.end('overlay');
-    }
+    // The mountain is part of the base background now (renderGround), so when
+    // the player is in FRONT of it there's nothing extra to draw — they render
+    // normally on top. The mountain only gets re-drawn on top of the player
+    // when they're BEHIND it (below), for occlusion — see after entities.
+    const hasOverlay = world.stage && world.stage.mountainOcclusion;
 
     // Collect all renderables, depth-sort by bottom edge
     // Exclude lifted object (player renders it on top of themselves)
@@ -752,14 +693,13 @@ function renderGame(ctx) {
     if (gameState.fxManager) gameState.fxManager.render(ctx, camX, camY);
     if (PERF) PERF.end('fx');
 
-    // Fall-behind: when the player has dropped below the mountain silhouette,
-    // draw the upper layer AFTER the player so the mountain occludes them.
-    // Half-opacity so the player remains visible through the silhouette.
+    // Fall-behind: when the player has gone behind the mountain, draw the
+    // mountain layer AFTER the player, fully OPAQUE, so the mountain's shape
+    // hides them. As they move deeper the silhouette covers more of the sprite
+    // — the smooth "sinking behind the mountain" transition.
     if (hasOverlay && player.behindMountain) {
         if (PERF) PERF.begin('overlay');
-        ctx.globalAlpha = 0.5;
         world.renderOverlay(ctx, _viewRect);
-        ctx.globalAlpha = 1;
         if (PERF) PERF.end('overlay');
     }
 

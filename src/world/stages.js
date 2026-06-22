@@ -69,19 +69,16 @@ const STAGES = {
         checkerboard: { tileSize: 77, color: '#7e7e7e', style: 'perspective' },
         terrainDepth: 30,
         rockCount: [7, 14], // ~30% fewer (was [10, 20])
-        // The original image (`stage3_bg`) is no longer drawn — it's only
-        // kept here for zone classification (cached canvas). The visible
-        // background is split into a lower (sand + below-midline) layer and
-        // an upper (mountain-above-midline) layer, so the upper can be drawn
-        // on either side of the player depending on fall-behind state.
+        // TWO files only. `stage3_bg` (V2) is never drawn — it drives zone
+        // classification AND the mountain-occlusion mask (island pixels above
+        // the midline). `stage3_background` is the single displayed image (full
+        // island + sand). `mountainOcclusion` turns on the fall-behind effect:
+        // the mountain (generated in memory from the background masked by the
+        // zone map) is drawn opaquely on top of the player when they're behind
+        // it, so they get hidden by the mountain shape (see world/main.js).
         backgroundImage: 'stage3_bg',
-        backgroundLowerImage: 'stage3_lower',
-        backgroundOverlayImage: 'stage3_overlay',
-        // Solid mountain silhouette used for behind-mountain occlusion. Kept
-        // separate from the DISPLAYED overlay because the island overlay has
-        // line-art gaps — occlusion must read the solid V2 silhouette so it
-        // stays correct regardless of which art the toggle is showing.
-        backgroundSilhouetteImage: 'stage3_overlay_color',
+        backgroundLowerImage: 'stage3_background',
+        mountainOcclusion: true,
         // Decorative map assets placed via tools/map-editor.html. `objects` is
         // the loaded placements JSON key; `objectDefs` the sprite/collision defs.
         objects: 'painted_isle_objects',

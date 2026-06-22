@@ -145,20 +145,17 @@ class Game {
                 this.loadImage('intro_off', 'assets/intro-off.png'),
                 this.loadImage('intro_on', 'assets/intro-on.png'),
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
-                // Zoning source (never drawn) — colors sampled into the Zone map.
+                // Stage 3 backgrounds — exactly TWO files:
+                //  1. stage3_bg (V2 zone map): never drawn. Colors are sampled
+                //     into the Zone map AND drive the mountain-occlusion mask
+                //     (island pixels above the midline) — see world.js.
+                //  2. stage3_background: the displayed island art, full island +
+                //     sand baked in (tools/build-combined-background.py merges
+                //     the old lower/overlay halves). The mountain-occlusion layer
+                //     is generated from THIS image in memory at stage load
+                //     (world._ensureMountainOverlay), so no overlay file ships.
                 this.loadImage('stage3_bg', 'assets/saborosa-fundo-base-V2.png'),
-                // DISPLAYED island art: the real, detailed map split into lower /
-                // overlay by the V2 silhouette (tools/build-island-art.py) so the
-                // fall-behind line matches zoning. The sand backdrop is baked into
-                // the (opaque) lower offline, so runtime draws just these two.
-                this.loadImage('stage3_lower', 'assets/cor-saborosa-fundo-fim-island-01-lower.png'),
-                this.loadImage('stage3_overlay', 'assets/cor-saborosa-fundo-fim-island-01-overlay.png'),
-                // V2 overlay: loaded ONLY as the one-time source for the solid
-                // occlusion silhouette — sampled at stage load, then freed (see
-                // world._ensureMountainOverlayData). Its display role (and
-                // stage3_lower_color's) is lazy-loaded by the map toggle on
-                // first use, so the V2 pair never sits decoded during play.
-                this.loadImage('stage3_overlay_color', 'assets/saborosa-fundo-base-V2-overlay.png'),
+                this.loadImage('stage3_background', 'assets/cor-saborosa-fundo-fim-island-01-combined.png'),
                 // Pickable/throwable blocks + the placeable "prop" structures
                 // (platform/big-stack/tower). One transparent sheet; the defs
                 // tag each crop kind:'block' (random-spawned Rock) or 'prop'
@@ -225,14 +222,14 @@ class Game {
                 // re-decoded on EVERY drawImage (~70ms per sprite, measured
                 // ~900ms/frame on a test machine — PERFORMANCE.md C7).
                 // ImageBitmaps are decoded once and stay raster-ready.
-                const WARM = ['stage3_lower', 'stage3_overlay',
+                const WARM = ['stage3_background',
                               'block_sheet', 'mapobjects_sheet', 'coconut_sheet',
                               'character_sheet', 'liverock_sheet',
                               'fx_sheet_faint', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>
                 // as a fallback. Everything draws via getDrawable().
-                const FREE = new Set(['stage3_lower', 'stage3_overlay',
+                const FREE = new Set(['stage3_background',
                                       'block_sheet', 'mapobjects_sheet', 'coconut_sheet']);
                 await Promise.all(WARM.map(k => {
                     const img = this.assets.images[k];
