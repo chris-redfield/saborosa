@@ -792,7 +792,13 @@ function renderGame(ctx) {
     // Exclude lifted object (player renders it on top of themselves)
     if (PERF) PERF.begin('entities');
     const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
-    entities.push(player);
+    // During the SPLAT beat the player is dead behind the mountain — don't draw
+    // him. The midline landing leaves his lower half below the mountain's edge
+    // (nothing there to occlude it), so rendering would show a half-sprite
+    // poking out. Skip him entirely; just SPLAT shows. He's drawn again from
+    // the pan phase on (respawned at the start).
+    const hideDeadPlayer = gameState.death && gameState.death.phase === 'splat';
+    if (!hideDeadPlayer) entities.push(player);
     // Stacked rocks use their parent's bottom edge + 1 so they render in front
     entities.sort((a, b) => {
         const ay = a.stackParent ? (a.stackParent.y + a.stackParent.height + 1) : (a.y + a.height);
