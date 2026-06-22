@@ -77,6 +77,9 @@ class IntroScreen {
         // The selected word always uses the standard art.
         this._unselStyles = ['standard', 'white', 'red'];
         this._unselStyle = 'standard';
+        // How the music hands off on START (read by main.js): true = the intro
+        // theme KEEPS playing under the bass (new), false = it's CUT (classic).
+        this.continueIntroMusic = true;
         this._devButtons = [];
         this._makeDevToggles();
     }
@@ -114,6 +117,8 @@ class IntroScreen {
                 const i = this._unselStyles.indexOf(this._unselStyle);
                 this._unselStyle = this._unselStyles[(i + 1) % this._unselStyles.length];
             });
+        this._addToggle(() => `Intro music: ${this.continueIntroMusic ? 'KEEP' : 'CUT'}`,
+            () => { this.continueIntroMusic = !this.continueIntroMusic; });
     }
 
     // Stacks a labeled toggle button at the top-left, outside the canvas.

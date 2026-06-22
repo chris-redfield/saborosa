@@ -13,12 +13,11 @@ class AudioManager {
         // Per-track loudness factor on top of musicVolume — lets one song play
         // quieter than another without touching the global volume/mute knobs.
         this.trackScale = 1;
-        // Optional second looping track layered ON TOP of the music, like a
-        // stem/channel (e.g. the altitude "beats" layer). Play/stop keeps its
-        // position, so re-entering feels like unmuting a channel.
-        this.layer = null;
-        this.layerScale = 1;
-        this._layerOn = false;
+        // Looping tracks layered ON TOP of the music, each its own channel
+        // (e.g. the gameplay 'bass' that joins on START, and the altitude
+        // 'beats'). Keyed by name; play/stop keeps position, so re-entering
+        // feels like unmuting a channel rather than restarting it.
+        this.layers = Object.create(null);  // name -> { audio, scale, on }
         this.muted = false;
         this._started = false;
     }
@@ -27,8 +26,9 @@ class AudioManager {
         if (this.music) {
             this.music.volume = this.muted ? 0 : this.musicVolume * this.trackScale;
         }
-        if (this.layer) {
-            this.layer.volume = this.muted ? 0 : this.musicVolume * this.layerScale;
+        for (const name in this.layers) {
+            const L = this.layers[name];
+            L.audio.volume = this.muted ? 0 : this.musicVolume * L.scale;
         }
     }
 
@@ -41,46 +41,44 @@ class AudioManager {
         this._applyVolume();
     }
 
-    // Swap to a different track (e.g. intro music → gameplay music). Pauses
-    // the current one; if playback was already unlocked by a user gesture the
-    // new track starts immediately, otherwise it becomes the track that the
-    // first-gesture unlock will start. Volume/mute settings carry over.
-    // `trackScale` plays this track at a fraction of the music volume.
-    switchMusic(src, trackScale = 1) {
-        const wasPlaying = this._started;
-        if (this.music) this.music.pause();
-        this.trackScale = trackScale;
-        this.loadMusic(src);
-        if (wasPlaying) {
-            this._started = false; // re-arm playMusic for the new element
-            this.playMusic();
-        }
-    }
-
-    // Prime the layered track (doesn't play yet — playLayer/stopLayer drive it).
-    loadLayer(src, trackScale = 1) {
+    // Prime a named layered track (doesn't play yet — playLayer/stopLayer drive
+    // it). `scale` plays it at a fraction of the music volume. `playbackRate`
+    // < 1 plays it slower (e.g. 0.8 = 20% slower tempo; the browser keeps pitch
+    // by default via preservesPitch).
+    loadLayer(name, src, scale = 1, playbackRate = 1) {
         const a = new Audio();
         a.src = src;
         a.loop = true;
         a.preload = 'auto';
-        this.layer = a;
-        this.layerScale = trackScale;
-        this._layerOn = false;
+        a.playbackRate = playbackRate;
+        this.layers[name] = { audio: a, scale, on: false };
         this._applyVolume();
     }
 
-    // Both are cheap to call every frame — they no-op unless the state flips.
-    playLayer() {
-        if (!this.layer || this._layerOn) return;
-        this._layerOn = true;
-        const p = this.layer.play();
-        if (p && p.catch) p.catch(() => { this._layerOn = false; });
+    // Hand off from intro to gameplay. The bass layer always joins; `continueIntro`
+    // chooses between the two modes the intro toggle exposes:
+    //   true  (new)     — the intro theme keeps playing UNDER the bass (never cut).
+    //   false (classic) — the intro theme is cut; the bass plays alone.
+    // Idempotent on the bass (playLayer only starts it once).
+    startGameplay(continueIntro) {
+        if (!continueIntro && this.music) this.music.pause();
+        this.playLayer('bass');
     }
 
-    stopLayer() {
-        if (!this.layer || !this._layerOn) return;
-        this._layerOn = false;
-        this.layer.pause(); // keeps position — resumes where it left off
+    // Both are cheap to call every frame — they no-op unless the state flips.
+    playLayer(name) {
+        const L = this.layers[name];
+        if (!L || L.on) return;
+        L.on = true;
+        const p = L.audio.play();
+        if (p && p.catch) p.catch(() => { L.on = false; });
+    }
+
+    stopLayer(name) {
+        const L = this.layers[name];
+        if (!L || !L.on) return;
+        L.on = false;
+        L.audio.pause(); // keeps position — resumes where it left off
     }
 
     // Begin playback. Safe to call repeatedly — only the first successful call

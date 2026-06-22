@@ -38,16 +38,21 @@ async function init() {
     game = new Game('game-canvas');
     await game.loadAssets();
 
-    // Intro music (MIKE) — primed now, started on the first user gesture
-    // (browsers block autoplay until then). Gameplay switches to the bass
-    // track when START is picked — see the intro branch in updateGame.
+    // Intro theme (MIKE) — primed now, started on the first user gesture
+    // (browsers block autoplay until then). It plays FOREVER and is never cut:
+    // gameplay LAYERS the bass on top when START is picked (see the intro
+    // branch in updateGame) rather than swapping the track.
     game.audio.loadMusic('assets/MIKE.mp3');
     game.audio.unlockOnFirstGesture();
-    // Altitude layer: beats joins the bass while the player is above the
-    // mountain-split line (driven per-frame in updateGame). Plays at 0.21 of
-    // the music volume (user-tuned in steps: 0.6 → 0.3 → −30% more). The
-    // bass is NOT ducked — both run at their own constant levels.
-    game.audio.loadLayer('assets/beats.mp3', 0.21);
+    // Gameplay layers, both on top of the intro theme:
+    //  - bass: joins on START and runs for the rest of the session, at 0.7 of
+    //    the music volume.
+    //  - beats: joins only while the player is above the mountain-split line
+    //    (driven per-frame in updateGame), at 0.21 (user-tuned: 0.6 → 0.3 →
+    //    −30%) and 0.8 playbackRate (−20% speed). Nothing is ducked — each
+    //    channel runs at its own constant level.
+    game.audio.loadLayer('bass', 'assets/bass.mp3', 0.7);
+    game.audio.loadLayer('beats', 'assets/beats.mp3', 0.21, 0.8);
 
     // Start on the intro/title screen. The stage is loaded lazily when the
     // player picks START (see updateGame), so we don't pay for it up front.
@@ -167,10 +172,10 @@ function updateGame(dt) {
         if (choice === 'START') {
             loadStage(STAGES[3]);
             gameState.screen = 'playing';
-            // Leave the intro music behind: gameplay runs the bass track,
-            // 30% quieter than the intro song (user-tuned).
-            // (Stage-to-stage travel later keeps it — this only fires once.)
-            game.audio.switchMusic('assets/bass.mp3', 0.7);
+            // Hand off to gameplay music. The bass always joins; the intro's
+            // "Intro music" toggle picks whether the theme keeps playing under
+            // it (KEEP, default) or is cut (CLASSIC).
+            game.audio.startGameplay(gameState.intro.continueIntroMusic !== false);
         }
         return;
     }
@@ -259,8 +264,8 @@ function updateGame(dt) {
     // player is above the mountain-split line, and stops below it (the bass
     // alone remains). Channel-style: pausing keeps its position. The calls
     // no-op unless the state flips, so per-frame driving is free.
-    if (aboveMidline) game.audio.playLayer();
-    else game.audio.stopLayer();
+    if (aboveMidline) game.audio.playLayer('beats');
+    else game.audio.stopLayer('beats');
 
     // Walk-back-behind: feet just stepped onto an opaque overlay pixel from
     // a transparent one while above the midline. Slip behind, no climb.
