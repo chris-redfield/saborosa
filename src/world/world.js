@@ -489,24 +489,28 @@ class World {
     /**
      * Update camera to follow player and check if we need to load new blocks.
      */
-    update(player) {
-        this.cameraX = player.x + player.width / 2 - this.game.width / 2;
-        this.cameraY = player.y + player.height / 2 - this.game.height / 2;
-
-        // Clamp camera for finite stages
+    // Where the camera WANTS to be to center a player (clamped to stage bounds).
+    // Split out so transient camera moves (e.g. the death respawn pan in
+    // main.js) can ease toward the same target the live follow-cam uses.
+    cameraTargetFor(player) {
+        let x = player.x + player.width / 2 - this.game.width / 2;
+        let y = player.y + player.height / 2 - this.game.height / 2;
         if (this.stage.type === 'finite') {
             const b = this._getStageBounds();
-            if (b.w >= this.game.width) {
-                this.cameraX = Math.max(b.x, Math.min(this.cameraX, b.x + b.w - this.game.width));
-            } else {
-                this.cameraX = b.x + (b.w - this.game.width) / 2;
-            }
-            if (b.h >= this.game.height) {
-                this.cameraY = Math.max(b.y, Math.min(this.cameraY, b.y + b.h - this.game.height));
-            } else {
-                this.cameraY = b.y + (b.h - this.game.height) / 2;
-            }
+            x = b.w >= this.game.width
+                ? Math.max(b.x, Math.min(x, b.x + b.w - this.game.width))
+                : b.x + (b.w - this.game.width) / 2;
+            y = b.h >= this.game.height
+                ? Math.max(b.y, Math.min(y, b.y + b.h - this.game.height))
+                : b.y + (b.h - this.game.height) / 2;
         }
+        return { x, y };
+    }
+
+    update(player) {
+        const cam = this.cameraTargetFor(player);
+        this.cameraX = cam.x;
+        this.cameraY = cam.y;
 
         const bx = Math.floor(player.x / BLOCK_W);
         const by = Math.floor(player.y / BLOCK_H);

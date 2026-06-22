@@ -124,6 +124,58 @@ function makeMapStyleToggle() {
     document.body.appendChild(btn);
 }
 
+// --- Death / respawn ---------------------------------------------------------
+const DEATH_SPLAT_MS = 700;  // frozen "SPLAT" beat at the splat spot
+const DEATH_PAN_MS = 650;    // eased camera pan to the respawn point
+const easeInOutCubic = (k) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+
+// Begin the death sequence. The player is already positioned where they
+// splatted (the midline landing); we just freeze and start the SPLAT beat.
+function killPlayer() {
+    if (gameState.death) return; // already dying
+    gameState.death = { phase: 'splat', t: 0 };
+}
+
+// Put the player back at the stage start WITHOUT reloading the level — every
+// object/rock stays exactly where it was; only the player is reset.
+function respawnPlayer() {
+    const p = gameState.player, s = gameState.currentStage;
+    p.x = s.spawnX; p.y = s.spawnY;
+    p.moving = false; p.frame = 0; p.animationCounter = 0;
+    p.surfaceState = 'ground';
+    p.behindMountain = false;
+    p.onTop = false;
+    p.onSand = false;
+    p.fallTargetY = null;
+    p.fallTimerMs = 0;
+    p.dashCharge = 0;
+    p.lastZone = null;
+    p.lastOnMountain = false;
+    p.lastAboveMidline = false;
+}
+
+// Drives the death state: hold SPLAT, then respawn + ease the camera over to
+// the start point for a little re-entry juice. Camera follow resumes once done.
+function updateDeath(dt) {
+    const d = gameState.death, world = gameState.world, player = gameState.player;
+    d.t += dt * 1000;
+    if (d.phase === 'splat') {
+        if (d.t >= DEATH_SPLAT_MS) {
+            respawnPlayer();
+            const tgt = world.cameraTargetFor(player);
+            d.camFromX = world.cameraX; d.camFromY = world.cameraY;
+            d.camToX = tgt.x; d.camToY = tgt.y;
+            d.phase = 'pan'; d.t = 0;
+        }
+    } else { // 'pan'
+        const k = Math.min(1, d.t / DEATH_PAN_MS);
+        const e = easeInOutCubic(k);
+        world.cameraX = d.camFromX + (d.camToX - d.camFromX) * e;
+        world.cameraY = d.camFromY + (d.camToY - d.camFromY) * e;
+        if (k >= 1) gameState.death = null; // hand control back to the follow-cam
+    }
+}
+
 function loadStage(stage) {
     gameState.currentStage = stage;
     gameState.world = new World(game, stage);
@@ -182,6 +234,13 @@ function updateGame(dt) {
 
     const player = gameState.player;
     const world = gameState.world;
+
+    // Death: SPLAT beat, then respawn at the start with a camera pan. Freezes
+    // all normal gameplay (input, physics, fall) until it finishes.
+    if (gameState.death) {
+        updateDeath(dt);
+        return;
+    }
 
     // Ambient FX: pop in / flicker around the player's viewport. Driven off the
     // player center + current zoom so the scatter box tracks what's on screen.
@@ -349,6 +408,9 @@ function updateGame(dt) {
                 player.onTop = false;
                 player.y = player.fallTargetY - player.colOffY - player.colH * 0.5;
                 player.fallTargetY = null;
+                // Falling back to the midline from the mountain is now LETHAL.
+                // Land them on the spot (above), then splat + respawn.
+                killPlayer();
             }
         } else if (world.isFootprintOnRed && world.isFootprintOnRed(player)) {
             // Wall fall has overlapped a red zone. The classifier would keep
@@ -465,6 +527,24 @@ function updateGame(dt) {
         const feetY2 = player.y + player.colOffY + player.colH * 0.5;
         if (feetY2 > midlineWorldY) {
             player.y = midlineWorldY - player.colOffY - player.colH * 0.5;
+        }
+    }
+
+    // Walk-up gate: from below the midline the line is a WALL on open sand —
+    // you can only cross UP where the mountain lets you climb behind it
+    // (onMountain at the new spot). Gated to the upward CROSSING from below
+    // (!lastAboveMidline); once above, stepping onto sand must still fall (and
+    // die), so falling/behind and already-above frames are exempt.
+    if (midlineWorldY != null && !player.behindMountain
+        && player.surfaceState !== 'falling' && !player.lastAboveMidline) {
+        const gFeetX = player.x + player.colOffX + player.colW * 0.5;
+        const gFeetY = player.y + player.colOffY + player.colH * 0.5;
+        if (gFeetY < midlineWorldY) {
+            const okHere = world.isSpriteBehindMountain
+                && world.isSpriteBehindMountain(gFeetX - FEET_BOX / 2, gFeetY - FEET_BOX / 2, FEET_BOX, FEET_BOX);
+            if (!okHere) {
+                player.y = midlineWorldY - player.colOffY - player.colH * 0.5;
+            }
         }
     }
 
@@ -763,6 +843,22 @@ function renderGame(ctx) {
     }
 
     ctx.restore();
+
+    // SPLAT — shown during the frozen death beat, centered on screen (the camera
+    // is parked on the splat spot, so center ≈ where the player landed).
+    if (gameState.death && gameState.death.phase === 'splat') {
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold 96px monospace';
+        ctx.lineWidth = 8;
+        ctx.strokeStyle = '#000';
+        ctx.fillStyle = '#e94560';
+        const cx = game.width / 2, cy = game.height / 2;
+        ctx.strokeText('SPLAT!', cx, cy);
+        ctx.fillText('SPLAT!', cx, cy);
+        ctx.restore();
+    }
 
     // Stage name
     ctx.fillStyle = 'rgba(255,255,255,0.4)';
