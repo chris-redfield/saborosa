@@ -530,23 +530,10 @@ function updateGame(dt) {
         }
     }
 
-    // Walk-up gate: from below the midline the line is a WALL on open sand —
-    // you can only cross UP where the mountain lets you climb behind it
-    // (onMountain at the new spot). Gated to the upward CROSSING from below
-    // (!lastAboveMidline); once above, stepping onto sand must still fall (and
-    // die), so falling/behind and already-above frames are exempt.
-    if (midlineWorldY != null && !player.behindMountain
-        && player.surfaceState !== 'falling' && !player.lastAboveMidline) {
-        const gFeetX = player.x + player.colOffX + player.colW * 0.5;
-        const gFeetY = player.y + player.colOffY + player.colH * 0.5;
-        if (gFeetY < midlineWorldY) {
-            const okHere = world.isSpriteBehindMountain
-                && world.isSpriteBehindMountain(gFeetX - FEET_BOX / 2, gFeetY - FEET_BOX / 2, FEET_BOX, FEET_BOX);
-            if (!okHere) {
-                player.y = midlineWorldY - player.colOffY - player.colH * 0.5;
-            }
-        }
-    }
+    // (The walk-up wall that blocked crossing the midline onto open sand was
+    // removed 2026-06-26 — walking up/behind the mountain is free again. The
+    // lethal fall below still fires only when stepping OFF the mountain while
+    // above the midline, so death-on-fall is preserved.)
 
     // Record the *real* zone we settled on this frame for next frame's
     // edge-detect. Tracking the override SAND would mislead walk-back-behind
@@ -792,19 +779,36 @@ function renderGame(ctx) {
     // Exclude lifted object (player renders it on top of themselves)
     if (PERF) PERF.begin('entities');
     const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
-    // During the SPLAT beat the player is dead behind the mountain — don't draw
-    // him. The midline landing leaves his lower half below the mountain's edge
-    // (nothing there to occlude it), so rendering would show a half-sprite
-    // poking out. Skip him entirely; just SPLAT shows. He's drawn again from
-    // the pan phase on (respawned at the start).
+    // Player vs the mountain occlusion overlay:
+    //  - SPLAT beat: don't draw him at all. The midline landing leaves his lower
+    //    half below the mountain's edge (nothing there to occlude it), so
+    //    drawing would show a half-sprite poking out. He's drawn again from the
+    //    pan phase on (respawned at the start).
+    //  - Behind the mountain (alive): draw HIM first, blit the opaque mountain
+    //    silhouette over him, THEN draw the other entities — so objects resting
+    //    ON the mountain stay on top of the silhouette instead of vanishing with
+    //    him (the silhouette is a full-region blit; only the player belongs
+    //    behind it).
+    //  - Otherwise: depth-sort him in with everything else.
     const hideDeadPlayer = gameState.death && gameState.death.phase === 'splat';
-    if (!hideDeadPlayer) entities.push(player);
+    const behindAlive = hasOverlay && player.behindMountain && !hideDeadPlayer;
+    if (!hideDeadPlayer && !behindAlive) entities.push(player);
     // Stacked rocks use their parent's bottom edge + 1 so they render in front
     entities.sort((a, b) => {
         const ay = a.stackParent ? (a.stackParent.y + a.stackParent.height + 1) : (a.y + a.height);
         const by = b.stackParent ? (b.stackParent.y + b.stackParent.height + 1) : (b.y + b.height);
         return ay - by;
     });
+
+    // Behind the mountain: player UNDER the silhouette, everything else OVER it.
+    // As he moves deeper the silhouette covers more of the sprite — the smooth
+    // "sinking behind the mountain" transition.
+    if (behindAlive) {
+        player.render(ctx, game, camX, camY);
+        if (PERF) PERF.begin('overlay');
+        world.renderOverlay(ctx, _viewRect);
+        if (PERF) PERF.end('overlay');
+    }
 
     // Render with camera offset. Cull bounds buffered so zoom-out doesn't
     // pop entities at the edge.
@@ -830,16 +834,6 @@ function renderGame(ctx) {
     if (PERF) PERF.begin('fx');
     if (gameState.fxManager) gameState.fxManager.render(ctx, camX, camY);
     if (PERF) PERF.end('fx');
-
-    // Fall-behind: when the player has gone behind the mountain, draw the
-    // mountain layer AFTER the player, fully OPAQUE, so the mountain's shape
-    // hides them. As they move deeper the silhouette covers more of the sprite
-    // — the smooth "sinking behind the mountain" transition.
-    if (hasOverlay && player.behindMountain) {
-        if (PERF) PERF.begin('overlay');
-        world.renderOverlay(ctx, _viewRect);
-        if (PERF) PERF.end('overlay');
-    }
 
     // During transition, draw the basket on top of everything (it's ascending)
     if (gameState.transition) {
