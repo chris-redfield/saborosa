@@ -69,21 +69,45 @@ const STAGES = {
         checkerboard: { tileSize: 77, color: '#7e7e7e', style: 'perspective' },
         terrainDepth: 30,
         rockCount: [7, 14], // ~30% fewer (was [10, 20])
-        // TWO files only. `stage3_bg` (V2) is never drawn — it drives zone
-        // classification AND the mountain-occlusion mask (island pixels above
-        // the midline). `stage3_background` is the single displayed image (full
-        // island + sand). `mountainOcclusion` turns on the fall-behind effect:
-        // the mountain (generated in memory from the background masked by the
-        // zone map) is drawn opaquely on top of the player when they're behind
-        // it, so they get hidden by the mountain shape (see world/main.js).
-        backgroundImage: 'stage3_bg',
-        backgroundLowerImage: 'stage3_background',
+        // --- 4-LAYER MAP MODEL ---------------------------------------------
+        // All four layers share `backgroundImageRect` (same world rect, aligned
+        // pixel-for-pixel). World._normalizeLayers flattens this onto the
+        // engine's fields, so legacy plumbing is untouched.
+        //   zoning    — never drawn; classifies terrain zones AND drives the
+        //               mountain-occlusion mask (island pixels above midline).
+        //   sand      — the base ground image (later: swap `image` for a flat
+        //               `color: '#c7c4b3'` to drop the layer entirely).
+        //   mountains — dedicated transparent image above the sand + the source
+        //               the pass-behind occlusion is built from. Commented until
+        //               the new art lands; meanwhile the mountain is whatever the
+        //               sand image bakes in and occlusion is derived from it.
+        //   overlays  — foreground trees/plants, feet-split occlusion. Commented
+        //               until the new art lands; meanwhile the nature assets are
+        //               still hand-placed via `objects` below (map editor).
+        // NEW-ASSET SWAP: point sand→stage3_sand, uncomment mountains+overlays,
+        // and delete the `objects`/`objectDefs` manual placements below.
+        layers: {
+            zoning:    { image: 'stage3_zoning' },     // saborosa-elementos-zoning-000 (transparent outside island)
+            sand:      { image: 'stage3_sand' },        // saborosa-elementos-sand   (later: { color: '#c7c4b3' })
+            mountains: { image: 'stage3_mountains' },   // saborosa-elementos-ilhas
+            // Trees + holes are spawned as DISCRETE depth-sorted objects (see
+            // `overlayObjects` below) so the player passes wholly behind/in front
+            // of each one — the structure layers just render flat on top.
+            overlays: [
+                { image: 'stage3_ovl_estruturas1', onTop: true }, // structures — always on top
+                { image: 'stage3_ovl_estruturas2', onTop: true }, // structures — always on top
+            ],
+        },
+        // Per-object tree/hole placements (assets-v2/mapa/overlay-objects.json,
+        // built by tools/build-overlay-objects.py). Spawned as OverlayObjects
+        // that depth-sort with the player like the old hand-placed assets.
+        // overlayCollision gates their footprint boxes (holes opt out per-object).
+        overlayObjects: 'overlay_objects',
+        overlayCollision: true,
         mountainOcclusion: true,
-        // Decorative map assets placed via tools/map-editor.html. `objects` is
-        // the loaded placements JSON key; `objectDefs` the sprite/collision defs.
-        objects: 'painted_isle_objects',
-        objectDefs: 'mapobject_defs',
-        // Image 8314x6112 (AR ~1.360). Fit to 9x9 walkable height (6480px),
+        // (Decorative nature is now the `overlays` layer above — the old manual
+        // map-editor placements `objects`/`objectDefs` were removed.)
+        // Image AR ~1.360. Fit to 9x9 walkable height (6480px),
         // preserving aspect: w = 6480 * 1.360 = 8815. Centered horizontally
         // in the 11520-wide walkable area (margin ~1352 each side). The rect is
         // world-space, so it tracks the image's aspect ratio, not its pixel
@@ -96,7 +120,7 @@ const STAGES = {
         // smoothing makes the steps feel like an eased transition.
         cameraZoomThresholds: [5000, 2500],
         cameraZoomScales: [1.0, 0.88, 0.78],
-        spawnX: 3255, // 7900
+        spawnX: 3005, // moved left off an overlay object (was 3255)
         spawnY: 4725, // 3800
         safeZone: { x: BLOCK_W * 4.5, y: BLOCK_H * 4.5, radius: 200 },
         portals: [

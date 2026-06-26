@@ -1,0 +1,1431 @@
+{
+ "imageW": 5543,
+ "imageH": 4075,
+ "objects": [
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.191413,
+   "ny": 0.188957,
+   "nw": 0.030489,
+   "nh": 0.067975,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.609237,
+   "ny": 0.15411,
+   "nw": 0.020747,
+   "nh": 0.04,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.370738,
+   "ny": 0.39681,
+   "nw": 0.013711,
+   "nh": 0.063313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.450839,
+   "ny": 0.255951,
+   "nw": 0.020747,
+   "nh": 0.039509,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.476457,
+   "ny": 0.639264,
+   "nw": 0.020747,
+   "nh": 0.039264,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.779722,
+   "ny": 0.699387,
+   "nw": 0.014252,
+   "nh": 0.035828,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.207469,
+   "ny": 0.833129,
+   "nw": 0.014072,
+   "nh": 0.035828,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.357027,
+   "ny": 0.463804,
+   "nw": 0.00902,
+   "nh": 0.063313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.631788,
+   "ny": 0.43681,
+   "nw": 0.00902,
+   "nh": 0.063313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.251128,
+   "ny": 0.826503,
+   "nw": 0.00902,
+   "nh": 0.063313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.558001,
+   "ny": 0.472883,
+   "nw": 0.015335,
+   "nh": 0.041227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.363702,
+   "ny": 0.509202,
+   "nw": 0.011185,
+   "nh": 0.052761,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.499729,
+   "ny": 0.409816,
+   "nw": 0.014793,
+   "nh": 0.038773,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.726682,
+   "ny": 0.257914,
+   "nw": 0.015515,
+   "nh": 0.038282,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.399062,
+   "ny": 0.713129,
+   "nw": 0.015515,
+   "nh": 0.038282,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.576042,
+   "ny": 0.211043,
+   "nw": 0.015335,
+   "nh": 0.038282,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.292441,
+   "ny": 0.616442,
+   "nw": 0.012629,
+   "nh": 0.022822,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.786938,
+   "ny": 0.606135,
+   "nw": 0.01335,
+   "nh": 0.039018,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.244092,
+   "ny": 0.668466,
+   "nw": 0.013891,
+   "nh": 0.037546,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.537074,
+   "ny": 0.28589,
+   "nw": 0.012268,
+   "nh": 0.028466,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.638102,
+   "ny": 0.61227,
+   "nw": 0.012268,
+   "nh": 0.028466,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.381021,
+   "ny": 0.642454,
+   "nw": 0.012268,
+   "nh": 0.028466,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.533105,
+   "ny": 0.484663,
+   "nw": 0.006314,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.678153,
+   "ny": 0.489571,
+   "nw": 0.006314,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.453725,
+   "ny": 0.61227,
+   "nw": 0.012087,
+   "nh": 0.028466,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.52228,
+   "ny": 0.632883,
+   "nw": 0.006134,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.691503,
+   "ny": 0.404172,
+   "nw": 0.012268,
+   "nh": 0.028466,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.321126,
+   "ny": 0.49546,
+   "nw": 0.006134,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.493776,
+   "ny": 0.46773,
+   "nw": 0.006314,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.42017,
+   "ny": 0.364908,
+   "nw": 0.006314,
+   "nh": 0.051779,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.589031,
+   "ny": 0.503804,
+   "nw": 0.012087,
+   "nh": 0.026748,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.580372,
+   "ny": 0.323681,
+   "nw": 0.010464,
+   "nh": 0.023804,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.753743,
+   "ny": 0.217423,
+   "nw": 0.010824,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.223706,
+   "ny": 0.747239,
+   "nw": 0.010644,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.499188,
+   "ny": 0.346258,
+   "nw": 0.010644,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.262493,
+   "ny": 0.77865,
+   "nw": 0.006134,
+   "nh": 0.046626,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.643875,
+   "ny": 0.487853,
+   "nw": 0.006134,
+   "nh": 0.046626,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.512178,
+   "ny": 0.472393,
+   "nw": 0.005953,
+   "nh": 0.04638,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.16796,
+   "ny": 0.326871,
+   "nw": 0.007036,
+   "nh": 0.040982,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.395995,
+   "ny": 0.41546,
+   "nw": 0.007036,
+   "nh": 0.040982,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.486199,
+   "ny": 0.479509,
+   "nw": 0.006855,
+   "nh": 0.040982,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.533466,
+   "ny": 0.63411,
+   "nw": 0.007036,
+   "nh": 0.040982,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.310662,
+   "ny": 0.506748,
+   "nw": 0.007036,
+   "nh": 0.040982,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.815623,
+   "ny": 0.674601,
+   "nw": 0.015695,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.486379,
+   "ny": 0.270184,
+   "nw": 0.015515,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.440556,
+   "ny": 0.776196,
+   "nw": 0.015695,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.549342,
+   "ny": 0.586012,
+   "nw": 0.015695,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.42468,
+   "ny": 0.450798,
+   "nw": 0.015515,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.686451,
+   "ny": 0.477546,
+   "nw": 0.006675,
+   "nh": 0.04,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.837994,
+   "ny": 0.718282,
+   "nw": 0.01317,
+   "nh": 0.013252,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.580372,
+   "ny": 0.660368,
+   "nw": 0.01317,
+   "nh": 0.013252,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.278008,
+   "ny": 0.806626,
+   "nw": 0.01317,
+   "nh": 0.013006,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.427205,
+   "ny": 0.566135,
+   "nw": 0.01317,
+   "nh": 0.013006,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.631247,
+   "ny": 0.494233,
+   "nw": 0.005953,
+   "nh": 0.039755,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.328522,
+   "ny": 0.497423,
+   "nw": 0.005953,
+   "nh": 0.039755,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.521198,
+   "ny": 0.496196,
+   "nw": 0.005953,
+   "nh": 0.039755,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.30976,
+   "ny": 0.733006,
+   "nw": 0.005953,
+   "nh": 0.04,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.67707,
+   "ny": 0.342086,
+   "nw": 0.009381,
+   "nh": 0.022577,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.418185,
+   "ny": 0.540613,
+   "nw": 0.004691,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.371099,
+   "ny": 0.749939,
+   "nw": 0.004691,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.711708,
+   "ny": 0.38184,
+   "nw": 0.004691,
+   "nh": 0.026503,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.67274,
+   "ny": 0.590675,
+   "nw": 0.004691,
+   "nh": 0.026258,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.692405,
+   "ny": 0.318773,
+   "nw": 0.008479,
+   "nh": 0.020859,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.425582,
+   "ny": 0.278528,
+   "nw": 0.014433,
+   "nh": 0.020368,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.574418,
+   "ny": 0.226748,
+   "nw": 0.006134,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.431716,
+   "ny": 0.387485,
+   "nw": 0.006134,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.603283,
+   "ny": 0.604663,
+   "nw": 0.005953,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.374707,
+   "ny": 0.636564,
+   "nw": 0.005953,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.397438,
+   "ny": 0.728834,
+   "nw": 0.006134,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.525167,
+   "ny": 0.53546,
+   "nw": 0.006134,
+   "nh": 0.025276,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.715858,
+   "ny": 0.367607,
+   "nw": 0.011005,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.427205,
+   "ny": 0.650552,
+   "nw": 0.011185,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.292621,
+   "ny": 0.801718,
+   "nw": 0.011185,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.830597,
+   "ny": 0.622577,
+   "nw": 0.011005,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.252751,
+   "ny": 0.734969,
+   "nw": 0.011185,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.53527,
+   "ny": 0.339877,
+   "nw": 0.011005,
+   "nh": 0.01227,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.219556,
+   "ny": 0.713129,
+   "nw": 0.005953,
+   "nh": 0.026994,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.660292,
+   "ny": 0.484417,
+   "nw": 0.005953,
+   "nh": 0.026748,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.539419,
+   "ny": 0.496687,
+   "nw": 0.012989,
+   "nh": 0.019877,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.694931,
+   "ny": 0.188466,
+   "nw": 0.012989,
+   "nh": 0.019877,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.322569,
+   "ny": 0.621595,
+   "nw": 0.009381,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.755006,
+   "ny": 0.534233,
+   "nw": 0.009562,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.158037,
+   "ny": 0.345031,
+   "nw": 0.009562,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.413675,
+   "ny": 0.288098,
+   "nw": 0.009381,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.386253,
+   "ny": 0.43362,
+   "nw": 0.009381,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.461122,
+   "ny": 0.677791,
+   "nw": 0.009381,
+   "nh": 0.023313,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.614649,
+   "ny": 0.583558,
+   "nw": 0.011185,
+   "nh": 0.01865,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.420711,
+   "ny": 0.303067,
+   "nw": 0.011005,
+   "nh": 0.018405,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.740574,
+   "ny": 0.480245,
+   "nw": 0.011185,
+   "nh": 0.018405,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.760238,
+   "ny": 0.639509,
+   "nw": 0.011005,
+   "nh": 0.018405,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.360455,
+   "ny": 0.645644,
+   "nw": 0.011005,
+   "nh": 0.018405,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_arvores",
+   "kind": "arvores",
+   "nx": 0.450478,
+   "ny": 0.552393,
+   "nw": 0.005953,
+   "nh": 0.024294,
+   "col": {
+    "offX": 0.3,
+    "offY": 0.82,
+    "w": 0.4,
+    "h": 0.16
+   },
+   "collide": true
+  },
+  {
+   "sheet": "stage3_ovl_buracos",
+   "kind": "buracos",
+   "nx": 0.55331,
+   "ny": 0.539632,
+   "nw": 0.019123,
+   "nh": 0.008834,
+   "col": {
+    "offX": 0.15,
+    "offY": 0.3,
+    "w": 0.7,
+    "h": 0.5
+   },
+   "collide": false
+  },
+  {
+   "sheet": "stage3_ovl_buracos",
+   "kind": "buracos",
+   "nx": 0.396717,
+   "ny": 0.540123,
+   "nw": 0.017139,
+   "nh": 0.011043,
+   "col": {
+    "offX": 0.15,
+    "offY": 0.3,
+    "w": 0.7,
+    "h": 0.5
+   },
+   "collide": false
+  },
+  {
+   "sheet": "stage3_ovl_buracos",
+   "kind": "buracos",
+   "nx": 0.484034,
+   "ny": 0.434601,
+   "nw": 0.013531,
+   "nh": 0.010552,
+   "col": {
+    "offX": 0.15,
+    "offY": 0.3,
+    "w": 0.7,
+    "h": 0.5
+   },
+   "collide": false
+  }
+ ]
+}

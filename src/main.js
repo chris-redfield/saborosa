@@ -86,13 +86,14 @@ let showZoneMap = false; // false = real island art (default), true = zone map
 let zoneMapDisplayLoaded = false;
 async function ensureZoneMapDisplay() {
     if (zoneMapDisplayLoaded) return;
-    await game.loadImage('stage3_zonemap', 'assets/saborosa-fundo-base-V2.png');
+    await game.loadImage('stage3_zonemap', 'assets-v2/mapa/saborosa-elementos-zoning-000.png');
     zoneMapDisplayLoaded = true;
 }
 function applyMapStyle() {
     const stage = gameState.currentStage;
     if (!stage || !stage.backgroundLowerImage) return;
-    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : 'stage3_background';
+    // Swap the drawn SAND layer for the (transparent) zoning map to inspect zones.
+    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : 'stage3_sand';
 }
 function makeMapStyleToggle() {
     if (typeof document === 'undefined' || !document.body) return;
@@ -769,6 +770,16 @@ function renderGame(ctx) {
     world.renderGround(ctx, _viewRect);
     if (PERF) PERF.end('ground');
 
+    // Foreground OVERLAYS (trees/holes), split at the player's BOTTOM EDGE so
+    // they occlude exactly like the old depth-sorted objects (which sorted on
+    // y+height): overlay content lower on screen than the player's feet draws on
+    // top (player behind), higher draws under (player in front). Splitting at the
+    // bottom edge — not the collision centre — keeps the player sprite whole, so
+    // it's never drawn through. The ABOVE slice goes here (behind entities); the
+    // BELOW slice is drawn after the entities. No-op until a stage declares them.
+    const overlaySplitY = player.y + player.height;
+    if (world.renderOverlayLayer) world.renderOverlayLayer(ctx, _viewRect, overlaySplitY, 'above');
+
     // The mountain is part of the base background now (renderGround), so when
     // the player is in FRONT of it there's nothing extra to draw — they render
     // normally on top. The mountain only gets re-drawn on top of the player
@@ -828,6 +839,14 @@ function renderGame(ctx) {
         PERF.end('entities');
         PERF.note('drawn', `${drawnEntities}/${entities.length}`);
     }
+
+    // Overlays below the player's feet line — drawn on top of the entities so
+    // the player passes behind any tree/plant that is lower on screen than them.
+    if (world.renderOverlayLayer) world.renderOverlayLayer(ctx, _viewRect, overlaySplitY, 'below');
+
+    // "Always on top" overlays (e.g. tall structures) — drawn as full images
+    // over the player regardless of position, no feet-split.
+    if (world.renderOverlayTop) world.renderOverlayTop(ctx, _viewRect);
 
     // Ambient FX drawn above the scenery (no collision, no depth sort) —
     // shimmering shadows/clippy and ping-ponging balls popping around the view.

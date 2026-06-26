@@ -6,8 +6,10 @@ class Player {
         this.game = game;
         this.x = x;
         this.y = y;
-        this.width = 145;
-        this.height = 109;
+        // Base character bbox from the single scale knob (scale.config.js).
+        const _ch = (window.ART && window.ART.character) || { width: 145, height: 109 };
+        this.width = _ch.width;
+        this.height = _ch.height;
         this.speed = 3;
 
         // Isometric collision footprint from config — cached so a character
@@ -146,15 +148,16 @@ class Player {
     loadSprites() {
         const spriteSheet = new SpriteSheet(this.game);
         const original = spriteSheet.loadSprites(this.width, this.height);
-        // Coconut is rendered 50% larger than the tomato. Bbox + collision
-        // footprint scale together via the shared colCfg ratios.
-        const COCONUT_HEIGHT = 164; // 109 * 1.5 = 163.5 → 164
-        const coconut = spriteSheet.loadCoconutSprites(COCONUT_HEIGHT);
+        // Pack sizes come from the single scale knob (scale.config.js). Coconut
+        // is authored ~50% larger than the tomato; its render width tracks the
+        // source aspect, only the height is pinned. Bbox + collision footprint
+        // scale together via the shared colCfg ratios.
+        const _ch = (window.ART && window.ART.character) || { width: 145, height: 109 };
+        const _co = (window.ART && window.ART.coconut) || { width: 203, height: 164 };
+        const coconut = spriteSheet.loadCoconutSprites(_co.height);
         this.spritePacks = [
-            { sprites: original.sprites, width: 145, height: 109 },
-            // Width: 135 * 1.5 = 202.5 → 203. Same aspect as the idle column
-            // (590×476 source, height-scaled).
-            { sprites: coconut.sprites,  width: 203, height: COCONUT_HEIGHT }
+            { sprites: original.sprites, width: _ch.width, height: _ch.height },
+            { sprites: coconut.sprites,  width: _co.width, height: _co.height }
         ];
         this.characterIndex = 0;
         this.sprites = this.spritePacks[0].sprites;

@@ -46,9 +46,9 @@ class Game {
         // authoring coordinates. The defs JSONs (and the map editor) stay at
         // full author resolution; the game ships downscaled '-game' sheets
         // (tools/downscale-sheets.py), so crop rects are multiplied by this
-        // factor at draw time: getSheetScale(key). Keep in sync with the
-        // factors in that script.
-        this.sheetScales = {
+        // factor at draw time: getSheetScale(key). Sourced from the single
+        // scale knob (scale.config.js); keep in sync with the downscale script.
+        this.sheetScales = (window.ART && window.ART.sheetScales) || {
             block_sheet: 0.25,
             mapobjects_sheet: 0.45,
             coconut_sheet: 0.45
@@ -145,17 +145,24 @@ class Game {
                 this.loadImage('intro_off', 'assets/intro-off.png'),
                 this.loadImage('intro_on', 'assets/intro-on.png'),
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
-                // Stage 3 backgrounds — exactly TWO files:
-                //  1. stage3_bg (V2 zone map): never drawn. Colors are sampled
-                //     into the Zone map AND drive the mountain-occlusion mask
-                //     (island pixels above the midline) — see world.js.
-                //  2. stage3_background: the displayed island art, full island +
-                //     sand baked in (tools/build-combined-background.py merges
-                //     the old lower/overlay halves). The mountain-occlusion layer
-                //     is generated from THIS image in memory at stage load
-                //     (world._ensureMountainOverlay), so no overlay file ships.
-                this.loadImage('stage3_bg', 'assets/saborosa-fundo-base-V2.png'),
-                this.loadImage('stage3_background', 'assets/cor-saborosa-fundo-fim-island-01-combined.png'),
+                // Stage 3 — 4-LAYER MAP (assets-v2/mapa/, all aligned 5543x4075):
+                //   zoning    — never drawn; sampled for terrain zones AND the
+                //               mountain-occlusion mask. Transparent outside the
+                //               island (alpha = "off the island"); see world.js.
+                //   sand      — base ground image (drawn first).
+                //   mountains — "ilhas" island/mountain art above the sand; also
+                //               the source the pass-behind occlusion is built from.
+                //   overlays  — trees / holes / structures, feet-split foreground.
+                this.loadImage('stage3_zoning', 'assets-v2/mapa/saborosa-elementos-zoning-000.png'),
+                this.loadImage('stage3_sand', 'assets-v2/mapa/saborosa-elementos-sand.png'),
+                this.loadImage('stage3_mountains', 'assets-v2/mapa/saborosa-elementos-ilhas.png'),
+                this.loadImage('stage3_ovl_arvores', 'assets-v2/mapa/saborosa-elementos-arvores.png'),
+                this.loadImage('stage3_ovl_buracos', 'assets-v2/mapa/saborosa-elementos-buracos.png'),
+                this.loadImage('stage3_ovl_estruturas1', 'assets-v2/mapa/saborosa-elementos-estruturas-01.png'),
+                this.loadImage('stage3_ovl_estruturas2', 'assets-v2/mapa/saborosa-elementos-estruturas-02.png'),
+                // Per-object placements for the depth-sorted overlays (trees,
+                // holes) recovered from the baked layers by build-overlay-objects.py.
+                this.loadJSON('overlay_objects', 'assets-v2/mapa/overlay-objects.json'),
                 // Pickable/throwable blocks + the placeable "prop" structures
                 // (platform/big-stack/tower). One transparent sheet; the defs
                 // tag each crop kind:'block' (random-spawned Rock) or 'prop'
@@ -243,14 +250,16 @@ class Game {
                 // re-decoded on EVERY drawImage (~70ms per sprite, measured
                 // ~900ms/frame on a test machine — PERFORMANCE.md C7).
                 // ImageBitmaps are decoded once and stay raster-ready.
-                const WARM = ['stage3_background',
+                const WARM = ['stage3_sand', 'stage3_mountains',
+                              'stage3_ovl_arvores', 'stage3_ovl_buracos',
+                              'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                               'block_sheet', 'mapobjects_sheet', 'coconut_sheet',
                               'character_sheet', 'liverock_sheet',
                               'fx_sheet_faint', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>
                 // as a fallback. Everything draws via getDrawable().
-                const FREE = new Set(['stage3_background',
+                const FREE = new Set(['stage3_mountains',
                                       'block_sheet', 'mapobjects_sheet', 'coconut_sheet']);
                 await Promise.all(WARM.map(k => {
                     const img = this.assets.images[k];

@@ -43,6 +43,53 @@ class World {
                 this._walkableBlocks = new Set(stage.walkableBlocks.map(b => `${b[0]},${b[1]}`));
             }
         }
+
+        // New 4-layer map model (Painted Isle). A stage may declare a `layers`
+        // block — see stages.js — which we flatten onto the engine's existing
+        // fields so all the legacy plumbing keeps working untouched.
+        this._normalizeLayers();
+    }
+
+    // Flatten a stage's `layers` config onto the flat fields the engine reads.
+    // The four full-map layers (all sharing `backgroundImageRect`):
+    //   zoning    -> backgroundImage    (never drawn; drives zones/behavior)
+    //   sand      -> backgroundLowerImage (base image) and/or sandBaseColor
+    //   mountains -> mountainImage       (dedicated layer, drawn above sand)
+    //   overlays  -> overlayImage        (foreground; feet-split occlusion)
+    // Each assignment is guarded so an explicit legacy field always wins; this
+    // is additive and a no-op for stages without a `layers` block.
+    _normalizeLayers() {
+        const L = this.stage.layers;
+        if (!L) return;
+        if (L.zoning && L.zoning.image && !this.stage.backgroundImage) {
+            this.stage.backgroundImage = L.zoning.image;
+        }
+        if (L.sand) {
+            if (L.sand.image && !this.stage.backgroundLowerImage) {
+                this.stage.backgroundLowerImage = L.sand.image;
+            }
+            if (L.sand.color && !this.stage.sandBaseColor) {
+                this.stage.sandBaseColor = L.sand.color;
+            }
+        }
+        if (L.mountains && L.mountains.image && !this.stage.mountainImage) {
+            this.stage.mountainImage = L.mountains.image;
+        }
+        // Overlays may be one entry or an array. Each entry is feet-split (the
+        // pass-behind effect) unless tagged `onTop: true`, in which case it's an
+        // "always over the player" layer (e.g. tall structures). Two ordered
+        // lists fall out: the split group and the always-on-top group.
+        if (L.overlays && !this.stage.overlayImages) {
+            const arr = Array.isArray(L.overlays) ? L.overlays : [L.overlays];
+            this.stage.overlayImages = [];
+            this.stage.overlayTopImages = [];
+            for (const o of arr) {
+                const key = (o && o.image) || o;
+                if (!key) continue;
+                if (o && o.onTop) this.stage.overlayTopImages.push(key);
+                else this.stage.overlayImages.push(key);
+            }
+        }
     }
 
     _isValidBlock(bx, by) {
@@ -149,7 +196,9 @@ class World {
         if (!this.stage.mountainOcclusion) return;
         this._ensureZoneData();
         const zd = this._zoneData;
-        const bgKey = this.stage.backgroundLowerImage;
+        // Prefer the dedicated mountains image (its alpha is the mountain shape);
+        // fall back to the sand/base image when no dedicated layer ships.
+        const bgKey = this.stage.mountainImage || this.stage.backgroundLowerImage;
         if (!zd || !bgKey) return;
         const bg = this.game.getDrawable(bgKey);
         if (!bg || !(bg.naturalWidth || bg.width)) return;
@@ -168,7 +217,7 @@ class World {
             const row = py * zw;
             for (let px = 0; px < zw; px++) {
                 const i = (row + px) * 4;
-                if (above && !isZoneBackdrop(zdata[i], zdata[i + 1], zdata[i + 2])) {
+                if (above && zdata[i + 3] > 16 && !isZoneBackdrop(zdata[i], zdata[i + 1], zdata[i + 2])) {
                     md[i + 3] = 255; // mountain (rgb stays 0; only alpha is read)
                 }
             }
@@ -233,7 +282,7 @@ class World {
             const rowOff = py * w;
             for (let px = px0; px <= px1; px += STEP) {
                 const i = (rowOff + px) * 4;
-                if (!isZoneBackdrop(data[i], data[i + 1], data[i + 2])) {
+                if (data[i + 3] > 16 && !isZoneBackdrop(data[i], data[i + 1], data[i + 2])) {
                     return true; // island pixel above the midline = mountain
                 }
             }
@@ -272,6 +321,57 @@ class World {
             wx1 - wx0, wy1 - wy0);
     }
 
+    // Fill the on-screen slice of a world-space rect with a flat colour. Used
+    // by the SAND layer's solid-colour option. Bounded to `view` so a moving
+    // camera never fills more than the viewport (same discipline as
+    // _drawStageLayer). Falls back to the full rect when no view is given.
+    _fillRectColor(ctx, rect, view, color) {
+        let wx0 = rect.x, wy0 = rect.y, wx1 = rect.x + rect.w, wy1 = rect.y + rect.h;
+        if (view) {
+            wx0 = Math.max(wx0, view.x0); wy0 = Math.max(wy0, view.y0);
+            wx1 = Math.min(wx1, view.x1); wy1 = Math.min(wy1, view.y1);
+        }
+        if (wx1 <= wx0 || wy1 <= wy0) return;
+        ctx.fillStyle = color;
+        ctx.fillRect(wx0 - this.cameraX, wy0 - this.cameraY, wx1 - wx0, wy1 - wy0);
+    }
+
+    // Foreground OVERLAYS layer (trees/plants), drawn as a single full-map image
+    // split at the player's feet line so it reuses the regular-object depth rule
+    // without per-object data: an overlay row BELOW the feet (lower on screen)
+    // draws ON TOP of the player → the player passes behind it; a row ABOVE the
+    // feet draws under the player → the player is in front. `part`:
+    //   'above' — rows from the top of the view down to feetY (drawn before the
+    //             player, so it sits behind the entities)
+    //   'below' — rows from feetY to the bottom (drawn after the player)
+    // No-op until the stage declares an overlays image.
+    renderOverlayLayer(ctx, view, feetY, part) {
+        const keys = this.stage.overlayImages
+            || (this.stage.overlayImage ? [this.stage.overlayImage] : null);
+        if (!keys || !keys.length) return;
+        const rect = this._stageRect();
+        const slice = (part === 'above')
+            ? { x0: view.x0, x1: view.x1, y0: view.y0, y1: Math.min(view.y1, feetY) }
+            : { x0: view.x0, x1: view.x1, y0: Math.max(view.y0, feetY), y1: view.y1 };
+        if (slice.y1 <= slice.y0) return;
+        for (const key of keys) {
+            const img = this.game.getDrawable(key);
+            if (img && (img.naturalWidth || img.width)) this._drawStageLayer(ctx, img, rect, slice);
+        }
+    }
+
+    // "Always on top" overlays — full-image draws over the player, no feet-split.
+    // For tall structures that should never let the player render in front.
+    renderOverlayTop(ctx, view) {
+        const keys = this.stage.overlayTopImages;
+        if (!keys || !keys.length) return;
+        const rect = this._stageRect();
+        for (const key of keys) {
+            const img = this.game.getDrawable(key);
+            if (img && (img.naturalWidth || img.width)) this._drawStageLayer(ctx, img, rect, view);
+        }
+    }
+
     _stageRect() {
         let rect = this.stage.backgroundImageRect;
         if (!rect) {
@@ -307,6 +407,7 @@ class World {
         const readClassified = (px, py) => {
             if (px < 0 || py < 0 || px >= imgW || py >= imgH) return null;
             const i = (py * imgW + px) * 4;
+            if (data[i + 3] < 16) return null; // transparent zoning pixel = outside the island
             const r = data[i], g = data[i + 1], b = data[i + 2];
             if (Math.max(r, g, b) < 46) return null; // black outline
             return classifyZoneColor(r, g, b);
@@ -586,12 +687,30 @@ class World {
 
         if (this.stage.backgroundImage) {
             const rect = this._stageRect();
-            // Opaque lower layer (island ground with the sand backdrop baked in,
-            // below the silhouette). The upper mountain layer is drawn separately
-            // by main.js so it can sit on either side of the player.
-            const lowerKey = this.stage.backgroundLowerImage || this.stage.backgroundImage;
-            const img = this.game.getDrawable(lowerKey);
-            if (img && (img.naturalWidth || img.width)) this._drawStageLayer(ctx, img, rect, view);
+
+            // --- SAND layer (base) ---------------------------------------
+            // Either a solid colour fill, an image, or both (colour first so an
+            // image with transparent margins shows it through). The colour fill
+            // is the later "drop the sand image, use a flat colour" optimisation:
+            // set layers.sand.color and omit layers.sand.image.
+            if (this.stage.sandBaseColor) {
+                this._fillRectColor(ctx, rect, view, this.stage.sandBaseColor);
+            }
+            const sandKey = this.stage.backgroundLowerImage;
+            if (sandKey) {
+                const img = this.game.getDrawable(sandKey);
+                if (img && (img.naturalWidth || img.width)) this._drawStageLayer(ctx, img, rect, view);
+            }
+
+            // --- MOUNTAINS layer ------------------------------------------
+            // Optional dedicated transparent image, drawn above the sand. When
+            // present it is also the source the pass-behind occlusion overlay is
+            // built from (see _ensureMountainOverlay); absent → the mountain is
+            // whatever the sand image baked in, with occlusion derived from it.
+            if (this.stage.mountainImage) {
+                const m = this.game.getDrawable(this.stage.mountainImage);
+                if (m && (m.naturalWidth || m.width)) this._drawStageLayer(ctx, m, rect, view);
+            }
 
             if (this.game.showDebug) {
                 for (const block of Object.values(this.blocks)) {
@@ -1002,6 +1121,24 @@ class World {
         const block = new WorldBlock(bx, by);
         const ox = bx * BLOCK_W;
         const oy = by * BLOCK_H;
+
+        // Discrete overlay objects (trees/holes) recovered from the baked layers
+        // by build-overlay-objects.py. Spawned into whichever block they fall in
+        // — walkable OR not, since the island art spans border blocks too — and
+        // depth-sorted with the player like the old hand-placed assets.
+        if (this.stage.overlayObjects) {
+            const ovl = this.game.getJSON(this.stage.overlayObjects);
+            if (ovl && ovl.objects) {
+                const rect = this._stageRect();
+                const collide = this.stage.overlayCollision !== false;
+                for (const o of ovl.objects) {
+                    const wx = rect.x + o.nx * rect.w;
+                    const wy = rect.y + o.ny * rect.h;
+                    if (Math.floor(wx / BLOCK_W) !== bx || Math.floor(wy / BLOCK_H) !== by) continue;
+                    block.addEntity(new OverlayObject(this.game, o, rect, collide));
+                }
+            }
+        }
 
         // Non-walkable blocks get filled entirely with sand (walkable, not an obstacle)
         if (!this._isWalkableBlock(bx, by)) {
