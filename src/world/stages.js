@@ -88,7 +88,7 @@ const STAGES = {
         // and delete the `objects`/`objectDefs` manual placements below.
         layers: {
             zoning:    { image: 'stage3_zoning' },     // saborosa-elementos-zoning-000 (transparent outside island)
-            sand:      { image: 'stage3_sand' },        // saborosa-elementos-sand   (later: { color: '#c7c4b3' })
+            sand:      { color: '#c8bb9b' },            // flat tan — was a 1-colour 5543px image (~90MB); now a solid fill
             mountains: { image: 'stage3_mountains' },   // saborosa-elementos-ilhas
             // Trees + holes are spawned as DISCRETE depth-sorted objects (see
             // `overlayObjects` below) so the player passes wholly behind/in front

@@ -91,9 +91,10 @@ async function ensureZoneMapDisplay() {
 }
 function applyMapStyle() {
     const stage = gameState.currentStage;
-    if (!stage || !stage.backgroundLowerImage) return;
-    // Swap the drawn SAND layer for the (transparent) zoning map to inspect zones.
-    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : 'stage3_sand';
+    if (!stage || !stage.backgroundImage) return;
+    // Sand is a flat colour now; the debug toggle draws the (transparent) zoning
+    // map over it to inspect zones, or nothing (just the colour) when off.
+    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : null;
 }
 function makeMapStyleToggle() {
     if (typeof document === 'undefined' || !document.body) return;

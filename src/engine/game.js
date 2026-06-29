@@ -194,7 +194,7 @@ class Game {
                 //               the source the pass-behind occlusion is built from.
                 //   overlays  — trees / holes / structures, feet-split foreground.
                 this.loadImage('stage3_zoning', 'assets-v2/mapa/saborosa-elementos-zoning-000.png'),
-                this.loadImage('stage3_sand', 'assets-v2/mapa/saborosa-elementos-sand.png'),
+                // sand is now a flat colour (layers.sand.color) — no image loaded.
                 this.loadImage('stage3_mountains', 'assets-v2/mapa/saborosa-elementos-ilhas.png'),
                 this.loadImage('stage3_ovl_arvores', 'assets-v2/mapa/saborosa-elementos-arvores.png'),
                 this.loadImage('stage3_ovl_buracos', 'assets-v2/mapa/saborosa-elementos-buracos.png'),
@@ -295,7 +295,7 @@ class Game {
                 // re-decoded on EVERY drawImage (~70ms per sprite, measured
                 // ~900ms/frame on a test machine — PERFORMANCE.md C7).
                 // ImageBitmaps are decoded once and stay raster-ready.
-                const WARM = ['stage3_sand', 'stage3_mountains',
+                const WARM = ['stage3_mountains',
                               'stage3_ovl_arvores', 'stage3_ovl_buracos',
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                               'block_sheet', 'coconut_sheet',
@@ -305,6 +305,8 @@ class Game {
                 // duplicate copy stays resident. Small sheets keep their <img>
                 // as a fallback. Everything draws via getDrawable().
                 const FREE = new Set(['stage3_mountains',
+                                      'stage3_ovl_arvores', 'stage3_ovl_buracos',
+                                      'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                                       'block_sheet', 'coconut_sheet']);
                 await Promise.all(WARM.map(k => {
                     const img = this.assets.images[k];
