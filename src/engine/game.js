@@ -60,6 +60,43 @@ class Game {
         // plain <img> sources of large canvases under a moving transform, which
         // tanked FPS (see BUG.md). `bitmapPending` guards duplicate creation.
         this.assets = { images: {}, json: {}, bitmaps: {}, bitmapPending: {}, loaded: false };
+
+        // Bounded-concurrency + retry gate for asset loading. Firing every asset
+        // request at once worked locally but made deploy hosts reset connections
+        // (ERR_CONNECTION_RESET) on the bigger PNGs — under HTTP/2 the ~30 loads
+        // become dozens of streams on one connection and the host drops it.
+        // We cap in-flight requests and retry transient drops so loads recover.
+        this._netMax = 4;
+        this._netActive = 0;
+        this._netQueue = [];
+    }
+
+    // Acquire/release a network slot so at most `_netMax` asset requests are in
+    // flight at once (queued FIFO).
+    _acquireSlot() {
+        if (this._netActive < this._netMax) { this._netActive++; return Promise.resolve(); }
+        return new Promise(res => this._netQueue.push(res)).then(() => { this._netActive++; });
+    }
+    _releaseSlot() {
+        this._netActive--;
+        const next = this._netQueue.shift();
+        if (next) next();
+    }
+
+    // Run a slot-gated request with retries + backoff. `make(attempt)` issues the
+    // request; attempt>0 cache-busts so a poisoned connection isn't reused. The
+    // slot is released between attempts so a backing-off load doesn't hog a slot.
+    async _withRetry(retries, make, src) {
+        for (let attempt = 0; ; attempt++) {
+            await this._acquireSlot();
+            let result, ok = false, err;
+            try { result = await make(attempt); ok = true; }
+            catch (e) { err = e; }
+            this._releaseSlot();
+            if (ok) return result;
+            if (attempt >= retries) { console.error(`Failed to load: ${src}`); throw err; }
+            await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+        }
     }
 
     scaleCanvas() {
@@ -70,19 +107,25 @@ class Game {
         this.canvas.style.height = `${this.height * scale}px`;
     }
 
-    loadImage(key, src) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => { this.assets.images[key] = img; resolve(img); };
-            img.onerror = () => { console.error(`Failed to load: ${src}`); reject(new Error(`Failed: ${src}`)); };
-            img.src = src;
-        });
+    _bust(src, attempt) {
+        return attempt ? src + (src.includes('?') ? '&' : '?') + '_r=' + attempt : src;
     }
 
-    loadJSON(key, src) {
-        return fetch(src, { cache: 'no-cache' })
-            .then(r => { if (!r.ok) throw new Error(`Failed: ${src}`); return r.json(); })
-            .then(data => { this.assets.json[key] = data; return data; });
+    loadImage(key, src, retries = 3) {
+        return this._withRetry(retries, (attempt) => new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => { this.assets.images[key] = img; resolve(img); };
+            img.onerror = () => reject(new Error(`Failed: ${src}`));
+            img.src = this._bust(src, attempt);
+        }), src);
+    }
+
+    loadJSON(key, src, retries = 3) {
+        return this._withRetry(retries, (attempt) =>
+            fetch(this._bust(src, attempt), { cache: 'no-cache' })
+                .then(r => { if (!r.ok) throw new Error(`Failed: ${src}`); return r.json(); })
+                .then(data => { this.assets.json[key] = data; return data; }),
+            src);
     }
 
     getJSON(key) {
