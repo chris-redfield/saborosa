@@ -48,6 +48,28 @@ class World {
         // block — see stages.js — which we flatten onto the engine's existing
         // fields so all the legacy plumbing keeps working untouched.
         this._normalizeLayers();
+
+        // Character depth-perspective config (tools/main-perspective.html), or null.
+        this._perspective = stage.perspective ? this.game.getJSON(stage.perspective) : null;
+    }
+
+    // Depth-perspective size multiplier for a sprite whose feet sit at world Y
+    // `feetY`. Reproduces the tool's model: t = how far the feet are through the
+    // yNear..yFar world band (0 = near/south, 1 = far/north), and the multiplier
+    // is lerp(scaleNear, scaleFar, t) × sizeScale. Returns 1 when the stage has
+    // no perspective config, so callers can apply it unconditionally.
+    getPerspectiveScale(feetY) {
+        const cfg = this._perspective;
+        if (!cfg) return 1;
+        const rect = this.stage.backgroundImageRect;
+        if (!rect) return 1;
+        const yNearW = rect.y + cfg.yNear * rect.h;
+        const yFarW = rect.y + cfg.yFar * rect.h;
+        if (yFarW === yNearW) return (cfg.scaleNear ?? 1) * (cfg.sizeScale ?? 1);
+        let t = (feetY - yNearW) / (yFarW - yNearW);
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const sn = cfg.scaleNear ?? 1, sf = cfg.scaleFar ?? 1, ss = cfg.sizeScale ?? 1;
+        return (sn + (sf - sn) * t) * ss;
     }
 
     // Flatten a stage's `layers` config onto the flat fields the engine reads.

@@ -243,12 +243,27 @@ function buildPanel(){
   const ro = document.createElement('div'); ro.id = 'readout'; g3.appendChild(ro);
   const g4 = group(side, 'Export');
   const row = document.createElement('div');
-  const copy = document.createElement('button'); copy.textContent = 'Copy params JSON';
-  const reset = document.createElement('button'); reset.textContent = 'Reset pos';
-  reset.style.marginLeft = '6px';
-  row.appendChild(copy); row.appendChild(reset); g4.appendChild(row);
+  const save = document.createElement('button'); save.textContent = 'Save perspective.json';
+  const copy = document.createElement('button'); copy.textContent = 'Copy'; copy.style.marginLeft = '6px';
+  const reset = document.createElement('button'); reset.textContent = 'Reset pos'; reset.style.marginLeft = '6px';
+  row.appendChild(save); row.appendChild(copy); row.appendChild(reset); g4.appendChild(row);
+  const hint = document.createElement('div'); hint.className = 'hint';
+  hint.style.marginTop = '6px';
+  hint.textContent = 'Save downloads perspective.json → drop it in assets-v2/mapa/';
+  g4.appendChild(hint);
   const out = document.createElement('pre'); out.id = 'out'; out.style.marginTop = '6px';
   g4.appendChild(out);
+  save.onclick = () => {
+    const json = paramJSON();
+    out.textContent = json;
+    const blob = new Blob([json], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'perspective.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    status('saved perspective.json');
+  };
   copy.onclick = () => {
     const json = paramJSON();
     out.textContent = json;

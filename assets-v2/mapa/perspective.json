@@ -1,0 +1,14 @@
+{
+  "vpX": 0.5,
+  "vpY": -0.2,
+  "yNear": 1.05,
+  "yFar": 0,
+  "halfNear": 0.75,
+  "halfFar": 0.5,
+  "scaleNear": 1,
+  "scaleFar": 0.4,
+  "sizeScale": 1.86,
+  "moveSpeed": 0.35,
+  "perspLock": false,
+  "note": "size = ingame * lerp(scaleNear,scaleFar,t) * sizeScale; t from feetY in [yNear,yFar] band"
+}

@@ -891,8 +891,18 @@ class Player {
             // proportionally sized instead of being stretched to a fixed
             // height. Anchored at the BOTTOM of the bounding box so the feet
             // stay planted; a shorter frame sits lower, not bigger.
-            const renderW = spriteData.width;
-            const renderH = spriteData.height;
+            //
+            // Depth perspective: scale the DRAWN sprite (only) by where the feet
+            // sit in the stage's perspective band — bigger to the south, smaller
+            // to the north. Collision/movement/depth-sort use the unscaled box,
+            // so only the visual responds (1 when the stage has no perspective).
+            let pscale = 1;
+            if (game.world && game.world.getPerspectiveScale) {
+                const feetY = this.y + this.colOffY + this.colH * 0.5;
+                pscale = game.world.getPerspectiveScale(feetY);
+            }
+            const renderW = spriteData.width * pscale;
+            const renderH = spriteData.height * pscale;
             const visibleH = renderH - sinkAmount;
             const srcCropRatio = sinkAmount / renderH;
             const cropSh = spriteData.sh * (1 - srcCropRatio);

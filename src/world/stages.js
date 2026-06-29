@@ -104,6 +104,10 @@ const STAGES = {
         // overlayCollision gates their footprint boxes (holes opt out per-object).
         overlayObjects: 'overlay_objects',
         overlayCollision: true,
+        // Character depth perspective (assets-v2/mapa/perspective.json, authored
+        // in tools/main-perspective.html). Scales the player sprite by where its
+        // feet sit in the yNear..yFar world band; movement/collision stay flat.
+        perspective: 'perspective',
         mountainOcclusion: true,
         // (Decorative nature is now the `overlays` layer above — the old manual
         // map-editor placements `objects`/`objectDefs` were removed.)

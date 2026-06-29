@@ -215,6 +215,14 @@ class Game {
 
             await Promise.all(loads);
 
+            // Optional character perspective config authored in
+            // tools/main-perspective.html ("Save perspective.json"). Best-effort:
+            // a missing file just leaves the main stage without depth scaling.
+            try {
+                const res = await fetch('assets-v2/mapa/perspective.json', { cache: 'no-cache' });
+                if (res.ok) this.assets.json['perspective'] = await res.json();
+            } catch (e) { /* no perspective file — stage renders flat */ }
+
             // Optional controller mapping authored in tools/gamepad-mapper.html.
             // Best-effort: a 404 / parse error just leaves input.js on its
             // built-in defaults, so the file is purely additive.
