@@ -165,9 +165,6 @@ class Game {
                 this.loadImage('liverock_sheet', 'assets/saborosa-cha-001.png'),
                 this.loadJSON('liverock_sprites', 'assets/saborosa-liverock-sprites.json'),
                 this.loadJSON('collision_config', 'assets/collision-config.json'),
-                this.loadImage('rock1', 'assets/rock1.png'),
-                this.loadImage('rock2', 'assets/rock2.png'),
-                this.loadImage('rock3', 'assets/rock3.png'),
                 this.loadImage('fruit_basket', 'assets/empty-basket.png'),
                 this.loadImage('intro_bg', 'assets/intro-bg.jpg'),
                 this.loadImage('intro_title', 'assets/intro-title.png'),
@@ -221,20 +218,17 @@ class Game {
                 this.loadJSON('block_defs', 'assets/saborosa-assets-002-sprites.json'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2-game.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json'),
-                // Decorative map assets (plants/trees/grass/etc.) + their defs
-                // and placements, both authored in tools/map-editor.html.
-                this.loadImage('mapobjects_sheet', 'assets/saborosa-assets-001-game.png'),
-                this.loadJSON('mapobject_defs', 'assets/saborosa-assets-001-sprites.json'),
-                this.loadJSON('painted_isle_objects', 'assets/painted-isle-objects.json'),
-
-                // Decorative SABOROSA letters scattered across the scenery (placed
-                // in the map editor, spawned as non-colliding Letter entities that
-                // bob + flicker). Two small sheets share one coordinate set: the
-                // yellow fill and a white-fill copy, crossfaded for the flicker.
-                // Authored via tools/build-letter-defs.py.
+                // The old decorative map assets (mapobjects_sheet / assets-001,
+                // painted_isle_objects, mapobject_defs) were REMOVED — the
+                // 4-layer map + OverlayObjects replaced the hand-placed trees.
+                //
+                // SABOROSA letters DO still appear: yellow sheet + white-fill
+                // copy crossfaded for the flicker, spawned as non-colliding
+                // Letter entities from `letters_placements` (assets-v2/mapa).
                 this.loadImage('letters_sheet', 'assets/saborosa-letters.png'),
                 this.loadImage('letters_white_sheet', 'assets/saborosa-letters-white.png'),
                 this.loadJSON('letter_defs', 'assets/saborosa-letters-sprites.json'),
+                this.loadJSON('letters_placements', 'assets-v2/mapa/letters.json'),
 
                 // Ambient no-collision FX (assets-003) — shadows/clippy twinkle,
                 // the ball ping-pongs. Spawned around the player by FxManager;
@@ -304,14 +298,14 @@ class Game {
                 const WARM = ['stage3_sand', 'stage3_mountains',
                               'stage3_ovl_arvores', 'stage3_ovl_buracos',
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
-                              'block_sheet', 'mapobjects_sheet', 'coconut_sheet',
+                              'block_sheet', 'coconut_sheet',
                               'character_sheet', 'liverock_sheet',
                               'fx_sheet_faint', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>
                 // as a fallback. Everything draws via getDrawable().
                 const FREE = new Set(['stage3_mountains',
-                                      'block_sheet', 'mapobjects_sheet', 'coconut_sheet']);
+                                      'block_sheet', 'coconut_sheet']);
                 await Promise.all(WARM.map(k => {
                     const img = this.assets.images[k];
                     if (!img) return null;

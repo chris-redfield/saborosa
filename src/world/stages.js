@@ -104,6 +104,9 @@ const STAGES = {
         // overlayCollision gates their footprint boxes (holes opt out per-object).
         overlayObjects: 'overlay_objects',
         overlayCollision: true,
+        // Decorative SABOROSA letters (non-colliding bob/flicker). Kept after the
+        // old `objects` placements were dropped — these are letters-only.
+        letters: 'letters_placements',
         // Character depth perspective (assets-v2/mapa/perspective.json, authored
         // in tools/main-perspective.html). Scales the player sprite by where its
         // feet sit in the yNear..yFar world band; movement/collision stay flat.

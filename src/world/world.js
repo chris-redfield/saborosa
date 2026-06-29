@@ -1162,6 +1162,20 @@ class World {
             }
         }
 
+        // Decorative SABOROSA letters (non-colliding bob/flicker), spawned from
+        // their own letters-only placements file into the block they fall in.
+        if (this.stage.letters) {
+            const ldata = this.game.getJSON(this.stage.letters);
+            const letterDefs = this.game.getJSON('letter_defs');
+            if (ldata && ldata.objects && letterDefs && letterDefs.assets) {
+                for (const o of ldata.objects) {
+                    if (Math.floor(o.x / BLOCK_W) !== bx || Math.floor(o.y / BLOCK_H) !== by) continue;
+                    const ld = letterDefs.assets[o.id];
+                    if (ld) block.addEntity(new Letter(this.game, ld, o));
+                }
+            }
+        }
+
         // Non-walkable blocks get filled entirely with sand (walkable, not an obstacle)
         if (!this._isWalkableBlock(bx, by)) {
             if (this.stage.sandColor) {
