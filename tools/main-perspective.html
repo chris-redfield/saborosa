@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Main-Stage Perspective Test</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:320px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; overflow-y:auto; }
+  #side .group { padding:8px 12px; border-bottom:1px solid #0c1226; }
+  #side h3 { margin:4px 0 8px; color:var(--accent); font-size:12px; letter-spacing:.5px; }
+  label.s { display:block; margin:7px 0 1px; color:#9ab; font-size:11px;
+            display:flex; justify-content:space-between; }
+  label.s span { color:#cfe; }
+  input[type=range] { width:100%; }
+  label.cb { display:flex; align-items:center; gap:6px; margin:6px 0; color:#cfe; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #readout { white-space:pre; color:#8fce8f; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  pre#out { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px;
+            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:160px;
+            overflow:auto; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>MAIN-STAGE PERSPECTIVE TEST</b>
+  <span class="hint">WASD / arrows — W&nbsp;=&nbsp;walk in (smaller, north), S&nbsp;=&nbsp;out (bigger), A/D&nbsp;=&nbsp;strafe · piece A (trapezoid) over piece B (map); edges may run off-screen</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+const A = '../assets/';
+// Piece B — the main stage map (3 mountains). The trapezoid (piece A) is laid
+// over it. Same world rect as the in-game backgroundImageRect, so the tuned
+// NORMALIZED params transfer straight into the game.
+const MAP = A + 'cor-saborosa-fundo-fim-island-01-combined.png';
+const CHAR_SHEET = A + 'saborosa-cha-001.png';
+const CHAR_DEFS = A + 'saborosa-cha-001-sprites.json';
+
+// ---- tunable parameters ---------------------------------------------------
+// All positions are NORMALIZED (0..1) relative to the displayed background
+// rect, so the tool is resolution-independent and the numbers transfer
+// straight into the game. The floor is a screen-space trapezoid: wide along the
+// bottom (near the camera) narrowing to the back at the vanishing point. A
+// sprite's drawn height is `frac` of the bg height, proportional to how far the
+// feet sit BELOW the vanishing point — that proportionality IS one-point
+// perspective. In the GAME only the DEPTH→SIZE part is used (camera scrolls,
+// movement stays free 2D); the trapezoid + lateral are a visual guide here.
+const params = {
+  vpX:   0.500,  // vanishing point X (guide only)
+  vpY:  -0.200,  // vanishing point Y (horizon) — above the map so the far edge at
+                 //   the very top doesn't shrink the sprite to zero
+  yNear: 1.050,  // floor front edge (near, south) — just past the bottom
+  yFar:  0.000,  // floor back edge (far, north) — at the TOP of the map (drawing #4)
+  halfNear: 0.750,// floor half-width near — wider, edges run off the sides
+  halfFar:  0.500,// floor half-width far — top edge spans the full map top
+  scaleNear: 1.000,// size mult at the near edge (south) — 1 = exact in-game size
+  scaleFar:  0.600,// size mult at the far edge (north) — auto when perspLock
+  sizeScale: 1.1,// baseline multiplier on top (1 = in-game size; 1.1 = +10%)
+  moveSpeed: 0.35,// depth travel in t-units/sec
+  perspLock: true,// derive scaleFar from geometry (physically exact)
+  perspSpeed: true,// move slower on screen the deeper you are (tool feel only)
+  showGuides: true,
+};
+
+// Slider definitions: [key, label, min, max, step]. Ranges widened vs the
+// dungeon tool so the trapezoid can extend beyond the map (edges off-screen).
+const SLIDERS = [
+  ['vpX','vanishing X (guide)',0,1,0.005],
+  ['vpY','vanishing Y (horizon)',-0.5,1,0.005],
+  ['yNear','floor near Y (front, south)',0.5,1.5,0.005],
+  ['yFar','floor far Y (top=0 … bottom)',0.0,1.0,0.005],
+  ['halfNear','floor half-width near',0.05,1.5,0.005],
+  ['halfFar','floor half-width far',0.01,1.0,0.005],
+  ['scaleNear','size mult near (south)',0.2,2,0.01],
+  ['scaleFar','size mult far (north)',0.1,2,0.01],
+  ['sizeScale','baseline (1 = in-game size)',0.2,3,0.01],
+  ['moveSpeed','move speed',0.05,1.5,0.01],
+];
+
+// ---- state ----------------------------------------------------------------
+let t = 0;     // depth 0..1  (0 = near/south/bottom, 1 = far/north/top)
+let L = 0;     // lateral -1..1
+let facing = 'down';
+const keys = Object.create(null);
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let bgImg = null, charImg = null, charFrames = null;
+let bg = { x:0, y:0, w:0, h:0 };       // displayed background rect (px)
+
+const MAP_W = 5543, MAP_H = 4075;       // native main-map dimensions
+
+// Baseline = the character's REAL in-game size relative to the map, so the tool
+// shows it exactly as big as it is in play. ART.character.height (109) over the
+// world-map height backgroundImageRect.h (6480) → fraction of the map height.
+// `sizeScale=1` therefore renders the player at its true in-game size.
+const GAME_CHAR_H = 109, MAP_WORLD_H = 6480;
+const BASE_FRAC = GAME_CHAR_H / MAP_WORLD_H; // ≈ 0.0168
+
+// ---- loading ---------------------------------------------------------------
+function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+async function boot(){
+  [bgImg, charImg] = await Promise.all([loadImg(MAP), loadImg(CHAR_SHEET)]);
+  try {
+    const d = await (await fetch(CHAR_DEFS, {cache:'no-cache'})).json();
+    charFrames = {
+      down: d.down_idle[0], up: d.up_idle[0], left: d.left_idle[0], right: d.right_idle[0],
+      down_right: d.down_right_idle[0], down_left: d.down_left_idle[0],
+      up_right: d.up_right_idle[0], up_left: d.up_left_idle[0],
+    };
+  } catch(e){ console.warn('char defs failed', e); }
+  buildPanel();
+  resize();
+  requestAnimationFrame(loop);
+  status('ready · drive with WASD');
+}
+function status(s){ document.getElementById('status').textContent = s; }
+
+// ---- layout ----------------------------------------------------------------
+function resize(){
+  cv.width = stage.clientWidth; cv.height = stage.clientHeight;
+  // Contain-fit the map into the canvas, centered (whole map visible; trapezoid
+  // edges may extend into the letterbox / off-canvas).
+  const s = Math.min(cv.width / MAP_W, cv.height / MAP_H);
+  bg.w = MAP_W * s; bg.h = MAP_H * s;
+  bg.x = (cv.width - bg.w) / 2; bg.y = (cv.height - bg.h) / 2;
+}
+window.addEventListener('resize', resize);
+
+// ---- perspective math ------------------------------------------------------
+const lerp = (a,b,k)=> a + (b-a)*k;
+// Sprite height as a fraction of bg height = the REAL in-game fraction (BASE_FRAC)
+// times the depth multiplier times the baseline. So sizeScale=scaleNear=1 → the
+// player is exactly its in-game size at the near edge.
+function fracAt(tt){ return BASE_FRAC * lerp(params.scaleNear, effScaleFar(), tt) * params.sizeScale; }
+function effScaleFar(){
+  if (!params.perspLock) return params.scaleFar;
+  const span = (params.yNear - params.vpY);
+  if (span <= 0) return params.scaleFar;
+  return params.scaleNear * (params.yFar - params.vpY) / span;
+}
+function floorPoint(tt, LL){
+  const yN = lerp(params.yNear, params.yFar, tt);
+  const halfW = lerp(params.halfNear, params.halfFar, tt);
+  const xN = params.vpX + LL * halfW;
+  return { x: bg.x + xN * bg.w, y: bg.y + yN * bg.h, frac: fracAt(tt), halfW };
+}
+
+// ---- update ----------------------------------------------------------------
+let last = 0;
+function update(dt){
+  let dT = 0, dL = 0;
+  if (keys['w'] || keys['arrowup'])    dT += 1;
+  if (keys['s'] || keys['arrowdown'])  dT -= 1;
+  if (keys['d'] || keys['arrowright']) dL += 1;
+  if (keys['a'] || keys['arrowleft'])  dL -= 1;
+  const persp = params.perspSpeed ? (fracAt(t) / fracAt(0)) : 1;
+  t += dT * params.moveSpeed * persp * dt;
+  L += dL * params.moveSpeed * dt;
+  t = Math.max(0, Math.min(1, t));
+  L = Math.max(-1, Math.min(1, L));
+  const up = dT > 0, down = dT < 0, right = dL > 0, left = dL < 0;
+  if (up && right) facing = 'up_right';
+  else if (up && left) facing = 'up_left';
+  else if (down && right) facing = 'down_right';
+  else if (down && left) facing = 'down_left';
+  else if (up) facing = 'up';
+  else if (down) facing = 'down';
+  else if (right) facing = 'right';
+  else if (left) facing = 'left';
+}
+
+// ---- draw ------------------------------------------------------------------
+function draw(){
+  ctx.fillStyle = '#0c1020'; ctx.fillRect(0,0,cv.width,cv.height);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bgImg, bg.x, bg.y, bg.w, bg.h);
+  if (params.showGuides) drawGuides();
+  const p = floorPoint(t, L);
+  const fr = charFrames ? charFrames[facing] || charFrames.down : null;
+  const spriteH = p.frac * bg.h;
+  if (fr && charImg) {
+    const aspect = fr.w / fr.h;
+    const spriteW = spriteH * aspect;
+    ctx.drawImage(charImg, fr.x, fr.y, fr.w, fr.h,
+                  p.x - spriteW/2, p.y - spriteH, spriteW, spriteH);
+  } else {
+    const w = spriteH * 0.5;
+    ctx.fillStyle = '#e94560';
+    ctx.fillRect(p.x - w/2, p.y - spriteH, w, spriteH);
+  }
+  if (params.showGuides) {
+    ctx.fillStyle = '#53d8fb';
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill();
+  }
+  updateReadout(p);
+}
+
+function drawGuides(){
+  const nl = floorPoint(0,-1), nr = floorPoint(0,1);
+  const fl = floorPoint(1,-1), fr = floorPoint(1,1);
+  ctx.strokeStyle = 'rgba(83,216,251,0.55)'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(nl.x, nl.y); ctx.lineTo(nr.x, nr.y);
+  ctx.lineTo(fr.x, fr.y); ctx.lineTo(fl.x, fl.y); ctx.closePath(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(83,216,251,0.22)';
+  for (let i=1;i<=4;i++){ const tt=i/5; const a=floorPoint(tt,-1), b=floorPoint(tt,1);
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
+  const vx = bg.x + params.vpX*bg.w, vy = bg.y + params.vpY*bg.h;
+  ctx.strokeStyle = '#e94560'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(vx-8,vy); ctx.lineTo(vx+8,vy);
+  ctx.moveTo(vx,vy-8); ctx.lineTo(vx,vy+8); ctx.stroke();
+}
+
+// ---- side panel ------------------------------------------------------------
+function buildPanel(){
+  const side = document.getElementById('side');
+  side.innerHTML = '';
+  const g1 = group(side, 'Perspective');
+  for (const [k,label,min,max,step] of SLIDERS) addSlider(g1, k, label, min, max, step);
+  const g2 = group(side, 'Behavior');
+  addCheckbox(g2, 'perspLock', 'lock far size to geometry (exact perspective)');
+  addCheckbox(g2, 'perspSpeed', 'constant ground speed (tool feel only)');
+  addCheckbox(g2, 'showGuides', 'show floor guides');
+  const g3 = group(side, 'Readout');
+  const ro = document.createElement('div'); ro.id = 'readout'; g3.appendChild(ro);
+  const g4 = group(side, 'Export');
+  const row = document.createElement('div');
+  const copy = document.createElement('button'); copy.textContent = 'Copy params JSON';
+  const reset = document.createElement('button'); reset.textContent = 'Reset pos';
+  reset.style.marginLeft = '6px';
+  row.appendChild(copy); row.appendChild(reset); g4.appendChild(row);
+  const out = document.createElement('pre'); out.id = 'out'; out.style.marginTop = '6px';
+  g4.appendChild(out);
+  copy.onclick = () => {
+    const json = paramJSON();
+    out.textContent = json;
+    navigator.clipboard && navigator.clipboard.writeText(json);
+    status('params copied');
+  };
+  reset.onclick = () => { t = 0; L = 0; status('reset to near-center'); };
+}
+function group(host, title){
+  const d = document.createElement('div'); d.className='group';
+  const h = document.createElement('h3'); h.textContent = title; d.appendChild(h);
+  host.appendChild(d); return d;
+}
+function addSlider(host, key, label, min, max, step){
+  const l = document.createElement('label'); l.className='s';
+  const name = document.createElement('span'); name.textContent = label;
+  const val = document.createElement('span'); val.textContent = (+params[key]).toFixed(3);
+  l.appendChild(name); l.appendChild(val);
+  const inp = document.createElement('input'); inp.type='range';
+  inp.min=min; inp.max=max; inp.step=step; inp.value=params[key];
+  inp.oninput = e => { params[key] = parseFloat(e.target.value); val.textContent = params[key].toFixed(3); };
+  host.appendChild(l); host.appendChild(inp);
+}
+function addCheckbox(host, key, label){
+  const l = document.createElement('label'); l.className='cb';
+  const c = document.createElement('input'); c.type='checkbox'; c.checked = !!params[key];
+  c.onchange = e => { params[key] = e.target.checked; };
+  l.appendChild(c); l.appendChild(document.createTextNode(label));
+  host.appendChild(l);
+}
+function updateReadout(p){
+  const ro = document.getElementById('readout'); if (!ro) return;
+  ro.textContent =
+    `depth t   ${t.toFixed(3)}  (0 near/south · 1 far/north)\n` +
+    `lateral L ${L.toFixed(3)}\n` +
+    `facing    ${facing}\n` +
+    `char h    ${(p.frac*MAP_WORLD_H).toFixed(0)} world px  (in-game ${GAME_CHAR_H})\n` +
+    `scale mul ${(p.frac/(BASE_FRAC*params.sizeScale)).toFixed(3)}  (1 = in-game size)\n` +
+    `foot px   ${p.x.toFixed(0)}, ${p.y.toFixed(0)}\n` +
+    `scaleFar* ${effScaleFar().toFixed(3)}  ${params.perspLock?'(locked)':''}`;
+}
+function paramJSON(){
+  const o = {};
+  for (const [k] of SLIDERS) o[k] = +params[k].toFixed(4);
+  o.scaleFar = +effScaleFar().toFixed(4);   // resolved (locked) far multiplier
+  o.perspLock = params.perspLock;
+  // GAME PORT: char draw size = in-game size × lerp(scaleNear, scaleFar, t) × sizeScale,
+  // with t = clamp((feetY_world - yNearW)/(yFarW - yNearW)), yNearW/yFarW =
+  // backgroundImageRect.y + y{Near,Far}×rect.h. Baseline (scaleNear=sizeScale=1) = today's size.
+  o.note = 'size = ingame * lerp(scaleNear,scaleFar,t) * sizeScale; t from feetY in [yNear,yFar] band';
+  return JSON.stringify(o, null, 2);
+}
+
+// ---- input + loop ----------------------------------------------------------
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(k)) e.preventDefault();
+  keys[k] = true;
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+function loop(now){
+  const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+boot();
+</script>
+</body>
+</html>
