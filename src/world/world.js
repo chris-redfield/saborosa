@@ -51,6 +51,34 @@ class World {
 
         // Character depth-perspective config (tools/main-perspective.html), or null.
         this._perspective = stage.perspective ? this.game.getJSON(stage.perspective) : null;
+
+        // "Always on top" overlay objects (structures): discrete crops drawn over
+        // everything in renderTopOverlays, instead of a full-map blit per frame.
+        // Most of the structure sheets are transparent, so blitting them whole
+        // each frame is pure waste on software rendering — these are the opaque
+        // pieces only. Built once here (not added to blocks, never depth-sorted).
+        this._topOverlays = [];
+        if (stage.overlayObjects) {
+            const ovl = this.game.getJSON(stage.overlayObjects);
+            const rect = stage.backgroundImageRect;
+            if (ovl && ovl.objects && rect) {
+                for (const o of ovl.objects) {
+                    if (o.top) this._topOverlays.push(new OverlayObject(this.game, o, rect, false));
+                }
+            }
+        }
+    }
+
+    // Draw the always-on-top overlay objects (structures), culled to the visible
+    // world AABB. Replaces the old full-sheet renderOverlayTop blits.
+    renderTopOverlays(ctx, view) {
+        const list = this._topOverlays;
+        if (!list || !list.length) return;
+        for (const o of list) {
+            if (o.x + o.width < view.x0 || o.x > view.x1 ||
+                o.y + o.height < view.y0 || o.y > view.y1) continue;
+            o.render(ctx, this.game, this.cameraX, this.cameraY);
+        }
     }
 
     // Depth-perspective size multiplier for a sprite whose feet sit at world Y
@@ -1154,6 +1182,7 @@ class World {
                 const rect = this._stageRect();
                 const collide = this.stage.overlayCollision !== false;
                 for (const o of ovl.objects) {
+                    if (o.top) continue; // structures are drawn always-on-top (renderTopOverlays)
                     const wx = rect.x + o.nx * rect.w;
                     const wy = rect.y + o.ny * rect.h;
                     if (Math.floor(wx / BLOCK_W) !== bx || Math.floor(wy / BLOCK_H) !== by) continue;

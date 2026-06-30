@@ -26,6 +26,49 @@ contingencies for even weaker targets (true software rendering / mobile).
 
 ---
 
+## ✅ 2026-06-29: 4-layer map rewire — deploy load hardening + CPU re-optimization
+
+The map was rewired to **4 aligned image layers** (sand / mountains-"ilhas" /
+zoning / overlays) replacing the old single combined background, plus the trees
+became discrete `OverlayObject`s. More big layers = the §1/§R3 footprint crept
+back up; two things surfaced it.
+
+**A. Deploy: assets failed with `ERR_CONNECTION_RESET`, then ~26fps.** Firing
+~30 asset requests at once made the host drop the burst (HTTP/2 streams). Worse,
+`Promise.all(loads)` *rejected* on the first failure → the **ImageBitmap warming
+was skipped for everything** → every layer drew as a plain `<img>` Chrome
+re-decodes each frame (the §R1 collapse). Fixes in `game.js`:
+- **Bounded concurrency** (`_netMax = 4`) + **retry/backoff with cache-bust** in
+  `loadImage`/`loadJSON` (transient resets recover).
+- **`Promise.allSettled`** for the load set — a single failed asset can no longer
+  skip warming; worst case is a missing layer, never an fps collapse.
+
+**B. Chrome 36fps vs Firefox 60fps on the SAME machine.** The HUD `gpu` line was
+the tell: Chrome read **`no webgl (software rendering likely)`** while Firefox
+used the `NVIDIA GeForce GTX…`. Chrome had hardware acceleration OFF; re-enabling
+it (`chrome://gpu` / Settings → System) restored 60. **Lesson: read the HUD gpu
+line FIRST — a Chrome-only lag is usually accel-off, not the code.**
+
+**CPU/software-render optimizations made anyway (kept — they help GPU-less
+players, the whole point of this doc):**
+1. **`sand` → solid colour** (`#c8bb9b`) — it was a 1-colour 5543px image
+   (~90MB decoded + a full blit/frame). `layers.sand.color`, no image loaded.
+2. **Free the `<img>` after the bitmap** for every big layer (the §"decode-once"
+   rule, extended to the new layers — no duplicate resident copy).
+3. **`estruturas` → discrete crops.** The two structure sheets were drawn as
+   full-viewport blits *every frame* (mostly transparent = wasted fill). They're
+   now `top:true` objects in `overlay-objects.json` (extracted by
+   `build-overlay-objects.py`), drawn as ~11 culled crops via
+   `World.renderTopOverlays`. Removes 2 full blits/frame.
+4. **Removed now-dead loads** (mapobjects/assets-001, `painted_isle_objects`,
+   `mapobject_defs`, rock1/2/3) — fewer requests + less memory.
+
+**NOT done (next lever):** ambient **FX is ~10ms/frame on software** (`fx` HUD
+section). Make its density adaptive when software rendering is detected, rather
+than cutting the tuned juice for GPU machines.
+
+---
+
 Goal (original): smooth gameplay on weak hardware. Initial state: perfect on
 a modern GPU machine, ~1fps on the test machine.
 

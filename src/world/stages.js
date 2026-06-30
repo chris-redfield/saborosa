@@ -90,13 +90,10 @@ const STAGES = {
             zoning:    { image: 'stage3_zoning' },     // saborosa-elementos-zoning-000 (transparent outside island)
             sand:      { color: '#c8bb9b' },            // flat tan — was a 1-colour 5543px image (~90MB); now a solid fill
             mountains: { image: 'stage3_mountains' },   // saborosa-elementos-ilhas
-            // Trees + holes are spawned as DISCRETE depth-sorted objects (see
-            // `overlayObjects` below) so the player passes wholly behind/in front
-            // of each one — the structure layers just render flat on top.
-            overlays: [
-                { image: 'stage3_ovl_estruturas1', onTop: true }, // structures — always on top
-                { image: 'stage3_ovl_estruturas2', onTop: true }, // structures — always on top
-            ],
+            // Trees + holes + structures are ALL spawned as discrete objects from
+            // `overlayObjects` below (trees/holes depth-sort with the player;
+            // structures are `top` → always-on-top crops). No full-map overlay
+            // blits, so nothing is drawn here.
         },
         // Per-object tree/hole placements (assets-v2/mapa/overlay-objects.json,
         // built by tools/build-overlay-objects.py). Spawned as OverlayObjects

@@ -15,7 +15,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -30,7 +31,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -45,7 +47,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -60,7 +63,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -75,7 +79,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -90,7 +95,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -105,7 +111,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -120,7 +127,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -135,7 +143,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -150,7 +159,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -165,7 +175,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -180,7 +191,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -195,7 +207,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -210,7 +223,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -225,7 +239,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -240,7 +255,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -255,7 +271,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -270,7 +287,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -285,7 +303,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -300,7 +319,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -315,7 +335,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -330,7 +351,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -345,7 +367,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -360,7 +383,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -375,7 +399,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -390,7 +415,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -405,7 +431,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -420,7 +447,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -435,7 +463,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -450,7 +479,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -465,7 +495,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -480,7 +511,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -495,7 +527,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -510,7 +543,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -525,7 +559,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -540,7 +575,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -555,7 +591,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -570,7 +607,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -585,7 +623,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -600,7 +639,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -615,7 +655,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -630,7 +671,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -645,7 +687,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -660,7 +703,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -675,7 +719,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -690,7 +735,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -705,7 +751,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -720,7 +767,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -735,7 +783,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -750,7 +799,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -765,7 +815,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -780,7 +831,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -795,7 +847,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -810,7 +863,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -825,7 +879,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -840,7 +895,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -855,7 +911,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -870,7 +927,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -885,7 +943,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -900,7 +959,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -915,7 +975,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -930,7 +991,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -945,7 +1007,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -960,7 +1023,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -975,7 +1039,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -990,7 +1055,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1005,7 +1071,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1020,7 +1087,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1035,7 +1103,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1050,7 +1119,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1065,7 +1135,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1080,7 +1151,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1095,7 +1167,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1110,7 +1183,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1125,7 +1199,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1140,7 +1215,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1155,7 +1231,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1170,7 +1247,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1185,7 +1263,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1200,7 +1279,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1215,7 +1295,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1230,7 +1311,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1245,7 +1327,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1260,7 +1343,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1275,7 +1359,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1290,7 +1375,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1305,7 +1391,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1320,7 +1407,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1335,7 +1423,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1350,7 +1439,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1365,7 +1455,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_arvores",
@@ -1380,7 +1471,8 @@
     "w": 0.4,
     "h": 0.16
    },
-   "collide": true
+   "collide": true,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_buracos",
@@ -1395,7 +1487,8 @@
     "w": 0.7,
     "h": 0.5
    },
-   "collide": false
+   "collide": false,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_buracos",
@@ -1410,7 +1503,8 @@
     "w": 0.7,
     "h": 0.5
    },
-   "collide": false
+   "collide": false,
+   "top": false
   },
   {
    "sheet": "stage3_ovl_buracos",
@@ -1425,7 +1519,184 @@
     "w": 0.7,
     "h": 0.5
    },
-   "collide": false
+   "collide": false,
+   "top": false
+  },
+  {
+   "sheet": "stage3_ovl_estruturas1",
+   "kind": "estruturas-01",
+   "nx": 0.57099,
+   "ny": 0.350675,
+   "nw": 0.073787,
+   "nh": 0.115337,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas1",
+   "kind": "estruturas-01",
+   "nx": 0.707739,
+   "ny": 0.186012,
+   "nw": 0.057911,
+   "nh": 0.081227,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.108605,
+   "ny": 0.184294,
+   "nw": 0.029226,
+   "nh": 0.122945,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.803356,
+   "ny": 0.564172,
+   "nw": 0.027422,
+   "nh": 0.086135,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.735342,
+   "ny": 0.121718,
+   "nw": 0.02652,
+   "nh": 0.061595,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.334837,
+   "ny": 0.490798,
+   "nw": 0.02634,
+   "nh": 0.06184,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.542306,
+   "ny": 0.65816,
+   "nw": 0.021829,
+   "nh": 0.031656,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.842324,
+   "ny": 0.651534,
+   "nw": 0.021829,
+   "nh": 0.031411,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.375789,
+   "ny": 0.520736,
+   "nw": 0.021829,
+   "nh": 0.031411,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.631607,
+   "ny": 0.567607,
+   "nw": 0.021829,
+   "nh": 0.031656,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
+  },
+  {
+   "sheet": "stage3_ovl_estruturas2",
+   "kind": "estruturas-02",
+   "nx": 0.33177,
+   "ny": 0.630184,
+   "nw": 0.021829,
+   "nh": 0.031656,
+   "col": {
+    "offX": 0.2,
+    "offY": 0.8,
+    "w": 0.6,
+    "h": 0.18
+   },
+   "collide": false,
+   "top": true
   }
  ]
 }

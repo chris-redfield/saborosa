@@ -250,7 +250,14 @@ class Game {
                 fxWarm.push('fx_sheet');
             }
 
-            await Promise.all(loads);
+            // allSettled (not all): a single failed asset must NOT skip the
+            // ImageBitmap warming below. If warming is skipped, every layer
+            // draws as a plain <img> that Chrome re-decodes each frame under the
+            // moving camera — the BUG.md FPS collapse, and exactly why a flaky
+            // DEPLOY (some loads reset) ran at ~26fps while local ran at 60.
+            const results = await Promise.allSettled(loads);
+            const failed = results.filter(r => r.status === 'rejected').length;
+            if (failed) console.warn(`${failed} asset(s) failed to load — continuing`);
 
             // Optional character perspective config authored in
             // tools/main-perspective.html ("Save perspective.json"). Best-effort:

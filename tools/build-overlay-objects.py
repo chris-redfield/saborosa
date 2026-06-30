@@ -28,11 +28,20 @@ OUT = os.path.join(MAPA, 'overlay-objects.json')
 # Footprint is normalised to each object's OWN bbox (base-centred). Holes don't
 # collide yet — their special "fall in" logic comes later — but we still emit a
 # box so it's one flag flip to enable.
+# (name, file, game-key, collide, footprint, top)
+#   top=False → depth-sorted object (trees/holes), interleaves with the player.
+#   top=True  → "always on top" object (structures), drawn over everything as a
+#               handful of discrete crops instead of a full-map blit per frame
+#               (big CPU/software-render win — most of the sheet is transparent).
 LAYERS = [
-    ('arvores',  'saborosa-elementos-arvores.png',  'stage3_ovl_arvores',  True,
-     {'offX': 0.30, 'offY': 0.82, 'w': 0.40, 'h': 0.16}),
-    ('buracos',  'saborosa-elementos-buracos.png',  'stage3_ovl_buracos',  False,
-     {'offX': 0.15, 'offY': 0.30, 'w': 0.70, 'h': 0.50}),
+    ('arvores',       'saborosa-elementos-arvores.png',       'stage3_ovl_arvores',     True,
+     {'offX': 0.30, 'offY': 0.82, 'w': 0.40, 'h': 0.16}, False),
+    ('buracos',       'saborosa-elementos-buracos.png',       'stage3_ovl_buracos',     False,
+     {'offX': 0.15, 'offY': 0.30, 'w': 0.70, 'h': 0.50}, False),
+    ('estruturas-01', 'saborosa-elementos-estruturas-01.png', 'stage3_ovl_estruturas1', False,
+     {'offX': 0.20, 'offY': 0.80, 'w': 0.60, 'h': 0.18}, True),
+    ('estruturas-02', 'saborosa-elementos-estruturas-02.png', 'stage3_ovl_estruturas2', False,
+     {'offX': 0.20, 'offY': 0.80, 'w': 0.60, 'h': 0.18}, True),
 ]
 
 AREA_MIN = 350  # px — drop specks/anti-alias noise; keeps whole trees/plants
@@ -67,7 +76,7 @@ def blobs(png_path):
 def main():
     objects = []
     img_w = img_h = None
-    for name, fname, key, collide, col in LAYERS:
+    for name, fname, key, collide, col, top in LAYERS:
         path = os.path.join(MAPA, fname)
         if not os.path.exists(path):
             print(f'skip (missing): {fname}')
@@ -85,8 +94,9 @@ def main():
                 'nw': round(w / iw, 6), 'nh': round(h / ih, 6),
                 'col': col,
                 'collide': collide,
+                'top': top,
             })
-        print(f'{name}: {len(bs)} objects')
+        print(f'{name}: {len(bs)} objects' + (' [top]' if top else ''))
 
     data = {'imageW': img_w, 'imageH': img_h, 'objects': objects}
     with open(OUT, 'w') as f:

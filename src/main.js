@@ -845,9 +845,9 @@ function renderGame(ctx) {
     // the player passes behind any tree/plant that is lower on screen than them.
     if (world.renderOverlayLayer) world.renderOverlayLayer(ctx, _viewRect, overlaySplitY, 'below');
 
-    // "Always on top" overlays (e.g. tall structures) — drawn as full images
-    // over the player regardless of position, no feet-split.
-    if (world.renderOverlayTop) world.renderOverlayTop(ctx, _viewRect);
+    // "Always on top" overlays (structures) — discrete crops over the player,
+    // not full-map blits (much cheaper on software rendering).
+    if (world.renderTopOverlays) world.renderTopOverlays(ctx, _viewRect);
 
     // Ambient FX drawn above the scenery (no collision, no depth sort) —
     // shimmering shadows/clippy and ping-ponging balls popping around the view.
