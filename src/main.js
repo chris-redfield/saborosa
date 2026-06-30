@@ -530,8 +530,22 @@ function updateGame(dt) {
 
     // While behind the mountain the player isn't on the same plane as the
     // surface objects — they walk through rocks/cubes/etc. Pass an empty
-    // obstacle list so collisions are skipped.
-    player.move(dx, dy, player.behindMountain ? [] : obstacles);
+    // obstacle list so collisions are skipped. Otherwise, drop objects that
+    // sit ON the mountain (onMountainPlane) unless the player is up there too:
+    // a tree on the mountain shares world-XY with the sand in front of/behind
+    // it, and flat AABB collision would wrongly block a sand-level player.
+    // "Up there too" means the player's FEET are on the mountain art (onMountain)
+    // — NOT merely above the midline, since there's open sand above the line and
+    // a player standing on it should still pass through the mountain's plants.
+    let moveObstacles;
+    if (player.behindMountain) {
+        moveObstacles = [];
+    } else if (onMountain) {
+        moveObstacles = obstacles; // feet on the mountain: everything collides
+    } else {
+        moveObstacles = obstacles.filter(o => !o.onMountainPlane);
+    }
+    player.move(dx, dy, moveObstacles);
 
     // Behind-mountain horizontal wall: while in the fall-behind state the
     // player can't move south past the midline. They fall down to it (the
@@ -557,6 +571,7 @@ function updateGame(dt) {
     player.lastZone = realZone;
     player.lastOnMountain = onMountain;
     player.lastAboveMidline = aboveMidline;
+    player.onMountain = onMountain; // surfaced for the debug HUD
 
     // Apply zone drift to movable obstacles (rocks, live rocks).
     // Skip carried objects and stack children (their parent will drag them).
@@ -959,7 +974,7 @@ function renderGame(ctx) {
         const zone = world.getZoneAt ? world.getZoneAt(feetX, feetY) : '-';
         ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 54);
         ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 36);
-        ctx.fillText(`Zone: ${zone}   State: ${player.surfaceState}   behind:${player.behindMountain ? 'Y' : 'n'} onTop:${player.onTop ? 'Y' : 'n'}`, 10, game.height - 16);
+        ctx.fillText(`Zone: ${zone}   State: ${player.surfaceState}   behind:${player.behindMountain ? 'Y' : 'n'} onTop:${player.onTop ? 'Y' : 'n'} onMtn:${player.onMountain ? 'Y' : 'n'}`, 10, game.height - 16);
 
         // Zone badge near the player's feet
         const swatch = ZONE_DEBUG_COLORS[zone] || '#888';

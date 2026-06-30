@@ -36,6 +36,17 @@ class OverlayObject {
         this.colOffX = Math.round(this.width * col.offX);
         this.colOffY = Math.round(this.height * col.offY);
 
+        // On the mountain "plane"? True when the object's footprint base sits
+        // ABOVE the midline (i.e. it's resting on the mountain, not the sand).
+        // The midline is rect.y + rect.h*0.5 — the same split World.getMidlineWorldY
+        // uses. Mountain-plane objects only collide while the player is ALSO on
+        // the mountain (main.js filters them out otherwise), so a tree up on the
+        // mountain never blocks a player walking the sand in front of / behind it
+        // — flat world-XY collision can't tell those apart, this flag can.
+        const midlineY = rect.y + rect.h * 0.5;
+        const baseY = this.y + this.colOffY + this.colH;
+        this.onMountainPlane = baseY < midlineY;
+
         // Static scenery: never pushed/lifted. Collision is per-object (the JSON
         // `collide` flag) so holes can stay passable until their own logic lands.
         this.isObstacle = collide && o.collide !== false;
@@ -73,7 +84,9 @@ class OverlayObject {
             ctx.lineWidth = 1;
             ctx.strokeRect(sx, sy, this.width, this.height);
             if (this.isObstacle) {
-                ctx.strokeStyle = 'red';
+                // Yellow = mountain-plane (only collides when the player is up on
+                // the mountain); red = always-collides ground object.
+                ctx.strokeStyle = this.onMountainPlane ? '#ff0' : 'red';
                 ctx.strokeRect(sx + this.colOffX, sy + this.colOffY, this.colW, this.colH);
             }
         }
