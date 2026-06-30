@@ -291,18 +291,26 @@ class Player {
             if (this.actionTicks <= 0) this.actionAnimating = false;
         }
 
-        // Update lifted object position to follow player. Centered
-        // horizontally on the collision footprint. Vertically: the midpoint
-        // between the old above-head anchor (this.y - 30) and the
-        // footprint-center anchor — one notch lower than head, not all the
-        // way down to the body center.
+        // Update lifted object position to follow player. The held object's
+        // collision footprint (its red box) is snapped to rest ON TOP of the
+        // player's footprint: centered horizontally, with the object box's
+        // BOTTOM edge meeting the player box's TOP edge. This lifts the object
+        // clear of the body so it reads as "held up" rather than worn on the
+        // head. liftOffsetX/Y stay as fine-tune nudges (negative Y = higher).
         if (this.liftedObject) {
             const obj = this.liftedObject;
-            obj.x = this.x + this.colOffX + (this.colW - obj.width) / 2 + this.liftOffsetX;
-            const aboveHeadY = this.y - 30;
-            const footprintY = this.y + this.colOffY - obj.height / 2;
-            obj.y = (aboveHeadY + footprintY) / 2 + this.liftOffsetY;
+            const oColW = obj.colW || obj.width;
+            const oColH = obj.colH || obj.height;
+            const oColOffX = obj.colOffX || 0;
+            const oColOffY = obj.colOffY || 0;
+            const pBoxCenterX = this.x + this.colOffX + this.colW / 2;
+            const pBoxTopY = this.y + this.colOffY;
+            // object box center X == player box center X
+            obj.x = pBoxCenterX - oColW / 2 - oColOffX + this.liftOffsetX;
+            // object box bottom == player box top
+            obj.y = pBoxTopY - oColH - oColOffY + this.liftOffsetY;
         }
+
     }
 
     /**
