@@ -326,13 +326,27 @@ function updateGame(dt) {
     if (aboveMidline) game.audio.playLayer('beats');
     else game.audio.stopLayer('beats');
 
-    // Walk-back-behind: feet just stepped onto an opaque overlay pixel from
-    // a transparent one while above the midline. Slip behind, no climb.
-    // Both frames must be above midline — the overlay only has opaque pixels
-    // above the midline, so a midline crossing alone would otherwise trigger.
-    if (!player.behindMountain && aboveMidline && player.lastAboveMidline
+    // Walk-behind-mountain: the player steps off the OPEN SAND straight into
+    // the mountain's footprint (an opaque, non-backdrop overlay pixel above the
+    // midline). Slip behind — the mountain art draws over them and they walk
+    // around the back. Edge-triggered on the sand->mountain boundary: it fires
+    // once on entry and never re-fires while they stay on the mountain.
+    //
+    // `cameFromSand` is what separates "approached across the sand" (-> behind)
+    // from "already climbing the mountain" (-> stay on top). The painted front
+    // slope is colored zones (ramp/wall/red/dense), so a climber's lastZone is
+    // never sand — they keep climbing OVER the top, even across the midline,
+    // and never trip this. Only a bare-sand approach slips behind. (The old
+    // trigger required BOTH frames above the midline, but the mountain's bottom
+    // edge sits exactly on the midline, so "entered mountain" and "crossed the
+    // line" land on the same frame — the lastAboveMidline guard killed it.)
+    // The !onTop check is belt-and-braces for a sand-painted patch on the summit.
+    const cameFromSand = player.lastZone === Zone.SAND || player.lastZone === Zone.NONE;
+    if (!player.behindMountain
         && player.surfaceState === 'ground'
-        && !player.lastOnMountain && onMountain) {
+        && !player.onTop
+        && onMountain && !player.lastOnMountain
+        && cameFromSand) {
         player.behindMountain = true;
     }
 
@@ -921,7 +935,7 @@ function renderGame(ctx) {
         const zone = world.getZoneAt ? world.getZoneAt(feetX, feetY) : '-';
         ctx.fillText(`World: ${Math.floor(player.x)}, ${Math.floor(player.y)}  Block: (${bx}, ${by})  Stage: ${gameState.currentStage.id}`, 10, game.height - 54);
         ctx.fillText(`Loaded blocks: ${Object.keys(world.blocks).length}  Type: ${gameState.currentStage.type}`, 10, game.height - 36);
-        ctx.fillText(`Zone: ${zone}   State: ${player.surfaceState}`, 10, game.height - 16);
+        ctx.fillText(`Zone: ${zone}   State: ${player.surfaceState}   behind:${player.behindMountain ? 'Y' : 'n'} onTop:${player.onTop ? 'Y' : 'n'}`, 10, game.height - 16);
 
         // Zone badge near the player's feet
         const swatch = ZONE_DEBUG_COLORS[zone] || '#888';
