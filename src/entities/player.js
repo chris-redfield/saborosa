@@ -308,10 +308,15 @@ class Player {
             const oColOffY = obj.colOffY || 0;
             const pBoxCenterX = this.x + this.colOffX + this.colW / 2;
             const pBoxTopY = this.y + this.colOffY;
+            // When the body is flattened — the charge crouch, or the heavy-carry
+            // pose for an object too heavy for this character — the object rides
+            // 10px lower so it tracks the squashed body instead of floating.
+            const flat = this.charging || this.grabHeavy;
+            const flatDrop = flat ? 10 : 0;
             // object box center X == player box center X
             obj.x = pBoxCenterX - oColW / 2 - oColOffX + this.liftOffsetX;
             // object box bottom == player box top
-            obj.y = pBoxTopY - oColH - oColOffY + this.liftOffsetY;
+            obj.y = pBoxTopY - oColH - oColOffY + this.liftOffsetY + flatDrop;
         }
 
     }
