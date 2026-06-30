@@ -23,6 +23,9 @@ const gameState = {
     // OPTIONS sub-screen is handled inside the IntroScreen itself.
     screen: 'intro',
     intro: null,
+    // Latches true on the player's first movement after entering the game —
+    // gates the bass layer so the spawn stays quiet until they act.
+    hasMoved: false,
     // Basket ascent transition
     transition: null // { basket, targetStage, basketY, startY, speed, phase }
 };
@@ -226,6 +229,7 @@ function updateGame(dt) {
         if (choice === 'START') {
             loadStage(STAGES[3]);
             gameState.screen = 'playing';
+            gameState.hasMoved = false; // bass waits for the first move
             // Hand off to gameplay music. The bass always joins; the intro's
             // "Intro music" toggle picks whether the theme keeps playing under
             // it (KEEP, default) or is cut (CLASSIC).
@@ -319,12 +323,23 @@ function updateGame(dt) {
         ? world.getMidlineWorldY() : null;
     const aboveMidline = midlineWorldY != null && feetY < midlineWorldY;
 
-    // Altitude audio layer: the beats track plays ON TOP of the bass while the
-    // player is above the mountain-split line, and stops below it (the bass
-    // alone remains). Channel-style: pausing keeps its position. The calls
-    // no-op unless the state flips, so per-frame driving is free.
-    if (aboveMidline) game.audio.playLayer('beats');
-    else game.audio.stopLayer('beats');
+    // Music layering, all driven here (channel-style: pause keeps position, and
+    // the play/stop calls no-op unless the state flips, so per-frame driving is
+    // free):
+    //  - BASS joins on the player's FIRST movement after entering the game (not
+    //    at spawn), then stays for the session.
+    //  - BEATS (the batuque/drum) plays above the mountain-split line; while it
+    //    plays the bass DROPS OUT, and it returns once the drum stops.
+    if (!gameState.hasMoved && (movement.x !== 0 || movement.y !== 0)) {
+        gameState.hasMoved = true; // latches once, survives respawns (gameState)
+    }
+    if (aboveMidline) {
+        game.audio.playLayer('beats');
+        game.audio.stopLayer('bass');           // drum replaces the bass up high
+    } else {
+        game.audio.stopLayer('beats');
+        if (gameState.hasMoved) game.audio.playLayer('bass');
+    }
 
     // Walk-behind-mountain: the player steps off the OPEN SAND straight into
     // the mountain's footprint (an opaque, non-backdrop overlay pixel above the

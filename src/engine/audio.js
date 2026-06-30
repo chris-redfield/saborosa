@@ -55,14 +55,15 @@ class AudioManager {
         this._applyVolume();
     }
 
-    // Hand off from intro to gameplay. The bass layer always joins; `continueIntro`
-    // chooses between the two modes the intro toggle exposes:
-    //   true  (new)     — the intro theme keeps playing UNDER the bass (never cut).
-    //   false (classic) — the intro theme is cut; the bass plays alone.
-    // Idempotent on the bass (playLayer only starts it once).
+    // Hand off from intro to gameplay. `continueIntro` chooses between the two
+    // modes the intro toggle exposes:
+    //   true  (new)     — the intro theme keeps playing underneath (never cut).
+    //   false (classic) — the intro theme is cut.
+    // The bass NO LONGER joins here — it starts on the player's first movement
+    // after entering the game, and drops out while the batuque (beats) plays
+    // (driven from updateGame). This keeps the spawn quiet until the player acts.
     startGameplay(continueIntro) {
         if (!continueIntro && this.music) this.music.pause();
-        this.playLayer('bass');
     }
 
     // Both are cheap to call every frame — they no-op unless the state flips.
