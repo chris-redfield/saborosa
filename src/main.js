@@ -830,7 +830,31 @@ function renderGame(ctx) {
     // As he moves deeper the silhouette covers more of the sprite — the smooth
     // "sinking behind the mountain" transition.
     if (behindAlive) {
+        // Clip the player to ABOVE the midline before drawing him. The mountain
+        // silhouette (renderOverlay) only has pixels above the midline, so it
+        // can't occlude the part of the sprite that hangs BELOW the mountain's
+        // bottom edge — without this, his lower body (e.g. the tomato's red
+        // base) pokes out in FRONT when his feet touch the midline. Behind the
+        // mountain its base hides his feet too, so cutting at the midline is the
+        // correct "sinking behind the mountain" look. Coords are world-minus-cam
+        // to match every other draw inside the camera transform.
+        // Cut a few world-px ABOVE the midline: the silhouette's bottom edge is
+        // a soft fade (its mask is upscaled with smoothing), so the topmost rows
+        // right at the midline are only semi-opaque. Clipping exactly at the
+        // line leaves the sprite's bottom row poking through that fade as a thin
+        // streak — lifting the cut into the solid part of the silhouette hides it.
+        const SEAM_HIDE = 10; // world px of overlap into the opaque silhouette
+        const midY = world.getMidlineWorldY ? world.getMidlineWorldY() : null;
+        ctx.save();
+        if (midY != null) {
+            ctx.beginPath();
+            ctx.rect(_viewRect.x0 - camX, _viewRect.y0 - camY,
+                     _viewRect.x1 - _viewRect.x0,
+                     Math.max(0, (midY - SEAM_HIDE - camY) - (_viewRect.y0 - camY)));
+            ctx.clip();
+        }
         player.render(ctx, game, camX, camY);
+        ctx.restore();
         if (PERF) PERF.begin('overlay');
         world.renderOverlay(ctx, _viewRect);
         if (PERF) PERF.end('overlay');
