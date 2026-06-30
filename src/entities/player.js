@@ -147,20 +147,32 @@ class Player {
 
     loadSprites() {
         const spriteSheet = new SpriteSheet(this.game);
-        const original = spriteSheet.loadSprites(this.width, this.height);
-        // Pack sizes come from the single scale knob (scale.config.js). Coconut
-        // is authored ~50% larger than the tomato; its render width tracks the
-        // source aspect, only the height is pinned. Bbox + collision footprint
-        // scale together via the shared colCfg ratios.
-        const _ch = (window.ART && window.ART.character) || { width: 145, height: 109 };
-        const _co = (window.ART && window.ART.coconut) || { width: 203, height: 164 };
-        const coconut = spriteSheet.loadCoconutSprites(_co.height);
+        // Both playable characters now use the same full-behaviour loader and
+        // the same map-proportional scale (scale.config.js → characterWorldScale,
+        // world-px per author-px). Each pack reports its own idle render size as
+        // the bbox; the collision footprint scales from it via the shared colCfg
+        // ratios. Pack 0 = tomato (default), pack 1 = coconut.
+        const ws = (window.ART && window.ART.characterWorldScale) || 0.855;
+        const tomato  = spriteSheet.loadCharacterPack('tomato_sheet',  'tomato_sprites',  ws, 'red');
+        const coconut = spriteSheet.loadCharacterPack('coconut_sheet', 'coconut_sprites', ws, 'tan');
         this.spritePacks = [
-            { sprites: original.sprites, width: _ch.width, height: _ch.height },
-            { sprites: coconut.sprites,  width: _co.width, height: _co.height }
+            { sprites: tomato.sprites,  width: tomato.width,  height: tomato.height },
+            { sprites: coconut.sprites, width: coconut.width, height: coconut.height }
         ];
         this.characterIndex = 0;
-        this.sprites = this.spritePacks[0].sprites;
+        this._applyPackMetrics(this.spritePacks[0]);
+    }
+
+    // Adopt a pack's sprites, bounding box, and derived collision footprint.
+    _applyPackMetrics(pack) {
+        this.sprites = pack.sprites;
+        this.width = pack.width;
+        this.height = pack.height;
+        this.colW = Math.round(this.width * this.colCfg.colW);
+        this.colH = Math.round(this.height * this.colCfg.colH);
+        this.colOffX = Math.round(this.width * this.colCfg.colOffX);
+        this.colOffY = Math.round(this.height * this.colCfg.colOffY);
+        this.mass = this.colW * this.colH;
     }
 
     cycleCharacter() {
@@ -170,15 +182,7 @@ class Player {
         const feetY = this.y + this.colOffY + this.colH / 2;
 
         this.characterIndex = (this.characterIndex + 1) % this.spritePacks.length;
-        const pack = this.spritePacks[this.characterIndex];
-        this.sprites = pack.sprites;
-        this.width = pack.width;
-        this.height = pack.height;
-        this.colW = Math.round(this.width * this.colCfg.colW);
-        this.colH = Math.round(this.height * this.colCfg.colH);
-        this.colOffX = Math.round(this.width * this.colCfg.colOffX);
-        this.colOffY = Math.round(this.height * this.colCfg.colOffY);
-        this.mass = this.colW * this.colH;
+        this._applyPackMetrics(this.spritePacks[this.characterIndex]);
 
         // Re-anchor so the new footprint center matches the old feet position.
         this.x = feetX - this.colOffX - this.colW / 2;

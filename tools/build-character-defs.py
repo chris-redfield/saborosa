@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Extract the assets-v2 character sheets into the `{frames, cols, rows}` defs
+the rich sprite loader (spritesheet.js) reads, plus a cropped game PNG.
+
+Both new sheets (saborosa-elementos-coconut.png / -tomato.png) share one layout:
+a 9-col x 5-row grid. Rows are directions (down, down_left, left, up_left, up);
+columns are poses (see spritesheet.js for the idle/grab/throw/action mapping).
+This is the OLD 10-col coconut layout minus its dedicated idle column — col 0
+now doubles as the resting pose.
+
+Unlike the block/coconut sheets (authored at ~580px cells, shipped downscaled),
+the new art is drawn at small cells (~120px) inside a mostly-empty 5543x4071
+canvas. Downscaling would only blur it; instead we CROP the master to its
+content bbox and ship it 1:1 (game sheetScale = 1.0). That copy is tiny
+(~4MB decoded vs ~90MB for the full master) and as crisp as the source allows.
+
+Outputs (assets/):
+  saborosa-elementos-<name>-game.png      cropped, full-res game sheet
+  saborosa-elementos-<name>-sprites.json  frames in cropped-sheet coords
+"""
+import json
+import sys
+import numpy as np
+from PIL import Image
+
+SRC = 'assets-v2/'
+OUT = 'assets/'
+COLS, ROWS = 9, 5
+PAD = 8  # transparent margin kept around the content crop
+SHEETS = ['coconut', 'tomato']
+
+
+def bands(proj):
+    """Contiguous runs of True → list of (start, end) inclusive."""
+    out, inb, s = [], False, 0
+    for i, v in enumerate(proj):
+        if v and not inb:
+            inb, s = True, i
+        elif not v and inb:
+            inb = False
+            out.append((s, i - 1))
+    if inb:
+        out.append((s, len(proj) - 1))
+    return out
+
+
+def tight_bbox(alpha, x0, x1, y0, y1):
+    """Tight opaque bbox within [x0,x1]x[y0,y1] (inclusive band rect)."""
+    sub = alpha[y0:y1 + 1, x0:x1 + 1] > 20
+    ys, xs = np.where(sub)
+    return [int(x0 + xs.min()), int(y0 + ys.min()),
+            int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)]
+
+
+def main():
+    for name in SHEETS:
+        im = Image.open(f'{SRC}saborosa-elementos-{name}.png').convert('RGBA')
+        alpha = np.array(im)[:, :, 3]
+        op = alpha > 20
+        cb = bands(op.sum(axis=0) >= 1)
+        rb = bands(op.sum(axis=1) >= 1)
+        assert len(cb) == COLS, f'{name}: found {len(cb)} col bands, want {COLS}'
+        assert len(rb) == ROWS, f'{name}: found {len(rb)} row bands, want {ROWS}'
+
+        # Per-cell tight crops in MASTER coords (row-major reading order).
+        cells = []
+        for r in range(ROWS):
+            ry0, ry1 = rb[r]
+            for c in range(COLS):
+                cx0, cx1 = cb[c]
+                cells.append(tight_bbox(alpha, cx0, cx1, ry0, ry1))
+
+        # Content bbox over all cells → crop the master, rebase coords.
+        xs0 = min(x for x, y, w, h in cells)
+        ys0 = min(y for x, y, w, h in cells)
+        xs1 = max(x + w for x, y, w, h in cells)
+        ys1 = max(y + h for x, y, w, h in cells)
+        cx, cy = max(0, xs0 - PAD), max(0, ys0 - PAD)
+        crop = im.crop((cx, cy, min(im.width, xs1 + PAD),
+                        min(im.height, ys1 + PAD)))
+        crop.save(f'{OUT}saborosa-elementos-{name}-game.png', optimize=True)
+
+        frames = [{'x': x - cx, 'y': y - cy, 'w': w, 'h': h}
+                  for x, y, w, h in cells]
+        out = {'frames': frames, 'cols': COLS, 'rows': ROWS}
+        path = f'{OUT}saborosa-elementos-{name}-sprites.json'
+        with open(path, 'w') as f:
+            json.dump(out, f, indent=2)
+        idle = frames[0]
+        print(f'{name}: 45 frames, crop {crop.width}x{crop.height} '
+              f'(~{crop.width*crop.height*4//2**20}MB) -> {path}  '
+              f'idle cell {idle["w"]}x{idle["h"]}')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

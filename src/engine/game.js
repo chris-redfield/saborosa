@@ -51,7 +51,9 @@ class Game {
         this.sheetScales = (window.ART && window.ART.sheetScales) || {
             block_sheet: 0.25,
             mapobjects_sheet: 0.45,
-            coconut_sheet: 0.45
+            // Character sheets ship cropped 1:1 with their defs (not downscaled).
+            coconut_sheet: 1.0,
+            tomato_sheet: 1.0
         };
 
         // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
@@ -216,8 +218,14 @@ class Game {
                 // editor/tools keep using the original full-res sheets.
                 this.loadImage('block_sheet', 'assets/saborosa-assets-002-game.png'),
                 this.loadJSON('block_defs', 'assets/saborosa-assets-002-sprites.json'),
-                this.loadImage('coconut_sheet', 'assets/saborosa-chat-002-2-game.png'),
-                this.loadJSON('coconut_sprites', 'assets/saborosa-chat-002-2-sprites.json'),
+                // Playable characters — both full-behaviour packs from the
+                // assets-v2 sheets (9x9... 9-col x 5-row layout), extracted +
+                // cropped 1:1 by tools/build-character-defs.py. Tomato is the
+                // default pack; coconut is the cycle-to alternate.
+                this.loadImage('tomato_sheet', 'assets/saborosa-elementos-tomato-game.png'),
+                this.loadJSON('tomato_sprites', 'assets/saborosa-elementos-tomato-sprites.json'),
+                this.loadImage('coconut_sheet', 'assets/saborosa-elementos-coconut-game.png'),
+                this.loadJSON('coconut_sprites', 'assets/saborosa-elementos-coconut-sprites.json'),
                 // The old decorative map assets (mapobjects_sheet / assets-001,
                 // painted_isle_objects, mapobject_defs) were REMOVED — the
                 // 4-layer map + OverlayObjects replaced the hand-placed trees.
@@ -305,7 +313,7 @@ class Game {
                 const WARM = ['stage3_mountains',
                               'stage3_ovl_arvores', 'stage3_ovl_buracos',
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
-                              'block_sheet', 'coconut_sheet',
+                              'block_sheet', 'coconut_sheet', 'tomato_sheet',
                               'character_sheet', 'liverock_sheet',
                               'fx_sheet_faint', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no

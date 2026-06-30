@@ -76,22 +76,31 @@ class SpriteSheet {
     }
 
     /**
-     * Loads the coconut character (saborosa-chat-002-2.png).
+     * Loads a full-behaviour character pack from one assets-v2 sheet + defs.
      *
-     * The JSON is a flat `frames` array indexed in reading order — 5 rows ×
-     * 10 columns. Rows are directions; the last column of each row is the
-     * idle pose, columns 0–8 are walk-cycle frames (wired later).
+     * The JSON is a flat `frames` array in reading order — 5 rows × 9 columns
+     * (tools/build-character-defs.py). Rows are directions; columns are poses.
      * Side-facing rows face LEFT, so they mirror to produce the right side.
+     * Both playable characters (tomato, coconut) share this exact layout, so
+     * the tomato gets the same grab/throw/carry behaviours the coconut had.
      *
-     * Render width is computed per-direction from the source aspect ratio so
-     * the sprite doesn't distort; render height is uniform = targetHeight.
+     * `worldScale` is world-px per author-px: the new art is drawn in the SAME
+     * canvas as the map layers, so applying the map's author→world scale (minus
+     * the perspective sizeScale) keeps the character proportional to the map.
+     * Every frame renders at its own source size × worldScale, so differently
+     * shaped poses (e.g. the flattened heavy-carry frame) stay proportional.
+     *
+     * `bodyType` ('tan' | 'red' | 'green') selects the body-color test used for
+     * feet-baseline alignment below — each character's body is a different hue.
+     *
+     * Returns { sprites, width, height } where width/height are the idle
+     * (row 0, col 0) render dimensions — the pack's bounding box.
      */
-    loadCoconutSprites(targetHeight) {
-        // getDrawable: ImageBitmap (decode-once). The <img> behind this key is
-        // freed after load (~104MB decoded) — the bitmap is the only copy,
-        // used both for the bodyBaseline scan below and per-frame draws.
-        const img = this.game.getDrawable('coconut_sheet');
-        const data = this.game.getJSON('coconut_sprites');
+    loadCharacterPack(sheetKey, jsonKey, worldScale, bodyType) {
+        // getDrawable: ImageBitmap (decode-once). Used both for the bodyBaseline
+        // scan below and per-frame draws.
+        const img = this.game.getDrawable(sheetKey);
+        const data = this.game.getJSON(jsonKey);
 
         const sprites = {};
         const ANIMS = ['idle', 'walk', 'grab', 'grab_heavy', 'throw', 'action'];
@@ -99,30 +108,43 @@ class SpriteSheet {
                       'down_right', 'down_left', 'up_right', 'up_left'];
         for (const d of DIRS) for (const a of ANIMS) sprites[`${d}_${a}`] = [];
 
-        if (!img || !data || !data.frames) return { sprites };
+        if (!img || !data || !data.frames) return { sprites, width: 0, height: 0 };
 
-        // The JSON frames are author-resolution; the game ships a downscaled
-        // '-game' sheet. Map every frame onto sheet pixels ONCE here — all the
-        // math below (crops, draw scale, baseline scans) then runs in one
-        // consistent coordinate space.
-        const S = this.game.getSheetScale('coconut_sheet');
+        // Defs coords are in the shipped sheet's space already (the cropped
+        // game PNG is 1:1 with the defs — sheetScale 1.0), but keep the mapping
+        // general so a future downscaled sheet still works.
+        const S = this.game.getSheetScale(sheetKey);
         const frames = data.frames.map(f =>
             f && { x: f.x * S, y: f.y * S, w: f.w * S, h: f.h * S });
 
-        const NCOLS = data.cols || 10;
-        const IDLE_COL = NCOLS - 1; // last column of each row holds the idle pose
+        const NCOLS = data.cols || 9;
+        const IDLE_COL = 0; // col 0 is the resting pose (and the lift start)
 
         // Animation → ordered column sequence within a row.
-        //   idle:       last column (single frame)
-        //   grab:       9 → 0 → 1 → 2       (lift; last frame held while carrying)
-        //   grab_heavy: 9 → 0 → 1 → 2 → 3   (heavy lift; col 3 = flattened carry pose)
-        const GRAB_COLS = [IDLE_COL, 0, 1, 2];
-        const GRAB_HEAVY_COLS = [IDLE_COL, 0, 1, 2, 3];
+        //   idle:       col 0 (single frame)
+        //   grab:       0 → 1 → 2       (lift; last frame held while carrying)
+        //   grab_heavy: 0 → 1 → 2 → 3   (heavy lift; col 3 = flattened carry pose)
+        const GRAB_COLS = [0, 1, 2];
+        const GRAB_HEAVY_COLS = [0, 1, 2, 3];
         //   throw: 4 → 5 → 6 → 7 → 8   (charged power throw; returns to idle)
         const THROW_COLS = [4, 5, 6, 7, 8];
-        //   action: 0   (first column — the empty-handed "reach" gesture played
-        //   when Space is pressed with nothing in range to pick up)
-        const ACTION_COLS = [0];
+        //   action: 1   (empty-handed "reach" gesture played when Space is
+        //   pressed with nothing in range; col 0 is now idle, so use the first
+        //   lift pose as the distinct reach beat)
+        const ACTION_COLS = [1];
+
+        // Body-color test for the feet-baseline scan — each character's body is
+        // a different hue (tan coconut, red tomato), all far from the yellow
+        // arms and white cork that would otherwise skew the centroid.
+        const isBody = (R, G, B, A) => {
+            if (A <= 128) return false;
+            if (bodyType === 'red') return R > 150 && R - G > 70 && R - B > 70;
+            if (bodyType === 'green') return G > 90 && G > R + 20 && G > B + 20;
+            // 'tan' (default): R>G>B monotonic with a non-trivial blue channel
+            // (excludes yellow arms, B≈48) and unequal channels (excludes the
+            // white cork / grey, R≈G≈B).
+            return R > G + 8 && G > B + 8 && B > 90;
+        };
 
         // Row index → primary direction + (optional) mirrored direction.
         const ROWS = [
@@ -133,14 +155,13 @@ class SpriteSheet {
             { dir: 'up',        mirror: null }
         ];
 
-        // Single scale factor for ALL frames, derived from the idle column's
-        // source height (col 9 is uniform across rows). Applying the same
-        // factor to every frame's width AND height preserves both aspect ratio
-        // and relative size, so the idle renders exactly targetHeight tall
-        // while differently-shaped poses (e.g. the flattened heavy-carry frame)
-        // stay proportional instead of being stretched to a fixed height.
-        const refFrame = frames[IDLE_COL]; // row 0, idle column
-        const scale = (refFrame && refFrame.h) ? targetHeight / refFrame.h : 1;
+        // Single scale factor for ALL frames = world-px per author-px. Applying
+        // the same factor to every frame's width AND height preserves both
+        // aspect ratio and relative size, and ties the on-screen size directly
+        // to the map's scale (see worldScale above), so differently-shaped
+        // poses (e.g. the flattened heavy-carry frame) stay proportional.
+        const refFrame = frames[IDLE_COL]; // row 0, col 0 (idle)
+        const scale = worldScale;
         // Idle source aspect (h/w). A frame much flatter than this is a vertical
         // squish (the heavy-carry crouch) and gets anchored differently — see
         // makeSprite. SQUISH_RATIO 0.85 catches col 3 (~0.62) but not the
@@ -192,7 +213,7 @@ class SpriteSheet {
                         for (let x = 0; x < f.w; x++) {
                             const i = (y * f.w + x) * 4;
                             const R = d[i], G = d[i + 1], B = d[i + 2], A = d[i + 3];
-                            if (A > 128 && G > 90 && G > R + 20 && G > B + 20) { sumY += y; count++; low = y; }
+                            if (isBody(R, G, B, A)) { sumY += y; count++; low = y; }
                         }
                     }
                     if (count > 0) res = { centroid: (f.h - sumY / count) * scale, bottom: (f.h - 1 - low) * scale };
@@ -259,7 +280,9 @@ class SpriteSheet {
             }
         }
 
-        return { sprites };
+        const width = refFrame ? Math.round(refFrame.w * scale) : 0;
+        const height = refFrame ? Math.round(refFrame.h * scale) : 0;
+        return { sprites, width, height };
     }
 }
 
