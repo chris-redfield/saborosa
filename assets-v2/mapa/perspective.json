@@ -7,7 +7,7 @@
   "halfFar": 0.5,
   "scaleNear": 1,
   "scaleFar": 0.4,
-  "sizeScale": 1.86,
+  "sizeScale": 2.2,
   "moveSpeed": 0.35,
   "perspLock": false,
   "note": "size = ingame * lerp(scaleNear,scaleFar,t) * sizeScale; t from feetY in [yNear,yFar] band"

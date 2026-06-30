@@ -50,8 +50,14 @@ const A = '../assets/';
 // over it. Same world rect as the in-game backgroundImageRect, so the tuned
 // NORMALIZED params transfer straight into the game.
 const MAP = A + 'cor-saborosa-fundo-fim-island-01-combined.png';
-const CHAR_SHEET = A + 'saborosa-cha-001.png';
-const CHAR_DEFS = A + 'saborosa-cha-001-sprites.json';
+// Playable character — the new full-behaviour tomato pack (assets-v2, extracted
+// by tools/build-character-defs.py). Defs are a flat 9-col × 5-row frames array;
+// col 0 of each row is the idle pose shown here.
+const CHAR_SHEET = A + 'saborosa-elementos-tomato-game.png';
+const CHAR_DEFS = A + 'saborosa-elementos-tomato-sprites.json';
+// world-px per author-px (scale.config.js → characterWorldScale). The tomato's
+// true in-game base size = its idle-cell height × this.
+const CHAR_WORLD_SCALE = 0.855;
 
 // ---- tunable parameters ---------------------------------------------------
 // All positions are NORMALIZED (0..1) relative to the displayed background
@@ -108,11 +114,14 @@ let bg = { x:0, y:0, w:0, h:0 };       // displayed background rect (px)
 const MAP_W = 5543, MAP_H = 4075;       // native main-map dimensions
 
 // Baseline = the character's REAL in-game size relative to the map, so the tool
-// shows it exactly as big as it is in play. ART.character.height (109) over the
-// world-map height backgroundImageRect.h (6480) → fraction of the map height.
-// `sizeScale=1` therefore renders the player at its true in-game size.
-const GAME_CHAR_H = 109, MAP_WORLD_H = 6480;
-const BASE_FRAC = GAME_CHAR_H / MAP_WORLD_H; // ≈ 0.0168
+// shows it exactly as big as it is in play. The tomato's in-game base height is
+// its idle-cell height × CHAR_WORLD_SCALE, over the world-map height
+// backgroundImageRect.h (6480) → fraction of the map height. `sizeScale=1`
+// therefore renders the player at its true PRE-perspective in-game size; the
+// live perspective.json sizeScale (1.86) is what inflates it on the near edge.
+const MAP_WORLD_H = 6480;
+let GAME_CHAR_H = 66;                 // set precisely from the loaded idle frame
+let BASE_FRAC = GAME_CHAR_H / MAP_WORLD_H;
 
 // ---- loading ---------------------------------------------------------------
 function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
@@ -120,12 +129,26 @@ async function boot(){
   [bgImg, charImg] = await Promise.all([loadImg(MAP), loadImg(CHAR_SHEET)]);
   try {
     const d = await (await fetch(CHAR_DEFS, {cache:'no-cache'})).json();
+    // Flat frames array, 9 cols × 5 rows. Col 0 of each row = idle pose.
+    // Rows: 0 down, 1 down_left, 2 left, 3 up_left, 4 up (the right-hand facings
+    // mirror their left counterpart — same SIZE, which is all this tool needs).
+    const C = d.cols || 9, idle = r => d.frames[r * C + 0];
     charFrames = {
-      down: d.down_idle[0], up: d.up_idle[0], left: d.left_idle[0], right: d.right_idle[0],
-      down_right: d.down_right_idle[0], down_left: d.down_left_idle[0],
-      up_right: d.up_right_idle[0], up_left: d.up_left_idle[0],
+      down: idle(0),
+      down_left: idle(1), down_right: idle(1),
+      left: idle(2), right: idle(2),
+      up_left: idle(3), up_right: idle(3),
+      up: idle(4),
     };
+    GAME_CHAR_H = Math.round(idle(0).h * CHAR_WORLD_SCALE);
+    BASE_FRAC = GAME_CHAR_H / MAP_WORLD_H;
   } catch(e){ console.warn('char defs failed', e); }
+  // Seed the sliders from the live perspective config so re-tuning starts where
+  // the game currently is, not the tool's stale defaults.
+  try {
+    const pj = await (await fetch('../assets-v2/mapa/perspective.json', {cache:'no-cache'})).json();
+    for (const k of Object.keys(params)) if (k in pj) params[k] = pj[k];
+  } catch(e){ /* keep tool defaults */ }
   buildPanel();
   resize();
   requestAnimationFrame(loop);
