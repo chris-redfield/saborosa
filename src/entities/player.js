@@ -106,7 +106,10 @@ class Player {
         // higher).
         this.liftedObject = null;
         this.liftOffsetX = 0;
-        this.liftOffsetY = 0;
+        // Held object floats this many px ABOVE the box-on-box snap (its red box
+        // top-edge clears the player's red box top by |liftOffsetY|), so it
+        // reads as held up rather than resting on the body. Negative = higher.
+        this.liftOffsetY = -30;
         this.stackTarget = null; // rock currently targeted for stacking
 
         // Grab animation (one-shot, plays on pickup; last frame held while
