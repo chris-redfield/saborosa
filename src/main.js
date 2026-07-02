@@ -519,7 +519,16 @@ function updateGame(dt) {
     // longer covering them. This is a true polygon test against the actual
     // overlay alpha, not a column-of-X heuristic, so concave notches and
     // tendrils are handled correctly.
-    if (player.behindMountain && world.isSpriteBehindMountain) {
+    //
+    // EXCEPT while a lethal fall-to-midline is still in the air: behindMountain
+    // is what makes that fall ignore obstacles and red zones, so clearing it
+    // mid-fall (which happens near the mountain's EDGE, where the sprite stops
+    // overlapping the overlay) lets a red zone/obstacle below block the descent.
+    // feetY then never reaches fallTargetY, killPlayer never fires, and the
+    // player is stuck in 'falling' with input ignored — frozen. Keep it set
+    // until the fall lands.
+    const inLethalFall = player.surfaceState === 'falling' && player.fallTargetY != null;
+    if (player.behindMountain && world.isSpriteBehindMountain && !inLethalFall) {
         if (!world.isSpriteBehindMountain(player.x, player.y, player.width, player.height)) {
             player.behindMountain = false;
         }
