@@ -27,6 +27,10 @@ class Player {
 
         // Direction and movement
         this.facing = 'down';
+        // Last horizontal facing (true = left). A held object mirrors to match
+        // this and KEEPS it through pure up/down/idle facings — only a left↔right
+        // turn flips it. Updated each frame in update() from `facing`.
+        this.heldFlipLeft = false;
         this.moving = false;
         this.frame = 0;
         this.animationSpeed = 0.1125; // walk-cycle advance per tick (25% slower than 0.15)
@@ -294,6 +298,12 @@ class Player {
             if (this.actionTicks <= 0) this.actionAnimating = false;
         }
 
+        // Track the last horizontal facing (true = left). Kept through pure
+        // up/down/idle facings; only an actual left↔right turn changes it.
+        const prevFlipLeft = this.heldFlipLeft;
+        if (this.facing.includes('left')) this.heldFlipLeft = true;
+        else if (this.facing.includes('right')) this.heldFlipLeft = false;
+
         // Update lifted object position to follow player. The held object's
         // collision footprint (its red box) is snapped to rest ON TOP of the
         // player's footprint: centered horizontally, with the object box's
@@ -302,6 +312,11 @@ class Player {
         // head. liftOffsetX/Y stay as fine-tune nudges (negative Y = higher).
         if (this.liftedObject) {
             const obj = this.liftedObject;
+            // Mirror ONLY on an actual left↔right turn (differential, not
+            // absolute): pickup and up/down leave the object's orientation
+            // untouched, and writing its own flipX means the flip sticks after
+            // it's dropped or thrown.
+            if (this.heldFlipLeft !== prevFlipLeft) obj.flipX = !obj.flipX;
             const oColW = obj.colW || obj.width;
             const oColH = obj.colH || obj.height;
             const oColOffX = obj.colOffX || 0;
@@ -981,7 +996,9 @@ class Player {
             ctx.fillText(`${this.facing} ${this.moving ? 'walk' : 'idle'} f:${this.frame}${runInfo}${chargeInfo} m:${this.mass}`, drawX, drawY - 4);
         }
 
-        // Render lifted object above head
+        // Render lifted object above head. Its orientation is driven through
+        // obj.flipX in update() (mirrors with the player and persists on release),
+        // so this is a plain draw.
         if (this.liftedObject) {
             this.liftedObject.render(ctx, game, camX, camY);
         }
