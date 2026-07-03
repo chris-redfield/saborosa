@@ -187,6 +187,9 @@ class Game {
                 this.loadImage('intro_off', 'assets/intro-off.png'),
                 this.loadImage('intro_on', 'assets/intro-on.png'),
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
+
+                // Dungeon interior background (fell-down-a-hole view).
+                this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo.png'),
                 // Stage 3 — 4-LAYER MAP (assets-v2/mapa/, all aligned 5543x4075):
                 //   zoning    — never drawn; sampled for terrain zones AND the
                 //               mountain-occlusion mask. Transparent outside the

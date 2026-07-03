@@ -109,6 +109,18 @@ const STAGES = {
         // feet sit in the yNear..yFar world band; movement/collision stay flat.
         perspective: 'perspective',
         mountainOcclusion: true,
+        // Roaming coconut enemies, confined to the mountain (see enemy.js). They
+        // wander randomly, chase on sight, and shove the player — no damage yet.
+        enemies: { type: 'coconut', count: 3 },
+        // Dungeon interior reached by falling into a hole (see dungeon.js). The
+        // perspective params default from the tuning tool; override here if needed.
+        dungeon: { bg: 'dungeon_bg', nativeW: 6132, nativeH: 4916 },
+        // Non-colliding trigger boxes: when the player's FEET enter one, they
+        // fall into the dungeon. World-space; tune with the magenta debug box (C).
+        // This first one sits on the black pit just right of the spawn approach.
+        holes: [
+            { x: 6240, y: 3470, w: 190, h: 120, target: 'dungeon' }
+        ],
         // (Decorative nature is now the `overlays` layer above — the old manual
         // map-editor placements `objects`/`objectDefs` were removed.)
         // Image AR ~1.360. Fit to 9x9 walkable height (6480px),

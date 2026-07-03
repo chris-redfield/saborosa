@@ -181,6 +181,76 @@ function updateDeath(dt) {
     }
 }
 
+// --- Dungeon (fall into a hole) ---------------------------------------------
+const DUNGEON_FALL_MS = 650; // shrink-into-the-pit beat before the screen swaps
+
+// Begin the fall: freeze gameplay and remember which hole we dropped through
+// (so we can climb back out at the same spot).
+function startDungeonFall(hole) {
+    gameState.dungeonFromHole = hole;
+    gameState.dungeonTransition = { t: 0 };
+    const p = gameState.player;
+    p.moving = false;
+    // Shrink toward the hole's center (not the player's feet).
+    p.fallInPivotX = hole.x + hole.w / 2;
+    p.fallInPivotY = hole.y + hole.h / 2;
+}
+
+// Drive the fall: shrink the player toward the footprint center and sink them
+// into the pit (renderGame draws the darkening overlay in lockstep), then hand
+// off to the dungeon screen once fully swallowed.
+function updateDungeonFall(dt) {
+    const tr = gameState.dungeonTransition;
+    const p = gameState.player;
+    tr.t += dt * 1000;
+    const k = Math.min(1, tr.t / DUNGEON_FALL_MS);
+    p.fallInScale = 1 - 0.92 * k; // collapse toward the hole-center pivot
+    if (k >= 1) enterDungeon();
+}
+
+function enterDungeon() {
+    const p = gameState.player;
+    p.fallInScale = 1;
+    p.fallInDrop = 0;
+    p.fallInPivotX = null;
+    p.fallInPivotY = null;
+    const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
+    gameState.dungeon = new DungeonScreen(game, p, cfg);
+    gameState.dungeonTransition = null;
+    gameState.screen = 'dungeon';
+}
+
+// Climb back out to the overworld (world is untouched — only the player moved).
+// Land the player just ABOVE the hole so they don't instantly fall back in, and
+// arm the edge-latch so it won't retrigger until they step off and back on.
+function exitDungeon() {
+    const p = gameState.player;
+    const h = gameState.dungeonFromHole;
+    gameState.screen = 'playing';
+    gameState.dungeon = null;
+    if (h) {
+        const feetX = h.x + h.w / 2;
+        const feetY = h.y - 24;
+        p.x = feetX - p.colOffX - p.colW / 2;
+        p.y = feetY - p.colOffY - p.colH / 2;
+    }
+    p.surfaceState = 'ground';
+    p.behindMountain = false;
+    p.onTop = false;
+    p.moving = false;
+    p.fallTargetY = null;
+    p.fallTimerMs = 0;
+    p.fallInScale = 1;
+    p.fallInDrop = 0;
+    p.fallInPivotX = null;
+    p.fallInPivotY = null;
+    p._onHoleLast = true;
+    p.lastZone = null;
+    p.lastOnMountain = false;
+    p.lastAboveMidline = false;
+    gameState.world.update(p); // recenter the camera on the exit spot
+}
+
 function loadStage(stage) {
     gameState.currentStage = stage;
     gameState.world = new World(game, stage);
@@ -219,6 +289,12 @@ function loadStage(stage) {
     // Ambient no-collision FX (shadows/clippy twinkle, balls ping-pong) that
     // randomly pop in around the player. Fresh per stage.
     gameState.fxManager = new FxManager(game);
+
+    // Roaming enemies (coconuts) confined to the mountain. Spawned only when the
+    // stage opts in via `enemies` AND has a mountain to keep them on.
+    gameState.enemies = (stage.enemies && gameState.world.stage.mountainOcclusion)
+        ? spawnCoconutEnemies(game, gameState.world, stage.enemies)
+        : [];
 }
 
 function updateGame(dt) {
@@ -240,6 +316,21 @@ function updateGame(dt) {
 
     const player = gameState.player;
     const world = gameState.world;
+
+    // Dungeon interior: a separate screen with its own perspective render/update
+    // (see dungeon.js). E climbs back out to the overworld at the hole.
+    if (gameState.screen === 'dungeon') {
+        gameState.dungeon.update(dt);
+        if (game.input.isKeyJustPressed('interact')) exitDungeon();
+        return;
+    }
+
+    // Falling-into-the-hole transition: freeze gameplay, shrink the player into
+    // the pit, then hand off to the dungeon screen.
+    if (gameState.dungeonTransition) {
+        updateDungeonFall(dt);
+        return;
+    }
 
     // Death: SPLAT beat, then respawn at the start with a camera pan. Freezes
     // all normal gameplay (input, physics, fall) until it finishes.
@@ -597,6 +688,27 @@ function updateGame(dt) {
     player.lastAboveMidline = aboveMidline;
     player.onMountain = onMountain; // surfaced for the debug HUD
 
+    // Hole → dungeon fall. Edge-triggered: fires the frame the feet ENTER a hole
+    // box (not every frame parked on it), and only from solid ground on the
+    // overworld plane. Boxes are triggers, not colliders — walking over them is
+    // free; landing your feet inside drops you in.
+    if (world.stage.holes && player.surfaceState === 'ground' && !player.behindMountain) {
+        const hx = player.x + player.colOffX + player.colW / 2;
+        const hy = player.y + player.colOffY + player.colH / 2;
+        let onHole = null;
+        for (const h of world.stage.holes) {
+            if (hx >= h.x && hx <= h.x + h.w && hy >= h.y && hy <= h.y + h.h) { onHole = h; break; }
+        }
+        if (onHole && !player._onHoleLast) {
+            player._onHoleLast = true;
+            startDungeonFall(onHole);
+            return;
+        }
+        player._onHoleLast = !!onHole;
+    } else {
+        player._onHoleLast = false;
+    }
+
     // Apply zone drift to movable obstacles (rocks, live rocks).
     // Skip carried objects and stack children (their parent will drag them).
     for (const obs of obstacles) {
@@ -678,6 +790,15 @@ function updateGame(dt) {
     }
 
     player.update(dt);
+
+    // Enemies: roam the mountain, and when they detect the player, close in and
+    // shove them around (no damage — HP doesn't exist yet). Runs after the
+    // player's own move so it reads their settled position; a shove nudges the
+    // player, then world.update below re-centers the camera on the result.
+    if (gameState.enemies && gameState.enemies.length) {
+        for (const e of gameState.enemies) e.update(dt, player, obstacles, world, gameState.enemies);
+    }
+
     world.update(player);
 
     // Camera zoom: altitude bands. Two Y thresholds carve the world into
@@ -791,6 +912,11 @@ function renderGame(ctx) {
         return;
     }
 
+    if (gameState.screen === 'dungeon') {
+        gameState.dungeon.render(ctx);
+        return;
+    }
+
     const world = gameState.world;
     const player = gameState.player;
     const camX = world.cameraX;
@@ -844,6 +970,9 @@ function renderGame(ctx) {
     // Exclude lifted object (player renders it on top of themselves)
     if (PERF) PERF.begin('entities');
     const entities = world.getAllEntities().filter(e => e !== player.liftedObject);
+    // Enemies aren't stored in world blocks — fold them in so they depth-sort
+    // and cull with everything else.
+    if (gameState.enemies) for (const e of gameState.enemies) entities.push(e);
     // Player vs the mountain occlusion overlay:
     //  - SPLAT beat: don't draw him at all. The midline landing leaves his lower
     //    half below the mountain's edge (nothing there to occlude it), so
@@ -939,7 +1068,25 @@ function renderGame(ctx) {
         player.render(ctx, game, camX, camY);
     }
 
+    // Hole trigger boxes (debug) — drawn inside the camera transform so they line
+    // up with the world. Magenta = the non-colliding "fall into the dungeon" zone.
+    if (game.showDebug && world.stage.holes) {
+        ctx.strokeStyle = '#ff00ff';
+        ctx.lineWidth = 2;
+        for (const h of world.stage.holes) {
+            ctx.strokeRect(h.x - camX, h.y - camY, h.w, h.h);
+        }
+    }
+
     ctx.restore();
+
+    // Dungeon fall: darken the screen in lockstep with the player shrinking into
+    // the pit, so it cuts cleanly to the (black) dungeon fade-in.
+    if (gameState.dungeonTransition) {
+        const k = Math.min(1, gameState.dungeonTransition.t / DUNGEON_FALL_MS);
+        ctx.fillStyle = `rgba(0,0,0,${(0.95 * k).toFixed(3)})`;
+        ctx.fillRect(0, 0, game.width, game.height);
+    }
 
     // SPLAT — shown during the frozen death beat, centered on screen (the camera
     // is parked on the splat spot, so center ≈ where the player landed).

@@ -21,6 +21,7 @@ src/
     game.js       — Core game loop, canvas scaling, asset loading
   entities/
     player.js     — Player movement, collision, push, lift mechanics
+    enemy.js      — Roaming mountain enemies (Coconut): wander + awareness-radius chase + shove
     environment.js — Rock entities with mass, collision, stacking
     liverock.js   — Live Rock entity (animated, unliftable)
     spritesheet.js — Sprite loading from single sheet + JSON definitions
@@ -338,6 +339,53 @@ portals: [
 ```
 
 The basket renders at 101x101px using the `empty-basket.png` sprite, with a label above and `[E]` prompt below.
+
+## Enemies
+
+Enemies are roaming critters that **annoy** the player — there's no HP system yet, so they can't deal damage. Their only aggression is a **shove**: when an enemy's footprint overlaps the player's, it pushes the player away.
+
+The first (and currently only) enemy is the **Coconut** (`src/entities/enemy.js`), which reuses the playable coconut sprite pack — it walks and faces in 8 directions exactly like the player, and is drawn through the same bottom-anchored / vAlign / depth-perspective pipeline.
+
+### Behavior (ported from `game-learning`)
+
+The AI is a trimmed version of the skeleton/slime logic from the `game-learning` reference project: wander timers plus an **awareness radius** that flips into a chase.
+
+- **Idle** — pauses in place for a random beat (~40–160 ticks).
+- **Wander** — picks a random heading and ambles until a timer expires or it hits the mountain edge / an obstacle, then re-rolls a heading.
+- **Chase** — when the player enters the awareness radius, the coconut heads straight for them and shoves on contact.
+
+Detection uses **hysteresis** so it doesn't flicker at the edge: it engages within `detectionRange` (360px) and only gives up past `loseRange` (470px). The player is only a valid target while on the coconut's plane — **not** occluded behind the mountain and **not** mid-fall (input is locked then), so an enemy loses interest when you slip behind the mountain or step off into a fall.
+
+### Mountain confinement
+
+Coconuts are locked to the **mountain** and never wander onto the sand or off the mountain's border. Every candidate step is per-axis and only committed when the destination feet still pass `world.isOnMountain(feetX, feetY)` (a small box sampled against the mountain-occlusion overlay, the same test the player uses) **and** aren't on an impassable `RED` cliff pixel. A blocked step during wandering triggers a new random heading, so they naturally pace the border and turn back.
+
+### Collision
+
+- **With each other** — coconuts bump instead of merging: a step is rejected if it would create a *new* footprint overlap with another coconut. Existing overlaps are ignored per-axis so two that get stacked (spawn or shove) can still slide apart rather than deadlocking.
+- **With mountain obstacles** — a step is rejected if the footprint would overlap any obstacle flagged `onMountainPlane` (trees/plants on the mountain). Sand-level obstacles are ignored since the enemy is never down there.
+- **With the player** — the enemy is *not* solid to the player (you walk through it); the interaction is the one-directional shove. The push is routed through `player.move()` so it respects walls, rocks, and red zones, then the player's own facing/animation is restored so it reads as *getting bumped* rather than choosing to walk that way.
+
+### Spawning
+
+Enemies are opt-in per stage and only spawn on stages that have a mountain (`mountainOcclusion`). `spawnCoconutEnemies()` rejection-samples candidate feet positions in the above-midline band until each lands on the mountain (and off any RED cliff), keeping each new coconut clear of already-placed ones so none start stacked.
+
+```js
+// stage config
+enemies: { type: 'coconut', count: 3 }
+```
+
+### Tuning knobs (`src/entities/enemy.js`)
+
+| Property | Default | Meaning |
+|----------|---------|---------|
+| `speed` | 1.6 | px/frame while wandering (player walk is 3) |
+| `chaseSpeed` | 2.4 | px/frame while chasing |
+| `pushForce` | 2.4 | px/frame shove applied to the player on contact |
+| `detectionRange` | 360 | awareness radius to engage a chase |
+| `loseRange` | 470 | distance past which the chase is dropped (hysteresis) |
+
+With `game.showDebug` on (**C** key), each coconut draws its bounding box, red collision footprint, and awareness ring — **blue** while idle/wandering, **red** while chasing.
 
 ## Stages
 

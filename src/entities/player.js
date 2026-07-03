@@ -147,6 +147,23 @@ class Player {
         this.actionTicks = 0;
         this.actionHoldTicks = 18; // ~0.3s at 60fps fixed timestep
 
+        // One-off "falling into a hole" visual (dungeon entry): the render
+        // shrinks the sprite by fallInScale (toward the footprint center) and
+        // sinks it by fallInDrop px, so the character reads as dropping into the
+        // pit. Both are inert (1 / 0) during normal play; main.js animates them
+        // for the dungeon-fall transition, then resets them.
+        this.fallInScale = 1;
+        this.fallInDrop = 0;
+        // World-space pivot the fall-in shrink scales around (the hole center),
+        // so the character collapses INTO the hole rather than toward his feet.
+        // null during normal play → render uses the plain feet anchor.
+        this.fallInPivotX = null;
+        this.fallInPivotY = null;
+
+        // Edge-trigger latch for hole → dungeon: true while the feet are inside a
+        // hole box, so the fall fires once on entry (not every frame on it).
+        this._onHoleLast = false;
+
         // Sprites
         this.sprites = null;
         this.loadSprites();
@@ -936,24 +953,42 @@ class Player {
                 const feetY = this.y + this.colOffY + this.colH * 0.5;
                 pscale = game.world.getPerspectiveScale(feetY);
             }
-            const renderW = spriteData.width * pscale;
-            const renderH = spriteData.height * pscale;
+            const f = this.fallInScale;
+            const renderW = spriteData.width * pscale * f;
+            const renderH = spriteData.height * pscale * f;
             const visibleH = renderH - sinkAmount;
             const srcCropRatio = sinkAmount / renderH;
             const cropSh = spriteData.sh * (1 - srcCropRatio);
 
-            // Center on the collision footprint when the sprite width differs
-            // from the bbox; otherwise collapse to drawX (original character).
-            let offsetX = drawX;
-            if (renderW !== this.width) {
-                const colCenter = drawX + this.colOffX + this.colW / 2;
-                offsetX = Math.round(colCenter - renderW / 2);
+            // Full-size (f=1) anchor: feet planted, centered on the footprint
+            // column, nudged by the frame's feet-baseline correction (coconut
+            // frames carry vAlign; others default to 0) so every pose plants its
+            // feet on the same line. This is where the sprite sits before any
+            // fall-in shrink is applied.
+            const fullW = spriteData.width * pscale;
+            const fullH = spriteData.height * pscale;
+            let baseX = drawX;
+            if (fullW !== this.width) {
+                baseX = drawX + this.colOffX + this.colW / 2 - fullW / 2;
             }
-            // Bottom-anchor, then nudge by the frame's feet-baseline correction
-            // (coconut frames carry vAlign; others default to 0) so every pose
-            // plants its feet on the same line instead of jumping when a pose's
-            // tight crop puts the body higher in the box.
-            const topY = drawY + this.height - renderH + (spriteData.vAlign || 0);
+            const baseY = drawY + this.height - fullH + (spriteData.vAlign || 0);
+
+            // Position the (possibly shrunk) sprite. During the dungeon-fall the
+            // shrink scales AROUND the hole-center pivot, so the character
+            // collapses INTO the hole instead of toward his own feet. With full
+            // scale / no pivot this reduces exactly to the normal feet anchor.
+            let offsetX, topY;
+            if (this.fallInPivotX != null && f !== 1) {
+                const px = this.fallInPivotX - camX;
+                const py = this.fallInPivotY - camY;
+                offsetX = px + (baseX - px) * f;
+                topY = py + (baseY - py) * f;
+            } else {
+                offsetX = baseX;
+                topY = baseY;
+            }
+            offsetX = Math.round(offsetX);
+            topY += this.fallInDrop;
 
             ctx.save();
             if (spriteData.flipped) {

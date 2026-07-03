@@ -340,6 +340,16 @@ class World {
         return false;
     }
 
+    // True when a small box around the feet point (feetX, feetY) sits on the
+    // mountain overlay — the same test main.js uses to decide the player is "on
+    // the mountain", exposed for entities (e.g. enemies) that must stay up
+    // there. The FEET_BOX absorbs pinhole gaps in the mask so it can't flip on a
+    // single stray non-island pixel. False on stages without a mountain.
+    isOnMountain(feetX, feetY, box = 8) {
+        if (!(this.stage && this.stage.mountainOcclusion && this.isSpriteBehindMountain)) return false;
+        return this.isSpriteBehindMountain(feetX - box / 2, feetY - box / 2, box, box);
+    }
+
     // Blit one full-map background layer (lower / overlay) at its world rect,
     // drawing ONLY the slice inside `view` (the visible world AABB, computed
     // once per frame by main.js — no per-frame allocation anywhere here).
