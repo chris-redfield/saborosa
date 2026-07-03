@@ -6,7 +6,7 @@
   "halfNear": 0.75,
   "halfFar": 0.5,
   "scaleNear": 1,
-  "scaleFar": 0.4,
+  "scaleFar": 0.5,
   "sizeScale": 2.2,
   "moveSpeed": 0.35,
   "perspLock": false,

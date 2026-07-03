@@ -53,10 +53,18 @@ window.FX_JUICE = {
     // Each FX plays ONCE then vanishes (random per-instance lifetime can come
     // later — bump lifeJitter for a taste of it).
     twinkle: {
-        lifeMin: 1.0,       // sec — base lifetime (~one shimmer cycle)
+        lifeMin: 1.0,       // sec — base lifetime
         lifeJitter: 0.6,    // sec — random extra on top (desyncs them)
-        speedHz: 1.0,       // shimmer speed
-        minOpacity: 0.0,    // opacity floor (0 = can blink fully out)
+        minOpacity: 0.0,    // opacity when unlit (0 = blinks fully out)
+        // The transition does NOT fade smoothly — it FLICKERS in and back out,
+        // like a faulty bulb sputtering on then dying. On/off is re-rolled every
+        // intervalMin..intervalMin+intervalJitter seconds; the odds of being lit
+        // rise as it comes in and fall as it leaves (solid through the middle).
+        // Smaller intervals = faster, more frantic flicker.
+        flicker: {
+            intervalMin: 0.0,      // sec — 0 = re-roll basically every frame (strobe)
+            intervalJitter: 0.016, // sec — tiny random extra (~1 frame) so it isn't perfectly regular
+        },
     },
     ball: {
         fps: 10,            // ping-pong frame rate (grow→shrink→vanish)

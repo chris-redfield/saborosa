@@ -25,7 +25,8 @@ const DEFS_KEY  = 'fx_defs';
 
 // Default feel params if the config file didn't load (config is the real source).
 const FX_DEFAULTS = {
-    twinkle: { lifeMin: 1.0, lifeJitter: 0.6, speedHz: 1.0, minOpacity: 0.0 },
+    twinkle: { lifeMin: 1.0, lifeJitter: 0.6, minOpacity: 0.0,
+               flicker: { intervalMin: 0.04, intervalJitter: 0.08 } },
     ball: { fps: 10, fadeInSec: 0.2 },
 };
 
@@ -48,7 +49,7 @@ class FxObject {
         this.age = 0;
         // Lifecycle: play the effect ONCE then vanish (random time can come
         // later via twinkle.lifeJitter). Ball dies when its ping-pong completes;
-        // twinkle does a single rise-and-fall shimmer (~one cycle).
+        // twinkle FLICKERS in and back out (see update()).
         if (kind === 'ball') {
             this.life = (2 * (frames.length - 1)) / this.fps + 1; // safety cap only
             this.fadeT = 0;
@@ -56,7 +57,10 @@ class FxObject {
             this.life = this.tw.lifeMin + Math.random() * this.tw.lifeJitter;
             this.fadeT = this.life / 2;               // pure rise->fall, no hold
         }
-        this.phase = Math.random() * Math.PI * 2;  // desync shimmer/animation
+        this.phase = Math.random() * Math.PI * 2;  // desync animation
+        // Twinkle flicker state: re-rolled on/off every flicker interval.
+        this.fl = this.tw.flicker || FX_DEFAULTS.twinkle.flicker;
+        this.flickerTimer = 0; this.flickerOn = false;
         this.frameI = 0; this.dir = 1; this.frameTimer = 0;
         this.alpha = 0; this.dead = false;
     }
@@ -80,17 +84,23 @@ class FxObject {
             return;
         }
 
-        // Twinkle: shimmer once over its lifetime, then vanish. Random life so
-        // they don't all pop together. Fade in -> shimmer -> fade out.
+        // Twinkle: FLICKER into (and out of) existence — like a faulty bulb
+        // sputtering on then dying — instead of a smooth transparent→solid→
+        // transparent fade. The triangle `env` (0 at the ends, 1 in the middle)
+        // is the *chance* of being lit at each instant; we re-roll on/off every
+        // flicker interval. Sparse blinks as it comes in, solid through the
+        // middle, sputters back out. Random life so they don't all pop together.
         if (this.age >= this.life) { this.dead = true; return; }
         let env = 1;
         if (this.age < this.fadeT) env = this.age / this.fadeT;
         else if (this.age > this.life - this.fadeT) env = (this.life - this.age) / this.fadeT;
-        const t = this.age + this.phase;
-        const hz = this.tw.speedHz || 1;
-        const minA = this.tw.minOpacity || 0;
-        const shimmer = (0.55 + 0.45 * Math.sin(t * hz * 2 * Math.PI)) * (0.6 + 0.4 * Math.random());
-        this.alpha = env * (minA + (1 - minA) * shimmer);
+
+        this.flickerTimer -= dt;
+        if (this.flickerTimer <= 0) {
+            this.flickerOn = Math.random() < env;   // lit-probability follows the envelope
+            this.flickerTimer = this.fl.intervalMin + Math.random() * this.fl.intervalJitter;
+        }
+        this.alpha = this.flickerOn ? 1 : (this.tw.minOpacity || 0);
     }
 
     render(ctx, camX, camY) {
