@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Boom (Explosion) Test</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden;
+           background:#0c1020;
+           background-image:linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+                            linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+           background-size:32px 32px; background-position:0 0,16px 16px; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:320px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; overflow-y:auto; }
+  #side .group { padding:8px 12px; border-bottom:1px solid #0c1226; }
+  #side h3 { margin:4px 0 8px; color:var(--accent); font-size:12px; letter-spacing:.5px; }
+  label.s { display:flex; justify-content:space-between; margin:7px 0 1px; color:#9ab; font-size:11px; }
+  label.s span { color:#cfe; }
+  input[type=range] { width:100%; }
+  label.cb { display:flex; align-items:center; gap:6px; margin:6px 0; color:#cfe; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #readout { white-space:pre; color:#8fce8f; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  pre#out { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px;
+            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:180px;
+            overflow:auto; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>BOOM TEST</b>
+  <span class="hint">click the stage to spawn a blast · Space replays · "sheet view": click a frame to drop it from the loop</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+const A = '../assets-v2/';
+const BOOM = A + 'saborosa-boom.png';
+
+// All params are tool-side; the ones that matter for the game export at the
+// bottom (frame slicing + timing + anchor).
+const params = {
+  gap: 12,        // min transparent run (px) that separates frames on the sheet
+  alpha: 16,      // alpha threshold for "occupied" pixel
+  frameMs: 55,    // ms per frame (12 frames → ~0.66s blast)
+  scale: 1.6,     // draw scale (× frame px)
+  anchorY: 0.5,   // vertical anchor: 0 top · 0.5 center · 1 feet/bottom on the point
+  loop: true,     // keep a looping blast at the ground marker for tuning
+  showBoxes: false, // sheet view: draw the segmented frame boxes
+};
+
+const SLIDERS = [
+  ['gap','frame gap (px)',2,40,1],
+  ['alpha','alpha threshold',1,128,1],
+  ['frameMs','frame time (ms)',16,160,1],
+  ['scale','draw scale',0.3,5,0.05],
+  ['anchorY','anchor Y (0 top · 1 feet)',0,1,0.02],
+];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let img = null;
+let sheet = null;      // { w, h, data } from getImageData (for segmentation)
+let frames = [];       // [{x,y,w,h}] in sheet px, animation order
+let selected = [];     // parallel to frames: is this frame used in the loop?
+let bursts = [];       // active one-shot blasts: { x, y, start }
+let loopStart = 0;     // clock origin for the persistent center loop
+
+function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+
+async function boot(){
+  img = await loadImg(BOOM);
+  // Sample the sheet's alpha once for segmentation.
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const cc = c.getContext('2d', { willReadFrequently:true });
+  cc.drawImage(img, 0, 0);
+  const id = cc.getImageData(0, 0, img.width, img.height);
+  sheet = { w: img.width, h: img.height, data: id.data };
+  detect();
+  buildPanel();
+  resize();
+  requestAnimationFrame(loop);
+  status(`ready · ${frames.length} frames`);
+}
+function status(s){ document.getElementById('status').textContent = s; }
+function resize(){ cv.width = stage.clientWidth; cv.height = stage.clientHeight; }
+window.addEventListener('resize', resize);
+
+// --- frame segmentation (projection cutting) --------------------------------
+// Split the sheet into rows of content (separated by transparent gaps), then
+// each row into columns the same way, then tighten each cell's vertical extent.
+// Robust to the hand-drawn frames bleeding across a rigid grid.
+function occRow(y, x0, x1){
+  const { w, data } = sheet;
+  for (let x=x0; x<=x1; x++) if (data[(y*w+x)*4+3] > params.alpha) return true;
+  return false;
+}
+function bands1D(len, isOcc, gap){
+  const out = []; let s=-1, last=-1;
+  for (let i=0;i<len;i++){
+    if (isOcc(i)){
+      if (s<0) s=i;
+      else if (i-last>gap){ out.push([s,last]); s=i; }
+      last=i;
+    }
+  }
+  if (s>=0) out.push([s,last]);
+  return out;
+}
+function detect(){
+  const { w, h, data } = sheet;
+  frames = [];
+  const rowOcc = (y)=> occRow(y, 0, w-1);
+  const rbands = bands1D(h, rowOcc, params.gap);
+  for (const [ry0,ry1] of rbands){
+    const colOcc = (x)=>{ for (let y=ry0;y<=ry1;y++) if (data[(y*w+x)*4+3]>params.alpha) return true; return false; };
+    const cbands = bands1D(w, colOcc, params.gap);
+    for (const [cx0,cx1] of cbands){
+      // tighten vertical extent inside this column band
+      let y0=ry1, y1=ry0;
+      for (let y=ry0;y<=ry1;y++){
+        let on=false; for (let x=cx0;x<=cx1;x++){ if (data[(y*w+x)*4+3]>params.alpha){ on=true; break; } }
+        if (on){ if (y<y0) y0=y; if (y>y1) y1=y; }
+      }
+      frames.push({ x:cx0, y:y0, w:cx1-cx0+1, h:y1-y0+1 });
+    }
+  }
+  selected = frames.map(()=>true); // re-slicing resets to all-selected
+}
+// Frames actually used in the loop, in order.
+function activeIdx(){ const a=[]; for (let i=0;i<frames.length;i++) if (selected[i]) a.push(i); return a; }
+
+// --- draw -------------------------------------------------------------------
+function drawBurst(bx, by, idx){
+  if (idx < 0 || idx >= frames.length) return;
+  const f = frames[idx];
+  const dw = f.w * params.scale, dh = f.h * params.scale;
+  const dx = bx - dw/2;              // horizontally centered on the point
+  const dy = by - dh * params.anchorY;
+  ctx.drawImage(img, f.x, f.y, f.w, f.h, dx, dy, dw, dh);
+}
+
+function draw(now){
+  ctx.clearRect(0,0,cv.width,cv.height);
+
+  if (params.showBoxes){ drawSheetView(); updateReadout(); return; }
+
+  // Ground marker where the persistent loop plays.
+  const gx = cv.width/2, gy = cv.height*0.62;
+  ctx.strokeStyle = 'rgba(83,216,251,0.5)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(gx-40,gy); ctx.lineTo(gx+40,gy); ctx.stroke();
+  ctx.fillStyle = '#53d8fb'; ctx.beginPath(); ctx.arc(gx,gy,3,0,7); ctx.fill();
+
+  const active = activeIdx();
+  const n = active.length;
+  const dur = n * params.frameMs;
+
+  // Persistent looping blast (tuning aid) — cycles the selected frames only.
+  if (params.loop && dur > 0){
+    const pos = Math.floor(((now - loopStart) % dur) / params.frameMs);
+    drawBurst(gx, gy, active[pos]);
+  }
+
+  // One-shot blasts spawned by clicks; removed when finished.
+  bursts = bursts.filter(b => n > 0 && now - b.start < dur);
+  for (const b of bursts){
+    const pos = Math.floor((now - b.start) / params.frameMs);
+    if (pos < n) drawBurst(b.x, b.y, active[pos]);
+  }
+
+  updateReadout();
+}
+
+// Shared sheet→canvas transform, so drawing and click hit-testing agree.
+function sheetTransform(){
+  const s = Math.min(cv.width/img.width, cv.height/img.height) * 0.95;
+  return { s, ox: (cv.width - img.width*s)/2, oy: (cv.height - img.height*s)/2 };
+}
+
+// Sheet view: the raw sheet with the detected frame boxes numbered — click a
+// frame to toggle it in/out of the loop. Deselected frames are dimmed + crossed.
+function drawSheetView(){
+  const { s, ox, oy } = sheetTransform();
+  ctx.drawImage(img, ox, oy, img.width*s, img.height*s);
+  ctx.lineWidth = 1.5; ctx.font = '12px monospace'; ctx.textBaseline = 'top';
+  frames.forEach((f,i)=>{
+    const x = ox+f.x*s, y = oy+f.y*s, w = f.w*s, h = f.h*s;
+    if (selected[i]){
+      ctx.strokeStyle = 'rgba(233,69,96,0.9)';
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = '#53d8fb';
+      ctx.fillText(i, x+2, y+2);
+    } else {
+      // Dim + cross out excluded frames.
+      ctx.fillStyle = 'rgba(12,16,32,0.66)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(120,138,168,0.9)';
+      ctx.strokeRect(x, y, w, h);
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+w,y+h);
+      ctx.moveTo(x+w,y); ctx.lineTo(x,y+h); ctx.stroke();
+      ctx.fillStyle = '#7a8aa8';
+      ctx.fillText(i, x+2, y+2);
+    }
+  });
+}
+
+// --- side panel -------------------------------------------------------------
+function buildPanel(){
+  const side = document.getElementById('side'); side.innerHTML = '';
+
+  const g1 = group(side, 'Slicing');
+  addSlider(g1, 'gap');
+  addSlider(g1, 'alpha');
+  const reslice = document.createElement('button'); reslice.textContent = 'Re-slice';
+  reslice.onclick = () => { detect(); status(`${frames.length} frames`); };
+  g1.appendChild(reslice);
+
+  const g2 = group(side, 'Playback');
+  addSlider(g2, 'frameMs');
+  addSlider(g2, 'scale');
+  addSlider(g2, 'anchorY');
+  addCheckbox(g2, 'loop', 'loop a blast at the ground marker');
+  addCheckbox(g2, 'showBoxes', 'sheet view (check frame slicing)');
+
+  const g3 = group(side, 'Readout');
+  const ro = document.createElement('div'); ro.id = 'readout'; g3.appendChild(ro);
+
+  const g4 = group(side, 'Export');
+  const copy = document.createElement('button'); copy.textContent = 'Copy defs JSON';
+  g4.appendChild(copy);
+  const out = document.createElement('pre'); out.id = 'out'; out.style.marginTop = '6px';
+  g4.appendChild(out);
+  copy.onclick = () => {
+    const json = defsJSON(); out.textContent = json;
+    navigator.clipboard && navigator.clipboard.writeText(json);
+    status('defs copied');
+  };
+}
+function group(host, title){
+  const d = document.createElement('div'); d.className='group';
+  const h = document.createElement('h3'); h.textContent = title; d.appendChild(h);
+  host.appendChild(d); return d;
+}
+function addSlider(host, key){
+  const def = SLIDERS.find(s=>s[0]===key);
+  const [k,label,min,max,step] = def;
+  const l = document.createElement('label'); l.className='s';
+  const name = document.createElement('span'); name.textContent = label;
+  const val = document.createElement('span'); val.textContent = (+params[k]).toFixed(step<1?2:0);
+  l.appendChild(name); l.appendChild(val);
+  const inp = document.createElement('input'); inp.type='range';
+  inp.min=min; inp.max=max; inp.step=step; inp.value=params[k];
+  inp.oninput = e => {
+    params[k] = parseFloat(e.target.value); val.textContent = params[k].toFixed(step<1?2:0);
+    if (k==='gap' || k==='alpha') detect();
+  };
+  host.appendChild(l); host.appendChild(inp);
+}
+function addCheckbox(host, key, label){
+  const l = document.createElement('label'); l.className='cb';
+  const c = document.createElement('input'); c.type='checkbox'; c.checked = !!params[key];
+  c.onchange = e => { params[key] = e.target.checked; };
+  l.appendChild(c); l.appendChild(document.createTextNode(label));
+  host.appendChild(l);
+}
+function updateReadout(){
+  const ro = document.getElementById('readout'); if (!ro) return;
+  const used = activeIdx().length;
+  ro.textContent =
+    `frames    ${used}/${frames.length} used\n` +
+    `duration  ${(used*params.frameMs)|0} ms\n` +
+    `frame ms  ${params.frameMs|0}\n` +
+    `scale     ${params.scale.toFixed(2)}\n` +
+    `anchorY   ${params.anchorY.toFixed(2)}\n` +
+    `bursts    ${bursts.length} active`;
+}
+function defsJSON(){
+  return JSON.stringify({
+    sheet: 'assets-v2/saborosa-boom.png',
+    frameMs: Math.round(params.frameMs),
+    scale: +params.scale.toFixed(3),
+    anchorY: +params.anchorY.toFixed(3),
+    frames: frames.filter((f,i) => selected[i]).map(f => [f.x, f.y, f.w, f.h])
+  }, null, 2);
+}
+
+// --- input + loop -----------------------------------------------------------
+cv.addEventListener('mousedown', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  if (params.showBoxes){
+    // Toggle the clicked frame in/out of the loop.
+    const { s, ox, oy } = sheetTransform();
+    for (let i=0;i<frames.length;i++){
+      const f = frames[i];
+      const x0=ox+f.x*s, y0=oy+f.y*s, x1=x0+f.w*s, y1=y0+f.h*s;
+      if (mx>=x0 && mx<=x1 && my>=y0 && my<=y1){
+        selected[i] = !selected[i];
+        status(`frame ${i} ${selected[i]?'ON':'OFF'} · ${activeIdx().length}/${frames.length} used`);
+        break;
+      }
+    }
+    return;
+  }
+  bursts.push({ x: mx, y: my, start: performance.now() });
+});
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space'){
+    e.preventDefault();
+    // Replay the center loop, or (re)spawn a one-shot at the marker.
+    loopStart = performance.now();
+    if (!params.loop) bursts.push({ x: cv.width/2, y: cv.height*0.62, start: performance.now() });
+  }
+});
+
+function loop(now){
+  if (!loopStart) loopStart = now;
+  draw(now);
+  requestAnimationFrame(loop);
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -159,6 +159,11 @@ class Player {
         // null during normal play → render uses the plain feet anchor.
         this.fallInPivotX = null;
         this.fallInPivotY = null;
+        // Sink-into-the-hole clip: when set (world Y), the render hides every
+        // part of the sprite BELOW this line. Combined with fallInDrop pushing
+        // the sprite down, the body descends past the line and vanishes into the
+        // pit. null during normal play → no clipping.
+        this.sinkClipY = null;
 
         // Edge-trigger latch for hole → dungeon: true while the feet are inside a
         // hole box, so the fall fires once on entry (not every frame on it).
@@ -990,6 +995,18 @@ class Player {
             offsetX = Math.round(offsetX);
             topY += this.fallInDrop;
 
+            // Sink-into-the-hole: clip away everything below the sink line so the
+            // sprite vanishes into the pit as fallInDrop pushes it down. The rect
+            // is in the same world-minus-cam space the sprite draws in (inside the
+            // camera transform), so the clip tracks the sprite correctly.
+            const sinking = this.sinkClipY != null;
+            if (sinking) {
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(-100000, -100000, 200000, (this.sinkClipY - camY) + 100000);
+                ctx.clip();
+            }
+
             ctx.save();
             if (spriteData.flipped) {
                 ctx.translate(offsetX + renderW, topY);
@@ -1007,6 +1024,8 @@ class Player {
                 );
             }
             ctx.restore();
+
+            if (sinking) ctx.restore();
         } else {
             ctx.fillStyle = '#ff6b35';
             ctx.fillRect(drawX, drawY, this.width, this.height - sinkAmount);

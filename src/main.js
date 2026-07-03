@@ -182,29 +182,33 @@ function updateDeath(dt) {
 }
 
 // --- Dungeon (fall into a hole) ---------------------------------------------
-const DUNGEON_FALL_MS = 650; // shrink-into-the-pit beat before the screen swaps
+const DUNGEON_FALL_MS = 800; // sink-into-the-pit beat before the screen swaps
 
 // Begin the fall: freeze gameplay and remember which hole we dropped through
-// (so we can climb back out at the same spot).
+// (so we can climb back out at the same spot). The player sinks straight DOWN
+// and vanishes into the hole — clipped at his feet line so his body disappears
+// into the pit as he descends (no shrinking).
 function startDungeonFall(hole) {
     gameState.dungeonFromHole = hole;
     gameState.dungeonTransition = { t: 0 };
     const p = gameState.player;
     p.moving = false;
-    // Shrink toward the hole's center (not the player's feet).
-    p.fallInPivotX = hole.x + hole.w / 2;
-    p.fallInPivotY = hole.y + hole.h / 2;
+    // Vanish line at half the hole's height (tunable per hole via vanishLine).
+    // Above it the player draws ON TOP of the hole graphic (renderGame); once he
+    // sinks past it his body is clipped away, so he reads as going INTO the pit.
+    const frac = hole.vanishLine != null ? hole.vanishLine : 0.5;
+    p.sinkClipY = hole.y + hole.h * frac;
 }
 
-// Drive the fall: shrink the player toward the footprint center and sink them
-// into the pit (renderGame draws the darkening overlay in lockstep), then hand
-// off to the dungeon screen once fully swallowed.
+// Drive the fall: push the player down into the pit with an accelerating drop
+// (feels like the game's own fall), clipped so he vanishes; renderGame fades to
+// black at the tail, then hands off to the dungeon screen.
 function updateDungeonFall(dt) {
     const tr = gameState.dungeonTransition;
     const p = gameState.player;
     tr.t += dt * 1000;
     const k = Math.min(1, tr.t / DUNGEON_FALL_MS);
-    p.fallInScale = 1 - 0.92 * k; // collapse toward the hole-center pivot
+    p.fallInDrop = (k * k) * (p.height * 2.2); // accelerate down past the clip line
     if (k >= 1) enterDungeon();
 }
 
@@ -214,6 +218,7 @@ function enterDungeon() {
     p.fallInDrop = 0;
     p.fallInPivotX = null;
     p.fallInPivotY = null;
+    p.sinkClipY = null;
     const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
     gameState.dungeon = new DungeonScreen(game, p, cfg);
     gameState.dungeonTransition = null;
@@ -244,6 +249,7 @@ function exitDungeon() {
     p.fallInDrop = 0;
     p.fallInPivotX = null;
     p.fallInPivotY = null;
+    p.sinkClipY = null;
     p._onHoleLast = true;
     p.lastZone = null;
     p.lastOnMountain = false;
@@ -697,7 +703,12 @@ function updateGame(dt) {
         const hy = player.y + player.colOffY + player.colH / 2;
         let onHole = null;
         for (const h of world.stage.holes) {
-            if (hx >= h.x && hx <= h.x + h.w && hy >= h.y && hy <= h.y + h.h) { onHole = h; break; }
+            // Trigger on the hole's inner (centered) region, not its outer edge,
+            // so the fall only fires once the feet are actually ON TOP of it.
+            const ins = h.triggerInset != null ? h.triggerInset : 0.22;
+            const ix = h.x + ins * h.w, iy = h.y + ins * h.h;
+            const iw = h.w * (1 - 2 * ins), ih = h.h * (1 - 2 * ins);
+            if (hx >= ix && hx <= ix + iw && hy >= iy && hy <= iy + ih) { onHole = h; break; }
         }
         if (onHole && !player._onHoleLast) {
             player._onHoleLast = true;
@@ -984,9 +995,13 @@ function renderGame(ctx) {
     //    him (the silhouette is a full-region blit; only the player belongs
     //    behind it).
     //  - Otherwise: depth-sort him in with everything else.
+    // While falling into a hole, the player is drawn ON TOP of the world (after
+    // the entities/overlays) so he sits in FRONT of the hole graphic and reads as
+    // sinking into it — not depth-sorted, where the pit overlay draws over him.
+    const dungeonFalling = !!gameState.dungeonTransition;
     const hideDeadPlayer = gameState.death && gameState.death.phase === 'splat';
     const behindAlive = hasOverlay && player.behindMountain && !hideDeadPlayer;
-    if (!hideDeadPlayer && !behindAlive) entities.push(player);
+    if (!hideDeadPlayer && !behindAlive && !dungeonFalling) entities.push(player);
     // Stacked rocks use their parent's bottom edge + 1 so they render in front
     entities.sort((a, b) => {
         const ay = a.stackParent ? (a.stackParent.y + a.stackParent.height + 1) : (a.y + a.height);
@@ -1061,6 +1076,11 @@ function renderGame(ctx) {
     if (gameState.fxManager) gameState.fxManager.render(ctx, camX, camY);
     if (PERF) PERF.end('fx');
 
+    // Dungeon fall: draw the player over everything so he's in FRONT of the hole
+    // graphic. His sinkClipY hides whatever has dropped past the vanish line, so
+    // the visible top half sits on the pit and the rest disappears into it.
+    if (dungeonFalling) player.render(ctx, game, camX, camY);
+
     // During transition, draw the basket on top of everything (it's ascending)
     if (gameState.transition) {
         const t = gameState.transition;
@@ -1071,10 +1091,26 @@ function renderGame(ctx) {
     // Hole trigger boxes (debug) — drawn inside the camera transform so they line
     // up with the world. Magenta = the non-colliding "fall into the dungeon" zone.
     if (game.showDebug && world.stage.holes) {
-        ctx.strokeStyle = '#ff00ff';
-        ctx.lineWidth = 2;
         for (const h of world.stage.holes) {
+            // Outer box = the declared hole area (dim); inner box = the actual
+            // trigger region the feet must reach (bright).
+            ctx.strokeStyle = 'rgba(255,0,255,0.4)';
+            ctx.lineWidth = 1;
             ctx.strokeRect(h.x - camX, h.y - camY, h.w, h.h);
+            const ins = h.triggerInset != null ? h.triggerInset : 0.22;
+            ctx.strokeStyle = '#ff00ff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(h.x + ins * h.w - camX, h.y + ins * h.h - camY,
+                h.w * (1 - 2 * ins), h.h * (1 - 2 * ins));
+            // Vanish line (cyan): the player is clipped below this as he sinks in.
+            const vf = h.vanishLine != null ? h.vanishLine : 0.5;
+            const vy = h.y + h.h * vf - camY;
+            ctx.strokeStyle = '#53d8fb';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(h.x - camX, vy);
+            ctx.lineTo(h.x + h.w - camX, vy);
+            ctx.stroke();
         }
     }
 
@@ -1083,9 +1119,14 @@ function renderGame(ctx) {
     // Dungeon fall: darken the screen in lockstep with the player shrinking into
     // the pit, so it cuts cleanly to the (black) dungeon fade-in.
     if (gameState.dungeonTransition) {
+        // Hold the scene clear while he sinks, then fade to black only at the
+        // tail (last 25%) so the vanish is visible before the screen swaps.
         const k = Math.min(1, gameState.dungeonTransition.t / DUNGEON_FALL_MS);
-        ctx.fillStyle = `rgba(0,0,0,${(0.95 * k).toFixed(3)})`;
-        ctx.fillRect(0, 0, game.width, game.height);
+        const fade = Math.max(0, (k - 0.75) / 0.25);
+        if (fade > 0) {
+            ctx.fillStyle = `rgba(0,0,0,${(0.95 * fade).toFixed(3)})`;
+            ctx.fillRect(0, 0, game.width, game.height);
+        }
     }
 
     // SPLAT — shown during the frozen death beat, centered on screen (the camera
