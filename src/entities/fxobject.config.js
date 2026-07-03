@@ -27,13 +27,16 @@ window.FX_JUICE = {
     ballChance: 0.2,
 
     // Which art sheet(s) the in-game FX spawn from:
-    //   'faint' = the V2 (faint outline) sheet only   ← default
+    //   'faint' = the V2 (faint outline) sheet only
     //   'bold'  = the bold (assets-003) sheet only
-    //   'both'  = mix of the two (each spawn picks one at random)
+    //   'both'  = mix of the two (each spawn picks one at random)   ← default
     // The bold sheet is only loaded by the game when this is 'bold'/'both'
     // (boxes are shared, so only the art style differs). Both sheets always
     // live in tools/fx-lab.html for inspection regardless of this setting.
-    sheets: 'faint',
+    // NOTE: the ball (the spiky splash/opening burst) is deliberately kept OFF
+    // the bold sheet — it only ever spawns from the faint sheet (see
+    // fxobject.js _spawn). Twinkles (shadows + clip) mix both sheets freely.
+    sheets: 'both',
 
     // ── SIZE ────────────────────────────────────────────────────────────────
     // World scale. assets-003 crops are large (tallest shadow streak is 1760px

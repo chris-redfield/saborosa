@@ -158,7 +158,14 @@ class FxManager {
         const useBall = this.ballFrames.length && Math.random() < this.ballChance;
         const frames = useBall ? this.ballFrames : [this.singles[(Math.random() * this.singles.length) | 0]];
         const sc = this.baseScale * this.unit * (0.8 + Math.random() * this.scaleJitter);
-        const sheetKey = this.sheetKeys[(Math.random() * this.sheetKeys.length) | 0];
+        // Twinkles (shadows + clip) mix whatever sheets are loaded. The ball —
+        // the spiky splash/opening burst — is intentionally excluded from the
+        // bold sheet, so it always draws from the faint sheet (the one already
+        // in use before the bold sheet was mixed in). Fall back to any loaded
+        // sheet only if the faint one somehow isn't present (e.g. 'bold' mode).
+        const sheetKey = useBall
+            ? (this.sheetKeys.includes(FAINT_KEY) ? FAINT_KEY : this.sheetKeys[0])
+            : this.sheetKeys[(Math.random() * this.sheetKeys.length) | 0];
         this.list.push(new FxObject(this.game, px, py, sc, useBall ? 'ball' : 'twinkle', frames, sheetKey));
     }
 

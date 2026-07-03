@@ -315,7 +315,7 @@ class Game {
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                               'block_sheet', 'coconut_sheet', 'tomato_sheet',
                               'character_sheet', 'liverock_sheet',
-                              'fx_sheet_faint', 'fruit_basket'];
+                              'fx_sheet_faint', 'fx_sheet', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>
                 // as a fallback. Everything draws via getDrawable().
