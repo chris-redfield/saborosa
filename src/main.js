@@ -193,11 +193,19 @@ function startDungeonFall(hole) {
     gameState.dungeonTransition = { t: 0 };
     const p = gameState.player;
     p.moving = false;
-    // Vanish line at half the hole's height (tunable per hole via vanishLine).
-    // Above it the player draws ON TOP of the hole graphic (renderGame); once he
-    // sinks past it his body is clipped away, so he reads as going INTO the pit.
+    // Vanish line at `vanishLine` of the hole height. Above it the player draws
+    // ON TOP of the hole graphic (renderGame); as he sinks past it his body is
+    // clipped away, so he vanishes behind the line into the pit.
     const frac = hole.vanishLine != null ? hole.vanishLine : 0.5;
     p.sinkClipY = hole.y + hole.h * frac;
+
+    // Explosion centered right above the hole (its top-center), not on the player.
+    const defs = game.getJSON('boom_defs');
+    if (defs) {
+        const boomX = hole.x + hole.w / 2;
+        const boomY = hole.y;
+        (gameState.booms = gameState.booms || []).push(new BoomEffect(game, boomX, boomY, defs));
+    }
 }
 
 // Drive the fall: push the player down into the pit with an accelerating drop
@@ -209,6 +217,10 @@ function updateDungeonFall(dt) {
     tr.t += dt * 1000;
     const k = Math.min(1, tr.t / DUNGEON_FALL_MS);
     p.fallInDrop = (k * k) * (p.height * 2.2); // accelerate down past the clip line
+    if (gameState.booms) {
+        for (const b of gameState.booms) b.update(dt);
+        gameState.booms = gameState.booms.filter(b => !b.done);
+    }
     if (k >= 1) enterDungeon();
 }
 
@@ -222,6 +234,7 @@ function enterDungeon() {
     const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
     gameState.dungeon = new DungeonScreen(game, p, cfg);
     gameState.dungeonTransition = null;
+    gameState.booms = [];
     gameState.screen = 'dungeon';
 }
 
@@ -1077,9 +1090,12 @@ function renderGame(ctx) {
     if (PERF) PERF.end('fx');
 
     // Dungeon fall: draw the player over everything so he's in FRONT of the hole
-    // graphic. His sinkClipY hides whatever has dropped past the vanish line, so
+    // graphic. His sinkClipY hides whatever dropped past the line, so
     // the visible top half sits on the pit and the rest disappears into it.
     if (dungeonFalling) player.render(ctx, game, camX, camY);
+
+    // Explosion(s) at the fall spot — drawn on top of everything for impact.
+    if (gameState.booms) for (const b of gameState.booms) b.render(ctx, game, camX, camY);
 
     // During transition, draw the basket on top of everything (it's ascending)
     if (gameState.transition) {

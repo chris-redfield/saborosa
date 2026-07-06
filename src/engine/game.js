@@ -190,6 +190,10 @@ class Game {
 
                 // Dungeon interior background (fell-down-a-hole view).
                 this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo.png'),
+
+                // Explosion effect played at the spot the player falls into a hole.
+                this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
+                this.loadJSON('boom_defs', 'assets-v2/saborosa-boom.json'),
                 // Stage 3 — 4-LAYER MAP (assets-v2/mapa/, all aligned 5543x4075):
                 //   zoning    — never drawn; sampled for terrain zones AND the
                 //               mountain-occlusion mask. Transparent outside the

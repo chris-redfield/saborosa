@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Hole Fall / V-Rim Test</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:330px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; overflow-y:auto; }
+  #side .group { padding:8px 12px; border-bottom:1px solid #0c1226; }
+  #side h3 { margin:4px 0 8px; color:var(--accent); font-size:12px; letter-spacing:.5px; }
+  label.s { display:flex; justify-content:space-between; margin:7px 0 1px; color:#9ab; font-size:11px; }
+  label.s span { color:#cfe; }
+  input[type=range] { width:100%; }
+  label.cb { display:flex; align-items:center; gap:6px; margin:6px 0; color:#cfe; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #readout { white-space:pre; color:#8fce8f; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  pre#out { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px;
+            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:190px;
+            overflow:auto; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>HOLE FALL / V-RIM TEST</b>
+  <span class="hint">drag the PURPLE box onto the pit · corners resize · green = the real pit (reference) · WASD walk · R reset</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+const A = '../assets/', AV = '../assets-v2/mapa/';
+const CHAR_SHEET = A + 'saborosa-cha-001.png';
+const CHAR_DEFS  = A + 'saborosa-cha-001-sprites.json';
+const BURACOS    = AV + 'saborosa-elementos-buracos.png';
+const OV_JSON    = AV + 'overlay-objects.json';
+
+// Stage-3 image rect (world space) — must match stages.js so the real pit crops
+// and the config box share the same world coordinates.
+const RECT = { x: 1352, y: 0, w: 8815, h: 6480 };
+
+// GREEN = the real pit drawing (read-only reference; you can't resize the art
+// in-game). PURPLE = the stage `holes` config box you actually tune; the V rim
+// is derived from it, so moving/resizing the purple box moves/scales the V too.
+const params = {
+  zoom: 3.0,
+  holeX: 6240, holeY: 3470, holeW: 190, holeH: 120, // PURPLE box (config)
+  charScale: 0.85,
+  vanishLine: 0.5, triggerInset: 0.22,  // horizontal line the character vanishes behind
+  fallMs: 800, dropFactor: 2.2,
+  moveSpeed: 4,
+  showPit: true, showGuides: true,
+};
+
+const SLIDERS = [
+  ['zoom','zoom',1.5,6,0.05],
+  ['charScale','char size',0.4,1.6,0.01],
+  ['moveSpeed','walk speed',1,12,0.5],
+  ['holeW','box width',40,500,2],
+  ['holeH','box height',20,400,2],
+  ['vanishLine','vanish line (0 top·1 bottom)',0,1,0.02],
+  ['triggerInset','trigger inset',0,0.45,0.01],
+  ['fallMs','fall duration (ms)',200,2000,10],
+  ['dropFactor','sink distance (× char H)',0.8,4,0.05],
+];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let charImg=null, charFrames=null, buracos=null, holeCrops=[], holeIndex=0;
+
+// Character (world coords, feet point).
+let charX=6335, charY=3700, facing='up';
+let falling=false, fallStart=0, resetAt=0;
+const keys = Object.create(null);
+
+// Fixed camera + purple-box drag state.
+let cam = { x:6314, y:3525 };
+let drag = null, hover = null, selected = false;
+
+function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+async function boot(){
+  [charImg, buracos] = await Promise.all([loadImg(CHAR_SHEET), loadImg(BURACOS)]);
+  try {
+    const d = await (await fetch(CHAR_DEFS,{cache:'no-cache'})).json();
+    charFrames = { down:d.down_idle[0], up:d.up_idle[0], left:d.left_idle[0], right:d.right_idle[0] };
+  } catch(e){ console.warn('char defs failed', e); }
+  try {
+    const ov = await (await fetch(OV_JSON,{cache:'no-cache'})).json();
+    holeCrops = ov.objects.filter(o => (o.sheet||'').includes('burac')).map(o => ({
+      nx:o.nx, ny:o.ny, nw:o.nw, nh:o.nh,
+      wx:RECT.x+o.nx*RECT.w, wy:RECT.y+o.ny*RECT.h, ww:o.nw*RECT.w, wh:o.nh*RECT.h
+    }));
+  } catch(e){ console.warn('overlay json failed', e); }
+  buildPanel(); centerCam(); resize(); respawn();
+  requestAnimationFrame(loop);
+  status(`ready · ${holeCrops.length} real pits · drag the purple box`);
+}
+function status(s){ document.getElementById('status').textContent = s; }
+function resize(){ cv.width = stage.clientWidth; cv.height = stage.clientHeight; }
+window.addEventListener('resize', resize);
+
+// --- boxes + world<->screen (fixed camera) ----------------------------------
+function realCrop(){ return holeCrops[holeIndex] || null; }
+// GREEN box = the real pit's true world rect (never edited).
+function greenRect(){ const c=realCrop(); return c ? {x:c.wx,y:c.wy,w:c.ww,h:c.wh} : {x:6229,y:3496,w:168,h:57}; }
+function purpleBox(){ return { x:params.holeX, y:params.holeY, w:params.holeW, h:params.holeH }; }
+function centerCam(){ const g=greenRect(); cam={ x:g.x+g.w/2, y:g.y+g.h/2 }; }
+function w2sX(wx){ return (wx-cam.x)*params.zoom + cv.width/2; }
+function w2sY(wy){ return (wy-cam.y)*params.zoom + cv.height/2; }
+function boxScreen(b){ return { x:w2sX(b.x), y:w2sY(b.y), w:b.w*params.zoom, h:b.h*params.zoom }; }
+
+function respawn(){
+  const b = purpleBox();
+  charX = b.x + b.w/2; charY = b.y + b.h + 160; facing='up';
+  falling=false; resetAt=0;
+}
+
+function update(now){
+  if (falling){ if (resetAt && now >= resetAt) respawn(); return; }
+  let dx=0, dy=0;
+  if (keys.up) dy-=1; if (keys.down) dy+=1; if (keys.left) dx-=1; if (keys.right) dx+=1;
+  if (dx||dy){
+    if (Math.abs(dx) > Math.abs(dy)) facing = dx>0?'right':'left'; else facing = dy>0?'down':'up';
+    const len = Math.hypot(dx,dy) || 1;
+    charX += dx/len * params.moveSpeed; charY += dy/len * params.moveSpeed;
+  }
+  const b = purpleBox(); const ins = params.triggerInset;
+  const ix=b.x+ins*b.w, iy=b.y+ins*b.h, iw=b.w*(1-2*ins), ih=b.h*(1-2*ins);
+  if (charX>=ix && charX<=ix+iw && charY>=iy && charY<=iy+ih){
+    falling=true; fallStart=now; resetAt=now + params.fallMs + 350;
+  }
+}
+
+function draw(now){
+  const Z = params.zoom;
+  ctx.fillStyle = '#c8bb9b'; ctx.fillRect(0,0,cv.width,cv.height); // sand
+
+  // Real pit art, drawn at its TRUE size (green box) — this is fixed, like the game.
+  const g = greenRect(), c = realCrop();
+  if (params.showPit && buracos && c){
+    ctx.drawImage(buracos,
+      c.nx*buracos.width, c.ny*buracos.height, c.nw*buracos.width, c.nh*buracos.height,
+      w2sX(g.x), w2sY(g.y), g.w*Z, g.h*Z);
+  }
+
+  // Purple box + vanish line: a horizontal line at vanishLine of the box height
+  // that the character vanishes behind as he sinks.
+  const b = purpleBox();
+  const bx=w2sX(b.x), by=w2sY(b.y), bw=b.w*Z, bh=b.h*Z;
+  const rimY = w2sY(b.y + b.h*params.vanishLine);
+
+  // Character.
+  const fr = (charFrames && charFrames[facing]) || (charFrames && charFrames.down);
+  const charH = 109 * params.charScale * Z;
+  const aspect = fr ? fr.w/fr.h : 0.6;
+  const charW = charH * aspect;
+  const feetSX = w2sX(charX), feetSY = w2sY(charY);
+  let drop = 0;
+  if (falling){ const k = Math.min(1, (now - fallStart) / params.fallMs); drop = (k*k) * (charH * params.dropFactor); }
+  ctx.save();
+  if (falling){
+    const BIG=100000;
+    ctx.beginPath();
+    ctx.rect(-BIG, -BIG, 2*BIG, rimY + BIG); ctx.clip(); // hide below the line
+  }
+  const topY = feetSY - charH + drop;
+  if (fr && charImg) ctx.drawImage(charImg, fr.x, fr.y, fr.w, fr.h, feetSX - charW/2, topY, charW, charH);
+  else { ctx.fillStyle='#e94560'; ctx.fillRect(feetSX-charW/2, topY, charW, charH); }
+  ctx.restore();
+
+  if (params.showGuides){
+    // GREEN box (real pit — reference, not editable).
+    const gsr = boxScreen(g);
+    ctx.strokeStyle='rgba(120,230,120,0.95)'; ctx.lineWidth=1.5; ctx.strokeRect(gsr.x,gsr.y,gsr.w,gsr.h);
+    // PURPLE box (dim) + trigger region (bright).
+    ctx.strokeStyle='rgba(255,0,255,0.4)'; ctx.lineWidth=1; ctx.strokeRect(bx,by,bw,bh);
+    const ins=params.triggerInset;
+    ctx.strokeStyle='#ff00ff'; ctx.lineWidth=selected?2.5:2;
+    ctx.strokeRect(bx+ins*bw, by+ins*bh, bw*(1-2*ins), bh*(1-2*ins));
+    // Vanish line (cyan) — the character vanishes behind this.
+    ctx.strokeStyle='#53d8fb'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(bx,rimY); ctx.lineTo(bx+bw,rimY); ctx.stroke();
+    // Purple resize handles.
+    drawHandles({x:bx,y:by,w:bw,h:bh}, '#ff00ff');
+    // Feet marker.
+    ctx.fillStyle = falling ? '#e94560' : '#8fce8f';
+    ctx.beginPath(); ctx.arc(feetSX, feetSY, 3, 0, 7); ctx.fill();
+  }
+  updateReadout();
+}
+function corners(sr){ return { nw:[sr.x,sr.y], ne:[sr.x+sr.w,sr.y], sw:[sr.x,sr.y+sr.h], se:[sr.x+sr.w,sr.y+sr.h] }; }
+function drawHandles(sr, col){ ctx.fillStyle=col; const cs=corners(sr); for(const k in cs){ const [x,y]=cs[k]; ctx.fillRect(x-4,y-4,8,8); } }
+
+// --- mouse: move / resize the PURPLE box only -------------------------------
+const HANDLE = 9;
+function hitCorner(mx,my,sr){ const cs=corners(sr); for(const k in cs){ const [x,y]=cs[k]; if(Math.abs(mx-x)<=HANDLE&&Math.abs(my-y)<=HANDLE) return k; } return null; }
+cv.addEventListener('mousedown', e => {
+  const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const sr=boxScreen(purpleBox());
+  const cor=hitCorner(mx,my,sr);
+  if (cor){ selected=true; drag={mode:cor,smx:mx,smy:my,sb:purpleBox()}; return; }
+  if (mx>=sr.x&&mx<=sr.x+sr.w&&my>=sr.y&&my<=sr.y+sr.h){ selected=true; drag={mode:'move',smx:mx,smy:my,sb:purpleBox()}; return; }
+  selected=false;
+});
+window.addEventListener('mousemove', e => {
+  const r=cv.getBoundingClientRect(); const mx=e.clientX-r.left, my=e.clientY-r.top;
+  if (!drag){
+    const sr=boxScreen(purpleBox());
+    hover = hitCorner(mx,my,sr) ? 'corner' : (mx>=sr.x&&mx<=sr.x+sr.w&&my>=sr.y&&my<=sr.y+sr.h ? 'move' : null);
+    cv.style.cursor = hover==='corner'?'nwse-resize':hover==='move'?'move':'default';
+    return;
+  }
+  const dwx=(mx-drag.smx)/params.zoom, dhy=(my-drag.smy)/params.zoom;
+  const b={...drag.sb};
+  if (drag.mode==='move'){ b.x+=dwx; b.y+=dhy; }
+  else {
+    if (drag.mode.includes('e')) b.w=Math.max(8, drag.sb.w+dwx);
+    if (drag.mode.includes('s')) b.h=Math.max(8, drag.sb.h+dhy);
+    if (drag.mode.includes('w')){ b.w=Math.max(8, drag.sb.w-dwx); b.x=drag.sb.x+(drag.sb.w-b.w); }
+    if (drag.mode.includes('n')){ b.h=Math.max(8, drag.sb.h-dhy); b.y=drag.sb.y+(drag.sb.h-b.h); }
+  }
+  setParam('holeX',Math.round(b.x)); setParam('holeY',Math.round(b.y));
+  setParam('holeW',Math.round(b.w)); setParam('holeH',Math.round(b.h));
+});
+window.addEventListener('mouseup', ()=>{ drag=null; });
+
+// --- side panel -------------------------------------------------------------
+function buildPanel(){
+  const side = document.getElementById('side'); side.innerHTML='';
+
+  const g0 = group(side, 'Scene');
+  ['zoom','charScale','moveSpeed'].forEach(k=>addSlider(g0,k));
+  const row = document.createElement('div');
+  const pitBtn = document.createElement('button'); pitBtn.textContent='Next real pit ▸';
+  pitBtn.onclick = () => { if (holeCrops.length){ holeIndex=(holeIndex+1)%holeCrops.length; centerCam(); respawn(); status('pit #'+holeIndex); } };
+  const snap = document.createElement('button'); snap.textContent='Purple → pit'; snap.style.marginLeft='6px';
+  snap.onclick = () => { const g=greenRect(); setParam('holeX',Math.round(g.x)); setParam('holeY',Math.round(g.y)); setParam('holeW',Math.round(g.w)); setParam('holeH',Math.round(g.h)); respawn(); status('purple box → real pit'); };
+  row.appendChild(pitBtn); row.appendChild(snap); g0.appendChild(row);
+  addCheckbox(g0,'showPit','show real pit art');
+  addCheckbox(g0,'showGuides','show guides');
+
+  const g2 = group(side, 'PURPLE box (→ stage holes)');
+  const ph=document.createElement('div'); ph.className='hint'; ph.textContent='drag the purple box in the canvas (corners resize)'; g2.appendChild(ph);
+  ['holeW','holeH'].forEach(k=>addSlider(g2,k));
+
+  const g3 = group(side, 'Vanish line (→ stage holes)');
+  ['vanishLine','triggerInset'].forEach(k=>addSlider(g3,k));
+
+  const g4 = group(side, 'Fall feel (→ main.js)');
+  ['fallMs','dropFactor'].forEach(k=>addSlider(g4,k));
+  const reset = document.createElement('button'); reset.textContent='Reset walk (R)'; g4.appendChild(reset);
+  reset.onclick = respawn;
+
+  const g5 = group(side, 'Readout');
+  const ro=document.createElement('div'); ro.id='readout'; g5.appendChild(ro);
+
+  const g6 = group(side, 'Export');
+  const copy=document.createElement('button'); copy.textContent='Copy hole JSON'; g6.appendChild(copy);
+  const out=document.createElement('pre'); out.id='out'; out.style.marginTop='6px'; g6.appendChild(out);
+  copy.onclick=()=>{ const j=defsJSON(); out.textContent=j; navigator.clipboard&&navigator.clipboard.writeText(j); status('hole copied'); };
+}
+function group(host, title){ const d=document.createElement('div'); d.className='group';
+  const h=document.createElement('h3'); h.textContent=title; d.appendChild(h); host.appendChild(d); return d; }
+function addSlider(host, key){
+  const [k,label,min,max,step] = SLIDERS.find(s=>s[0]===key);
+  const l=document.createElement('label'); l.className='s';
+  const name=document.createElement('span'); name.textContent=label;
+  const val=document.createElement('span'); val.textContent=(+params[k]).toFixed(step<1?2:0);
+  l.appendChild(name); l.appendChild(val);
+  const inp=document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.value=params[k];
+  inp.dataset.key=k; inp.dataset.step=step;
+  inp.oninput=e=>{ params[k]=parseFloat(e.target.value); val.textContent=params[k].toFixed(step<1?2:0); };
+  host.appendChild(l); host.appendChild(inp);
+}
+function setParam(key,v){
+  params[key]=v;
+  const inp=document.querySelector(`input[data-key="${key}"]`);
+  if(inp){ inp.value=v; const step=parseFloat(inp.dataset.step)||1; inp.previousSibling.lastChild.textContent=(+v).toFixed(step<1?2:0); }
+}
+function addCheckbox(host, key, label){
+  const l=document.createElement('label'); l.className='cb';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=!!params[key];
+  c.onchange=e=>{ params[key]=e.target.checked; };
+  l.appendChild(c); l.appendChild(document.createTextNode(label)); host.appendChild(l);
+}
+function updateReadout(){
+  const ro=document.getElementById('readout'); if(!ro) return;
+  const g=greenRect();
+  ro.textContent =
+    `real pit  ${g.w|0}×${g.h|0} @ (${g.x|0},${g.y|0})\n` +
+    `purple    ${params.holeW|0}×${params.holeH|0} @ (${params.holeX|0},${params.holeY|0})\n` +
+    `state     ${falling?'FALLING':'walking'}  facing ${facing}\n` +
+    `vanish    line ${params.vanishLine.toFixed(2)}`;
+}
+function defsJSON(){
+  return JSON.stringify({
+    x: Math.round(params.holeX), y: Math.round(params.holeY),
+    w: Math.round(params.holeW), h: Math.round(params.holeH),
+    target: 'dungeon',
+    triggerInset: +params.triggerInset.toFixed(3),
+    vanishLine: +params.vanishLine.toFixed(3)
+  }, null, 2);
+}
+
+// --- keyboard + loop --------------------------------------------------------
+const KEYMAP = { w:'up', s:'down', a:'left', d:'right',
+  arrowup:'up', arrowdown:'down', arrowleft:'left', arrowright:'right' };
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k==='r'){ respawn(); return; }
+  if (KEYMAP[k]){ e.preventDefault(); keys[KEYMAP[k]] = true; }
+});
+window.addEventListener('keyup', e => { const k=e.key.toLowerCase(); if (KEYMAP[k]) keys[KEYMAP[k]]=false; });
+
+function loop(now){ update(now); draw(now); requestAnimationFrame(loop); }
+boot();
+</script>
+</body>
+</html>

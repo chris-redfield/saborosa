@@ -118,8 +118,18 @@ const STAGES = {
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.
+        //   x, y, w, h    — the hole box; its position/size + the trigger region.
+        //   triggerInset  — fraction inset of the inner "on top" trigger (0.22).
+        //   vanishLine    — the horizontal line the player vanishes behind, as a
+        //                   fraction of hole height (0=top, 1=bottom).
+        // Turn on debug (C): magenta = hole/trigger boxes, cyan = the vanish
+        // line. Tune with tools/hole-fall-test.html.
         holes: [
-            { x: 6240, y: 3470, w: 190, h: 120, target: 'dungeon' }
+            {
+                x: 6240, y: 3470, w: 190, h: 120, target: 'dungeon',
+                triggerInset: 0.22,
+                vanishLine: 0.5
+            }
         ],
         // (Decorative nature is now the `overlays` layer above — the old manual
         // map-editor placements `objects`/`objectDefs` were removed.)

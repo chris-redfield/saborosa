@@ -160,9 +160,8 @@ class Player {
         this.fallInPivotX = null;
         this.fallInPivotY = null;
         // Sink-into-the-hole clip: when set (world Y), the render hides every
-        // part of the sprite BELOW this line. Combined with fallInDrop pushing
-        // the sprite down, the body descends past the line and vanishes into the
-        // pit. null during normal play → no clipping.
+        // part of the sprite BELOW this horizontal line, so as fallInDrop pushes
+        // him down he vanishes behind it into the pit. null during normal play.
         this.sinkClipY = null;
 
         // Edge-trigger latch for hole → dungeon: true while the feet are inside a
@@ -996,8 +995,8 @@ class Player {
             topY += this.fallInDrop;
 
             // Sink-into-the-hole: clip away everything below the sink line so the
-            // sprite vanishes into the pit as fallInDrop pushes it down. The rect
-            // is in the same world-minus-cam space the sprite draws in (inside the
+            // sprite vanishes behind it as fallInDrop pushes it down. The rect is
+            // in the same world-minus-cam space the sprite draws in (inside the
             // camera transform), so the clip tracks the sprite correctly.
             const sinking = this.sinkClipY != null;
             if (sinking) {
