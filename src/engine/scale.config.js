@@ -28,6 +28,8 @@ window.ART = {
         // only blur it — see tools/build-character-defs.py). 1.0 = no remap.
         coconut_sheet: 1.0,
         tomato_sheet: 1.0,
+        eggplant_sheet: 1.0,
+        laranja_sheet: 1.0,
     },
 
     // === Character sizing — THE knob to tune =================================

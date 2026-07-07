@@ -179,13 +179,19 @@ class Player {
         // the same map-proportional scale (scale.config.js → characterWorldScale,
         // world-px per author-px). Each pack reports its own idle render size as
         // the bbox; the collision footprint scales from it via the shared colCfg
-        // ratios. Pack 0 = tomato (default), pack 1 = coconut.
+        // ratios. Cycle order (1 key): 0=tomato (default), 1=coconut,
+        // 2=eggplant, 3=laranja. bodyType selects each pack's feet-alignment
+        // color scan: tomato red, coconut/eggplant tan bodies, laranja yellow.
         const ws = (window.ART && window.ART.characterWorldScale) || 0.855;
-        const tomato  = spriteSheet.loadCharacterPack('tomato_sheet',  'tomato_sprites',  ws, 'red');
-        const coconut = spriteSheet.loadCharacterPack('coconut_sheet', 'coconut_sprites', ws, 'tan');
+        const tomato   = spriteSheet.loadCharacterPack('tomato_sheet',   'tomato_sprites',   ws, 'red');
+        const coconut  = spriteSheet.loadCharacterPack('coconut_sheet',  'coconut_sprites',  ws, 'tan');
+        const eggplant = spriteSheet.loadCharacterPack('eggplant_sheet', 'eggplant_sprites', ws, 'tan');
+        const laranja  = spriteSheet.loadCharacterPack('laranja_sheet',  'laranja_sprites',  ws, 'yellow');
         this.spritePacks = [
-            { sprites: tomato.sprites,  width: tomato.width,  height: tomato.height },
-            { sprites: coconut.sprites, width: coconut.width, height: coconut.height }
+            { sprites: tomato.sprites,   width: tomato.width,   height: tomato.height },
+            { sprites: coconut.sprites,  width: coconut.width,  height: coconut.height },
+            { sprites: eggplant.sprites, width: eggplant.width, height: eggplant.height },
+            { sprites: laranja.sprites,  width: laranja.width,  height: laranja.height }
         ];
         this.characterIndex = 0;
         this._applyPackMetrics(this.spritePacks[0]);

@@ -53,7 +53,9 @@ class Game {
             mapobjects_sheet: 0.45,
             // Character sheets ship cropped 1:1 with their defs (not downscaled).
             coconut_sheet: 1.0,
-            tomato_sheet: 1.0
+            tomato_sheet: 1.0,
+            eggplant_sheet: 1.0,
+            laranja_sheet: 1.0
         };
 
         // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
@@ -225,14 +227,18 @@ class Game {
                 // editor/tools keep using the original full-res sheets.
                 this.loadImage('block_sheet', 'assets/saborosa-assets-002-game.png'),
                 this.loadJSON('block_defs', 'assets/saborosa-assets-002-sprites.json'),
-                // Playable characters — both full-behaviour packs from the
-                // assets-v2 sheets (9x9... 9-col x 5-row layout), extracted +
-                // cropped 1:1 by tools/build-character-defs.py. Tomato is the
-                // default pack; coconut is the cycle-to alternate.
+                // Playable characters — full-behaviour packs from the assets-v2
+                // sheets (9-col x 5-row layout), extracted + cropped 1:1 by
+                // tools/build-character-defs.py. Tomato is the default pack; the
+                // 1 key cycles tomato -> coconut -> eggplant -> laranja.
                 this.loadImage('tomato_sheet', 'assets/saborosa-elementos-tomato-game.png'),
                 this.loadJSON('tomato_sprites', 'assets/saborosa-elementos-tomato-sprites.json'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-elementos-coconut-game.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-elementos-coconut-sprites.json'),
+                this.loadImage('eggplant_sheet', 'assets/saborosa-elementos-eggplant-game.png'),
+                this.loadJSON('eggplant_sprites', 'assets/saborosa-elementos-eggplant-sprites.json'),
+                this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
+                this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
                 // The old decorative map assets (mapobjects_sheet / assets-001,
                 // painted_isle_objects, mapobject_defs) were REMOVED — the
                 // 4-layer map + OverlayObjects replaced the hand-placed trees.

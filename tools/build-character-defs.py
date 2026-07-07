@@ -27,7 +27,15 @@ SRC = 'assets-v2/'
 OUT = 'assets/'
 COLS, ROWS = 9, 5
 PAD = 8  # transparent margin kept around the content crop
-SHEETS = ['coconut', 'tomato']
+# (master filename in assets-v2/, output basename). Every master shares the
+# 9x5 layout above; the newer `bonecos … low` skins just use a different source
+# naming, so we map each explicitly instead of templating off the name.
+SHEETS = [
+    ('saborosa-elementos-coconut.png',    'coconut'),
+    ('saborosa-elementos-tomato.png',     'tomato'),
+    ('saborosa-bonecos-eggplant low.png', 'eggplant'),
+    ('saborosa-bonecos-laranja low.png',  'laranja'),
+]
 
 
 def bands(proj):
@@ -53,8 +61,8 @@ def tight_bbox(alpha, x0, x1, y0, y1):
 
 
 def main():
-    for name in SHEETS:
-        im = Image.open(f'{SRC}saborosa-elementos-{name}.png').convert('RGBA')
+    for src, name in SHEETS:
+        im = Image.open(f'{SRC}{src}').convert('RGBA')
         alpha = np.array(im)[:, :, 3]
         op = alpha > 20
         cb = bands(op.sum(axis=0) >= 1)

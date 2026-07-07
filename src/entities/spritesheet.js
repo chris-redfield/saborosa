@@ -140,6 +140,10 @@ class SpriteSheet {
             if (A <= 128) return false;
             if (bodyType === 'red') return R > 150 && R - G > 70 && R - B > 70;
             if (bodyType === 'green') return G > 90 && G > R + 20 && G > B + 20;
+            // 'yellow' (laranja): bright R≈G with a low blue channel — excludes
+            // the tan ears (B≈144) and red fists (G≈72) so the centroid tracks
+            // the yellow ball body.
+            if (bodyType === 'yellow') return R > 180 && G > 150 && R - B > 110 && G - B > 90;
             // 'tan' (default): R>G>B monotonic with a non-trivial blue channel
             // (excludes yellow arms, B≈48) and unequal channels (excludes the
             // white cork / grey, R≈G≈B).
