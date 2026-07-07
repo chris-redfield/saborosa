@@ -772,6 +772,16 @@ class World {
                 if (m && (m.naturalWidth || m.width)) this._drawStageLayer(ctx, m, rect, view);
             }
 
+            // Zone-debug overlay (the "Map: ZONING" toggle): the transparent
+            // zoning map drawn ON TOP of the base terrain so its colour-coded
+            // zones are visible — otherwise the mountains/overlays cover it.
+            // Drawn BEFORE the ground-layer holes so the pits stay visible on top
+            // of the zone view.
+            if (this.stage.zoneDebugImage) {
+                const zi = this.game.getDrawable(this.stage.zoneDebugImage);
+                if (zi && (zi.naturalWidth || zi.width)) this._drawStageLayer(ctx, zi, rect, view);
+            }
+
             // Ground-layer entities (e.g. holes): flat, in-the-ground graphics
             // drawn UNDER the depth-sorted entities, so the player and objects
             // always pass OVER them (a pit never occludes what's standing on it),
@@ -784,14 +794,6 @@ class World {
                         esy + e.height < 0 || esy > this.game.height) continue;
                     e.render(ctx, this.game, cx, cy);
                 }
-            }
-
-            // Zone-debug overlay (the "Map: ZONING" toggle): the transparent
-            // zoning map drawn ON TOP of the terrain so its colour-coded zones are
-            // actually visible — otherwise the mountains/overlays cover it.
-            if (this.stage.zoneDebugImage) {
-                const zi = this.game.getDrawable(this.stage.zoneDebugImage);
-                if (zi && (zi.naturalWidth || zi.width)) this._drawStageLayer(ctx, zi, rect, view);
             }
 
             if (this.game.showDebug) {
