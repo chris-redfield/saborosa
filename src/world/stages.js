@@ -126,7 +126,7 @@ const STAGES = {
         // line. Tune with tools/hole-fall-test.html.
         holes: [
             {
-                x: 6240, y: 3470, w: 190, h: 120, target: 'dungeon',
+                x: 6257, y: 3465, w: 113, h: 122, target: 'dungeon',
                 triggerInset: 0.22,
                 vanishLine: 0.5
             }

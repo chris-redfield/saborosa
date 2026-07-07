@@ -772,6 +772,20 @@ class World {
                 if (m && (m.naturalWidth || m.width)) this._drawStageLayer(ctx, m, rect, view);
             }
 
+            // Ground-layer entities (e.g. holes): flat, in-the-ground graphics
+            // drawn UNDER the depth-sorted entities, so the player and objects
+            // always pass OVER them (a pit never occludes what's standing on it),
+            // while everything else keeps its normal bottom-edge depth sorting.
+            for (const block of Object.values(this.blocks)) {
+                for (const e of block.entities) {
+                    if (e.renderLayer !== 'ground') continue;
+                    const esx = e.x - cx, esy = e.y - cy;
+                    if (esx + e.width < 0 || esx > this.game.width ||
+                        esy + e.height < 0 || esy > this.game.height) continue;
+                    e.render(ctx, this.game, cx, cy);
+                }
+            }
+
             if (this.game.showDebug) {
                 for (const block of Object.values(this.blocks)) {
                     const screenX = Math.round(block.xCoord * BLOCK_W - cx);
@@ -1196,7 +1210,12 @@ class World {
                     const wx = rect.x + o.nx * rect.w;
                     const wy = rect.y + o.ny * rect.h;
                     if (Math.floor(wx / BLOCK_W) !== bx || Math.floor(wy / BLOCK_H) !== by) continue;
-                    block.addEntity(new OverlayObject(this.game, o, rect, collide));
+                    const oo = new OverlayObject(this.game, o, rect, collide);
+                    // Holes are flat in the ground → render as a ground layer so
+                    // the player/objects always pass over them (never occluded by
+                    // the pit). Trees/plants stay depth-sorted as before.
+                    if ((o.sheet || '').includes('burac')) oo.renderLayer = 'ground';
+                    block.addEntity(oo);
                 }
             }
         }
@@ -1371,13 +1390,34 @@ class World {
             }
         }
 
-        // Test: add a fixed block (heavier variants resist pushing) in walkable blocks
+        // A heavier scattered block per walkable block. Placed at a SEEDED-RANDOM
+        // position (not a fixed per-block offset, which lined them up in a grid),
+        // kept inside the diamond terrain and off the safe zone. Skipped if no
+        // valid spot is found in the attempts, so the density stays uneven too.
         if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
             const bd = this.game.getJSON('block_defs');
             const def = (bd && bd.assets)
                 ? (bd.assets.block_00 || Object.values(bd.assets).find(d => d.kind === 'block'))
                 : null;
-            if (def) block.addEntity(new Rock(this.game, ox + BLOCK_W / 2 + 200, oy + BLOCK_H / 2 - 40, def));
+            if (def) {
+                const rock = new Rock(this.game, 0, 0, def);
+                const w = rock.width, h = rock.height;
+                for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+                    const x = ox + margin + rand() * (BLOCK_W - margin * 2 - w);
+                    const y = oy + margin + rand() * (BLOCK_H - margin * 2 - h);
+                    if (safeRadius > 0 && sz) {
+                        const dx = (x + w / 2) - sz.x, dy = (y + h / 2) - sz.y;
+                        if (Math.sqrt(dx * dx + dy * dy) < safeRadius) continue;
+                    }
+                    if (this.stage.terrainShape === 'diamond') {
+                        const d = this._getDiamondGeometry(bx, by);
+                        if (Math.abs(x + w / 2 - d.cx) / d.hw + Math.abs(y + h / 2 - d.cy) / d.hh > 0.85) continue;
+                    }
+                    rock.x = x; rock.y = y;
+                    block.addEntity(rock);
+                    break;
+                }
+            }
         }
 
         // Add portals that belong to this block
