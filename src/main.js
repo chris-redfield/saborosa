@@ -95,9 +95,11 @@ async function ensureZoneMapDisplay() {
 function applyMapStyle() {
     const stage = gameState.currentStage;
     if (!stage || !stage.backgroundImage) return;
-    // Sand is a flat colour now; the debug toggle draws the (transparent) zoning
-    // map over it to inspect zones, or nothing (just the colour) when off.
-    stage.backgroundLowerImage = showZoneMap ? 'stage3_zonemap' : null;
+    // Draw the (transparent) zoning map ON TOP of the terrain to inspect zones,
+    // or nothing when off. It renders as stage.zoneDebugImage in renderGround —
+    // ABOVE the mountains layer; putting it in the sand slot (below mountains)
+    // buried it, which is why the zones were never visible.
+    stage.zoneDebugImage = showZoneMap ? 'stage3_zonemap' : null;
 }
 function makeMapStyleToggle() {
     if (typeof document === 'undefined' || !document.body) return;

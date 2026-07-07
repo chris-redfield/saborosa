@@ -786,6 +786,14 @@ class World {
                 }
             }
 
+            // Zone-debug overlay (the "Map: ZONING" toggle): the transparent
+            // zoning map drawn ON TOP of the terrain so its colour-coded zones are
+            // actually visible — otherwise the mountains/overlays cover it.
+            if (this.stage.zoneDebugImage) {
+                const zi = this.game.getDrawable(this.stage.zoneDebugImage);
+                if (zi && (zi.naturalWidth || zi.width)) this._drawStageLayer(ctx, zi, rect, view);
+            }
+
             if (this.game.showDebug) {
                 for (const block of Object.values(this.blocks)) {
                     const screenX = Math.round(block.xCoord * BLOCK_W - cx);
