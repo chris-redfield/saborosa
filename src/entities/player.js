@@ -210,12 +210,18 @@ class Player {
     }
 
     cycleCharacter() {
+        this.setCharacter((this.characterIndex + 1) % this.spritePacks.length);
+    }
+
+    // Swap to a specific pack (0=tomato, 1=coconut, 2=eggplant, 3=laranja).
+    // Used by the 1-key cycle and the character-select screen.
+    setCharacter(index) {
         // Preserve feet center across the swap — without this, changing the
         // collision offsets would visually teleport the sprite by a few pixels.
         const feetX = this.x + this.colOffX + this.colW / 2;
         const feetY = this.y + this.colOffY + this.colH / 2;
 
-        this.characterIndex = (this.characterIndex + 1) % this.spritePacks.length;
+        this.characterIndex = ((index % this.spritePacks.length) + this.spritePacks.length) % this.spritePacks.length;
         this._applyPackMetrics(this.spritePacks[this.characterIndex]);
 
         // Re-anchor so the new footprint center matches the old feet position.

@@ -174,6 +174,16 @@ class Game {
                 this.loadImage('intro_title', 'assets/intro-title.png'),
                 this.loadImage('intro_start', 'assets/intro-start.png'),
                 this.loadImage('intro_options', 'assets/intro-options.png'),
+                // Character-select screen: 3-frame looping idle. Base frames
+                // (04-06) show every fruit in gray line-art; the parallel colored
+                // frames (01-03) are clipped to the highlighted panel so only the
+                // fruit under the cursor lights up (see screens/select.js).
+                this.loadImage('select_gray_1', 'assets/fruit-select-04.png'),
+                this.loadImage('select_gray_2', 'assets/fruit-select-05.png'),
+                this.loadImage('select_gray_3', 'assets/fruit-select-06.png'),
+                this.loadImage('select_color_1', 'assets/fruit-select-01.png'),
+                this.loadImage('select_color_2', 'assets/fruit-select-02.png'),
+                this.loadImage('select_color_3', 'assets/fruit-select-03.png'),
                 // Transparent line-art word variants (from saborosa-letras-02),
                 // used for UNSELECTED menu items when that toggle is on.
                 this.loadImage('intro_start_white', 'assets/intro-start-white.png'),

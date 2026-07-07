@@ -19,10 +19,12 @@ const gameState = {
     player: null,
     world: null,
     currentStage: null,
-    // Active screen: 'intro' (title + scrolling bg) | 'playing'. The intro's
-    // OPTIONS sub-screen is handled inside the IntroScreen itself.
+    // Active screen: 'intro' (title + scrolling bg) | 'select' (SELECT FRUIT) |
+    // 'playing' | 'dungeon'. The intro's OPTIONS sub-screen is handled inside
+    // the IntroScreen itself.
     screen: 'intro',
     intro: null,
+    select: null,
     // Latches true on the player's first movement after entering the game —
     // gates the bass layer so the spawn stays quiet until they act.
     hasMoved: false,
@@ -324,8 +326,24 @@ function updateGame(dt) {
     if (gameState.screen === 'intro') {
         const choice = gameState.intro.update(dt);
         if (choice === 'START') {
+            // START now leads into the character-select screen, not straight
+            // into gameplay. The intro theme keeps playing under it; the stage
+            // load + gameplay-music handoff wait until a fruit is picked.
+            gameState.select = new CharacterSelectScreen(game);
+            gameState.screen = 'select';
+        }
+        return;
+    }
+
+    // Character-select ("SELECT FRUIT"): pick a fruit, then load the stage and
+    // start the run as that fruit.
+    if (gameState.screen === 'select') {
+        const pick = gameState.select.update(dt);
+        if (pick != null) {
             loadStage(STAGES[3]);
+            gameState.player.setCharacter(pick);
             gameState.screen = 'playing';
+            gameState.select = null;
             gameState.hasMoved = false; // bass waits for the first move
             // Hand off to gameplay music. The bass always joins; the intro's
             // "Intro music" toggle picks whether the theme keeps playing under
@@ -933,6 +951,10 @@ function landThrownObject(obs, world) {
 }
 
 function renderGame(ctx) {
+    if (gameState.screen === 'select') {
+        gameState.select.render(ctx);
+        return;
+    }
     if (gameState.screen === 'intro') {
         gameState.intro.render(ctx);
         return;
