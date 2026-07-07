@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fruit-Select Panel Editor</title>
+<style>
+  :root { --bg:#1e1c18; --panel:#2a2620; --ink:#f4efe4; --muted:#b8ad98; --accent:#e8c445; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:10px 16px; background:var(--panel); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  header h1 { font-size:15px; margin:0; letter-spacing:.5px; }
+  header .hint { color:var(--muted); font-size:12px; }
+  .wrap { display:flex; gap:16px; padding:16px; align-items:flex-start; flex-wrap:wrap; }
+  .stage { background:#faf6ec; border-radius:6px; box-shadow:0 4px 24px #0008; }
+  canvas { display:block; border-radius:6px; cursor:crosshair; }
+  .side { width:340px; display:flex; flex-direction:column; gap:14px; }
+  .card { background:var(--panel); border-radius:6px; padding:12px; }
+  .card h2 { font-size:12px; margin:0 0 8px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); }
+  .row { display:flex; gap:8px; align-items:center; margin-bottom:6px; }
+  .row label { width:70px; font-size:12px; color:var(--muted); }
+  .panelrow { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
+  .swatch { width:14px; height:14px; border-radius:3px; flex:0 0 auto; }
+  .panelrow.sel { outline:2px solid var(--accent); border-radius:4px; padding:4px; margin:-4px -4px 4px; }
+  .panelrow .name { width:58px; font-weight:600; font-size:13px; cursor:pointer; }
+  .panelrow input { width:52px; }
+  input[type=number] { background:#15130f; color:var(--ink); border:1px solid #444; border-radius:4px; padding:4px 5px; font-family:monospace; }
+  button { background:#3b352b; color:var(--ink); border:1px solid #554d3e; border-radius:5px; padding:6px 10px; font-size:12px; cursor:pointer; }
+  button:hover { background:#4a4234; }
+  button.on { background:var(--accent); color:#1e1c18; border-color:var(--accent); }
+  textarea { width:100%; height:150px; background:#15130f; color:#cfe8b0; border:1px solid #444; border-radius:5px; padding:8px; font-family:monospace; font-size:11px; resize:vertical; }
+  .toggles { display:flex; gap:8px; flex-wrap:wrap; }
+  kbd { background:#15130f; border:1px solid #444; border-radius:4px; padding:1px 5px; font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🍎 Fruit-Select Panel Editor</h1>
+  <span class="hint">Drag a box to move · drag its handles to resize · or type exact values → <b>Copy</b> into <code>src/screens/select.js</code></span>
+</header>
+
+<div class="wrap">
+  <div class="stage"><canvas id="cv" width="866" height="682"></canvas></div>
+
+  <div class="side">
+    <div class="card">
+      <h2>View</h2>
+      <div class="toggles">
+        <button id="tHi" class="on">Highlight selected</button>
+        <button id="tAnim">Animate idle</button>
+        <button id="tTitle" class="on">Show title guard</button>
+        <button id="pop">▶ Preview pop</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Panels (image px, 866×682)</h2>
+      <div id="panels"></div>
+      <div class="hint" style="font-size:11px;color:var(--muted)">Click a name to select · <kbd>Tab</kbd> between fields</div>
+    </div>
+
+    <div class="card">
+      <h2>Export → select.js</h2>
+      <textarea id="out" readonly></textarea>
+      <div style="margin-top:8px"><button id="copy">Copy to clipboard</button> <span id="copied" class="hint"></span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---- Starting values: mirror src/screens/select.js -------------------------
+const IMG_W = 866, IMG_H = 682;
+const CONTENT = { x:148, y:65, w:657, h:474 }; // for reference only
+const panels = [
+  { name:'JUIXY', pack:3, note:'laranja (yellow)', color:'#e8c445', rect:{ x:163, y:147, w:212, h:400 } },
+  { name:'ERKPA', pack:2, note:'eggplant (tan)',   color:'#c8b48a', rect:{ x:386, y:147, w:190, h:400 } },
+  { name:'TOM',   pack:0, note:'tomato (red)',     color:'#e5654b', rect:{ x:585, y:147, w:205, h:400 } },
+];
+// Approx band the "SELECT FRUIT" title occupies (image px) — a guard rail so
+// you can see when a box is eating the words. Purely visual.
+const TITLE_GUARD = { x:150, y:60, w:660, h:95 };
+
+// The stamp pop, copied from select.js so the preview matches the game.
+const easeOutBack = p => { const c1=1.70158,c3=c1+1; return 1 + c3*Math.pow(p-1,3) + c1*Math.pow(p-1,2); };
+
+const grayKeys  = ['04','05','06'];
+const colorKeys = ['01','02','03'];
+const imgs = {};
+let loaded = 0, total = grayKeys.length + colorKeys.length;
+function load(n){ const i=new Image(); i.onload=()=>{loaded++;}; i.src='../assets/fruit-select-'+n+'.png'; imgs[n]=i; }
+grayKeys.concat(colorKeys).forEach(load);
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const state = { sel:2, showHi:true, anim:false, showTitle:true, frame:0, frameT:0, popT:null };
+const HANDLE = 9; // px in image space (canvas is 1:1 here)
+
+// ---- Rendering -------------------------------------------------------------
+let last = performance.now();
+function frameKey(){ return state.frame % 3; }
+function tick(now){
+  const dt = (now - last)/1000; last = now;
+  if (state.anim){ state.frameT += dt; if (state.frameT >= 0.18){ state.frameT -= 0.18; state.frame = (state.frame+1)%3; } }
+  if (state.popT !== null){ state.popT += dt; if (state.popT > 0.6) state.popT = null; }
+  draw();
+  requestAnimationFrame(tick);
+}
+function draw(){
+  ctx.clearRect(0,0,IMG_W,IMG_H);
+  ctx.fillStyle = '#faf6ec'; ctx.fillRect(0,0,IMG_W,IMG_H);
+  const gi = imgs[grayKeys[frameKey()]];
+  if (gi && gi.complete) ctx.drawImage(gi, 0, 0, IMG_W, IMG_H);
+
+  // Title guard band.
+  if (state.showTitle){
+    const g = TITLE_GUARD;
+    ctx.fillStyle = 'rgba(232,68,68,0.10)';
+    ctx.fillRect(g.x, g.y, g.w, g.h);
+    ctx.strokeStyle = 'rgba(232,68,68,0.55)'; ctx.setLineDash([6,5]); ctx.lineWidth=1.5;
+    ctx.strokeRect(g.x, g.y, g.w, g.h); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(200,40,40,0.8)'; ctx.font='12px monospace';
+    ctx.fillText('title — keep boxes below this', g.x+6, g.y+16);
+  }
+
+  // Highlight preview: colored clip (with pop if previewing) for selected panel.
+  if (state.showHi){
+    const p = panels[state.sel], r = p.rect;
+    const ci = imgs[colorKeys[frameKey()]];
+    if (ci && ci.complete){
+      let popK = 1;
+      if (state.popT !== null){ const sp = Math.min(1, state.popT/0.40); popK = 1 + 0.25*(1-easeOutBack(sp)); }
+      ctx.save();
+      ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+      if (popK !== 1){ const cx=r.x+r.w/2, cy=r.y+r.h/2; ctx.translate(cx,cy); ctx.scale(popK,popK); ctx.translate(-cx,-cy); }
+      ctx.drawImage(ci, 0, 0, IMG_W, IMG_H);
+      ctx.restore();
+    }
+  }
+
+  // Panel boxes.
+  panels.forEach((p,i)=>{
+    const r = p.rect, on = i===state.sel;
+    ctx.strokeStyle = p.color; ctx.lineWidth = on ? 3 : 1.5;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.fillStyle = p.color; ctx.font = 'bold 14px monospace';
+    ctx.fillText(p.name, r.x+5, r.y-6);
+    if (on){
+      // resize handles (corners + edge mids)
+      ctx.fillStyle = p.color;
+      handlePoints(r).forEach(pt => ctx.fillRect(pt.x-HANDLE/2, pt.y-HANDLE/2, HANDLE, HANDLE));
+    }
+  });
+}
+function handlePoints(r){
+  const xs=[r.x, r.x+r.w/2, r.x+r.w], ys=[r.y, r.y+r.h/2, r.y+r.h], out=[];
+  for(let j=0;j<3;j++) for(let k=0;k<3;k++){ if(j===1&&k===1) continue; out.push({x:xs[k], y:ys[j], hx:k, hy:j}); }
+  return out;
+}
+
+// ---- Mouse editing ---------------------------------------------------------
+function toImg(e){ const b=cv.getBoundingClientRect(); return { x:(e.clientX-b.left)*(IMG_W/b.width), y:(e.clientY-b.top)*(IMG_H/b.height) }; }
+let drag = null;
+cv.addEventListener('mousedown', e=>{
+  const m = toImg(e);
+  // handle of selected panel?
+  const r = panels[state.sel].rect;
+  for (const pt of handlePoints(r)){
+    if (Math.abs(m.x-pt.x)<=HANDLE && Math.abs(m.y-pt.y)<=HANDLE){ drag={mode:'resize', hx:pt.hx, hy:pt.hy, r}; return; }
+  }
+  // click inside a panel to select + move it (topmost first)
+  for (let i=panels.length-1;i>=0;i--){ const q=panels[i].rect;
+    if (m.x>=q.x&&m.x<=q.x+q.w&&m.y>=q.y&&m.y<=q.y+q.h){ state.sel=i; syncInputs(); drag={mode:'move', r:q, ox:m.x-q.x, oy:m.y-q.y}; return; }
+  }
+});
+window.addEventListener('mousemove', e=>{
+  if (!drag) return; const m = toImg(e), r = drag.r;
+  if (drag.mode==='move'){ r.x = Math.round(m.x-drag.ox); r.y = Math.round(m.y-drag.oy); }
+  else { // resize by dragging an edge/corner
+    if (drag.hx===0){ const right=r.x+r.w; r.x=Math.round(m.x); r.w=Math.round(right-r.x); }
+    if (drag.hx===2){ r.w=Math.round(m.x-r.x); }
+    if (drag.hy===0){ const bot=r.y+r.h; r.y=Math.round(m.y); r.h=Math.round(bot-r.y); }
+    if (drag.hy===2){ r.h=Math.round(m.y-r.y); }
+    if (r.w<10) r.w=10; if (r.h<10) r.h=10;
+  }
+  syncInputs(); exportText();
+});
+window.addEventListener('mouseup', ()=>{ drag=null; });
+
+// ---- Side panel inputs -----------------------------------------------------
+const panelsEl = document.getElementById('panels');
+function buildInputs(){
+  panelsEl.innerHTML='';
+  panels.forEach((p,i)=>{
+    const row = document.createElement('div'); row.className='panelrow'+(i===state.sel?' sel':''); row.dataset.i=i;
+    row.innerHTML = `<span class="swatch" style="background:${p.color}"></span>
+      <span class="name" title="${p.note}">${p.name}</span>` +
+      ['x','y','w','h'].map(f=>`<input type="number" data-f="${f}" value="${p.rect[f]}">`).join('');
+    row.querySelector('.name').onclick = ()=>{ state.sel=i; buildInputs(); };
+    row.querySelectorAll('input').forEach(inp=>{
+      inp.oninput = ()=>{ p.rect[inp.dataset.f] = Math.round(+inp.value||0); exportText(); };
+    });
+    panelsEl.appendChild(row);
+  });
+}
+function syncInputs(){
+  buildInputs();
+}
+
+// ---- Export ----------------------------------------------------------------
+const out = document.getElementById('out');
+function exportText(){
+  const lines = panels.map(p=>{
+    const pad = p.name.length<5 ? ' '.repeat(5-p.name.length) : '';
+    return `            { name: '${p.name}',${pad} pack: ${p.pack}, rect: { x: ${p.rect.x}, y: ${p.rect.y}, w: ${p.rect.w}, h: ${p.rect.h} } }, // ${p.note}`;
+  });
+  out.value = 'this.panels = [\n' + lines.join('\n') + '\n        ];';
+}
+document.getElementById('copy').onclick = ()=>{
+  out.select(); navigator.clipboard.writeText(out.value);
+  const c=document.getElementById('copied'); c.textContent='copied ✓'; setTimeout(()=>c.textContent='',1500);
+};
+
+// ---- Toggles ---------------------------------------------------------------
+function bindToggle(id, key){ const b=document.getElementById(id); b.onclick=()=>{ state[key]=!state[key]; b.classList.toggle('on', state[key]); }; }
+bindToggle('tHi','showHi'); bindToggle('tAnim','anim'); bindToggle('tTitle','showTitle');
+document.getElementById('pop').onclick = ()=>{ state.popT = 0; };
+
+buildInputs(); exportText();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
