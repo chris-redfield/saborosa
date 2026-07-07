@@ -20,6 +20,13 @@ class CharacterSelectScreen {
         this.IMG_W = 866;
         this.IMG_H = 682;
 
+        // Opaque content box inside that canvas (title + panels). The art is
+        // right-of-centre with empty margins, so we fit/centre on THIS box, not
+        // the full image — it centres the visible content and zooms in. Its
+        // centre is what lands at the screen centre.
+        this.CONTENT = { x: 148, y: 65, w: 657, h: 474 };
+        this.fill = 0.9; // fraction of the screen the content box fills
+
         // The two aligned 3-frame loops. Index `frame` picks gray[frame]
         // everywhere and color[frame] inside the selected panel.
         this.grayFrames  = ['select_gray_1',  'select_gray_2',  'select_gray_3'];
@@ -79,11 +86,15 @@ class CharacterSelectScreen {
         ctx.fillStyle = '#faf6ec';
         ctx.fillRect(0, 0, W, H);
 
-        // Contain-fit the art, centered and letterboxed. The same transform maps
-        // image-space panel rects to the screen.
-        const s = Math.min(W / this.IMG_W, H / this.IMG_H);
+        // Fit the CONTENT box to `fill` of the screen and centre it. The image
+        // is drawn at scale `s` from origin (ox,oy); image point p maps to
+        // screen (ox + p*s). We solve ox/oy so the content-box centre lands at
+        // the screen centre. The same transform maps panel rects below.
+        const c = this.CONTENT;
+        const s = Math.min((W * this.fill) / c.w, (H * this.fill) / c.h);
+        const ox = W / 2 - (c.x + c.w / 2) * s;
+        const oy = H / 2 - (c.y + c.h / 2) * s;
         const dw = this.IMG_W * s, dh = this.IMG_H * s;
-        const ox = (W - dw) / 2, oy = (H - dh) / 2;
 
         const gray = this.game.getImage(this.grayFrames[this.frame]);
         if (gray) ctx.drawImage(gray, ox, oy, dw, dh);
@@ -102,13 +113,13 @@ class CharacterSelectScreen {
             ctx.restore();
         }
 
-        // Small hint at the bottom of the letterbox.
+        // Small hint anchored near the bottom of the screen.
         ctx.save();
         ctx.fillStyle = 'rgba(40,30,20,0.55)';
         ctx.font = `${Math.round(H * 0.028)}px monospace`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'alphabetic';
-        ctx.fillText('← →  choose      SPACE  select', W / 2, oy + dh - Math.round(H * 0.02));
+        ctx.fillText('← →  choose      SPACE  select', W / 2, H - Math.round(H * 0.05) + 30);
         ctx.restore();
     }
 }
