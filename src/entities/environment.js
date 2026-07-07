@@ -4,7 +4,10 @@
 // each variant keeps the sheet's relative proportions (a 3-crate row stays ~3x
 // a single crate). 0.14 puts the smallest crate at ~80px, matching the old
 // cube's small end. Tune this one number to make every block bigger/smaller.
-const BLOCK_SCALE = 0.14;
+// Trimmed once depth perspective was applied, which enlarges blocks toward the
+// south — 0.8 brought them back to their pre-perspective feel, then 0.9 more to
+// taste (0.14 → ~0.101).
+const BLOCK_SCALE = 0.14 * 0.8 * 0.9;
 
 /**
  * Rock - a pickable/throwable block. Driven by a def from block_defs
@@ -88,12 +91,36 @@ class Rock {
         // unchanged, so depth-sort and collision still use the ground spot).
         const sy = this.y - camY - (this.throwZ || 0);
 
+        // Depth perspective: scale the DRAWN sprite (only) by where the block's
+        // feet sit in the stage's perspective band — bigger to the south,
+        // smaller to the north — matching the player/enemy. Collision, movement
+        // and depth-sort use the unscaled box, so only the visual responds
+        // (pscale is 1 when the stage has no perspective config). Uses the
+        // GROUND y (not throwZ) so a thrown block keeps its ground-level size.
+        let pscale = 1;
+        if (game.world && game.world.getPerspectiveScale) {
+            const feetY = this.y + this.colOffY + this.colH * 0.5;
+            pscale = game.world.getPerspectiveScale(feetY);
+        }
+        const renderW = this.width * pscale;
+        const renderH = this.height * pscale;
+
+        // Bottom-anchored on the collision column so the block stays planted as
+        // it scales (a smaller block sits lower, not floating), mirroring the
+        // player/enemy feet anchor.
+        let baseX = sx;
+        if (renderW !== this.width) {
+            const colCenter = sx + this.colOffX + this.colW / 2;
+            baseX = Math.round(colCenter - renderW / 2);
+        }
+        const baseY = sy + this.height - renderH;
+
         // Sink into sand: keep the TOP of the sprite and bury the base, scaling
-        // the crop to the block's height so small blocks don't lose their whole
-        // base while big ones still visibly settle (~0.30 of block height).
-        const sinkAmount = this.onSand ? Math.round(this.height * 0.30) : 0;
-        const visibleH = this.height - sinkAmount;
-        const srcCropRatio = sinkAmount / this.height;
+        // the crop to the block's (scaled) height so small blocks don't lose
+        // their whole base while big ones still visibly settle (~0.30 of height).
+        const sinkAmount = this.onSand ? Math.round(renderH * 0.30) : 0;
+        const visibleH = renderH - sinkAmount;
+        const srcCropRatio = sinkAmount / renderH;
 
         const sheet = game.getDrawable('block_sheet');
         if (sheet) {
@@ -102,16 +129,16 @@ class Rock {
             const S = game.getSheetScale('block_sheet');
             if (this.flipX) {
                 ctx.save();
-                ctx.translate(sx + this.width, sy);
+                ctx.translate(baseX + renderW, baseY);
                 ctx.scale(-1, 1);
-                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, 0, 0, this.width, visibleH);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, 0, 0, renderW, visibleH);
                 ctx.restore();
             } else {
-                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, sx, sy, this.width, visibleH);
+                ctx.drawImage(sheet, this.sx * S, this.sy * S, this.sw * S, cropSh * S, baseX, baseY, renderW, visibleH);
             }
         } else {
             ctx.fillStyle = '#787878';
-            ctx.fillRect(sx, sy, this.width, visibleH);
+            ctx.fillRect(baseX, baseY, renderW, visibleH);
         }
 
         if (game.showDebug) {
