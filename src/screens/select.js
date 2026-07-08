@@ -12,8 +12,20 @@
  * (else null); main.js loads the stage and calls player.setCharacter(pack).
  */
 class CharacterSelectScreen {
-    constructor(game) {
+    constructor(game, startScrollX = 0) {
         this.game = game;
+
+        // Shared scrolling background, carried over from the intro so the image
+        // keeps rolling unbroken when this screen takes over — the comic panels
+        // just appear in front of it. Same image + speed as IntroScreen.
+        this.bgKey = 'intro_bg';
+        this.scrollX = startScrollX;
+        this.scrollSpeed = (window.INTRO_JUICE && window.INTRO_JUICE.scrollSpeed) || 40;
+
+        // Entrance: the panels ease in (fade + slight scale-up) over the still-
+        // rolling background, reading as "the frame appears in front of it".
+        this.enterT = 0;
+        this.enterDur = 0.40;
 
         // Native size of the select art (all six frames share it). Panel rects
         // below are expressed in this coordinate space.
@@ -25,7 +37,7 @@ class CharacterSelectScreen {
         // the full image — it centres the visible content and zooms in. Its
         // centre is what lands at the screen centre.
         this.CONTENT = { x: 148, y: 65, w: 657, h: 474 };
-        this.fill = 0.9; // fraction of the screen the content box fills
+        this.fill = 0.81; // fraction of the screen the content box fills (10% smaller than 0.9)
 
         // The two aligned 3-frame loops. Index `frame` picks gray[frame]
         // everywhere and color[frame] inside the selected panel.
@@ -80,6 +92,11 @@ class CharacterSelectScreen {
     // Advance the idle loop / confirm beat, move the cursor, and report a
     // confirmed pick once the lock-in animation has played out.
     update(dt) {
+        // Background keeps rolling and the panels finish easing in regardless
+        // of state (idle, confirming, or handing off).
+        this.scrollX += this.scrollSpeed * dt;
+        if (this.enterT < this.enterDur) this.enterT += dt;
+
         // Lock-in beat: freeze the board, swallow input, hand off when done.
         if (this.confirming) {
             this.confirmT += dt;
@@ -113,19 +130,45 @@ class CharacterSelectScreen {
         return null;
     }
 
+    // Endless horizontal scroll of the shared intro background — mirrors
+    // IntroScreen._drawScrollingBackground so the roll matches exactly.
+    _drawScrollingBg(ctx, W, H) {
+        const img = this.game.getImage(this.bgKey);
+        if (!img) { ctx.fillStyle = '#c2956b'; ctx.fillRect(0, 0, W, H); return; }
+        const iw = img.naturalWidth || img.width;
+        const ih = img.naturalHeight || img.height;
+        const scale = H / ih;      // fit image height to the screen
+        const sw = iw * scale;     // on-screen width of one copy
+        let x = -(this.scrollX % sw);
+        if (x > 0) x -= sw;
+        for (; x < W; x += sw) {
+            ctx.drawImage(img, Math.round(x), 0, Math.ceil(sw) + 1, H);
+        }
+    }
+
     render(ctx) {
         const { width: W, height: H } = this.game;
 
-        // Warm paper backdrop (the art is line-art on transparency).
-        ctx.fillStyle = '#faf6ec';
-        ctx.fillRect(0, 0, W, H);
+        // Shared rolling background (same image + speed as the intro), so the
+        // comic panels read as sitting IN FRONT of the continuing intro art.
+        this._drawScrollingBg(ctx, W, H);
 
-        // Fit the CONTENT box to `fill` of the screen and centre it. The image
-        // is drawn at scale `s` from origin (ox,oy); image point p maps to
-        // screen (ox + p*s). We solve ox/oy so the content-box centre lands at
-        // the screen centre. The same transform maps panel rects below.
+        // Entrance: the panels fade + scale in over the background.
+        let artAlpha = 1, artScale = 1;
+        if (this.enterT < this.enterDur) {
+            const e = this.enterT / this.enterDur;
+            const ease = 1 - (1 - e) * (1 - e); // easeOutQuad
+            artAlpha = ease;
+            artScale = 0.94 + 0.06 * ease;
+        }
+
+        // Fit the CONTENT box to `fill` of the screen and centre it (× the
+        // entrance scale). The image is drawn at scale `s` from origin (ox,oy);
+        // image point p maps to screen (ox + p*s). We solve ox/oy so the
+        // content-box centre stays at the screen centre. The same transform
+        // maps panel rects below.
         const c = this.CONTENT;
-        const s = Math.min((W * this.fill) / c.w, (H * this.fill) / c.h);
+        const s = Math.min((W * this.fill) / c.w, (H * this.fill) / c.h) * artScale;
         let ox = W / 2 - (c.x + c.w / 2) * s;
         let oy = H / 2 - (c.y + c.h / 2) * s;
         const dw = this.IMG_W * s, dh = this.IMG_H * s;
@@ -142,6 +185,10 @@ class CharacterSelectScreen {
             ox += Math.sin(t * 82) * amp;
             oy += Math.cos(t * 71) * amp;
         }
+
+        // The whole art group (base + highlight + hint) fades in together.
+        ctx.save();
+        ctx.globalAlpha = artAlpha;
 
         const gray = this.game.getImage(this.grayFrames[this.frame]);
         if (gray) ctx.drawImage(gray, ox, oy, dw, dh);
@@ -185,6 +232,8 @@ class CharacterSelectScreen {
             ctx.fillText('← →  choose      SPACE  select', W / 2, H - Math.round(H * 0.05) + 30);
             ctx.restore();
         }
+
+        ctx.restore(); // end art-group fade
 
         // Trailing fade-to-black — covers the hand-off (and the stage load).
         if (this.confirming) {

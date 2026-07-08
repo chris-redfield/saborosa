@@ -328,8 +328,10 @@ function updateGame(dt) {
         if (choice === 'START') {
             // START now leads into the character-select screen, not straight
             // into gameplay. The intro theme keeps playing under it; the stage
-            // load + gameplay-music handoff wait until a fruit is picked.
-            gameState.select = new CharacterSelectScreen(game);
+            // load + gameplay-music handoff wait until a fruit is picked. Pass
+            // the intro's scroll offset so the shared background rolls on
+            // without a jump when the comic panels slide in front of it.
+            gameState.select = new CharacterSelectScreen(game, gameState.intro.scrollX);
             gameState.screen = 'select';
         }
         return;

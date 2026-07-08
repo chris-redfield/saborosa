@@ -47,8 +47,6 @@ class IntroScreen {
         this.startT = 0;
         this.startDur = this.cfg.punch.dur;
         this.flash = 0;            // 0..1 white screen flash, decays
-        this._cover = null;        // black overlay that covers the START handoff
-        this._coverReady = false;  // true once that overlay has actually painted
 
         // Fade-in from black: the whole window starts black and fades to clear
         // to reveal the page. A canvas can only paint itself, so to cover the
@@ -213,43 +211,10 @@ class IntroScreen {
         this._fade.style.opacity = String(1 - p);
     }
 
-    // Solid black full-window overlay placed over the intro at the end of the
-    // confirm punch. _coverReady flips true only after the browser has actually
-    // painted it (double rAF = a real frame boundary passed), so we can safely
-    // trigger the blocking stage load behind it without a visible freeze.
-    _makeCover() {
-        if (typeof document === 'undefined' || !document.body) return;
-        const el = document.createElement('div');
-        const s = el.style;
-        s.position = 'fixed';
-        s.left = '0';
-        s.top = '0';
-        s.width = '100vw';
-        s.height = '100vh';
-        s.background = '#000';
-        s.zIndex = '9999';
-        s.pointerEvents = 'none';
-        s.opacity = '1';
-        s.transition = `opacity ${this.cfg.reveal.fadeDur}s ease-out`;
-        document.body.appendChild(el);
-        this._cover = el;
-        this._coverReady = false;
-        requestAnimationFrame(() => requestAnimationFrame(() => { this._coverReady = true; }));
-    }
-
-    // Fade the cover out to reveal the now-loaded game. CSS drives the fade so
-    // it keeps running after the intro hands control to main.js (our update()
-    // stops being called once screen === 'playing'). The opacity flip is rAF-
-    // deferred so it lands AFTER the synchronous stage load — the screen stays
-    // solid black through the load, then fades in. All contained in this file.
-    _beginGameReveal() {
-        // Tear down the dev toggles when we leave the intro.
+    // Remove the top-left dev toggle buttons as we leave the intro for good.
+    _teardownDevToggles() {
         this._devButtons.forEach(b => b.remove());
         this._devButtons = [];
-        const el = this._cover;
-        if (!el) return;
-        el.addEventListener('transitionend', () => el.remove());
-        requestAnimationFrame(() => requestAnimationFrame(() => { el.style.opacity = '0'; }));
     }
 
     // --- small easing / math helpers ----------------------------------------
@@ -297,15 +262,12 @@ class IntroScreen {
             this._edge('lift'); this._edge('confirm'); this._edge('interact');
             this._edge('up'); this._edge('down'); this._edge('escape');
             if (this.startT >= this.startDur) {
-                // Black out the whole window, but DON'T hand off to the game
-                // until that black has actually been painted — otherwise the
-                // synchronous stage load blocks before the overlay shows and
-                // the browser freezes on the last intro frame for ~0.5s.
-                if (!this._cover) this._makeCover();
-                if (this._coverReady) {
-                    this._beginGameReveal();
-                    return 'START';
-                }
+                // Hand straight off to the character-select screen: the shared
+                // scrolling background carries over unbroken and the comic
+                // panels fade in front of it. Tear down the dev toggles as we
+                // leave the intro.
+                this._teardownDevToggles();
+                return 'START';
             }
             return null;
         }
