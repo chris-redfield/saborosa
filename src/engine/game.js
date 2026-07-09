@@ -55,7 +55,8 @@ class Game {
             coconut_sheet: 1.0,
             tomato_sheet: 1.0,
             eggplant_sheet: 1.0,
-            laranja_sheet: 1.0
+            laranja_sheet: 1.0,
+            rock_sheet: 1.0
         };
 
         // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
@@ -249,6 +250,9 @@ class Game {
                 this.loadJSON('eggplant_sprites', 'assets/saborosa-elementos-eggplant-sprites.json'),
                 this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
                 this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
+                // Sleeping-rock enemy pack (src/entities/rockenemy.js).
+                this.loadImage('rock_sheet', 'assets/saborosa-elementos-rock-game.png'),
+                this.loadJSON('rock_sprites', 'assets/saborosa-elementos-rock-sprites.json'),
                 // The old decorative map assets (mapobjects_sheet / assets-001,
                 // painted_isle_objects, mapobject_defs) were REMOVED — the
                 // 4-layer map + OverlayObjects replaced the hand-placed trees.
@@ -337,7 +341,7 @@ class Game {
                               'stage3_ovl_arvores', 'stage3_ovl_buracos',
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                               'block_sheet', 'coconut_sheet', 'tomato_sheet',
-                              'character_sheet', 'liverock_sheet',
+                              'character_sheet', 'liverock_sheet', 'rock_sheet',
                               'fx_sheet_faint', 'fx_sheet', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>

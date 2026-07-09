@@ -313,11 +313,20 @@ function loadStage(stage) {
     // randomly pop in around the player. Fresh per stage.
     gameState.fxManager = new FxManager(game);
 
-    // Roaming enemies (coconuts) confined to the mountain. Spawned only when the
-    // stage opts in via `enemies` AND has a mountain to keep them on.
-    gameState.enemies = (stage.enemies && gameState.world.stage.mountainOcclusion)
-        ? spawnCoconutEnemies(game, gameState.world, stage.enemies)
-        : [];
+    // Mountain-confined enemies. Spawned only when the stage opts in via
+    // `enemies` AND has a mountain to keep them on. `enemies` is one config or a
+    // list of them; each {type} dispatches to its spawner and all share one
+    // gameState.enemies pool (mutual collision, depth sort, update loop).
+    gameState.enemies = [];
+    if (stage.enemies && gameState.world.stage.mountainOcclusion) {
+        const cfgs = Array.isArray(stage.enemies) ? stage.enemies : [stage.enemies];
+        for (const cfg of cfgs) {
+            const spawned = cfg.type === 'rock'
+                ? spawnRockEnemies(game, gameState.world, cfg)
+                : spawnCoconutEnemies(game, gameState.world, cfg);
+            for (const e of spawned) gameState.enemies.push(e);
+        }
+    }
 }
 
 function updateGame(dt) {

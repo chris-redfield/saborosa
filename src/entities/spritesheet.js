@@ -288,6 +288,110 @@ class SpriteSheet {
         const height = refFrame ? Math.round(refFrame.h * scale) : 0;
         return { sprites, width, height };
     }
+
+    /**
+     * Loads the sleeping-rock enemy pack (src/entities/rockenemy.js) from the
+     * two-block rock sheet + defs (tools/build-rock-defs.py).
+     *
+     * The defs carry two frame arrays, both row-major over 5 direction rows
+     * (down, down_left, left, up_left, up — same order + L/R mirroring as the
+     * character pack):
+     *   wake[r*wakeCols + c]  the 7-frame wake progression per row:
+     *                         col 0 = asleep (a plain rock), col 6 = idle
+     *                         standing; cols 1..5 are the rise between.
+     *   walk[r*walkCols + c]  the 3-frame walk cycle per row.
+     *
+     * Output keys per facing: `${dir}_sleep` (1), `${dir}_wake` (7, ordered
+     * asleep->standing), `${dir}_idle` (1, the standing pose), `${dir}_walk`
+     * (3). The rock plays wake forward to rise, in reverse to sleep, and holds
+     * sleep/idle at the ends.
+     *
+     * No feet-baseline scan (unlike loadCharacterPack): the rock has no reaching
+     * limbs, so every tightly-cropped frame's bottom edge IS its ground contact.
+     * Pure bottom-anchoring at render time (vAlign 0) keeps it planted while it
+     * grows out of the ground during the wake, so the scan's cost/complexity buy
+     * nothing here.
+     *
+     * `worldScale` is world-px per author-px, same as loadCharacterPack — the
+     * rock sheet is the same 2879x1420 "bonecos low" canvas as eggplant/laranja,
+     * so it shares characterWorldScale and lands map-proportional (a touch
+     * smaller than the player, which suits a little rock critter).
+     */
+    loadRockPack(sheetKey, jsonKey, worldScale) {
+        const img = this.game.getDrawable(sheetKey);
+        const data = this.game.getJSON(jsonKey);
+
+        const DIRS = ['down', 'up', 'right', 'left',
+                      'down_right', 'down_left', 'up_right', 'up_left'];
+        const sprites = {};
+        for (const d of DIRS) {
+            sprites[`${d}_sleep`] = [];
+            sprites[`${d}_wake`] = [];
+            sprites[`${d}_idle`] = [];
+            sprites[`${d}_walk`] = [];
+        }
+
+        if (!img || !data || !data.wake || !data.walk) {
+            return { sprites, width: 0, height: 0 };
+        }
+
+        const S = this.game.getSheetScale(sheetKey);
+        const scale = worldScale;
+        const wakeCols = data.wakeCols || 7;
+        const walkCols = data.walkCols || 3;
+        const IDLE_COL = wakeCols - 1; // last wake col = idle standing
+
+        const map = f => f && { x: f.x * S, y: f.y * S, w: f.w * S, h: f.h * S };
+        const wake = data.wake.map(map);
+        const walk = data.walk.map(map);
+
+        const makeSprite = (f, flipped) => {
+            if (!f) return null;
+            return {
+                image: f.image || img,
+                sx: f.x, sy: f.y, sw: f.w, sh: f.h,
+                width: Math.round(f.w * scale),
+                height: Math.round(f.h * scale),
+                vAlign: 0,       // pure bottom-anchor (see method doc)
+                flipped
+            };
+        };
+
+        // Same row->direction mapping as the character pack (side rows face left
+        // and mirror to the right).
+        const ROWS = [
+            { dir: 'down',      mirror: null },
+            { dir: 'down_left', mirror: 'down_right' },
+            { dir: 'left',      mirror: 'right' },
+            { dir: 'up_left',   mirror: 'up_right' },
+            { dir: 'up',        mirror: null }
+        ];
+
+        for (let r = 0; r < ROWS.length; r++) {
+            const { dir, mirror } = ROWS[r];
+            for (const flipped of (mirror ? [false, true] : [false])) {
+                const name = flipped ? mirror : dir;
+                for (let c = 0; c < wakeCols; c++) {
+                    const s = makeSprite(wake[r * wakeCols + c], flipped);
+                    if (s) sprites[`${name}_wake`].push(s);
+                }
+                const sleep = makeSprite(wake[r * wakeCols + 0], flipped);
+                if (sleep) sprites[`${name}_sleep`].push(sleep);
+                const idle = makeSprite(wake[r * wakeCols + IDLE_COL], flipped);
+                if (idle) sprites[`${name}_idle`].push(idle);
+                for (let c = 0; c < walkCols; c++) {
+                    const s = makeSprite(walk[r * walkCols + c], flipped);
+                    if (s) sprites[`${name}_walk`].push(s);
+                }
+            }
+        }
+
+        // Bounding box = the idle-standing (row 0) frame, like the character pack.
+        const ref = wake[IDLE_COL];
+        const width = ref ? Math.round(ref.w * scale) : 0;
+        const height = ref ? Math.round(ref.h * scale) : 0;
+        return { sprites, width, height };
+    }
 }
 
 window.SpriteSheet = SpriteSheet;

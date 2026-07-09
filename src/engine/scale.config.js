@@ -30,6 +30,7 @@ window.ART = {
         tomato_sheet: 1.0,
         eggplant_sheet: 1.0,
         laranja_sheet: 1.0,
+        rock_sheet: 1.0,
     },
 
     // === Character sizing — THE knob to tune =================================
