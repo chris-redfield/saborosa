@@ -179,10 +179,14 @@ class Game {
                 // Character-select screen: 3-frame looping idle. Base frames
                 // (04-06) show every fruit in gray line-art; the parallel colored
                 // frames (01-03) are clipped to the highlighted panel so only the
-                // fruit under the cursor lights up (see screens/select.js).
-                this.loadImage('select_gray_1', 'assets/fruit-select-04.png'),
-                this.loadImage('select_gray_2', 'assets/fruit-select-05.png'),
-                this.loadImage('select_gray_3', 'assets/fruit-select-06.png'),
+                // fruit under the cursor lights up (see screens/select.js). The
+                // "-low" base frames add a per-frame wobble to the "SELECT FRUIT"
+                // title letters, so the title now shakes along with the idle loop
+                // (letters live only in the base frames — the colored twins are
+                // clipped below the title band and never show them).
+                this.loadImage('select_gray_1', 'assets/fruit-select-04-low.png'),
+                this.loadImage('select_gray_2', 'assets/fruit-select-05-low.png'),
+                this.loadImage('select_gray_3', 'assets/fruit-select-06-low.png'),
                 this.loadImage('select_color_1', 'assets/fruit-select-01.png'),
                 this.loadImage('select_color_2', 'assets/fruit-select-02.png'),
                 this.loadImage('select_color_3', 'assets/fruit-select-03.png'),
