@@ -29,12 +29,18 @@ import sys
 import numpy as np
 from PIL import Image
 
-SRC = 'assets-v2/saborosa-bonecos-rock-low.png'
 OUT = 'assets/'
 ROWS = 5
 WAKE_COLS = 7   # left block
 WALK_COLS = 3   # right block
 PAD = 8         # transparent margin kept around the content crop
+# Every sleeper enemy shares this two-block "bonecos low" layout; each entry maps
+# a master sheet in assets-v2/ to its output basename. Add a row to skin a new
+# one (rockenemy.js / bushenemy.js consume the matching -sprites.json).
+SHEETS = [
+    ('saborosa-bonecos-rock-low.png', 'rock'),
+    ('saborosa-bonecos-bush-low.png', 'bush'),
+]
 
 
 def bands(proj):
@@ -59,15 +65,15 @@ def tight_bbox(alpha, x0, x1, y0, y1):
             int(xs.max() - xs.min() + 1), int(ys.max() - ys.min() + 1)]
 
 
-def main():
-    im = Image.open(SRC).convert('RGBA')
+def build(src, name):
+    im = Image.open(f'assets-v2/{src}').convert('RGBA')
     alpha = np.array(im)[:, :, 3]
     op = alpha > 20
     cb = bands(op.sum(axis=0) >= 1)
     rb = bands(op.sum(axis=1) >= 1)
     total_cols = WAKE_COLS + WALK_COLS
-    assert len(cb) == total_cols, f'found {len(cb)} col bands, want {total_cols}'
-    assert len(rb) == ROWS, f'found {len(rb)} row bands, want {ROWS}'
+    assert len(cb) == total_cols, f'{name}: found {len(cb)} col bands, want {total_cols}'
+    assert len(rb) == ROWS, f'{name}: found {len(rb)} row bands, want {ROWS}'
 
     # Per-cell tight crops in MASTER coords, split into the two blocks. Both
     # blocks share the same row bands (they sit at the same Y).
@@ -88,7 +94,7 @@ def main():
     ys1 = max(y + h for x, y, w, h in all_cells)
     cx, cy = max(0, xs0 - PAD), max(0, ys0 - PAD)
     crop = im.crop((cx, cy, min(im.width, xs1 + PAD), min(im.height, ys1 + PAD)))
-    crop.save(f'{OUT}saborosa-elementos-rock-game.png', optimize=True)
+    crop.save(f'{OUT}saborosa-elementos-{name}-game.png', optimize=True)
 
     def rebase(cells):
         return [{'x': x - cx, 'y': y - cy, 'w': w, 'h': h}
@@ -101,14 +107,19 @@ def main():
         'wakeCols': WAKE_COLS,
         'walkCols': WALK_COLS,
     }
-    path = f'{OUT}saborosa-elementos-rock-sprites.json'
+    path = f'{OUT}saborosa-elementos-{name}-sprites.json'
     with open(path, 'w') as f:
         json.dump(out, f, indent=2)
     idle = out['wake'][WAKE_COLS - 1]  # row 0 idle-standing cell
-    print(f'rock: {len(wake_cells)} wake + {len(walk_cells)} walk frames, '
+    print(f'{name}: {len(wake_cells)} wake + {len(walk_cells)} walk frames, '
           f'crop {crop.width}x{crop.height} '
           f'(~{crop.width*crop.height*4//2**20}MB) -> {path}  '
           f'idle cell {idle["w"]}x{idle["h"]}')
+
+
+def main():
+    for src, name in SHEETS:
+        build(src, name)
     return 0
 
 

@@ -323,6 +323,8 @@ function loadStage(stage) {
         for (const cfg of cfgs) {
             const spawned = cfg.type === 'rock'
                 ? spawnRockEnemies(game, gameState.world, cfg)
+                : cfg.type === 'bush'
+                ? spawnBushEnemies(game, gameState.world, cfg)
                 : spawnCoconutEnemies(game, gameState.world, cfg);
             for (const e of spawned) gameState.enemies.push(e);
         }

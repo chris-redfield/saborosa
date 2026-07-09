@@ -116,6 +116,7 @@ const STAGES = {
         enemies: [
             { type: 'coconut', count: 3 },
             { type: 'rock', count: 3 },
+            { type: 'bush', count: 3 },
         ],
         // Dungeon interior reached by falling into a hole (see dungeon.js). The
         // perspective params default from the tuning tool; override here if needed.

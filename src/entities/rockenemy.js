@@ -22,24 +22,32 @@
  *   FALLING_ASLEEP  sinks (wake anim reverse); stationary; re-wakes if disturbed
  */
 
-// Load the rock enemy pack ONCE and memoize it on the game (same pattern as the
-// coconut pack — every rock shares one sprite set).
-function _loadRockPack(game) {
-    if (game._enemyRockPack) return game._enemyRockPack;
+// Load a sleeper enemy's sprite pack ONCE and memoize it on the game under
+// cfg.cacheKey (same pattern as the coconut pack — every instance of that skin
+// shares one sprite set). Skins differ only by which sheet/defs they point at;
+// see RockEnemy._packConfig and BushEnemy (bushenemy.js).
+function _loadSleeperPack(game, cfg) {
+    if (game[cfg.cacheKey]) return game[cfg.cacheKey];
     const ss = new SpriteSheet(game);
     const ws = (window.ART && window.ART.characterWorldScale) || 0.855;
-    game._enemyRockPack = ss.loadRockPack('rock_sheet', 'rock_sprites', ws);
-    return game._enemyRockPack;
+    game[cfg.cacheKey] = ss.loadRockPack(cfg.sheetKey, cfg.jsonKey, ws);
+    return game[cfg.cacheKey];
 }
 
 class RockEnemy {
+    // Which sprite pack this skin uses. Subclasses (e.g. BushEnemy) override this
+    // one method to reskin — all behaviour below is shared and pack-agnostic.
+    _packConfig() {
+        return { sheetKey: 'rock_sheet', jsonKey: 'rock_sprites', cacheKey: '_enemyRockPack' };
+    }
+
     constructor(game, x, y) {
         this.game = game;
         this.entityType = 'enemy';
         this.x = x;
         this.y = y;
 
-        const pack = _loadRockPack(game);
+        const pack = _loadSleeperPack(game, this._packConfig());
         this.sprites = pack.sprites;
         this.width = pack.width || 80;
         this.height = pack.height || 95;
@@ -468,11 +476,12 @@ class RockEnemy {
     }
 }
 
-// Scatter `count` sleeping rocks on walkable ground in a ring around the player
+// Scatter `count` sleeper enemies on walkable ground in a ring around the player
 // spawn, so they sit on the spawn island within easy reach for testing. Rejects
 // non-walkable ground, spots too near the spawn (rMin, so none land on the
-// player) and stacked rocks. `cfg.radius` / `cfg.minDist` tune the ring.
-function spawnRockEnemies(game, world, cfg) {
+// player) and stacked enemies. `cfg.radius` / `cfg.minDist` tune the ring.
+// `EnemyClass` picks the skin (RockEnemy by default; BushEnemy reuses this).
+function spawnSleeperEnemies(game, world, cfg, EnemyClass) {
     const out = [];
     const count = (cfg && cfg.count) || 0;
     const stage = world.stage;
@@ -485,7 +494,7 @@ function spawnRockEnemies(game, world, cfg) {
     const ATTEMPTS = 400;
 
     for (let i = 0; i < count; i++) {
-        const e = new RockEnemy(game, 0, 0);
+        const e = new EnemyClass(game, 0, 0);
         let placed = false;
         for (let a = 0; a < ATTEMPTS && !placed; a++) {
             const ang = Math.random() * Math.PI * 2;
@@ -513,5 +522,11 @@ function spawnRockEnemies(game, world, cfg) {
     return out;
 }
 
+// Backward-compatible rock spawner (main.js calls this for type 'rock').
+function spawnRockEnemies(game, world, cfg) {
+    return spawnSleeperEnemies(game, world, cfg, RockEnemy);
+}
+
 window.RockEnemy = RockEnemy;
+window.spawnSleeperEnemies = spawnSleeperEnemies;
 window.spawnRockEnemies = spawnRockEnemies;
