@@ -710,6 +710,13 @@ function updateGame(dt) {
     } else {
         moveObstacles = obstacles.filter(o => !o.onMountainPlane);
     }
+    // A stationary rock enemy (asleep / waking / dozing off) is a solid wall the
+    // player bumps into. Fold those into the collision list so movement is
+    // blocked; awake, moving rocks aren't solid (they shove via their own AI).
+    if (!player.behindMountain && gameState.enemies) {
+        const solidEnemies = gameState.enemies.filter(e => e.isSolid && e.isSolid());
+        if (solidEnemies.length) moveObstacles = moveObstacles.concat(solidEnemies);
+    }
     player.move(dx, dy, moveObstacles);
 
     // Behind-mountain horizontal wall: while in the fall-behind state the

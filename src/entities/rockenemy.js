@@ -120,7 +120,10 @@ class RockEnemy {
         switch (this.state) {
             case 'sleeping':
                 this.moving = false;
-                if (touching) this._startWaking();
+                // Solid while asleep (see isSolid), so the player can't overlap
+                // the footprint — wake when they BUMP it (footprints nearly
+                // touching) instead of on overlap.
+                if (canTarget && this._playerContact(pr, 10)) this._startWaking();
                 break;
 
             case 'waking':
@@ -163,7 +166,8 @@ class RockEnemy {
             case 'falling_asleep':
                 this.moving = false;
                 // Disturbed again mid-sink → rise back up from wherever we are.
-                if (touching || (canTarget && dist < this.detectionRange)) {
+                // Solid here too, so use the bump test, not overlap.
+                if (canTarget && (this._playerContact(pr, 10) || dist < this.detectionRange)) {
                     this.state = 'waking';
                     break;
                 }
@@ -315,6 +319,29 @@ class RockEnemy {
         const cy = this.y + this.colOffY;
         return cx < pr.x + pr.width && cx + this.colW > pr.x &&
                cy < pr.y + pr.height && cy + this.colH > pr.y;
+    }
+
+    // A stationary rock (asleep, rising, or sinking) is a solid, immovable
+    // obstacle the player bumps into — main.js folds these into the player's
+    // collision list. A MOVING rock (chasing/roaming) is not solid: it overlaps
+    // and shoves like the coconut instead. Staying solid through the whole wake
+    // animation (not just 'sleeping') is what stops the player walking through it
+    // the instant a bump flips it to 'waking'.
+    isSolid() {
+        return this.state === 'sleeping' || this.state === 'waking'
+            || this.state === 'falling_asleep';
+    }
+
+    // Footprint overlap with the box inflated by `margin` — true when the player
+    // is touching (or nearly) the rock. Used for the wake-on-bump test, since a
+    // solid rock never lets the player's footprint truly overlap it.
+    _playerContact(pr, margin) {
+        const cx = this.x + this.colOffX - margin;
+        const cy = this.y + this.colOffY - margin;
+        const w = this.colW + margin * 2;
+        const h = this.colH + margin * 2;
+        return cx < pr.x + pr.width && cx + w > pr.x &&
+               cy < pr.y + pr.height && cy + h > pr.y;
     }
 
     _pushPlayer(player, ddx, ddy, dist, obstacles) {
