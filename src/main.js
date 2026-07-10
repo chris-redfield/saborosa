@@ -313,22 +313,24 @@ function loadStage(stage) {
     // randomly pop in around the player. Fresh per stage.
     gameState.fxManager = new FxManager(game);
 
-    // Mountain-confined enemies. Spawned only when the stage opts in via
-    // `enemies` AND has a mountain to keep them on. `enemies` is one config or a
-    // list of them; each {type} dispatches to its spawner and all share one
-    // gameState.enemies pool (mutual collision, depth sort, update loop).
+    // Hand-placed enemies from tools/enemy-placement.html (stage.enemyPlacements
+    // → assets/enemy-placements.json). Each { type, x, y } is instantiated at its
+    // exact top-left world position and shares the gameState.enemies pool (mutual
+    // collision, depth sort, update loop). `liverock` entries are NOT enemies —
+    // they're static obstacles spawned into world blocks (see world.js), so we
+    // skip them here.
     gameState.enemies = [];
-    if (stage.enemies && gameState.world.stage.mountainOcclusion) {
-        const cfgs = Array.isArray(stage.enemies) ? stage.enemies : [stage.enemies];
-        for (const cfg of cfgs) {
-            const spawned = cfg.type === 'rock'
-                ? spawnRockEnemies(game, gameState.world, cfg)
-                : cfg.type === 'bush'
-                ? spawnBushEnemies(game, gameState.world, cfg)
-                : cfg.type === 'phone'
-                ? spawnPhoneEnemies(game, gameState.world, cfg)
-                : spawnCoconutEnemies(game, gameState.world, cfg);
-            for (const e of spawned) gameState.enemies.push(e);
+    if (stage.enemyPlacements) {
+        const data = game.getJSON(stage.enemyPlacements);
+        if (data && data.placements) {
+            for (const p of data.placements) {
+                let e = null;
+                if (p.type === 'coconut') e = new Coconut(game, p.x, p.y);
+                else if (p.type === 'rock') e = new RockEnemy(game, p.x, p.y);
+                else if (p.type === 'bush') e = new BushEnemy(game, p.x, p.y);
+                else if (p.type === 'phone') e = new PhoneEnemy(game, p.x, p.y);
+                if (e) gameState.enemies.push(e);
+            }
         }
     }
 }

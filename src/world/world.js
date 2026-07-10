@@ -1400,6 +1400,22 @@ class World {
             }
         }
 
+        // Hand-placed live rocks from tools/enemy-placement.html. A LiveRock is a
+        // static obstacle (it collides and depth-sorts through the block-entity
+        // system), so its placements spawn into the world here — mirroring the
+        // liveRocks / objects readers above. The dynamic enemies in the same file
+        // (coconut/rock/bush/phone) are spawned in main.js instead.
+        if (this.stage.enemyPlacements) {
+            const ep = this.game.getJSON(this.stage.enemyPlacements);
+            if (ep && ep.placements) {
+                for (const p of ep.placements) {
+                    if (p.type !== 'liverock') continue;
+                    if (Math.floor(p.x / BLOCK_W) !== bx || Math.floor(p.y / BLOCK_H) !== by) continue;
+                    block.addEntity(new LiveRock(this.game, p.x, p.y, { scale: p.scale, flipX: p.flipX }));
+                }
+            }
+        }
+
         // A heavier scattered block per walkable block. Placed at a SEEDED-RANDOM
         // position (not a fixed per-block offset, which lined them up in a grid),
         // kept inside the diamond terrain and off the safe zone. Skipped if no

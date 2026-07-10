@@ -109,19 +109,14 @@ const STAGES = {
         // feet sit in the yNear..yFar world band; movement/collision stay flat.
         perspective: 'perspective',
         mountainOcclusion: true,
-        // Mountain-confined enemies (an array of {type, count} configs). Coconuts
-        // roam, chase on sight and shove (enemy.js); rocks lie asleep until the
-        // player touches them, then wake, chase/shove, and doze off again when
-        // lost (rockenemy.js). No damage yet — just a nuisance.
-        enemies: [
-            { type: 'coconut', count: 3 },
-            { type: 'rock', count: 3 },
-            { type: 'bush', count: 3 },
-            // Telephone: a large sand-roamer that never sleeps — startles, then
-            // charges when it spots you (phoneenemy.js). Ringed close to spawn
-            // (small minDist) so it's right there to check.
-            { type: 'phone', count: 2, minDist: 200, radius: 520 },
-        ],
+        // Hand-placed enemies + live rocks, authored in tools/enemy-placement.html
+        // and exported to assets/enemy-placements.json. Each entry is
+        // { type, x, y } (top-left world coords). The four dynamic enemies —
+        // coconut/rock/bush/phone — are instantiated at those exact spots in
+        // main.js; `liverock` entries are static obstacles spawned into world
+        // blocks (see world.js). (Replaces the old random `enemies:[{type,count}]`
+        // ring-spawn — enemies are now positioned deliberately.)
+        enemyPlacements: 'enemy_placements',
         // Dungeon interior reached by falling into a hole (see dungeon.js). The
         // perspective params default from the tuning tool; override here if needed.
         dungeon: { bg: 'dungeon_bg', nativeW: 1022, nativeH: 819 },

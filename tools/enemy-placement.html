@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Enemy Placement</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:280px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; }
+  #thumbs { padding:8px; display:grid; grid-template-columns:repeat(2,1fr); gap:6px; }
+  .thumb { background:#0e1730; border:2px solid #2a3a5a; border-radius:5px;
+           padding:3px; cursor:pointer; text-align:center; }
+  .thumb.on { border-color:var(--hot); }
+  .thumb canvas { position:static; width:100%; height:60px; object-fit:contain; }
+  .thumb span { display:block; font-size:10px; color:#9ab; margin-top:2px; }
+  #inspect { border-top:1px solid #0c1226; padding:10px; flex:1; overflow-y:auto; }
+  #inspect label { display:block; margin:7px 0 2px; color:#9ab; font-size:11px; }
+  #list { margin-top:8px; }
+  #list .item { display:flex; gap:6px; align-items:center; padding:2px 4px;
+                border-radius:3px; cursor:pointer; }
+  #list .item.on { background:#22304f; }
+  #list .item .sw { width:10px; height:10px; border-radius:2px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  label.chk { color:#cfe; font-size:12px; display:inline-flex; gap:5px; align-items:center; cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>ENEMY PLACEMENT</b>
+  <button id="fit">Fit</button>
+  <button id="export">⬇ enemy-placements.json</button>
+  <label class="chk"><input type="checkbox" id="showBoxes" checked> footprints</label>
+  <span class="hint">click thumb = brush · click map = place · drag = move · Del / click ✕ = remove · Space+drag pan · wheel zoom</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side">
+    <div id="thumbs"></div>
+    <div id="inspect"><div class="hint">Pick an enemy, then click the map to place it.</div></div>
+  </div>
+</div>
+<script>
+const A = '../assets/';
+const M = '../assets-v2/mapa/';
+// Must match STAGES[3].backgroundImageRect in src/world/stages.js.
+const RECT = { x: 1352, y: 0, w: 8815, h: 6480 };
+const SAND = '#c8bb9b'; // matches STAGES[3].layers.sand.color
+// Reference map layers (all 5543x4075, aligned to RECT), drawn for context.
+const LAYERS = ['ilhas', 'arvores', 'estruturas-01', 'estruturas-02'].map(n => M + `saborosa-elementos-${n}.png`);
+const PLACEMENTS_URL = A + 'enemy-placements.json';
+
+// Character footprint (coconut/rock/bush/phone reuse collision-config.json
+// `character`); liverock uses its own `liverock` ratios. Reference only — the
+// real collision is computed by each entity in-game.
+const COL_CHAR = { colW: 0.80, colH: 0.50, colOffX: 0.10, colOffY: 0.50 };
+const COL_LIVE = { colW: 0.92, colH: 0.52, colOffX: 0.02, colOffY: 0.31 };
+
+// Each enemy: its game sheet, defs JSON, a representative frame accessor (the
+// pose shown on the map), the in-game world-scale (world-px per author-px, so the
+// marker previews at true size), a swatch colour, and its footprint ratios.
+// scale/frame mirror: coconut/rock/bush -> characterWorldScale 0.855;
+// phone -> PHONE_WORLD_SCALE 1.05 (phoneenemy.js); liverock -> native 1.0.
+const ENEMIES = {
+  coconut:  { sheet: A + 'saborosa-elementos-coconut-game.png', defs: A + 'saborosa-elementos-coconut-sprites.json',
+              frame: d => d.frames[0], scale: 0.855, color: '#8a5a2b', col: COL_CHAR },
+  rock:     { sheet: A + 'saborosa-elementos-rock-game.png', defs: A + 'saborosa-elementos-rock-sprites.json',
+              frame: d => d.wake[(d.wakeCols || 7) - 1], scale: 0.855, color: '#9a9a9a', col: COL_CHAR },
+  bush:     { sheet: A + 'saborosa-elementos-bush-game.png', defs: A + 'saborosa-elementos-bush-sprites.json',
+              frame: d => d.wake[(d.wakeCols || 7) - 1], scale: 0.855, color: '#4a7a3a', col: COL_CHAR },
+  phone:    { sheet: A + 'saborosa-elementos-phone-game.png', defs: A + 'saborosa-elementos-phone-sprites.json',
+              frame: d => d.cells.normal[0], scale: 1.05, color: '#d8d8d8', col: COL_CHAR },
+  liverock: { sheet: A + 'saborosa-cha-001.png', defs: A + 'saborosa-liverock-sprites.json',
+              frame: d => d.pos1_idle[0], scale: 1.0, color: '#a04030', col: COL_LIVE },
+};
+const ORDER = ['coconut', 'rock', 'bush', 'phone', 'liverock'];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let layerImgs = [];
+let placements = [];         // { type, x, y }  (x,y = sprite top-left, world px)
+let brush = null;            // active enemy type
+let selected = -1;           // index into placements
+let showBoxes = true;
+const view = { zoom: 0.12, panX: 0, panY: 0 };
+
+// ---- coordinate helpers (world <-> screen) ----
+const w2s = (wx, wy) => [(wx - view.panX) * view.zoom, (wy - view.panY) * view.zoom];
+const s2w = (sx, sy) => [sx / view.zoom + view.panX, sy / view.zoom + view.panY];
+
+// Sprite source rect + displayed world size for a type.
+function frameOf(type) { const e = ENEMIES[type]; return e.frame(e.defsData); }
+function sizeOf(type) { const f = frameOf(type), s = ENEMIES[type].scale; return [f.w * s, f.h * s]; }
+
+function resize() { cv.width = stage.clientWidth; cv.height = stage.clientHeight; draw(); }
+window.addEventListener('resize', resize);
+
+function fit() {
+  const z = Math.min(cv.width / RECT.w, cv.height / RECT.h) * 0.95;
+  view.zoom = z;
+  view.panX = RECT.x + RECT.w / 2 - cv.width / (2 * z);
+  view.panY = RECT.y + RECT.h / 2 - cv.height / (2 * z);
+  draw();
+}
+
+// ---- loading ----
+function loadImg(src) { return new Promise(r => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = src; }); }
+async function boot() {
+  layerImgs = await Promise.all(LAYERS.map(loadImg));
+  for (const type of ORDER) {
+    const e = ENEMIES[type];
+    e.img = await loadImg(e.sheet);
+    try { e.defsData = await (await fetch(e.defs, { cache: 'no-cache' })).json(); }
+    catch (err) { e.defsData = null; }
+  }
+  try {
+    const o = await (await fetch(PLACEMENTS_URL, { cache: 'no-cache' })).json();
+    if (o && o.placements) placements = o.placements.filter(p => ENEMIES[p.type]);
+  } catch (e) {}
+  buildThumbs();
+  resize(); fit();
+  status(`${placements.length} placed`);
+}
+function status(t) { document.getElementById('status').textContent = t; }
+
+// ---- thumbnails ----
+function buildThumbs() {
+  const host = document.getElementById('thumbs'); host.innerHTML = '';
+  for (const type of ORDER) {
+    const e = ENEMIES[type];
+    const el = document.createElement('div'); el.className = 'thumb'; el.dataset.type = type;
+    const c = document.createElement('canvas'); c.width = 80; c.height = 60;
+    const cc = c.getContext('2d');
+    if (e.img && e.defsData) {
+      const f = e.frame(e.defsData);
+      const s = Math.min(c.width / f.w, c.height / f.h);
+      const dw = f.w * s, dh = f.h * s;
+      cc.drawImage(e.img, f.x, f.y, f.w, f.h, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+    }
+    const sp = document.createElement('span'); sp.textContent = type;
+    el.appendChild(c); el.appendChild(sp);
+    el.onclick = () => { brush = type; selected = -1; refreshThumbSel(); inspect(); draw(); };
+    host.appendChild(el);
+  }
+}
+function refreshThumbSel() {
+  document.querySelectorAll('.thumb').forEach(t => t.classList.toggle('on', t.dataset.type === brush));
+}
+
+// ---- drawing ----
+function draw() {
+  ctx.fillStyle = '#0c1020'; ctx.fillRect(0, 0, cv.width, cv.height);
+  // Map: flat sand fill, then the aligned reference layers, all at RECT.
+  const [bx, by] = w2s(RECT.x, RECT.y);
+  const rw = RECT.w * view.zoom, rh = RECT.h * view.zoom;
+  ctx.fillStyle = SAND; ctx.fillRect(bx, by, rw, rh);
+  ctx.imageSmoothingEnabled = true;
+  for (const im of layerImgs) if (im) ctx.drawImage(im, bx, by, rw, rh);
+  // Island rect outline.
+  ctx.strokeStyle = 'rgba(83,216,251,0.35)'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, rw, rh);
+
+  // Placements, depth-sorted by bottom edge (matches the in-game draw order).
+  const order = placements.map((p, i) => i).sort((a, b) => bottom(placements[a]) - bottom(placements[b]));
+  for (const i of order) drawPlacement(placements[i], i === selected);
+}
+function bottom(p) { const [, h] = sizeOf(p.type); return p.y + h; }
+
+function drawPlacement(p, sel) {
+  const e = ENEMIES[p.type]; if (!e.defsData) return;
+  const f = frameOf(p.type), [w, h] = sizeOf(p.type);
+  const [sx, sy] = w2s(p.x, p.y);
+  const zw = w * view.zoom, zh = h * view.zoom;
+  if (e.img) ctx.drawImage(e.img, f.x, f.y, f.w, f.h, sx, sy, zw, zh);
+  else { ctx.fillStyle = e.color; ctx.fillRect(sx, sy, zw, zh); }
+
+  if (showBoxes) {
+    const c = e.col;
+    const cx = p.x + w * c.colOffX, cy = p.y + h * c.colOffY;
+    const [csx, csy] = w2s(cx, cy);
+    ctx.strokeStyle = 'rgba(233,69,96,0.9)'; ctx.lineWidth = sel ? 2 : 1;
+    ctx.strokeRect(csx, csy, w * c.colW * view.zoom, h * c.colH * view.zoom);
+  }
+  if (sel) { ctx.strokeStyle = '#53d8fb'; ctx.lineWidth = 1.5; ctx.strokeRect(sx, sy, zw, zh); }
+}
+
+// ---- inspector ----
+function inspect() {
+  const el = document.getElementById('inspect');
+  let head;
+  if (selected >= 0) {
+    const p = placements[selected];
+    head = `<b style="color:${ENEMIES[p.type].color}">${p.type}</b> #${selected}
+      <div class="hint">x ${p.x} · y ${p.y}</div>
+      <button id="del" style="margin-top:6px">Delete</button>`;
+  } else {
+    head = `<div class="hint">Brush: <b style="color:${brush ? ENEMIES[brush].color : '#9ab'}">${brush || 'none'}</b>. Click the map to place.</div>`;
+  }
+  // Live list of all placements, grouped visually by swatch colour.
+  let list = '<div id="list"><label>placed (' + placements.length + ')</label>';
+  placements.forEach((p, i) => {
+    list += `<div class="item ${i === selected ? 'on' : ''}" data-i="${i}">
+      <span class="sw" style="background:${ENEMIES[p.type].color}"></span>
+      <span style="flex:1">${p.type}</span>
+      <span class="hint">${p.x},${p.y}</span>
+      <span data-del="${i}" style="cursor:pointer;color:#e94560">✕</span></div>`;
+  });
+  list += '</div>';
+  el.innerHTML = head + list;
+
+  const del = document.getElementById('del');
+  if (del) del.onclick = () => removeAt(selected);
+  el.querySelectorAll('#list .item').forEach(it => {
+    it.onclick = ev => {
+      if (ev.target.dataset.del != null) { removeAt(+ev.target.dataset.del); return; }
+      selected = +it.dataset.i; brush = null; refreshThumbSel(); inspect(); draw();
+    };
+  });
+}
+function removeAt(i) {
+  placements.splice(i, 1);
+  if (selected === i) selected = -1; else if (selected > i) selected--;
+  inspect(); draw(); status(placements.length + ' placed');
+}
+
+// ---- mouse ----
+let drag = null, space = false;
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space') space = true;
+  if (e.key === 'Delete' && selected >= 0) removeAt(selected);
+});
+window.addEventListener('keyup', e => { if (e.code === 'Space') space = false; });
+
+cv.addEventListener('mousedown', e => {
+  const mx = e.offsetX, my = e.offsetY;
+  if (space) { drag = { mode: 'pan', sx: mx, sy: my, px: view.panX, py: view.panY }; return; }
+  const [wx, wy] = s2w(mx, my);
+  // Hit-test existing placements (topmost first).
+  const order = placements.map((p, i) => i).sort((a, b) => bottom(placements[b]) - bottom(placements[a]));
+  for (const i of order) {
+    const p = placements[i], [w, h] = sizeOf(p.type);
+    if (wx >= p.x && wx <= p.x + w && wy >= p.y && wy <= p.y + h) {
+      selected = i; brush = null; refreshThumbSel(); inspect();
+      drag = { mode: 'move', sx: mx, sy: my, ox: p.x, oy: p.y };
+      draw(); return;
+    }
+  }
+  // Empty space + active brush -> place, anchored bottom-centre at the cursor.
+  if (brush) {
+    const [w, h] = sizeOf(brush);
+    placements.push({ type: brush, x: Math.round(wx - w / 2), y: Math.round(wy - h) });
+    selected = placements.length - 1;
+    inspect(); draw(); status(placements.length + ' placed');
+  } else { selected = -1; inspect(); draw(); }
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const mx = e.offsetX, my = e.offsetY;
+  if (drag.mode === 'pan') {
+    view.panX = drag.px - (mx - drag.sx) / view.zoom;
+    view.panY = drag.py - (my - drag.sy) / view.zoom;
+    draw();
+  } else if (drag.mode === 'move') {
+    const p = placements[selected];
+    p.x = Math.round(drag.ox + (mx - drag.sx) / view.zoom);
+    p.y = Math.round(drag.oy + (my - drag.sy) / view.zoom);
+    inspect(); draw();
+  }
+});
+window.addEventListener('mouseup', () => { drag = null; });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const [wx, wy] = s2w(e.offsetX, e.offsetY);
+  view.zoom *= e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  view.zoom = Math.max(0.02, Math.min(2, view.zoom));
+  view.panX = wx - e.offsetX / view.zoom;
+  view.panY = wy - e.offsetY / view.zoom;
+  draw();
+}, { passive: false });
+
+// ---- controls / export ----
+document.getElementById('fit').onclick = fit;
+document.getElementById('showBoxes').onchange = e => { showBoxes = e.target.checked; draw(); };
+document.getElementById('export').onclick = () => {
+  const json = JSON.stringify({ placements }, null, 2);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  a.download = 'enemy-placements.json'; a.click(); URL.revokeObjectURL(a.href);
+  navigator.clipboard && navigator.clipboard.writeText(json);
+  status('exported ' + placements.length + ' (also copied) → save to assets/');
+};
+
+boot();
+</script>
+</body>
+</html>

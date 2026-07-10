@@ -270,6 +270,10 @@ class Game {
                 // enemy: 8 facings x 3 states (normal/nervous/hurt), no walk cycle.
                 this.loadImage('phone_sheet', 'assets/saborosa-elementos-phone-game.png'),
                 this.loadJSON('phone_sprites', 'assets/saborosa-elementos-phone-sprites.json'),
+                // Hand-placed enemies + live rocks (tools/enemy-placement.html). The
+                // four dynamic enemies spawn from here in main.js; liverock entries
+                // are static obstacles spawned into world blocks (see world.js).
+                this.loadJSON('enemy_placements', 'assets/enemy-placements.json'),
                 // The old decorative map assets (mapobjects_sheet / assets-001,
                 // painted_isle_objects, mapobject_defs) were REMOVED — the
                 // 4-layer map + OverlayObjects replaced the hand-placed trees.
