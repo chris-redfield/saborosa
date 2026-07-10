@@ -55,15 +55,14 @@ class AudioManager {
         this._applyVolume();
     }
 
-    // Hand off from intro to gameplay. `continueIntro` chooses between the two
-    // modes the intro toggle exposes:
-    //   true  (new)     — the intro theme keeps playing underneath (never cut).
-    //   false (classic) — the intro theme is cut.
+    // Hand off from intro to gameplay. The intro theme is ALWAYS cut here — it
+    // plays under the title + fruit-select screens and stops the moment gameplay
+    // begins.
     // The bass NO LONGER joins here — it starts on the player's first movement
     // after entering the game, and drops out while the batuque (beats) plays
     // (driven from updateGame). This keeps the spawn quiet until the player acts.
-    startGameplay(continueIntro) {
-        if (!continueIntro && this.music) this.music.pause();
+    startGameplay() {
+        if (this.music) this.music.pause();
     }
 
     // Both are cheap to call every frame — they no-op unless the state flips.

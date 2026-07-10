@@ -362,10 +362,10 @@ function updateGame(dt) {
             gameState.screen = 'playing';
             gameState.select = null;
             gameState.hasMoved = false; // bass waits for the first move
-            // Hand off to gameplay music. The bass always joins; the intro's
-            // "Intro music" toggle picks whether the theme keeps playing under
-            // it (KEEP, default) or is cut (CLASSIC).
-            game.audio.startGameplay(gameState.intro.continueIntroMusic !== false);
+            // Hand off to gameplay music: the intro theme is cut here (it only
+            // plays under the title + fruit-select screens). The bass joins on
+            // the player's first move.
+            game.audio.startGameplay();
         }
         return;
     }

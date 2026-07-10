@@ -62,24 +62,21 @@ class IntroScreen {
         this._particles = [];
         this._initParticles();
 
-        // Dev toggles (DOM buttons outside the canvas) for A/B-ing atmosphere
-        // and the yellow vs black-and-white art variants.
+        // Art / atmosphere variant flags. These used to be wired to on-screen
+        // dev toggle buttons (removed); they now just hold the shipping defaults.
         this._vignetteOn = true;
         this._pollenOn = true;
         this._titleBW = false;
         this._menuBW = false;
-        this._handBW = false;
+        // The pointing hand defaults to the WHITE line-art variant (intro-hand-bw).
+        this._handBW = true;
         this._titleBob = true;     // idle bob on the SABOROSA title
         // Style for UNSELECTED menu words: 'standard' (current yellow art),
         // 'white' or 'red' (transparent line-art variants from letras-02).
         // The selected word always uses the standard art.
         this._unselStyles = ['standard', 'white', 'red'];
         this._unselStyle = 'standard';
-        // How the music hands off on START (read by main.js): true = the intro
-        // theme KEEPS playing under the bass (new), false = it's CUT (classic).
-        this.continueIntroMusic = true;
         this._devButtons = [];
-        this._makeDevToggles();
     }
 
     // Pick the yellow or black-and-white variant of an art key based on a flag.
@@ -95,52 +92,6 @@ class IntroScreen {
         if (typeof audio.setMuted === 'function') audio.setMuted(muted);
         else if (audio.muted !== muted && typeof audio.toggleMute === 'function') audio.toggleMute();
         else audio.muted = muted;
-    }
-
-    _makeDevToggles() {
-        this._addToggle(() => `Vignette: ${this._vignetteOn ? 'ON' : 'OFF'}`,
-            () => { this._vignetteOn = !this._vignetteOn; });
-        this._addToggle(() => `Pollen: ${this._pollenOn ? 'ON' : 'OFF'}`,
-            () => { this._pollenOn = !this._pollenOn; });
-        this._addToggle(() => `Title: ${this._titleBW ? 'B&W' : 'YELLOW'}`,
-            () => { this._titleBW = !this._titleBW; });
-        this._addToggle(() => `Start/Options: ${this._menuBW ? 'B&W' : 'YELLOW'}`,
-            () => { this._menuBW = !this._menuBW; });
-        this._addToggle(() => `Hand: ${this._handBW ? 'B&W' : 'YELLOW'}`,
-            () => { this._handBW = !this._handBW; });
-        this._addToggle(() => `Title bob: ${this._titleBob ? 'ON' : 'OFF'}`,
-            () => { this._titleBob = !this._titleBob; });
-        this._addToggle(() => `Unselected: ${this._unselStyle.toUpperCase()}`,
-            () => {
-                const i = this._unselStyles.indexOf(this._unselStyle);
-                this._unselStyle = this._unselStyles[(i + 1) % this._unselStyles.length];
-            });
-        this._addToggle(() => `Intro music: ${this.continueIntroMusic ? 'KEEP' : 'CUT'}`,
-            () => { this.continueIntroMusic = !this.continueIntroMusic; });
-    }
-
-    // Stacks a labeled toggle button at the top-left, outside the canvas.
-    _addToggle(getLabel, onClick) {
-        if (typeof document === 'undefined' || !document.body) return;
-        const btn = document.createElement('button');
-        const s = btn.style;
-        s.position = 'fixed';
-        s.top = `${10 + this._devButtons.length * 34}px`;
-        s.left = '10px';
-        s.zIndex = '10000';
-        s.width = '150px';
-        s.padding = '6px 10px';
-        s.font = '13px monospace';
-        s.textAlign = 'left';
-        s.cursor = 'pointer';
-        s.border = '1px solid #888';
-        s.borderRadius = '4px';
-        s.background = '#222';
-        s.color = '#fff';
-        btn.textContent = getLabel();
-        btn.addEventListener('click', () => { onClick(); btn.textContent = getLabel(); btn.blur(); });
-        document.body.appendChild(btn);
-        this._devButtons.push(btn);
     }
 
     // Scatter the dust/pollen motes across the screen with randomized drift,
@@ -574,7 +525,7 @@ class IntroScreen {
 
         // Thumbs-up cursor under the selected value, gliding between OFF and ON
         // and breathing up toward it.
-        const thumb = this.game.getImage('intro_thumb');
+        const thumb = this.game.getImage(this._art('intro_thumb', this._handBW));
         if (thumb) {
             const hh = O.thumbHeight;
             const hw = hh * (thumb.naturalWidth / thumb.naturalHeight);

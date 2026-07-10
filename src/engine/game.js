@@ -206,6 +206,7 @@ class Game {
                 this.loadImage('intro_off', 'assets/intro-off.png'),
                 this.loadImage('intro_on', 'assets/intro-on.png'),
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
+                this.loadImage('intro_thumb_bw', 'assets/intro-thumb-bw.png'),
 
                 // Dungeon interior background (fell-down-a-hole view).
                 this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo-novo.png'),
@@ -474,6 +475,10 @@ class Game {
 
         this.input.updateGamepad();
         this.showDebug = this.input.isKeyDown('debug');
+        // The on-screen FPS readout is a debug aid — only show it while C (debug)
+        // is held, alongside the canvas perf panel.
+        const fpsEl = document.getElementById('fps-counter');
+        if (fpsEl) fpsEl.style.display = this.showDebug ? 'block' : 'none';
 
         // Fixed timestep
         this.accumulator += this.deltaTime;

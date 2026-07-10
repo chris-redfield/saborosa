@@ -60,8 +60,8 @@ class PhoneEnemy {
         this.chaseSpeed = 2.3;  // px/frame while charging
         this.pushForce = 2.6;   // px/frame shove on contact
 
-        this.detectionRange = 720; // doubled reach — was 360 (felt too small)
-        this.loseRange = 940;      // keep the same detect→lose hysteresis ratio
+        this.detectionRange = 576; // 720 trimmed 20% (was 360 originally)
+        this.loseRange = 752;      // keep the same detect→lose hysteresis ratio
 
         this.state = 'roaming'; // 'roaming' | 'nervous' | 'chasing'
         this.facing = Math.random() < 0.5 ? 'left' : 'right';
