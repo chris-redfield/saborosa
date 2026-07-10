@@ -986,6 +986,7 @@ function renderGame(ctx) {
 
     if (gameState.screen === 'dungeon') {
         gameState.dungeon.render(ctx);
+        if (game.showDebug) gameState.dungeon.renderDebug(ctx);
         return;
     }
 

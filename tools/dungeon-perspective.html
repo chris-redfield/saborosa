@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Saborosa — Dungeon Perspective Test</title>
+<title>Saborosa — Dungeon Perspective & Cat Collision</title>
 <style>
   :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
   * { box-sizing:border-box; }
@@ -14,6 +14,8 @@
   button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
            background:#22304f; color:#cfe; cursor:pointer; }
   button:hover { background:#2c3e63; }
+  #tabs { display:flex; gap:6px; }
+  .tab.active { background:var(--accent); color:#06263a; border-color:var(--accent); font-weight:bold; }
   #main { display:flex; height:calc(100% - 43px); }
   #stage { flex:1; position:relative; overflow:hidden; }
   canvas { display:block; position:absolute; inset:0; }
@@ -30,14 +32,18 @@
   #readout { white-space:pre; color:#8fce8f; font-size:11px; }
   #status { margin-left:auto; color:#8fce8f; }
   pre#out { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px;
-            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:160px;
+            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:200px;
             overflow:auto; }
 </style>
 </head>
 <body>
 <div id="top">
-  <b>DUNGEON PERSPECTIVE TEST</b>
-  <span class="hint">WASD / arrows — W&nbsp;=&nbsp;walk in (smaller), S&nbsp;=&nbsp;out (bigger), A/D&nbsp;=&nbsp;strafe</span>
+  <b>DUNGEON TOOL</b>
+  <span id="tabs">
+    <button class="tab active" data-mode="perspective">Perspective</button>
+    <button class="tab" data-mode="cat">Cat Collision</button>
+  </span>
+  <span class="hint">WASD / arrows — W&nbsp;=&nbsp;walk in · S&nbsp;=&nbsp;out · A/D&nbsp;=&nbsp;strafe</span>
   <span id="status"></span>
 </div>
 <div id="main">
@@ -46,35 +52,34 @@
 </div>
 <script>
 const A = '../assets/';
-const DUNGEON = A + 'saborosa-dungeon-fundo.png';
+// In-game dungeon assets (see src/engine/game.js + src/screens/dungeon.js).
+const DUNGEON = A + 'saborosa-dungeon-fundo-novo.png';
+const GATO = [A+'saborosa-dungeon-gato-01.png', A+'saborosa-dungeon-gato-02.png', A+'saborosa-dungeon-gato-03.png'];
 const CHAR_SHEET = A + 'saborosa-cha-001.png';
 const CHAR_DEFS = A + 'saborosa-cha-001-sprites.json';
+
+// The cat statue is a full-canvas overlay nudged left by this many screen px in
+// dungeon.js (gatoOffsetX = -10) relative to a ~898px-wide displayed bg. Kept as
+// a fraction of bg width so the nudge is faithful at any tool canvas size.
+const GATO_OFFSET_FRAC = -10 / 898.6;
 
 // ---- tunable parameters ---------------------------------------------------
 // All positions are NORMALIZED (0..1) relative to the displayed background
 // rect, so the tool is resolution-independent and the numbers transfer
-// straight into the game once tuned. The floor is a screen-space trapezoid:
-// wide along the bottom (near the camera) and narrowing to the back wall at
-// the vanishing point. A sprite's drawn height is `frac` of the bg height,
-// and `frac` is proportional to how far the feet sit BELOW the vanishing
-// point — that proportionality IS one-point perspective.
+// straight into the game once tuned.
 const params = {
-  vpX:   0.505,  // vanishing point X (center of the back wall)
-  vpY:   0.545,  // vanishing point Y
-  yNear: 1.00,   // floor front edge (bottom of screen) — nearest to camera
-  yFar:  0.675,  // floor back edge (bottom of the back wall) — farthest
-  halfNear: 0.475,// floor half-width at the front edge
-  halfFar:  0.170,// floor half-width at the back edge
-  fracNear: 0.160,// sprite height (× bg height) when fully near
-  fracFar:  0.08,// sprite height when fully far (auto when perspLock)
-  sizeScale: 0.5,// baseline size multiplier on the whole sprite (near+far together)
-  moveSpeed: 0.35,// depth travel in t-units/sec (lateral uses same base)
-  perspLock: true,// derive fracFar from geometry (physically exact)
-  perspSpeed: true,// move slower on screen the deeper you are (constant ground speed)
-  showGuides: true,
+  vpX:   0.505, vpY:   0.545,
+  yNear: 1.00,  yFar:  0.675,
+  halfNear: 0.475, halfFar: 0.170,
+  fracNear: 0.160, fracFar: 0.08,
+  sizeScale: 0.5, moveSpeed: 0.35,
+  perspLock: true, perspSpeed: true, showGuides: true,
 };
 
-// Slider definitions: [key, label, min, max, step]
+// Cat-furnace collision box, in the same (t: depth, L: lateral) space the player
+// moves in — matches DungeonScreen.statue defaults in src/screens/dungeon.js.
+const statue = { tFront: 0.85, lMin: -0.42, lMax: 0.50 };
+
 const SLIDERS = [
   ['vpX','vanishing X',0,1,0.005],
   ['vpY','vanishing Y',0,1,0.005],
@@ -87,33 +92,40 @@ const SLIDERS = [
   ['sizeScale','player size (baseline)',0.2,3,0.01],
   ['moveSpeed','move speed',0.05,1.5,0.01],
 ];
+// Cat collision sliders operate on the `statue` object.
+const STATUE_SLIDERS = [
+  ['tFront','front depth (t: 0 near .. 1 far)',0,1,0.005],
+  ['lMin','left edge (L: -1 .. 1)',-1,1,0.005],
+  ['lMax','right edge (L: -1 .. 1)',-1,1,0.005],
+];
 
 // ---- state ----------------------------------------------------------------
-let t = 0;     // depth 0..1  (0 = near/front/bottom, 1 = far/back/top)
-let L = 0;     // lateral -1..1 (-1 = left wall, +1 = right wall)
-let facing = 'down';
+let mode = 'perspective';  // 'perspective' | 'cat'
+let t = 0.12, L = 0, facing = 'down';
 const keys = Object.create(null);
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
-let bgImg = null, charImg = null, charFrames = null;
-let bg = { x:0, y:0, w:0, h:0 };       // displayed background rect (px)
+let bgImg = null, gatoImgs = [], gatoFrame = 0, gatoTimer = 0;
+let charImg = null, charFrames = null;
+let bg = { x:0, y:0, w:0, h:0 };
 
-const DUN_W = 6132, DUN_H = 4916;       // native dungeon dimensions
+const DUN_W = 1022, DUN_H = 819;   // native dungeon dimensions (fundo-novo)
 
 // ---- loading ---------------------------------------------------------------
 function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
 async function boot(){
   [bgImg, charImg] = await Promise.all([loadImg(DUNGEON), loadImg(CHAR_SHEET)]);
+  gatoImgs = await Promise.all(GATO.map(loadImg));
   try {
     const d = await (await fetch(CHAR_DEFS, {cache:'no-cache'})).json();
-    // First (only) idle frame per direction.
     charFrames = {
       down: d.down_idle[0], up: d.up_idle[0], left: d.left_idle[0], right: d.right_idle[0],
       down_right: d.down_right_idle[0], down_left: d.down_left_idle[0],
       up_right: d.up_right_idle[0], up_left: d.up_left_idle[0],
     };
   } catch(e){ console.warn('char defs failed', e); }
+  setupTabs();
   buildPanel();
   resize();
   requestAnimationFrame(loop);
@@ -121,10 +133,20 @@ async function boot(){
 }
 function status(s){ document.getElementById('status').textContent = s; }
 
+function setupTabs(){
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.onclick = () => {
+      mode = btn.dataset.mode;
+      document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b === btn));
+      buildPanel();
+      status(mode === 'cat' ? 'cat collision — walk into the box to test it' : 'perspective');
+    };
+  });
+}
+
 // ---- layout ----------------------------------------------------------------
 function resize(){
   cv.width = stage.clientWidth; cv.height = stage.clientHeight;
-  // Contain-fit the dungeon into the canvas, centered.
   const s = Math.min(cv.width / DUN_W, cv.height / DUN_H);
   bg.w = DUN_W * s; bg.h = DUN_H * s;
   bg.x = (cv.width - bg.w) / 2; bg.y = (cv.height - bg.h) / 2;
@@ -133,48 +155,47 @@ window.addEventListener('resize', resize);
 
 // ---- perspective math ------------------------------------------------------
 const lerp = (a,b,k)=> a + (b-a)*k;
-// Height fraction (of bg height) for a sprite whose feet are at depth `tt`.
 function fracAt(tt){ return lerp(params.fracNear, effFracFar(), tt) * params.sizeScale; }
-// When perspLock is on, fracFar is forced to the geometrically-exact value so
-// scale stays strictly proportional to (footY - vanishingY).
 function effFracFar(){
   if (!params.perspLock) return params.fracFar;
   const span = (params.yNear - params.vpY);
   if (span <= 0) return params.fracFar;
   return params.fracNear * (params.yFar - params.vpY) / span;
 }
-// Floor sample at (depth tt, lateral LL) -> screen px {x,y,frac,halfW}
 function floorPoint(tt, LL){
-  const yN = lerp(params.yNear, params.yFar, tt);          // normalized foot Y
-  const halfW = lerp(params.halfNear, params.halfFar, tt); // normalized half width
+  const yN = lerp(params.yNear, params.yFar, tt);
+  const halfW = lerp(params.halfNear, params.halfFar, tt);
   const xN = params.vpX + LL * halfW;
-  return {
-    x: bg.x + xN * bg.w,
-    y: bg.y + yN * bg.h,
-    frac: fracAt(tt),
-    halfW,
-  };
+  return { x: bg.x + xN * bg.w, y: bg.y + yN * bg.h, frac: fracAt(tt), halfW };
 }
 
 // ---- update ----------------------------------------------------------------
 let last = 0;
 function update(dt){
+  gatoTimer += dt;
+  if (gatoTimer >= 0.2) { gatoTimer -= 0.2; gatoFrame = (gatoFrame + 1) % gatoImgs.length; }
+
   let dT = 0, dL = 0;
-  if (keys['w'] || keys['arrowup'])    dT += 1;   // walk IN (deeper, up screen)
-  if (keys['s'] || keys['arrowdown'])  dT -= 1;   // walk OUT (nearer, down screen)
+  if (keys['w'] || keys['arrowup'])    dT += 1;
+  if (keys['s'] || keys['arrowdown'])  dT -= 1;
   if (keys['d'] || keys['arrowright']) dL += 1;
   if (keys['a'] || keys['arrowleft'])  dL -= 1;
 
-  // Constant ground speed: moving the same physical distance covers fewer
-  // screen pixels the farther away you are. Scale depth travel by current
-  // size (lateral is already foreshortened by the narrowing half-width).
   const persp = params.perspSpeed ? (fracAt(t) / fracAt(0)) : 1;
-  t += dT * params.moveSpeed * persp * dt;
-  L += dL * params.moveSpeed * dt;
-  t = Math.max(0, Math.min(1, t));
-  L = Math.max(-1, Math.min(1, L));
+  const oldT = t, oldL = L;
+  let nt = Math.max(0, Math.min(1, oldT + dT * params.moveSpeed * persp * dt));
+  let nl = Math.max(-1, Math.min(1, oldL + dL * params.moveSpeed * dt));
 
-  // Facing from intent (deeper = facing away/up).
+  // Cat mode: apply the SAME statue collision the game uses, so the box can be
+  // felt while tuning. Resolve depth first, then lateral (corners stay passable).
+  if (mode === 'cat') {
+    const inBandOld = oldL >= statue.lMin && oldL <= statue.lMax;
+    if (inBandOld && nt > statue.tFront) nt = statue.tFront;
+    const inBandNew = nl >= statue.lMin && nl <= statue.lMax;
+    if (inBandNew && nt > statue.tFront) nl = oldL;
+  }
+  t = nt; L = nl;
+
   const up = dT > 0, down = dT < 0, right = dL > 0, left = dL < 0;
   if (up && right) facing = 'up_right';
   else if (up && left) facing = 'up_left';
@@ -192,7 +213,13 @@ function draw(){
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(bgImg, bg.x, bg.y, bg.w, bg.h);
 
-  if (params.showGuides) drawGuides();
+  // Cat statue overlay (full-canvas, aligned to bg with the same nudge as game).
+  if (gatoImgs.length) {
+    ctx.drawImage(gatoImgs[gatoFrame], bg.x + GATO_OFFSET_FRAC * bg.w, bg.y, bg.w, bg.h);
+  }
+
+  if (params.showGuides && mode === 'perspective') drawGuides();
+  if (mode === 'cat') drawStatueBox();
 
   // The character.
   const p = floorPoint(t, L);
@@ -201,20 +228,16 @@ function draw(){
   if (fr && charImg) {
     const aspect = fr.w / fr.h;
     const spriteW = spriteH * aspect;
-    // Feet (bottom-center) anchored on the floor point.
-    ctx.drawImage(charImg, fr.x, fr.y, fr.w, fr.h,
-                  p.x - spriteW/2, p.y - spriteH, spriteW, spriteH);
+    ctx.drawImage(charImg, fr.x, fr.y, fr.w, fr.h, p.x - spriteW/2, p.y - spriteH, spriteW, spriteH);
   } else {
     const w = spriteH * 0.5;
     ctx.fillStyle = '#e94560';
     ctx.fillRect(p.x - w/2, p.y - spriteH, w, spriteH);
   }
 
-  if (params.showGuides) {
-    // Foot marker.
-    ctx.fillStyle = '#53d8fb';
-    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill();
-  }
+  // Foot marker.
+  ctx.fillStyle = '#53d8fb';
+  ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill();
 
   updateReadout(p);
 }
@@ -222,20 +245,37 @@ function draw(){
 function drawGuides(){
   const nl = floorPoint(0,-1), nr = floorPoint(0,1);
   const fl = floorPoint(1,-1), fr = floorPoint(1,1);
-  // Floor trapezoid.
   ctx.strokeStyle = 'rgba(83,216,251,0.55)'; ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(nl.x, nl.y); ctx.lineTo(nr.x, nr.y);
   ctx.lineTo(fr.x, fr.y); ctx.lineTo(fl.x, fl.y); ctx.closePath(); ctx.stroke();
-  // A few depth rules so foreshortening is visible.
   ctx.strokeStyle = 'rgba(83,216,251,0.22)';
   for (let i=1;i<=4;i++){ const tt=i/5; const a=floorPoint(tt,-1), b=floorPoint(tt,1);
     ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke(); }
-  // Vanishing point.
   const vx = bg.x + params.vpX*bg.w, vy = bg.y + params.vpY*bg.h;
   ctx.strokeStyle = '#e94560'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(vx-8,vy); ctx.lineTo(vx+8,vy);
   ctx.moveTo(vx,vy-8); ctx.lineTo(vx,vy+8); ctx.stroke();
+}
+
+// The red collision box: solid region t>=tFront within L∈[lMin,lMax], drawn as a
+// perspective trapezoid with its front stop-face (what blocks the player) bright.
+function drawStatueBox(){
+  const fL = floorPoint(statue.tFront, statue.lMin);
+  const fR = floorPoint(statue.tFront, statue.lMax);
+  const bR = floorPoint(1, statue.lMax);
+  const bL = floorPoint(1, statue.lMin);
+  ctx.beginPath();
+  ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y);
+  ctx.lineTo(bR.x, bR.y); ctx.lineTo(bL.x, bL.y); ctx.closePath();
+  ctx.fillStyle = 'rgba(233,69,96,0.22)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(233,69,96,0.9)'; ctx.lineWidth = 2; ctx.stroke();
+  // Front stop-face highlighted.
+  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
+  // Corner handles.
+  ctx.fillStyle = '#ffd166';
+  for (const c of [fL, fR, bR, bL]) { ctx.beginPath(); ctx.arc(c.x, c.y, 3.5, 0, 7); ctx.fill(); }
 }
 
 // ---- side panel ------------------------------------------------------------
@@ -243,46 +283,55 @@ function buildPanel(){
   const side = document.getElementById('side');
   side.innerHTML = '';
 
-  const g1 = group(side, 'Perspective');
-  for (const [k,label,min,max,step] of SLIDERS) addSlider(g1, k, label, min, max, step);
-
-  const g2 = group(side, 'Behavior');
-  addCheckbox(g2, 'perspLock', 'lock far size to geometry (exact perspective)');
-  addCheckbox(g2, 'perspSpeed', 'constant ground speed (slower when far)');
-  addCheckbox(g2, 'showGuides', 'show floor guides');
+  if (mode === 'perspective') {
+    const g1 = group(side, 'Perspective');
+    for (const [k,label,min,max,step] of SLIDERS) addSlider(g1, params, k, label, min, max, step);
+    const g2 = group(side, 'Behavior');
+    addCheckbox(g2, 'perspLock', 'lock far size to geometry (exact perspective)');
+    addCheckbox(g2, 'perspSpeed', 'constant ground speed (slower when far)');
+    addCheckbox(g2, 'showGuides', 'show floor guides');
+  } else {
+    const g1 = group(side, 'Cat Collision Box');
+    const hint = document.createElement('div'); hint.className = 'hint';
+    hint.style.marginBottom = '4px';
+    hint.textContent = 'Front face (yellow) is where the player stops. Box extends back to t=1. Walk in to test.';
+    g1.appendChild(hint);
+    for (const [k,label,min,max,step] of STATUE_SLIDERS) addSlider(g1, statue, k, label, min, max, step);
+  }
 
   const g3 = group(side, 'Readout');
   const ro = document.createElement('div'); ro.id = 'readout'; g3.appendChild(ro);
 
   const g4 = group(side, 'Export');
   const row = document.createElement('div');
-  const copy = document.createElement('button'); copy.textContent = 'Copy params JSON';
+  const copy = document.createElement('button');
+  copy.textContent = mode === 'cat' ? 'Copy statue JSON' : 'Copy params JSON';
   const reset = document.createElement('button'); reset.textContent = 'Reset pos';
   reset.style.marginLeft = '6px';
   row.appendChild(copy); row.appendChild(reset); g4.appendChild(row);
   const out = document.createElement('pre'); out.id = 'out'; out.style.marginTop = '6px';
   g4.appendChild(out);
   copy.onclick = () => {
-    const json = paramJSON();
+    const json = mode === 'cat' ? statueJSON() : paramJSON();
     out.textContent = json;
     navigator.clipboard && navigator.clipboard.writeText(json);
-    status('params copied');
+    status(mode === 'cat' ? 'statue JSON copied' : 'params copied');
   };
-  reset.onclick = () => { t = 0; L = 0; status('reset to near-center'); };
+  reset.onclick = () => { t = 0.12; L = 0; status('reset to near-center'); };
 }
 function group(host, title){
   const d = document.createElement('div'); d.className='group';
   const h = document.createElement('h3'); h.textContent = title; d.appendChild(h);
   host.appendChild(d); return d;
 }
-function addSlider(host, key, label, min, max, step){
+function addSlider(host, obj, key, label, min, max, step){
   const l = document.createElement('label'); l.className='s';
   const name = document.createElement('span'); name.textContent = label;
-  const val = document.createElement('span'); val.textContent = (+params[key]).toFixed(3);
+  const val = document.createElement('span'); val.textContent = (+obj[key]).toFixed(3);
   l.appendChild(name); l.appendChild(val);
   const inp = document.createElement('input'); inp.type='range';
-  inp.min=min; inp.max=max; inp.step=step; inp.value=params[key];
-  inp.oninput = e => { params[key] = parseFloat(e.target.value); val.textContent = params[key].toFixed(3); };
+  inp.min=min; inp.max=max; inp.step=step; inp.value=obj[key];
+  inp.oninput = e => { obj[key] = parseFloat(e.target.value); val.textContent = obj[key].toFixed(3); };
   host.appendChild(l); host.appendChild(inp);
 }
 function addCheckbox(host, key, label){
@@ -294,20 +343,37 @@ function addCheckbox(host, key, label){
 }
 function updateReadout(p){
   const ro = document.getElementById('readout'); if (!ro) return;
-  ro.textContent =
-    `depth t   ${t.toFixed(3)}  (0 near · 1 far)\n` +
-    `lateral L ${L.toFixed(3)}\n` +
-    `facing    ${facing}\n` +
-    `size frac ${p.frac.toFixed(3)}  (× bg height)\n` +
-    `foot px   ${p.x.toFixed(0)}, ${p.y.toFixed(0)}\n` +
-    `fracFar*  ${effFracFar().toFixed(3)}  ${params.perspLock?'(locked)':''}`;
+  if (mode === 'cat') {
+    const inBand = L >= statue.lMin && L <= statue.lMax;
+    ro.textContent =
+      `player t ${t.toFixed(3)}  L ${L.toFixed(3)}\n` +
+      `facing   ${facing}\n` +
+      `box  tFront ${statue.tFront.toFixed(3)}\n` +
+      `     L [${statue.lMin.toFixed(3)}, ${statue.lMax.toFixed(3)}]\n` +
+      `in lateral band: ${inBand ? 'YES' : 'no'}`;
+  } else {
+    ro.textContent =
+      `depth t   ${t.toFixed(3)}  (0 near · 1 far)\n` +
+      `lateral L ${L.toFixed(3)}\n` +
+      `facing    ${facing}\n` +
+      `size frac ${p.frac.toFixed(3)}  (× bg height)\n` +
+      `foot px   ${p.x.toFixed(0)}, ${p.y.toFixed(0)}\n` +
+      `fracFar*  ${effFracFar().toFixed(3)}  ${params.perspLock?'(locked)':''}`;
+  }
 }
 function paramJSON(){
   const o = {};
   for (const [k] of SLIDERS) o[k] = +params[k].toFixed(4);
-  o.fracFar = +effFracFar().toFixed(4);   // resolved value
+  o.fracFar = +effFracFar().toFixed(4);
   o.perspLock = params.perspLock; o.perspSpeed = params.perspSpeed;
   return JSON.stringify(o, null, 2);
+}
+// Paste this into the stage's `dungeon` config in src/world/stages.js (as
+// `statue: { ... }`), which DungeonScreen reads via cfg.statue.
+function statueJSON(){
+  return JSON.stringify({
+    statue: { tFront: +statue.tFront.toFixed(3), lMin: +statue.lMin.toFixed(3), lMax: +statue.lMax.toFixed(3) }
+  }, null, 2);
 }
 
 // ---- input + loop ----------------------------------------------------------

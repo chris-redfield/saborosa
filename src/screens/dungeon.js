@@ -18,6 +18,7 @@ class DungeonScreen {
     constructor(game, player, cfg = {}) {
         this.game = game;
         this.player = player;      // for the current sprite pack + facing frames
+        this.name = cfg.name || 'Dungeon 1'; // shown in the C-debug overlay
         this.bgKey = cfg.bg || 'dungeon_bg';
         this.DUN_W = cfg.nativeW || 6132; // native dungeon dimensions
         this.DUN_H = cfg.nativeH || 4916;
@@ -229,6 +230,59 @@ class DungeonScreen {
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = '13px monospace';
         ctx.fillText('[E] climb out', 14, g.height - 16);
+    }
+
+    // C-key debug overlay — mirrors the overworld (stage 3): collision boxes in
+    // the world, a bottom-left info panel, and the top-right perf panel. Here the
+    // "world" is (t: depth, L: lateral) space, so boxes are drawn by sampling the
+    // floor at their corners (they come out as perspective trapezoids).
+    renderDebug(ctx) {
+        this._layout();
+        const g = this.game;
+
+        // Walkable floor bounds (the side walls + front/back edges): L=-1..1 over
+        // t=0..1. Cyan outline.
+        const corner = (t, L) => this._floorPoint(t, L);
+        const quad = (pts, stroke, fill) => {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+            ctx.closePath();
+            if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+            ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke();
+        };
+        quad([corner(0, -1), corner(0, 1), corner(1, 1), corner(1, -1)],
+            'rgba(83,216,251,0.7)', null);
+
+        // Cat-furnace (statue) collision box — the solid region t>=tFront within
+        // L∈[lMin,lMax], drawn as a red trapezoid with its front stop-face bright.
+        const sb = this.statue;
+        if (sb) {
+            quad([corner(sb.tFront, sb.lMin), corner(sb.tFront, sb.lMax),
+                  corner(1, sb.lMax), corner(1, sb.lMin)],
+                'rgba(233,69,96,0.9)', 'rgba(233,69,96,0.22)');
+            // Front stop-face (what actually blocks the player) in bright yellow.
+            const fL = corner(sb.tFront, sb.lMin), fR = corner(sb.tFront, sb.lMax);
+            ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
+        }
+
+        // Player floor point marker.
+        const fp = this._floorPoint(this.t, this.L);
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath(); ctx.arc(fp.x, fp.y, 4, 0, Math.PI * 2); ctx.fill();
+
+        // Bottom-left info panel (location + movement state), same corner as stage 3.
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(4, g.height - 72, 360, 68);
+        ctx.fillStyle = '#0f0';
+        ctx.font = '12px monospace';
+        ctx.fillText(`Location: ${this.name}`, 10, g.height - 54);
+        ctx.fillText(`t: ${this.t.toFixed(3)}  L: ${this.L.toFixed(3)}  facing: ${this.facing}`, 10, g.height - 36);
+        if (sb) ctx.fillText(`furnace box  tFront:${sb.tFront}  L:[${sb.lMin}, ${sb.lMax}]`, 10, g.height - 16);
+
+        // Perf panel (top right) — identical to the overworld.
+        if (window.PERF) window.PERF.render(ctx, g);
     }
 }
 
