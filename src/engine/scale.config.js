@@ -32,6 +32,7 @@ window.ART = {
         laranja_sheet: 1.0,
         rock_sheet: 1.0,
         bush_sheet: 1.0,
+        phone_sheet: 1.0,
     },
 
     // === Character sizing — THE knob to tune =================================

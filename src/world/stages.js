@@ -117,10 +117,14 @@ const STAGES = {
             { type: 'coconut', count: 3 },
             { type: 'rock', count: 3 },
             { type: 'bush', count: 3 },
+            // Telephone: a large sand-roamer that never sleeps — startles, then
+            // charges when it spots you (phoneenemy.js). Ringed close to spawn
+            // (small minDist) so it's right there to check.
+            { type: 'phone', count: 2, minDist: 200, radius: 520 },
         ],
         // Dungeon interior reached by falling into a hole (see dungeon.js). The
         // perspective params default from the tuning tool; override here if needed.
-        dungeon: { bg: 'dungeon_bg', nativeW: 6132, nativeH: 4916 },
+        dungeon: { bg: 'dungeon_bg', nativeW: 1022, nativeH: 819 },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.

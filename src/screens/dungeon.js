@@ -2,7 +2,7 @@
  * DungeonScreen — the interior "fell down a hole" view.
  *
  * A completely different render model from the top-down overworld: a single
- * one-point-perspective background (saborosa-dungeon-fundo.png) with the
+ * one-point-perspective background (saborosa-dungeon-fundo-novo.png) with the
  * character walking on a screen-space floor trapezoid that narrows toward a
  * vanishing point. Ported straight from tools/dungeon-perspective.html — the
  * perspective math and tuned params are identical, just wired to the game's
@@ -40,6 +40,23 @@ class DungeonScreen {
         this.facing = 'down'; // faces the camera as he drops in
         this.bg = { x: 0, y: 0, w: 0, h: 0 };
         this.fadeIn = 1; // black → clear on entry
+
+        // Cat statue on the back wall — a 3-frame flame loop. The frames are
+        // full-canvas overlays pre-aligned to the background, so we just draw the
+        // current one over the same displayed bg rect. ~0.3s per frame.
+        this.gatoFrames = ['dungeon_gato_1', 'dungeon_gato_2', 'dungeon_gato_3'];
+        this.gatoFrame = 0;
+        this.gatoTimer = 0;
+        this.gatoDur = 0.2;
+        this.gatoOffsetX = -10; // nudge the statue left of the bg-aligned position (screen px)
+
+        // Statue collision: a solid box on the back-centre floor, expressed in
+        // the same (t: depth, L: lateral) space the player moves in. Derived from
+        // the art's opaque footprint (base at depth ~0.90, spanning L≈-0.36..0.48),
+        // pulled a touch forward so the player stops just in front. Walk around
+        // the sides (L outside the band) to reach the back corners. Stage-tunable
+        // via cfg.statue.
+        this.statue = Object.assign({ tFront: 0.85, lMin: -0.42, lMax: 0.50 }, cfg.statue || {});
 
         // Fall from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps timestep). Movement is locked until he
@@ -95,6 +112,13 @@ class DungeonScreen {
     update(dt) {
         this._layout();
 
+        // Statue flame loop advances in every state (including the entry fall).
+        this.gatoTimer += dt;
+        if (this.gatoTimer >= this.gatoDur) {
+            this.gatoTimer -= this.gatoDur;
+            this.gatoFrame = (this.gatoFrame + 1) % this.gatoFrames.length;
+        }
+
         // Ceiling fall on entry — same accel curve as the overworld fall. Walking
         // is locked until he touches the floor.
         if (this.falling) {
@@ -119,10 +143,22 @@ class DungeonScreen {
 
         // Constant ground speed: cover fewer screen px per step the farther away.
         const persp = p.perspSpeed ? (this._fracAt(this.t) / this._fracAt(0)) : 1;
-        this.t += dT * p.moveSpeed * persp * dt;
-        this.L += dL * p.moveSpeed * dt;
-        this.t = Math.max(0, Math.min(1, this.t));
-        this.L = Math.max(-1, Math.min(1, this.L));
+        const oldT = this.t, oldL = this.L;
+        let nt = Math.max(0, Math.min(1, oldT + dT * p.moveSpeed * persp * dt));
+        let nl = Math.max(-1, Math.min(1, oldL + dL * p.moveSpeed * dt));
+
+        // Statue collision (solid box on the back wall). Resolve depth first, then
+        // lateral: block walking deeper into it, but allow sliding along the front
+        // face and around the sides. The per-axis check keeps corners passable.
+        const sb = this.statue;
+        if (sb) {
+            const inBandOld = oldL >= sb.lMin && oldL <= sb.lMax;
+            if (inBandOld && nt > sb.tFront) nt = sb.tFront;
+            const inBandNew = nl >= sb.lMin && nl <= sb.lMax;
+            if (inBandNew && nt > sb.tFront) nl = oldL;
+        }
+        this.t = nt;
+        this.L = nl;
 
         const up = dT > 0, down = dT < 0, right = dL > 0, left = dL < 0;
         if (up && right) this.facing = 'up_right';
@@ -147,6 +183,14 @@ class DungeonScreen {
         const img = g.getDrawable(this.bgKey);
         if (img && (img.naturalWidth || img.width)) {
             ctx.drawImage(img, this.bg.x, this.bg.y, this.bg.w, this.bg.h);
+        }
+
+        // Cat statue on the back wall — full-canvas overlay aligned to the bg, so
+        // it shares the bg rect exactly. Drawn before the character so he passes
+        // in front of it as he approaches the wall.
+        const gato = g.getDrawable(this.gatoFrames[this.gatoFrame]);
+        if (gato && (gato.naturalWidth || gato.width)) {
+            ctx.drawImage(gato, this.bg.x + this.gatoOffsetX, this.bg.y, this.bg.w, this.bg.h);
         }
 
         // Character — reuse the equipped pack's idle frame for the facing, feet

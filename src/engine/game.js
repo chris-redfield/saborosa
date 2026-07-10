@@ -57,7 +57,8 @@ class Game {
             eggplant_sheet: 1.0,
             laranja_sheet: 1.0,
             rock_sheet: 1.0,
-            bush_sheet: 1.0
+            bush_sheet: 1.0,
+            phone_sheet: 1.0
         };
 
         // Assets. `bitmaps` holds ImageBitmap versions of the big stage layers:
@@ -207,7 +208,12 @@ class Game {
                 this.loadImage('intro_thumb', 'assets/intro-thumb.png'),
 
                 // Dungeon interior background (fell-down-a-hole view).
-                this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo.png'),
+                this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo-novo.png'),
+                // Cat statue on the dungeon's back wall — a 3-frame flame loop,
+                // full-canvas overlays pre-aligned to the background (see dungeon.js).
+                this.loadImage('dungeon_gato_1', 'assets/saborosa-dungeon-gato-01.png'),
+                this.loadImage('dungeon_gato_2', 'assets/saborosa-dungeon-gato-02.png'),
+                this.loadImage('dungeon_gato_3', 'assets/saborosa-dungeon-gato-03.png'),
 
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
@@ -260,6 +266,10 @@ class Game {
                 this.loadJSON('rock_sprites', 'assets/saborosa-elementos-rock-sprites.json'),
                 this.loadImage('bush_sheet', 'assets/saborosa-elementos-bush-game.png'),
                 this.loadJSON('bush_sprites', 'assets/saborosa-elementos-bush-sprites.json'),
+                // Telephone enemy pack (phoneenemy.js) — a sand-roaming, non-sleeping
+                // enemy: 8 facings x 3 states (normal/nervous/hurt), no walk cycle.
+                this.loadImage('phone_sheet', 'assets/saborosa-elementos-phone-game.png'),
+                this.loadJSON('phone_sprites', 'assets/saborosa-elementos-phone-sprites.json'),
                 // The old decorative map assets (mapobjects_sheet / assets-001,
                 // painted_isle_objects, mapobject_defs) were REMOVED — the
                 // 4-layer map + OverlayObjects replaced the hand-placed trees.
@@ -349,7 +359,7 @@ class Game {
                               'stage3_ovl_estruturas1', 'stage3_ovl_estruturas2',
                               'block_sheet', 'coconut_sheet', 'tomato_sheet',
                               'character_sheet', 'liverock_sheet', 'rock_sheet',
-                              'bush_sheet',
+                              'bush_sheet', 'phone_sheet',
                               'fx_sheet_faint', 'fx_sheet', 'fruit_basket'];
                 // Free the <img> behind the BIG ones (≥100MB decoded) so no
                 // duplicate copy stays resident. Small sheets keep their <img>

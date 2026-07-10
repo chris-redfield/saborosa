@@ -392,6 +392,57 @@ class SpriteSheet {
         const height = ref ? Math.round(ref.h * scale) : 0;
         return { sprites, width, height };
     }
+
+    /**
+     * Load the telephone enemy pack (phoneenemy.js). Its defs
+     * (saborosa-elementos-phone-sprites.json, from tools/build-phone-defs.py) are
+     * a plain 8-facing x 3-state grid — NOT the sleeper's wake/walk two-block —
+     * so there's a single frame per facing per state and no mirroring (all eight
+     * facings are drawn explicitly).
+     *
+     * Output keys per facing: `${dir}_normal`, `${dir}_nervous`, `${dir}_hurt`,
+     * each a 1-element array (kept as arrays to match the other packs' shape).
+     * Pure bottom-anchoring (vAlign 0): the nervous pose is a taller stretch, so
+     * anchoring the feet lets it grow upward in place. `worldScale` is world-px
+     * per author-px, same as the character/rock packs (the phone uses a larger
+     * value — it's a big enemy; see PHONE_WORLD_SCALE).
+     */
+    loadPhonePack(sheetKey, jsonKey, worldScale) {
+        const img = this.game.getDrawable(sheetKey);
+        const data = this.game.getJSON(jsonKey);
+        const dirs = (data && data.dirs)
+            || ['down', 'down_left', 'left', 'up_left', 'up', 'up_right', 'right', 'down_right'];
+        const states = (data && data.states) || ['normal', 'nervous', 'hurt'];
+
+        const sprites = {};
+        for (const d of dirs) for (const st of states) sprites[`${d}_${st}`] = [];
+        if (!img || !data || !data.cells) return { sprites, width: 0, height: 0 };
+
+        const S = this.game.getSheetScale(sheetKey);
+        const scale = worldScale;
+        const makeSprite = f => f && {
+            image: img,
+            sx: f.x * S, sy: f.y * S, sw: f.w * S, sh: f.h * S,
+            width: Math.round(f.w * S * scale),
+            height: Math.round(f.h * S * scale),
+            vAlign: 0,
+            flipped: false
+        };
+
+        for (const st of states) {
+            const row = data.cells[st] || [];
+            for (let c = 0; c < dirs.length; c++) {
+                const s = makeSprite(row[c]);
+                if (s) sprites[`${dirs[c]}_${st}`].push(s);
+            }
+        }
+
+        // Bounding box = the front-facing normal pose.
+        const ref = data.cells.normal && data.cells.normal[0];
+        const width = ref ? Math.round(ref.w * S * scale) : 0;
+        const height = ref ? Math.round(ref.h * S * scale) : 0;
+        return { sprites, width, height };
+    }
 }
 
 window.SpriteSheet = SpriteSheet;
