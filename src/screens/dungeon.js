@@ -433,14 +433,25 @@ class DungeonScreen {
         this._blitBarrel(ctx, fp.x, fp.y - z, h);
     }
 
-    // Carried barrel — held above the player's head. Keeps its FULL perspective
-    // size (same formula as resting), so picking it up doesn't shrink it; it only
-    // scales with depth as the player walks, like any object in the scene.
+    // Carried barrel — "clicked" into the arms exactly like the overworld: the
+    // object's bottom rests on the player's COLLISION-BOX top plus liftOffsetY
+    // (see Player update()), not up at the head. Expressed as a fraction of the
+    // player's sprite height above the feet so it adapts to any character, then
+    // applied at the current depth. Keeps its full perspective size (only shrinks
+    // with depth as the player walks).
     _drawCarriedBarrel(ctx) {
         const fp = this._floorPoint(this.t, this.L);
-        const playerH = fp.frac * this.bg.h;      // idle-height reference at this depth
+        const p = this.player;
+        const playerH = fp.frac * this.bg.h;
         const h = fp.frac * this.bg.h * this.barrel.scale;
-        this._blitBarrel(ctx, fp.x, fp.y - playerH * 0.85, h);
+        // 0 = feet, 1 = head-top. Matches world: barrel box-bottom rests on the
+        // player collision-box top (colOffY) plus a small raise (liftOffsetY). The
+        // raise is scaled to 0.27× the overworld value (0.5× → 40% → another 10%
+        // closer) so the barrel sits lower / more "clicked" into the arms.
+        const carryFrac = 1 - (p.colOffY + p.liftOffsetY * 0.27) / p.height;
+        // Charge crouch / heavy-carry ride 10px lower, same as the overworld.
+        const flatDrop = (p.charging || p.grabHeavy) ? (10 / p.height) * playerH : 0;
+        this._blitBarrel(ctx, fp.x, fp.y - carryFrac * playerH + flatDrop, h);
     }
 
     // Shared barrel blit: draw block_03 with bottom-centre at (cx, bottomY), height h.
