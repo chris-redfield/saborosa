@@ -56,7 +56,7 @@ class CharacterSelectScreen {
             { name: 'ERKPA', pack: 2, rect: { x: 386, y: 147, w: 190, h: 400 } }, // eggplant (tan)
             { name: 'TOM',   pack: 0, rect: { x: 585, y: 147, w: 205, h: 400 } }, // tomato (red)
         ];
-        this.cursor = 2; // start on TOM (tomato is the default pack)
+        this.cursor = 0; // start on the leftmost panel (JUIXY)
 
         // Confirm ("lock-in") animation. While `confirming`, the idle loop
         // freezes and update() withholds the pick until the beat finishes:
