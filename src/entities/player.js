@@ -265,6 +265,52 @@ class Player {
             this.rechargeFlash = Math.max(0, this.rechargeFlash - dt / 0.4);
         }
 
+        this.advanceAnimations();
+
+        // Track the last horizontal facing (true = left). Kept through pure
+        // up/down/idle facings; only an actual left↔right turn changes it.
+        const prevFlipLeft = this.heldFlipLeft;
+        if (this.facing.includes('left')) this.heldFlipLeft = true;
+        else if (this.facing.includes('right')) this.heldFlipLeft = false;
+
+        // Update lifted object position to follow player. The held object's
+        // collision footprint (its red box) is snapped to rest ON TOP of the
+        // player's footprint: centered horizontally, with the object box's
+        // BOTTOM edge meeting the player box's TOP edge. This lifts the object
+        // clear of the body so it reads as "held up" rather than worn on the
+        // head. liftOffsetX/Y stay as fine-tune nudges (negative Y = higher).
+        if (this.liftedObject) {
+            const obj = this.liftedObject;
+            // Mirror ONLY on an actual left↔right turn (differential, not
+            // absolute): pickup and up/down leave the object's orientation
+            // untouched, and writing its own flipX means the flip sticks after
+            // it's dropped or thrown.
+            if (this.heldFlipLeft !== prevFlipLeft) obj.flipX = !obj.flipX;
+            const oColW = obj.colW || obj.width;
+            const oColH = obj.colH || obj.height;
+            const oColOffX = obj.colOffX || 0;
+            const oColOffY = obj.colOffY || 0;
+            const pBoxCenterX = this.x + this.colOffX + this.colW / 2;
+            const pBoxTopY = this.y + this.colOffY;
+            // When the body is flattened — the charge crouch, or the heavy-carry
+            // pose for an object too heavy for this character — the object rides
+            // 10px lower so it tracks the squashed body instead of floating.
+            const flat = this.charging || this.grabHeavy;
+            const flatDrop = flat ? 10 : 0;
+            // object box center X == player box center X
+            obj.x = pBoxCenterX - oColW / 2 - oColOffX + this.liftOffsetX;
+            // object box bottom == player box top
+            obj.y = pBoxTopY - oColH - oColOffY + this.liftOffsetY + flatDrop;
+        }
+
+    }
+
+    // Advance the pose animations (walk-cycle frame, one-shot grab/put-down,
+    // power-throw, empty-handed action) from this.moving / this.facing / the
+    // grab+throw state. Split out of update() so screens that drive the player
+    // themselves (e.g. the dungeon) can reuse the exact same animation timing
+    // without re-running movement/physics.
+    advanceAnimations() {
         if (this.moving) {
             this.animationCounter += this.animationSpeed;
             const walkKey = `${this.facing}_walk`;
@@ -330,43 +376,6 @@ class Player {
             this.actionTicks--;
             if (this.actionTicks <= 0) this.actionAnimating = false;
         }
-
-        // Track the last horizontal facing (true = left). Kept through pure
-        // up/down/idle facings; only an actual left↔right turn changes it.
-        const prevFlipLeft = this.heldFlipLeft;
-        if (this.facing.includes('left')) this.heldFlipLeft = true;
-        else if (this.facing.includes('right')) this.heldFlipLeft = false;
-
-        // Update lifted object position to follow player. The held object's
-        // collision footprint (its red box) is snapped to rest ON TOP of the
-        // player's footprint: centered horizontally, with the object box's
-        // BOTTOM edge meeting the player box's TOP edge. This lifts the object
-        // clear of the body so it reads as "held up" rather than worn on the
-        // head. liftOffsetX/Y stay as fine-tune nudges (negative Y = higher).
-        if (this.liftedObject) {
-            const obj = this.liftedObject;
-            // Mirror ONLY on an actual left↔right turn (differential, not
-            // absolute): pickup and up/down leave the object's orientation
-            // untouched, and writing its own flipX means the flip sticks after
-            // it's dropped or thrown.
-            if (this.heldFlipLeft !== prevFlipLeft) obj.flipX = !obj.flipX;
-            const oColW = obj.colW || obj.width;
-            const oColH = obj.colH || obj.height;
-            const oColOffX = obj.colOffX || 0;
-            const oColOffY = obj.colOffY || 0;
-            const pBoxCenterX = this.x + this.colOffX + this.colW / 2;
-            const pBoxTopY = this.y + this.colOffY;
-            // When the body is flattened — the charge crouch, or the heavy-carry
-            // pose for an object too heavy for this character — the object rides
-            // 10px lower so it tracks the squashed body instead of floating.
-            const flat = this.charging || this.grabHeavy;
-            const flatDrop = flat ? 10 : 0;
-            // object box center X == player box center X
-            obj.x = pBoxCenterX - oColW / 2 - oColOffX + this.liftOffsetX;
-            // object box bottom == player box top
-            obj.y = pBoxTopY - oColH - oColOffY + this.liftOffsetY + flatDrop;
-        }
-
     }
 
     /**
@@ -917,11 +926,11 @@ class Player {
         return this._rect;
     }
 
-    render(ctx, game, camX, camY) {
-        const drawX = this.x - camX;
-        const drawY = this.y - camY;
-
-        let spriteData;
+    // Pick the sprite frame for the current pose (throw > charge-crouch > grab >
+    // carry-hold > walk > action > idle). Pure selection — no drawing — so a
+    // screen that renders the player itself (the dungeon) shows the exact same
+    // poses as the overworld. Returns a spriteData frame, or undefined.
+    getCurrentFrame() {
         const walkKey = `${this.facing}_walk`;
         const idleKey = `${this.facing}_idle`;
         const grabFrames = this.sprites[this.grabKey()];
@@ -930,25 +939,32 @@ class Player {
 
         if (this.throwAnimating && throwFrames && throwFrames.length > 0) {
             // Power-throw release motion (cols 4–8).
-            spriteData = throwFrames[Math.min(this.throwAnimFrame, throwFrames.length - 1)];
+            return throwFrames[Math.min(this.throwAnimFrame, throwFrames.length - 1)];
         } else if (this.charging && this.liftedObject && heavyFrames && heavyFrames.length > 0) {
             // Throw wind-up: hold the flattened crouch (grab_heavy last frame).
-            spriteData = heavyFrames[heavyFrames.length - 1];
+            return heavyFrames[heavyFrames.length - 1];
         } else if (this.grabbing && grabFrames && grabFrames.length > 0) {
             // Playing the pickup/put-down animation.
-            spriteData = grabFrames[Math.min(this.grabFrame, grabFrames.length - 1)];
+            return grabFrames[Math.min(this.grabFrame, grabFrames.length - 1)];
         } else if (this.liftedObject && grabFrames && grabFrames.length > 0) {
             // Carrying — hold the last grab frame as the carry pose.
-            spriteData = grabFrames[grabFrames.length - 1];
+            return grabFrames[grabFrames.length - 1];
         } else if (this.moving && this.sprites[walkKey] && this.sprites[walkKey].length > 0) {
-            const frameIndex = Math.min(this.frame, this.sprites[walkKey].length - 1);
-            spriteData = this.sprites[walkKey][frameIndex];
+            return this.sprites[walkKey][Math.min(this.frame, this.sprites[walkKey].length - 1)];
         } else if (this.actionAnimating && this.sprites[`${this.facing}_action`]?.length > 0) {
             // Empty-handed "reach" gesture (coconut col 0); walking overrides it.
-            spriteData = this.sprites[`${this.facing}_action`][0];
+            return this.sprites[`${this.facing}_action`][0];
         } else if (this.sprites[idleKey] && this.sprites[idleKey].length > 0) {
-            spriteData = this.sprites[idleKey][0];
+            return this.sprites[idleKey][0];
         }
+        return undefined;
+    }
+
+    render(ctx, game, camX, camY) {
+        const drawX = this.x - camX;
+        const drawY = this.y - camY;
+
+        const spriteData = this.getCurrentFrame();
 
         const sinkAmount = this.onSand ? STACK_OFFSET : 0;
 

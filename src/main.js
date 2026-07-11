@@ -235,6 +235,13 @@ function enterDungeon() {
     p.fallInPivotX = null;
     p.fallInPivotY = null;
     p.sinkClipY = null;
+    // Enter with empty hands: never carry an overworld object into the dungeon.
+    p.liftedObject = null;
+    p.charging = false;
+    p.grabbing = false;
+    p.throwAnimating = false;
+    p.actionAnimating = false;
+    p._liftHoldStart = null;
     const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
     gameState.dungeon = new DungeonScreen(game, p, cfg);
     gameState.dungeonTransition = null;
@@ -271,6 +278,14 @@ function exitDungeon() {
     p.lastZone = null;
     p.lastOnMountain = false;
     p.lastAboveMidline = false;
+    // Clear any dungeon carry/throw state so the (dungeon-local) barrel doesn't
+    // leak into the overworld render.
+    p.liftedObject = null;
+    p.charging = false;
+    p.grabbing = false;
+    p.throwAnimating = false;
+    p.actionAnimating = false;
+    p._liftHoldStart = null;
     gameState.world.update(p); // recenter the camera on the exit spot
 }
 

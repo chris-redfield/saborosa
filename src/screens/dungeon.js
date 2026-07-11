@@ -75,18 +75,20 @@ class DungeonScreen {
         // spawn point so it never lands on top of the player or the furnace. It's
         // solid: a small (t,L) footprint added to the collision boxes.
         const rnd = (a, b) => a + Math.random() * (b - a);
+        this.barrelHalfT = 0.028; // collision half-extents in (t, L)
+        this.barrelHalfL = 0.06;
         this.barrel = {
             defKey: 'block_03',
             t: rnd(0.30, 0.72),
             L: rnd(-0.70, 0.70),
             scale: cfg.barrelScale != null ? cfg.barrelScale : 1.0,
+            mass: 1,          // light → picked up with the normal (not heavy) grab pose
+            flipX: false,
+            fly: null,        // arc descriptor while thrown; null when resting/carried
+            flyZ: 0,          // current arc lift (fraction of bg height), for the draw
+            box: { name: 'barrel', tMin: 0, tMax: 0, lMin: 0, lMax: 0 },
         };
-        const bt = 0.028, bl = 0.06; // collision half-extents in (t, L)
-        this.barrel.box = {
-            name: 'barrel',
-            tMin: this.barrel.t - bt, tMax: this.barrel.t + bt,
-            lMin: this.barrel.L - bl, lMax: this.barrel.L + bl,
-        };
+        this._syncBarrelBox();
 
         // Fall from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps timestep). Movement is locked until he
@@ -139,15 +141,28 @@ class DungeonScreen {
         };
     }
 
-    // All solid collision boxes: the cat furnace + the barrel prop.
-    _solidBoxes() {
-        return this.barrel ? this.statueBoxes.concat(this.barrel.box) : this.statueBoxes;
+    // True while the player is carrying the barrel (so it isn't also solid).
+    _barrelCarried() { return this.player && this.player.liftedObject === this.barrel; }
+
+    // Recompute the barrel's collision box from its (t, L) centre.
+    _syncBarrelBox() {
+        const b = this.barrel; if (!b) return;
+        b.box.tMin = b.t - this.barrelHalfT; b.box.tMax = b.t + this.barrelHalfT;
+        b.box.lMin = b.L - this.barrelHalfL; b.box.lMax = b.L + this.barrelHalfL;
     }
 
-    // Reject the player from every solid box with per-axis resolution (depth
-    // first, then lateral) so faces block but corners stay passable.
-    _resolveStatue(oldT, oldL, nt, nl) {
-        const boxes = this._solidBoxes();
+    // The barrel is solid (blocks / can be pushed / shows a debug box) only when
+    // resting on the floor — not while carried or mid-throw.
+    _barrelSolid() { return this.barrel && !this._barrelCarried() && !this.barrel.fly; }
+
+    // All solid collision boxes for the debug overlay: cat furnace + resting barrel.
+    _solidBoxes() {
+        return this._barrelSolid() ? this.statueBoxes.concat(this.barrel.box) : this.statueBoxes;
+    }
+
+    // Reject the player from a set of IMMOVABLE boxes with per-axis resolution
+    // (depth first, then lateral) so faces block but corners stay passable.
+    _resolveBoxes(oldT, oldL, nt, nl, boxes) {
         let rt = nt, rl = oldL;
         for (const b of boxes) {
             if (rl > b.lMin && rl < b.lMax) {
@@ -167,6 +182,52 @@ class DungeonScreen {
             }
         }
         return { t: rt, L: rl };
+    }
+
+    // Push the barrel out of the player's path (per-axis) and return where the
+    // player ends up — pressed against the barrel's near edge, so they shove it
+    // along. The barrel itself is clamped against the cat boxes + floor bounds by
+    // _moveBarrelAxis, so it can't be pushed into the furnace or off the floor.
+    _pushBarrel(oldT, oldL, nt, nl) {
+        let rt = nt, rl = nl;
+        const bd = this.barrel.box;
+        if (oldL > bd.lMin && oldL < bd.lMax) {
+            if (oldT <= bd.tMin && rt > bd.tMin) { this._moveBarrelAxis('t', rt - bd.tMin); rt = this.barrel.box.tMin; }
+            else if (oldT >= bd.tMax && rt < bd.tMax) { this._moveBarrelAxis('t', rt - bd.tMax); rt = this.barrel.box.tMax; }
+        }
+        const bl = this.barrel.box;
+        if (rt > bl.tMin && rt < bl.tMax) {
+            if (oldL <= bl.lMin && rl > bl.lMin) { this._moveBarrelAxis('l', rl - bl.lMin); rl = this.barrel.box.lMin; }
+            else if (oldL >= bl.lMax && rl < bl.lMax) { this._moveBarrelAxis('l', rl - bl.lMax); rl = this.barrel.box.lMax; }
+        }
+        return { t: rt, L: rl };
+    }
+
+    // Move the barrel centre by `shift` on one axis, clamped to the floor bounds
+    // and against the cat boxes. Returns the shift actually applied.
+    _moveBarrelAxis(axis, shift) {
+        const b = this.barrel;
+        if (axis === 't') {
+            const half = this.barrelHalfT;
+            let nt = Math.max(half, Math.min(1 - half, b.t + shift));
+            for (const c of this.statueBoxes) {
+                if (b.L + this.barrelHalfL > c.lMin && b.L - this.barrelHalfL < c.lMax) {
+                    if (shift > 0 && b.t + half <= c.tMin && nt + half > c.tMin) nt = c.tMin - half;
+                    else if (shift < 0 && b.t - half >= c.tMax && nt - half < c.tMax) nt = c.tMax + half;
+                }
+            }
+            const applied = nt - b.t; b.t = nt; this._syncBarrelBox(); return applied;
+        } else {
+            const half = this.barrelHalfL;
+            let nl = Math.max(-1 + half, Math.min(1 - half, b.L + shift));
+            for (const c of this.statueBoxes) {
+                if (b.t + this.barrelHalfT > c.tMin && b.t - this.barrelHalfT < c.tMax) {
+                    if (shift > 0 && b.L + half <= c.lMin && nl + half > c.lMin) nl = c.lMin - half;
+                    else if (shift < 0 && b.L - half >= c.lMax && nl - half < c.lMax) nl = c.lMax + half;
+                }
+            }
+            const applied = nl - b.L; b.L = nl; this._syncBarrelBox(); return applied;
+        }
     }
 
     update(dt) {
@@ -207,12 +268,16 @@ class DungeonScreen {
         let nt = Math.max(0, Math.min(1, oldT + dT * p.moveSpeed * persp * dt));
         let nl = Math.max(-1, Math.min(1, oldL + dL * p.moveSpeed * dt));
 
-        // Statue collision (union of solid boxes). Resolve depth first, then
-        // lateral, against every box: block walking into a face, but allow sliding
-        // along faces and around the sides. Per-axis keeps corners passable.
-        const r = this._resolveStatue(oldT, oldL, nt, nl);
-        this.t = r.t;
-        this.L = r.L;
+        // Collision: the cat furnace boxes are immovable (block + slide). Resolve
+        // against them first, then push the barrel if the player walks into it.
+        const r = this._resolveBoxes(oldT, oldL, nt, nl, this.statueBoxes);
+        nt = r.t; nl = r.L;
+        if (this._barrelSolid()) {
+            const pr = this._pushBarrel(oldT, oldL, nt, nl);
+            nt = pr.t; nl = pr.L;
+        }
+        this.t = nt;
+        this.L = nl;
 
         const up = dT > 0, down = dT < 0, right = dL > 0, left = dL < 0;
         if (up && right) this.facing = 'up_right';
@@ -224,51 +289,171 @@ class DungeonScreen {
         else if (right) this.facing = 'right';
         else if (left) this.facing = 'left';
 
+        // Drive the shared player pose animation from the dungeon's own movement,
+        // then handle pick-up / carry / throw / put-down (all reuse Player state).
+        this.player.facing = this.facing;
+        this.player.moving = (dT !== 0 || dL !== 0);
+        this.player.advanceAnimations();
+        if (this.barrel.fly) this._updateBarrelFlight(dt);
+        this._handleLiftThrow();
+
         if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
     }
 
-    // Character — reuse the equipped pack's idle frame for the facing, feet
-    // (bottom-center) anchored on the floor point, sized by perspective.
+    // Lift / throw / put-down input, mirroring the overworld (main.js): tap to
+    // pick up (or, empty-handed, play the reach gesture); hold past THROW_HOLD_MS
+    // to wind up (crouch); release a charged hold to throw (distance scales with
+    // hold time up to THROW_CHARGE_MS); a quick tap while carrying puts it down.
+    // The Player grab/throw STATE + animations are reused verbatim.
+    _handleLiftThrow() {
+        const input = this.game.input;
+        const player = this.player;
+        const THROW_HOLD_MS = 300, THROW_CHARGE_MS = 2000;
+        const liftDown = input.isKeyDown('lift');
+        if (input.isKeyJustPressed('lift')) {
+            player._liftWasCarrying = !!player.liftedObject;
+            if (!player.liftedObject) {
+                if (this._barrelInReach()) this._pickupBarrel();
+                else player.startAction();
+            }
+            player._liftHoldStart = performance.now();
+        }
+        if (player._liftHoldStart != null) {
+            const held = performance.now() - player._liftHoldStart;
+            if (liftDown) {
+                if (player.liftedObject && held >= THROW_HOLD_MS) player.charging = true;
+            } else {
+                if (player.liftedObject && held >= THROW_HOLD_MS) {
+                    this._throwBarrel(Math.min(held, THROW_CHARGE_MS) / THROW_CHARGE_MS);
+                } else if (player.liftedObject && player._liftWasCarrying) {
+                    this._dropBarrel();
+                }
+                player.charging = false;
+                player._liftHoldStart = null;
+            }
+        }
+    }
+
+    // Is the resting barrel close enough and roughly in front to be picked up?
+    _barrelInReach() {
+        if (!this._barrelSolid()) return false;
+        const dt = this.barrel.t - this.t, dL = this.barrel.L - this.L;
+        if (Math.hypot(dt, dL) > 0.16) return false;
+        const fv = this.player.getFacingVector(); // (x=L, y where up=-1)
+        return dt * (-fv.y) + dL * fv.x > -0.03;   // in front / beside (lenient)
+    }
+
+    _pickupBarrel() {
+        this.barrel.fly = null; this.barrel.flyZ = 0;
+        this.player.liftedObject = this.barrel;
+        this.player.startGrab(); // one-shot grab anim; grabHeavy from barrel.mass
+    }
+
+    // Put the barrel down just in front of the player's feet, clamped to the floor.
+    _dropBarrel() {
+        const fv = this.player.getFacingVector();
+        const d = 0.09;
+        this.barrel.t = Math.max(this.barrelHalfT, Math.min(0.80, this.t + (-fv.y) * d));
+        this.barrel.L = Math.max(-1 + this.barrelHalfL, Math.min(1 - this.barrelHalfL, this.L + fv.x * d));
+        this._syncBarrelBox();
+        this.player.liftedObject = null;
+        this.player.startDrop(); // reverse grab anim (carry pose → idle)
+    }
+
+    // Launch the barrel on a short (t, L) arc in the facing direction. Reuses the
+    // Player throw animation (throwObject plays it + clears liftedObject); the arc
+    // itself lives here because it's in dungeon perspective space, not world px.
+    _throwBarrel(charge) {
+        const fv = this.player.getFacingVector();
+        this.player.throwObject(charge); // reuse: clears liftedObject, plays throw anim
+        // The barrel is carried above the player's head (its own t/L was frozen at
+        // the pick-up spot), so ORIGINATE the arc at the player's current position.
+        this.barrel.t = this.t;
+        this.barrel.L = this.L;
+        const dist = 0.10 + 0.40 * charge;
+        const fpO = this._floorPoint(this.t, this.L);
+        this.barrel.fly = {
+            fromT: this.barrel.t, fromL: this.barrel.L,
+            toT: Math.max(this.barrelHalfT, Math.min(0.80, this.barrel.t + (-fv.y) * dist)),
+            toL: Math.max(-1 + this.barrelHalfL, Math.min(1 - this.barrelHalfL, this.barrel.L + fv.x * dist)),
+            el: 0, dur: 0.35 + 0.45 * charge,
+            carryZ: fpO.frac * 0.85,      // starts at hand/head height (frac of bg height)
+            peakZ: 0.04 + 0.10 * charge,  // extra arc bump on top, then lands at the floor
+        };
+    }
+
+    _updateBarrelFlight(dt) {
+        const f = this.barrel.fly;
+        f.el += dt;
+        const k = Math.min(1, f.el / f.dur);
+        this.barrel.t = f.fromT + (f.toT - f.fromT) * k;
+        this.barrel.L = f.fromL + (f.toL - f.fromL) * k;
+        // Leave the hands (carryZ) and land on the floor (0), with an arc bump.
+        this.barrel.flyZ = (1 - k) * f.carryZ + Math.sin(Math.PI * k) * f.peakZ;
+        if (k >= 1) { this.barrel.fly = null; this.barrel.flyZ = 0; this._syncBarrelBox(); }
+    }
+
+    // Character — draws the Player's CURRENT pose frame (idle/walk/grab/carry/
+    // throw, chosen by Player.getCurrentFrame), feet (bottom-center) anchored on
+    // the floor point. Sizing keys off the idle-frame height so every pose stays
+    // in proportion (a shorter throw/crouch frame sits lower, not stretched).
     _drawCharacter(ctx) {
         const fp = this._floorPoint(this.t, this.L);
         const spr = this.player && this.player.sprites;
-        const fr = spr && ((spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0])
-            || (spr['down_idle'] && spr['down_idle'][0]));
+        if (!spr) return;
+        const fr = (this.player.getCurrentFrame && this.player.getCurrentFrame())
+            || (spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0]);
+        const idle = (spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0]) || fr;
         if (!fr || !fr.image) return;
-        const spriteH = fp.frac * this.bg.h;
-        const aspect = fr.sw / fr.sh;
-        const spriteW = spriteH * aspect;
-        // While falling in, lift the feet by dropOffset so he descends from the
-        // ceiling straight down onto the floor point (constant size — the ceiling
-        // is directly above the landing spot, i.e. the same depth).
+        // Dungeon px per authored px, from the idle frame → idle keeps its old size.
+        const unit = (fp.frac * this.bg.h) / (idle.height || fr.height);
+        const drawH = fr.height * unit;
+        const drawW = fr.width * unit;
+        // While falling in, lift the feet by dropOffset (constant size).
         const drop = this.dropOffset || 0;
-        const dx = fp.x - spriteW / 2;
-        const dy = fp.y - spriteH - drop;
+        const dx = fp.x - drawW / 2;
+        const dy = fp.y - drawH - drop + (fr.vAlign || 0) * unit;
         ctx.save();
         if (fr.flipped) {
-            ctx.translate(dx + spriteW, dy);
+            ctx.translate(dx + drawW, dy);
             ctx.scale(-1, 1);
-            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, spriteW, spriteH);
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, drawW, drawH);
         } else {
-            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, spriteW, spriteH);
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, drawW, drawH);
         }
         ctx.restore();
     }
 
     // Barrel prop — block_03 from the assets-002 sheet, feet (bottom-center) on
-    // its floor point, sized by perspective like the character. The def coords are
-    // author-resolution; the game sheet is downscaled (getSheetScale).
+    // its floor point, sized by perspective. Lifted by the arc height while thrown.
     _drawBarrel(ctx) {
+        const fp = this._floorPoint(this.barrel.t, this.barrel.L);
+        const h = fp.frac * this.bg.h * this.barrel.scale;
+        const z = (this.barrel.flyZ || 0) * this.bg.h;
+        this._blitBarrel(ctx, fp.x, fp.y - z, h);
+    }
+
+    // Carried barrel — held above the player's head. Keeps its FULL perspective
+    // size (same formula as resting), so picking it up doesn't shrink it; it only
+    // scales with depth as the player walks, like any object in the scene.
+    _drawCarriedBarrel(ctx) {
+        const fp = this._floorPoint(this.t, this.L);
+        const playerH = fp.frac * this.bg.h;      // idle-height reference at this depth
+        const h = fp.frac * this.bg.h * this.barrel.scale;
+        this._blitBarrel(ctx, fp.x, fp.y - playerH * 0.85, h);
+    }
+
+    // Shared barrel blit: draw block_03 with bottom-centre at (cx, bottomY), height h.
+    // Def coords are author-resolution; the game sheet is downscaled (getSheetScale).
+    _blitBarrel(ctx, cx, bottomY, h) {
         const defs = this.game.getJSON('block_defs');
         const def = defs && defs.assets && defs.assets[this.barrel.defKey];
         const sheet = this.game.getDrawable('block_sheet');
         if (!def || !sheet) return;
-        const fp = this._floorPoint(this.barrel.t, this.barrel.L);
-        const h = fp.frac * this.bg.h * this.barrel.scale;
         const w = h * (def.w / def.h);
         const S = this.game.getSheetScale('block_sheet');
         ctx.drawImage(sheet, def.x * S, def.y * S, def.w * S, def.h * S,
-            fp.x - w / 2, fp.y - h, w, h);
+            cx - w / 2, bottomY - h, w, h);
     }
 
     render(ctx) {
@@ -293,8 +478,12 @@ class DungeonScreen {
 
         // Floor objects (barrel + character) share the floor and must respect
         // depth: whichever sits further back (larger t) draws first so the nearer
-        // one overlaps it. The barrel never moves; the character does.
-        if (this.barrel && this.barrel.t > this.t) {
+        // one overlaps it. While carried, the barrel rides above the head and is
+        // drawn with the character (on top).
+        if (this._barrelCarried()) {
+            this._drawCharacter(ctx);
+            this._drawCarriedBarrel(ctx);
+        } else if (this.barrel && this.barrel.t > this.t) {
             this._drawBarrel(ctx); this._drawCharacter(ctx);
         } else {
             this._drawCharacter(ctx);
