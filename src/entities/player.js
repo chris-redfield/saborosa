@@ -239,7 +239,10 @@ class Player {
         this.rechargeFlash = 1;
     }
 
-    update(dt) {
+    // Drain the hustle/charge bar toward 0 and fade the pump highlight. Split out
+    // of update() so screens that drive the player themselves (the dungeon) can
+    // run the same bar behaviour without re-running movement/physics.
+    updateCharge(dt) {
         // Reverse force: the charge bar empties on its own, always settling
         // back to 0. The drain is gentler while the bar is just getting going
         // (≤25% → ~0.60/sec) and ramps up to the full ~0.87/sec at a full bar,
@@ -264,6 +267,10 @@ class Player {
         if (this.rechargeFlash > 0) {
             this.rechargeFlash = Math.max(0, this.rechargeFlash - dt / 0.4);
         }
+    }
+
+    update(dt) {
+        this.updateCharge(dt);
 
         this.advanceAnimations();
 

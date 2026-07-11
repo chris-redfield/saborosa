@@ -242,6 +242,8 @@ function enterDungeon() {
     p.throwAnimating = false;
     p.actionAnimating = false;
     p._liftHoldStart = null;
+    p.dashCharge = 0;       // start the hustle bar empty
+    p.rechargeFlash = 0;
     const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
     gameState.dungeon = new DungeonScreen(game, p, cfg);
     gameState.dungeonTransition = null;

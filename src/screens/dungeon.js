@@ -262,11 +262,17 @@ class DungeonScreen {
         const dL = mv.x;
         const p = this.params;
 
+        // Hustle/charge bar (same as the overworld): mash the dash key to pump the
+        // bar against its steady drain; its level scales move speed up to dashSpeed.
+        this.player.updateCharge(dt);
+        if (this.game.input.isKeyJustPressed('dash')) this.player.chargeUp();
+        const hustle = Math.max(1, this.player.dashCharge * this.player.dashSpeed);
+
         // Constant ground speed: cover fewer screen px per step the farther away.
         const persp = p.perspSpeed ? (this._fracAt(this.t) / this._fracAt(0)) : 1;
         const oldT = this.t, oldL = this.L;
-        let nt = Math.max(0, Math.min(1, oldT + dT * p.moveSpeed * persp * dt));
-        let nl = Math.max(-1, Math.min(1, oldL + dL * p.moveSpeed * dt));
+        let nt = Math.max(0, Math.min(1, oldT + dT * p.moveSpeed * persp * hustle * dt));
+        let nl = Math.max(-1, Math.min(1, oldL + dL * p.moveSpeed * hustle * dt));
 
         // Collision: the cat furnace boxes are immovable (block + slide). Resolve
         // against them first, then push the barrel if the player walks into it.
@@ -506,10 +512,32 @@ class DungeonScreen {
             ctx.fillRect(0, 0, g.width, g.height);
         }
 
+        this._drawHustleBar(ctx);
+
         // Exit hint — press E to climb back out to the overworld.
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = '13px monospace';
         ctx.fillText('[E] climb out', 14, g.height - 16);
+    }
+
+    // Hustle/charge bar — same look as the overworld HUD (top-left): empty by
+    // default, drains on its own, brightens the freshly-pumped leading segment.
+    _drawHustleBar(ctx) {
+        const barX = 10, barY = 24, barW = 60, barH = 6;
+        const fill = this.player.dashCharge;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = fill >= 1 ? '#4f4' : '#2a2';
+        ctx.fillRect(barX, barY, barW * fill, barH);
+        const flash = this.player.rechargeFlash;
+        if (flash > 0 && fill > 0) {
+            const filledW = barW * fill;
+            const segW = Math.min(filledW, barW * 0.11);
+            ctx.globalAlpha = flash;
+            ctx.fillStyle = '#dfffdf';
+            ctx.fillRect(barX + filledW - segW, barY, segW, barH);
+            ctx.globalAlpha = 1;
+        }
     }
 
     // C-key debug overlay — mirrors the overworld (stage 3): collision boxes in
