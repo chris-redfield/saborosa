@@ -119,7 +119,21 @@ const STAGES = {
         enemyPlacements: 'enemy_placements',
         // Dungeon interior reached by falling into a hole (see dungeon.js). The
         // perspective params default from the tuning tool; override here if needed.
-        dungeon: { bg: 'dungeon_bg', nativeW: 1022, nativeH: 819 },
+        // statueBoxes = cat-furnace collision, authored in tools/dungeon-perspective.html
+        // (Cat Collision tab): a body box on the back wall + two paw boxes poking forward.
+        dungeon: {
+            bg: 'dungeon_bg', nativeW: 1022, nativeH: 819,
+            // Perspective override. perspLock:false makes the game honor the
+            // explicit fracFar (sprite size far) instead of back-computing it from
+            // the floor geometry — matches the tool with "lock far size" UNCHECKED,
+            // so the character no longer shrinks too much at the back wall.
+            perspective: { perspLock: false, fracNear: 0.160, fracFar: 0.08 },
+            statueBoxes: [
+                { name: 'body',  tMin: 0.919, tMax: 1.000, lMin: -0.544, lMax: 0.553 },
+                { name: 'paw L', tMin: 0.872, tMax: 0.974, lMin: -0.475, lMax: -0.144 },
+                { name: 'paw R', tMin: 0.872, tMax: 0.956, lMin: 0.148, lMax: 0.482 },
+            ],
+        },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.

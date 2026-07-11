@@ -51,13 +51,42 @@ class DungeonScreen {
         this.gatoDur = 0.2;
         this.gatoOffsetX = -10; // nudge the statue left of the bg-aligned position (screen px)
 
-        // Statue collision: a solid box on the back-centre floor, expressed in
-        // the same (t: depth, L: lateral) space the player moves in. Derived from
-        // the art's opaque footprint (base at depth ~0.90, spanning L≈-0.36..0.48),
-        // pulled a touch forward so the player stops just in front. Walk around
-        // the sides (L outside the band) to reach the back corners. Stage-tunable
-        // via cfg.statue.
-        this.statue = Object.assign({ tFront: 0.85, lMin: -0.42, lMax: 0.50 }, cfg.statue || {});
+        // Statue (cat furnace) collision: a UNION of axis-aligned boxes on the
+        // back-centre floor, in the same (t: depth, L: lateral) space the player
+        // moves in. A big body box plus two small paw boxes poking forward, so the
+        // player stops on the paws too. Each box is { tMin, tMax, lMin, lMax }
+        // (tMin = front edge nearest the camera). Tune with tools/dungeon-perspective.html
+        // (Cat Collision tab) and paste the exported array as cfg.statueBoxes.
+        // Back-compat: an old single cfg.statue { tFront, lMin, lMax } is converted.
+        this.statueBoxes = cfg.statueBoxes
+            ? cfg.statueBoxes.map(b => ({ tMin: b.tMin, tMax: b.tMax != null ? b.tMax : 1, lMin: b.lMin, lMax: b.lMax }))
+            : cfg.statue
+                ? [{ tMin: cfg.statue.tFront, tMax: 1, lMin: cfg.statue.lMin, lMax: cfg.statue.lMax }]
+                : [
+                    { name: 'body',  tMin: 0.85, tMax: 1.00, lMin: -0.42, lMax: 0.50 },
+                    { name: 'paw L', tMin: 0.80, tMax: 0.90, lMin: -0.42, lMax: -0.14 },
+                    { name: 'paw R', tMin: 0.80, tMax: 0.90, lMin: 0.22, lMax: 0.50 },
+                  ];
+
+        // A barrel prop (block_03 from the assets-002 sheet) dropped at a RANDOM
+        // floor spot every time the dungeon is entered (this screen is rebuilt on
+        // each entry, so a fresh Math.random() here reshuffles it). Kept in front
+        // of the cat (t well below the statue band) and off the side walls + the
+        // spawn point so it never lands on top of the player or the furnace. It's
+        // solid: a small (t,L) footprint added to the collision boxes.
+        const rnd = (a, b) => a + Math.random() * (b - a);
+        this.barrel = {
+            defKey: 'block_03',
+            t: rnd(0.30, 0.72),
+            L: rnd(-0.70, 0.70),
+            scale: cfg.barrelScale != null ? cfg.barrelScale : 1.0,
+        };
+        const bt = 0.028, bl = 0.06; // collision half-extents in (t, L)
+        this.barrel.box = {
+            name: 'barrel',
+            tMin: this.barrel.t - bt, tMax: this.barrel.t + bt,
+            lMin: this.barrel.L - bl, lMax: this.barrel.L + bl,
+        };
 
         // Fall from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps timestep). Movement is locked until he
@@ -110,6 +139,36 @@ class DungeonScreen {
         };
     }
 
+    // All solid collision boxes: the cat furnace + the barrel prop.
+    _solidBoxes() {
+        return this.barrel ? this.statueBoxes.concat(this.barrel.box) : this.statueBoxes;
+    }
+
+    // Reject the player from every solid box with per-axis resolution (depth
+    // first, then lateral) so faces block but corners stay passable.
+    _resolveStatue(oldT, oldL, nt, nl) {
+        const boxes = this._solidBoxes();
+        let rt = nt, rl = oldL;
+        for (const b of boxes) {
+            if (rl > b.lMin && rl < b.lMax) {
+                if (oldT <= b.tMin && rt > b.tMin) rt = b.tMin;
+                else if (oldT >= b.tMax && rt < b.tMax) rt = b.tMax;
+            }
+        }
+        rl = nl;
+        for (const b of boxes) {
+            // tMax INCLUSIVE: a box whose back edge is on the wall (tMax=1) must
+            // still block lateral entry when the player is pinned at the wall, or
+            // they slide straight through the footprint behind it. tMin stays
+            // EXCLUSIVE so sliding along the front face still works.
+            if (rt > b.tMin && rt <= b.tMax) {
+                if (oldL <= b.lMin && rl > b.lMin) rl = b.lMin;
+                else if (oldL >= b.lMax && rl < b.lMax) rl = b.lMax;
+            }
+        }
+        return { t: rt, L: rl };
+    }
+
     update(dt) {
         this._layout();
 
@@ -148,18 +207,12 @@ class DungeonScreen {
         let nt = Math.max(0, Math.min(1, oldT + dT * p.moveSpeed * persp * dt));
         let nl = Math.max(-1, Math.min(1, oldL + dL * p.moveSpeed * dt));
 
-        // Statue collision (solid box on the back wall). Resolve depth first, then
-        // lateral: block walking deeper into it, but allow sliding along the front
-        // face and around the sides. The per-axis check keeps corners passable.
-        const sb = this.statue;
-        if (sb) {
-            const inBandOld = oldL >= sb.lMin && oldL <= sb.lMax;
-            if (inBandOld && nt > sb.tFront) nt = sb.tFront;
-            const inBandNew = nl >= sb.lMin && nl <= sb.lMax;
-            if (inBandNew && nt > sb.tFront) nl = oldL;
-        }
-        this.t = nt;
-        this.L = nl;
+        // Statue collision (union of solid boxes). Resolve depth first, then
+        // lateral, against every box: block walking into a face, but allow sliding
+        // along faces and around the sides. Per-axis keeps corners passable.
+        const r = this._resolveStatue(oldT, oldL, nt, nl);
+        this.t = r.t;
+        this.L = r.L;
 
         const up = dT > 0, down = dT < 0, right = dL > 0, left = dL < 0;
         if (up && right) this.facing = 'up_right';
@@ -172,6 +225,50 @@ class DungeonScreen {
         else if (left) this.facing = 'left';
 
         if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
+    }
+
+    // Character — reuse the equipped pack's idle frame for the facing, feet
+    // (bottom-center) anchored on the floor point, sized by perspective.
+    _drawCharacter(ctx) {
+        const fp = this._floorPoint(this.t, this.L);
+        const spr = this.player && this.player.sprites;
+        const fr = spr && ((spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0])
+            || (spr['down_idle'] && spr['down_idle'][0]));
+        if (!fr || !fr.image) return;
+        const spriteH = fp.frac * this.bg.h;
+        const aspect = fr.sw / fr.sh;
+        const spriteW = spriteH * aspect;
+        // While falling in, lift the feet by dropOffset so he descends from the
+        // ceiling straight down onto the floor point (constant size — the ceiling
+        // is directly above the landing spot, i.e. the same depth).
+        const drop = this.dropOffset || 0;
+        const dx = fp.x - spriteW / 2;
+        const dy = fp.y - spriteH - drop;
+        ctx.save();
+        if (fr.flipped) {
+            ctx.translate(dx + spriteW, dy);
+            ctx.scale(-1, 1);
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, spriteW, spriteH);
+        } else {
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, spriteW, spriteH);
+        }
+        ctx.restore();
+    }
+
+    // Barrel prop — block_03 from the assets-002 sheet, feet (bottom-center) on
+    // its floor point, sized by perspective like the character. The def coords are
+    // author-resolution; the game sheet is downscaled (getSheetScale).
+    _drawBarrel(ctx) {
+        const defs = this.game.getJSON('block_defs');
+        const def = defs && defs.assets && defs.assets[this.barrel.defKey];
+        const sheet = this.game.getDrawable('block_sheet');
+        if (!def || !sheet) return;
+        const fp = this._floorPoint(this.barrel.t, this.barrel.L);
+        const h = fp.frac * this.bg.h * this.barrel.scale;
+        const w = h * (def.w / def.h);
+        const S = this.game.getSheetScale('block_sheet');
+        ctx.drawImage(sheet, def.x * S, def.y * S, def.w * S, def.h * S,
+            fp.x - w / 2, fp.y - h, w, h);
     }
 
     render(ctx) {
@@ -194,31 +291,14 @@ class DungeonScreen {
             ctx.drawImage(gato, this.bg.x + this.gatoOffsetX, this.bg.y, this.bg.w, this.bg.h);
         }
 
-        // Character — reuse the equipped pack's idle frame for the facing, feet
-        // (bottom-center) anchored on the floor point, sized by perspective.
-        const fp = this._floorPoint(this.t, this.L);
-        const spr = this.player && this.player.sprites;
-        const fr = spr && ((spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0])
-            || (spr['down_idle'] && spr['down_idle'][0]));
-        const spriteH = fp.frac * this.bg.h;
-        if (fr && fr.image) {
-            const aspect = fr.sw / fr.sh;
-            const spriteW = spriteH * aspect;
-            // While falling in, lift the feet by dropOffset so he descends from
-            // the ceiling straight down onto the floor point (constant size — the
-            // ceiling is directly above the landing spot, i.e. the same depth).
-            const drop = this.dropOffset || 0;
-            const dx = fp.x - spriteW / 2;
-            const dy = fp.y - spriteH - drop;
-            ctx.save();
-            if (fr.flipped) {
-                ctx.translate(dx + spriteW, dy);
-                ctx.scale(-1, 1);
-                ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, spriteW, spriteH);
-            } else {
-                ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, spriteW, spriteH);
-            }
-            ctx.restore();
+        // Floor objects (barrel + character) share the floor and must respect
+        // depth: whichever sits further back (larger t) draws first so the nearer
+        // one overlaps it. The barrel never moves; the character does.
+        if (this.barrel && this.barrel.t > this.t) {
+            this._drawBarrel(ctx); this._drawCharacter(ctx);
+        } else {
+            this._drawCharacter(ctx);
+            if (this.barrel) this._drawBarrel(ctx);
         }
 
         if (this.fadeIn > 0) {
@@ -254,15 +334,13 @@ class DungeonScreen {
         quad([corner(0, -1), corner(0, 1), corner(1, 1), corner(1, -1)],
             'rgba(83,216,251,0.7)', null);
 
-        // Cat-furnace (statue) collision box — the solid region t>=tFront within
-        // L∈[lMin,lMax], drawn as a red trapezoid with its front stop-face bright.
-        const sb = this.statue;
-        if (sb) {
-            quad([corner(sb.tFront, sb.lMin), corner(sb.tFront, sb.lMax),
-                  corner(1, sb.lMax), corner(1, sb.lMin)],
+        // Collision boxes (cat furnace + barrel) — each drawn as a red trapezoid
+        // with its front stop-face (what blocks the player) in bright yellow.
+        for (const b of this._solidBoxes()) {
+            quad([corner(b.tMin, b.lMin), corner(b.tMin, b.lMax),
+                  corner(b.tMax, b.lMax), corner(b.tMax, b.lMin)],
                 'rgba(233,69,96,0.9)', 'rgba(233,69,96,0.22)');
-            // Front stop-face (what actually blocks the player) in bright yellow.
-            const fL = corner(sb.tFront, sb.lMin), fR = corner(sb.tFront, sb.lMax);
+            const fL = corner(b.tMin, b.lMin), fR = corner(b.tMin, b.lMax);
             ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
         }
@@ -279,7 +357,7 @@ class DungeonScreen {
         ctx.font = '12px monospace';
         ctx.fillText(`Location: ${this.name}`, 10, g.height - 54);
         ctx.fillText(`t: ${this.t.toFixed(3)}  L: ${this.L.toFixed(3)}  facing: ${this.facing}`, 10, g.height - 36);
-        if (sb) ctx.fillText(`furnace box  tFront:${sb.tFront}  L:[${sb.lMin}, ${sb.lMax}]`, 10, g.height - 16);
+        ctx.fillText(`furnace boxes: ${this.statueBoxes.length}`, 10, g.height - 16);
 
         // Perf panel (top right) — identical to the overworld.
         if (window.PERF) window.PERF.render(ctx, g);

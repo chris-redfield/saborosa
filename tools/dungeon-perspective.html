@@ -51,12 +51,21 @@
   <div id="side"></div>
 </div>
 <script>
-const A = '../assets/';
 // In-game dungeon assets (see src/engine/game.js + src/screens/dungeon.js).
-const DUNGEON = A + 'saborosa-dungeon-fundo-novo.png';
-const GATO = [A+'saborosa-dungeon-gato-01.png', A+'saborosa-dungeon-gato-02.png', A+'saborosa-dungeon-gato-03.png'];
-const CHAR_SHEET = A + 'saborosa-cha-001.png';
-const CHAR_DEFS = A + 'saborosa-cha-001-sprites.json';
+// Referenced by BARE FILENAME and resolved at load time against several possible
+// base paths (see loadAsset) so the tool works no matter where the server root is
+// (repo root, /tools, etc.) or whether it's opened over file://.
+const DUNGEON_FILE = 'saborosa-dungeon-fundo-novo.png';
+const GATO_FILES = ['saborosa-dungeon-gato-01.png', 'saborosa-dungeon-gato-02.png', 'saborosa-dungeon-gato-03.png'];
+const CHAR_FILE = 'saborosa-cha-001.png';
+// Idle frames inlined from saborosa-cha-001-sprites.json (so the sprite renders
+// under file:// too, where fetch() is CORS-blocked).
+const CHAR_FRAMES = {
+  down:{x:237,y:353,w:145,h:109}, up:{x:241,y:77,w:145,h:109},
+  left:{x:55,y:219,w:145,h:109}, right:{x:422,y:215,w:145,h:109},
+  down_right:{x:391,y:346,w:145,h:109}, down_left:{x:75,y:345,w:145,h:109},
+  up_right:{x:398,y:94,w:145,h:109}, up_left:{x:75,y:106,w:145,h:109},
+};
 
 // The cat statue is a full-canvas overlay nudged left by this many screen px in
 // dungeon.js (gatoOffsetX = -10) relative to a ~898px-wide displayed bg. Kept as
@@ -76,9 +85,17 @@ const params = {
   perspLock: true, perspSpeed: true, showGuides: true,
 };
 
-// Cat-furnace collision box, in the same (t: depth, L: lateral) space the player
-// moves in — matches DungeonScreen.statue defaults in src/screens/dungeon.js.
-const statue = { tFront: 0.85, lMin: -0.42, lMax: 0.50 };
+// Cat-furnace collision as a UNION of axis-aligned boxes in (t: depth, L:
+// lateral) space — the space the player moves in. A big body box plus two small
+// paw boxes poking forward. Each box is { tMin, tMax, lMin, lMax } (tMin = front
+// edge nearest the camera, tMax = back edge). The game reads this array as
+// cfg.statueBoxes; see DungeonScreen in src/screens/dungeon.js.
+let statueBoxes = [
+  { name:'body',  tMin:0.85, tMax:1.00, lMin:-0.42, lMax:0.50 },
+  { name:'paw L', tMin:0.80, tMax:0.90, lMin:-0.42, lMax:-0.14 },
+  { name:'paw R', tMin:0.80, tMax:0.90, lMin: 0.22, lMax:0.50 },
+];
+let selBox = 0;          // index of the box whose vertices are draggable
 
 const SLIDERS = [
   ['vpX','vanishing X',0,1,0.005],
@@ -91,12 +108,6 @@ const SLIDERS = [
   ['fracFar','sprite size far',0.01,0.3,0.005],
   ['sizeScale','player size (baseline)',0.2,3,0.01],
   ['moveSpeed','move speed',0.05,1.5,0.01],
-];
-// Cat collision sliders operate on the `statue` object.
-const STATUE_SLIDERS = [
-  ['tFront','front depth (t: 0 near .. 1 far)',0,1,0.005],
-  ['lMin','left edge (L: -1 .. 1)',-1,1,0.005],
-  ['lMax','right edge (L: -1 .. 1)',-1,1,0.005],
 ];
 
 // ---- state ----------------------------------------------------------------
@@ -111,25 +122,54 @@ let charImg = null, charFrames = null;
 let bg = { x:0, y:0, w:0, h:0 };
 
 const DUN_W = 1022, DUN_H = 819;   // native dungeon dimensions (fundo-novo)
+const loadErrors = [];             // filenames that failed (shown on-canvas)
+
+// Candidate base paths for the assets folder, tried in order. Covers: tool under
+// /tools with server root = repo root ('../assets/'), server root = repo root
+// accessed absolutely ('/assets/'), tool served alongside assets ('assets/'),
+// and deeper nesting. The first base that yields a real image is remembered and
+// reused for the rest, so we only probe once.
+const ASSET_BASES = ['../assets/', '/assets/', 'assets/', '../../assets/', './assets/'];
+let assetBase = null;
+let triedURLs = [];                // every URL we attempted (for the error banner)
 
 // ---- loading ---------------------------------------------------------------
-function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+// Load a single URL; resolves to the Image or null (never rejects/hangs).
+function tryLoad(url){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i);
+  i.onerror=()=>r(null); i.src=url; }); }
+// Resolve a bare filename against the candidate bases.
+async function loadAsset(name){
+  if (assetBase){ const im = await tryLoad(assetBase + name); if (im) return im; }
+  for (const b of ASSET_BASES){
+    const url = b + name; triedURLs.push(url);
+    const im = await tryLoad(url);
+    if (im){ assetBase = b; return im; }
+  }
+  console.warn('asset failed to load from every base:', name);
+  loadErrors.push(name);
+  return null;
+}
 async function boot(){
-  [bgImg, charImg] = await Promise.all([loadImg(DUNGEON), loadImg(CHAR_SHEET)]);
-  gatoImgs = await Promise.all(GATO.map(loadImg));
-  try {
-    const d = await (await fetch(CHAR_DEFS, {cache:'no-cache'})).json();
-    charFrames = {
-      down: d.down_idle[0], up: d.up_idle[0], left: d.left_idle[0], right: d.right_idle[0],
-      down_right: d.down_right_idle[0], down_left: d.down_left_idle[0],
-      up_right: d.up_right_idle[0], up_left: d.up_left_idle[0],
-    };
-  } catch(e){ console.warn('char defs failed', e); }
+  // Wire the UI + start the render loop IMMEDIATELY, before any await, so the
+  // tabs are clickable and the canvas paints even while (or if) assets are still
+  // loading. draw() guards against not-yet-loaded images.
   setupTabs();
   buildPanel();
   resize();
   requestAnimationFrame(loop);
-  status('ready · drive with WASD');
+  status('loading assets…');
+
+  bgImg = await loadAsset(DUNGEON_FILE);
+  charImg = await loadAsset(CHAR_FILE);
+  gatoImgs = (await Promise.all(GATO_FILES.map(loadAsset))).filter(Boolean);
+
+  // Idle frame coords, inlined from saborosa-cha-001-sprites.json so the sprite
+  // shows even under the file:// protocol (where fetch() is CORS-blocked). If the
+  // sheet ever changes, re-copy these from the JSON.
+  charFrames = CHAR_FRAMES;
+
+  status(loadErrors.length ? ('⚠ ' + loadErrors.length + ' asset(s) failed — see canvas')
+                           : ('ready · assets from "' + assetBase + '" · drive with WASD'));
 }
 function status(s){ document.getElementById('status').textContent = s; }
 
@@ -168,12 +208,53 @@ function floorPoint(tt, LL){
   const xN = params.vpX + LL * halfW;
   return { x: bg.x + xN * bg.w, y: bg.y + yN * bg.h, frac: fracAt(tt), halfW };
 }
+// Inverse of floorPoint: screen px → (t, L). Used to drag box vertices with the
+// mouse. t is solved from the (linear) Y mapping, then L from the width at that t.
+function screenToTL(mx, my){
+  const yN = (my - bg.y) / bg.h;
+  const denom = (params.yFar - params.yNear) || 1e-6;
+  let tt = (yN - params.yNear) / denom;
+  tt = Math.max(0, Math.min(1, tt));
+  const halfW = lerp(params.halfNear, params.halfFar, tt) || 1e-6;
+  const xN = (mx - bg.x) / bg.w;
+  let LL = (xN - params.vpX) / halfW;
+  LL = Math.max(-1, Math.min(1, LL));
+  return { t: tt, L: LL };
+}
+
+// General multi-box collision in (t, L): reject the player from every box with
+// per-axis resolution (resolve depth, then lateral) so faces block but corners
+// stay passable — same feel as the old single box, now for the whole union.
+const EPS = 0.02; // keep box edges from crossing when dragging
+function resolveBoxes(oldT, oldL, nt, nl, boxes){
+  let rt = nt, rl = oldL;
+  for (const b of boxes){
+    if (rl > b.lMin && rl < b.lMax){
+      if (oldT <= b.tMin && rt > b.tMin) rt = b.tMin;       // blocked entering the front
+      else if (oldT >= b.tMax && rt < b.tMax) rt = b.tMax;  // blocked entering the back
+    }
+  }
+  rl = nl;
+  for (const b of boxes){
+    // tMax is INCLUSIVE here: a box whose back edge sits on the wall (tMax=1)
+    // must still block lateral entry when the player is pinned at the wall,
+    // otherwise they slide straight through the footprint behind it. tMin stays
+    // EXCLUSIVE so sliding along the front face still works.
+    if (rt > b.tMin && rt <= b.tMax){
+      if (oldL <= b.lMin && rl > b.lMin) rl = b.lMin;       // blocked entering the left
+      else if (oldL >= b.lMax && rl < b.lMax) rl = b.lMax;  // blocked entering the right
+    }
+  }
+  return { t: rt, L: rl };
+}
 
 // ---- update ----------------------------------------------------------------
 let last = 0;
 function update(dt){
-  gatoTimer += dt;
-  if (gatoTimer >= 0.2) { gatoTimer -= 0.2; gatoFrame = (gatoFrame + 1) % gatoImgs.length; }
+  if (gatoImgs.length) {
+    gatoTimer += dt;
+    if (gatoTimer >= 0.2) { gatoTimer -= 0.2; gatoFrame = (gatoFrame + 1) % gatoImgs.length; }
+  }
 
   let dT = 0, dL = 0;
   if (keys['w'] || keys['arrowup'])    dT += 1;
@@ -186,13 +267,11 @@ function update(dt){
   let nt = Math.max(0, Math.min(1, oldT + dT * params.moveSpeed * persp * dt));
   let nl = Math.max(-1, Math.min(1, oldL + dL * params.moveSpeed * dt));
 
-  // Cat mode: apply the SAME statue collision the game uses, so the box can be
-  // felt while tuning. Resolve depth first, then lateral (corners stay passable).
+  // Cat mode: apply the SAME multi-box collision the game uses, so the boxes can
+  // be felt while tuning.
   if (mode === 'cat') {
-    const inBandOld = oldL >= statue.lMin && oldL <= statue.lMax;
-    if (inBandOld && nt > statue.tFront) nt = statue.tFront;
-    const inBandNew = nl >= statue.lMin && nl <= statue.lMax;
-    if (inBandNew && nt > statue.tFront) nl = oldL;
+    const r = resolveBoxes(oldT, oldL, nt, nl, statueBoxes);
+    nt = r.t; nl = r.L;
   }
   t = nt; L = nl;
 
@@ -211,15 +290,15 @@ function update(dt){
 function draw(){
   ctx.fillStyle = '#0c1020'; ctx.fillRect(0,0,cv.width,cv.height);
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(bgImg, bg.x, bg.y, bg.w, bg.h);
+  if (bgImg) ctx.drawImage(bgImg, bg.x, bg.y, bg.w, bg.h);
 
   // Cat statue overlay (full-canvas, aligned to bg with the same nudge as game).
-  if (gatoImgs.length) {
+  if (gatoImgs.length && gatoImgs[gatoFrame]) {
     ctx.drawImage(gatoImgs[gatoFrame], bg.x + GATO_OFFSET_FRAC * bg.w, bg.y, bg.w, bg.h);
   }
 
   if (params.showGuides && mode === 'perspective') drawGuides();
-  if (mode === 'cat') drawStatueBox();
+  if (mode === 'cat') drawStatueBoxes();
 
   // The character.
   const p = floorPoint(t, L);
@@ -239,7 +318,39 @@ function draw(){
   ctx.fillStyle = '#53d8fb';
   ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, 7); ctx.fill();
 
+  if (loadErrors.length) drawLoadError();
   updateReadout(p);
+}
+
+// Big visible banner if images couldn't load, with the actual URLs tried and
+// guidance tailored to how the page was opened (file:// vs a mis-rooted server).
+function drawLoadError(){
+  const isFile = location.protocol === 'file:';
+  const lines = isFile ? [
+    '⚠ ' + loadErrors.length + ' image(s) failed to load.',
+    'You opened this over file:// — the browser is blocking access to ../assets/.',
+    'Fix: serve the repo over http from the REPO ROOT, then open:',
+    '  http://localhost:8000/tools/dungeon-perspective.html',
+    '  (repo root:  python3 -m http.server 8000 )',
+  ] : [
+    '⚠ ' + loadErrors.length + ' image(s) failed to load over ' + location.protocol,
+    'The assets folder was not found from this page. Your server root must be',
+    'the REPO ROOT, with this tool at /tools/dungeon-perspective.html so that',
+    '/assets/... resolves. Current page: ' + location.pathname,
+    'Tried: ' + triedURLs.slice(0, 5).join('  '),
+  ];
+  lines.push('');
+  lines.push('Missing: ' + loadErrors.join(', '));
+  const w = Math.min(cv.width - 40, 860), lh = 22, h = lines.length * lh + 24;
+  const x = (cv.width - w) / 2, y = 20;
+  ctx.fillStyle = 'rgba(20,8,12,0.92)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#e94560'; ctx.lineWidth = 2; ctx.strokeRect(x, y, w, h);
+  ctx.font = '13px monospace'; ctx.textBaseline = 'top';
+  for (let i = 0; i < lines.length; i++){
+    ctx.fillStyle = i === 0 ? '#ffd166' : '#f4cdd6';
+    ctx.fillText(lines[i], x + 14, y + 14 + i * lh);
+  }
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawGuides(){
@@ -258,24 +369,60 @@ function drawGuides(){
   ctx.moveTo(vx,vy-8); ctx.lineTo(vx,vy+8); ctx.stroke();
 }
 
-// The red collision box: solid region t>=tFront within L∈[lMin,lMax], drawn as a
-// perspective trapezoid with its front stop-face (what blocks the player) bright.
-function drawStatueBox(){
-  const fL = floorPoint(statue.tFront, statue.lMin);
-  const fR = floorPoint(statue.tFront, statue.lMax);
-  const bR = floorPoint(1, statue.lMax);
-  const bL = floorPoint(1, statue.lMin);
-  ctx.beginPath();
-  ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y);
-  ctx.lineTo(bR.x, bR.y); ctx.lineTo(bL.x, bL.y); ctx.closePath();
-  ctx.fillStyle = 'rgba(233,69,96,0.22)'; ctx.fill();
-  ctx.strokeStyle = 'rgba(233,69,96,0.9)'; ctx.lineWidth = 2; ctx.stroke();
-  // Front stop-face highlighted.
-  ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
-  ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
-  // Corner handles.
-  ctx.fillStyle = '#ffd166';
-  for (const c of [fL, fR, bR, bL]) { ctx.beginPath(); ctx.arc(c.x, c.y, 3.5, 0, 7); ctx.fill(); }
+// Draggable handles for a box: 4 corners (set two edges) + 4 edge midpoints (set
+// one edge). Each carries the screen px + which edge key(s) it drives.
+function boxHandles(b){
+  const midT = (b.tMin + b.tMax) / 2, midL = (b.lMin + b.lMax) / 2;
+  const P = (tt, LL) => { const p = floorPoint(tt, LL); return { x: p.x, y: p.y }; };
+  return [
+    // corners
+    { ...P(b.tMin, b.lMin), keys:['tMin','lMin'], corner:true },
+    { ...P(b.tMin, b.lMax), keys:['tMin','lMax'], corner:true },
+    { ...P(b.tMax, b.lMax), keys:['tMax','lMax'], corner:true },
+    { ...P(b.tMax, b.lMin), keys:['tMax','lMin'], corner:true },
+    // edge midpoints
+    { ...P(b.tMin, midL), keys:['tMin'], corner:false },
+    { ...P(b.tMax, midL), keys:['tMax'], corner:false },
+    { ...P(midT, b.lMin), keys:['lMin'], corner:false },
+    { ...P(midT, b.lMax), keys:['lMax'], corner:false },
+  ];
+}
+
+// The red collision boxes, each an axis-aligned (t,L) rect drawn as a perspective
+// trapezoid. The selected box is bright with its front face highlighted + draggable
+// vertex/edge handles; the others are dimmed (click to select).
+function drawStatueBoxes(){
+  statueBoxes.forEach((b, i) => {
+    const sel = i === selBox;
+    const fL = floorPoint(b.tMin, b.lMin), fR = floorPoint(b.tMin, b.lMax);
+    const bR = floorPoint(b.tMax, b.lMax), bL = floorPoint(b.tMax, b.lMin);
+    ctx.beginPath();
+    ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y);
+    ctx.lineTo(bR.x, bR.y); ctx.lineTo(bL.x, bL.y); ctx.closePath();
+    ctx.fillStyle = sel ? 'rgba(233,69,96,0.24)' : 'rgba(233,69,96,0.10)';
+    ctx.fill();
+    ctx.strokeStyle = sel ? 'rgba(233,69,96,0.95)' : 'rgba(233,69,96,0.45)';
+    ctx.lineWidth = sel ? 2 : 1.5; ctx.stroke();
+    // Front stop-face highlighted (what actually blocks the player).
+    ctx.strokeStyle = sel ? '#ffd166' : 'rgba(255,209,102,0.5)';
+    ctx.lineWidth = sel ? 3 : 2;
+    ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
+    // Label near the box's front-center.
+    const lc = floorPoint(b.tMin, (b.lMin + b.lMax) / 2);
+    ctx.fillStyle = sel ? '#ffe6a0' : 'rgba(255,230,160,0.55)';
+    ctx.font = '11px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.fillText(b.name || ('box ' + i), lc.x, lc.y - 6);
+    ctx.textAlign = 'start'; ctx.textBaseline = 'alphabetic';
+  });
+  // Handles only for the selected box, drawn on top.
+  const b = statueBoxes[selBox];
+  if (b) {
+    for (const h of boxHandles(b)) {
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.corner ? 6 : 5, 0, 7);
+      ctx.fillStyle = h.corner ? '#ffd166' : '#53d8fb';
+      ctx.fill(); ctx.strokeStyle = '#1a1a2e'; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+  }
 }
 
 // ---- side panel ------------------------------------------------------------
@@ -291,12 +438,13 @@ function buildPanel(){
     addCheckbox(g2, 'perspSpeed', 'constant ground speed (slower when far)');
     addCheckbox(g2, 'showGuides', 'show floor guides');
   } else {
-    const g1 = group(side, 'Cat Collision Box');
+    const g1 = group(side, 'Cat Collision Boxes');
     const hint = document.createElement('div'); hint.className = 'hint';
-    hint.style.marginBottom = '4px';
-    hint.textContent = 'Front face (yellow) is where the player stops. Box extends back to t=1. Walk in to test.';
+    hint.style.marginBottom = '6px';
+    hint.innerHTML = 'Drag the <b style="color:#ffd166">yellow corners</b> / <b style="color:#53d8fb">blue edges</b> on the canvas. ' +
+      'Yellow = front stop-face. Click a box to select it. Walk in (WASD) to feel it.';
     g1.appendChild(hint);
-    for (const [k,label,min,max,step] of STATUE_SLIDERS) addSlider(g1, statue, k, label, min, max, step);
+    buildBoxList(g1);
   }
 
   const g3 = group(side, 'Readout');
@@ -305,7 +453,7 @@ function buildPanel(){
   const g4 = group(side, 'Export');
   const row = document.createElement('div');
   const copy = document.createElement('button');
-  copy.textContent = mode === 'cat' ? 'Copy statue JSON' : 'Copy params JSON';
+  copy.textContent = mode === 'cat' ? 'Copy boxes JSON' : 'Copy params JSON';
   const reset = document.createElement('button'); reset.textContent = 'Reset pos';
   reset.style.marginLeft = '6px';
   row.appendChild(copy); row.appendChild(reset); g4.appendChild(row);
@@ -315,7 +463,7 @@ function buildPanel(){
     const json = mode === 'cat' ? statueJSON() : paramJSON();
     out.textContent = json;
     navigator.clipboard && navigator.clipboard.writeText(json);
-    status(mode === 'cat' ? 'statue JSON copied' : 'params copied');
+    status(mode === 'cat' ? 'boxes JSON copied' : 'params copied');
   };
   reset.onclick = () => { t = 0.12; L = 0; status('reset to near-center'); };
 }
@@ -323,6 +471,79 @@ function group(host, title){
   const d = document.createElement('div'); d.className='group';
   const h = document.createElement('h3'); h.textContent = title; d.appendChild(h);
   host.appendChild(d); return d;
+}
+// Selectable list of collision boxes, with add/duplicate/delete + rename.
+function buildBoxList(host){
+  const list = document.createElement('div');
+  statueBoxes.forEach((b, i) => {
+    const rowSel = i === selBox;
+    const row = document.createElement('div');
+    row.style.display = 'flex'; row.style.alignItems = 'center'; row.style.gap = '4px';
+    row.style.margin = '3px 0'; row.style.padding = '3px 5px'; row.style.borderRadius = '4px';
+    row.style.cursor = 'pointer';
+    row.style.background = rowSel ? '#2c3e63' : '#0e1730';
+    row.style.border = '1px solid ' + (rowSel ? '#53d8fb' : '#2a3a5a');
+    const name = document.createElement('input');
+    name.value = b.name || ('box ' + i); name.style.flex = '1';
+    name.style.background = 'transparent'; name.style.border = 'none'; name.style.color = '#cfe';
+    name.style.font = '12px monospace';
+    name.onclick = e => { e.stopPropagation(); selBox = i; buildPanel(); };
+    name.onchange = e => { b.name = e.target.value; };
+    const del = document.createElement('button'); del.textContent = '✕';
+    del.title = 'delete'; del.style.padding = '2px 6px';
+    del.onclick = e => {
+      e.stopPropagation();
+      if (statueBoxes.length <= 1) { status('keep at least one box'); return; }
+      statueBoxes.splice(i, 1);
+      selBox = Math.max(0, Math.min(selBox, statueBoxes.length - 1));
+      buildPanel();
+    };
+    row.onclick = () => { selBox = i; buildPanel(); };
+    row.appendChild(name); row.appendChild(del);
+    list.appendChild(row);
+  });
+  host.appendChild(list);
+
+  const btns = document.createElement('div'); btns.style.marginTop = '6px';
+  const add = document.createElement('button'); add.textContent = '+ box';
+  add.onclick = () => {
+    statueBoxes.push({ name:'box ' + statueBoxes.length, tMin:0.80, tMax:0.92, lMin:-0.15, lMax:0.15 });
+    selBox = statueBoxes.length - 1; buildPanel();
+  };
+  const dup = document.createElement('button'); dup.textContent = 'duplicate';
+  dup.style.marginLeft = '6px';
+  dup.onclick = () => {
+    const b = statueBoxes[selBox]; if (!b) return;
+    statueBoxes.push({ ...b, name: (b.name || 'box') + ' copy' });
+    selBox = statueBoxes.length - 1; buildPanel();
+  };
+  btns.appendChild(add); btns.appendChild(dup);
+  host.appendChild(btns);
+
+  // Numeric edges of the selected box (fine nudging alongside the mouse drag).
+  const b = statueBoxes[selBox];
+  if (b) {
+    const nums = document.createElement('div'); nums.style.marginTop = '8px';
+    [['tMin','front (t)',0,1],['tMax','back (t)',0,1],
+     ['lMin','left (L)',-1,1],['lMax','right (L)',-1,1]].forEach(([k,label,mn,mx]) => {
+      const l = document.createElement('label'); l.className='s';
+      const nm = document.createElement('span'); nm.textContent = label;
+      const val = document.createElement('span'); val.textContent = (+b[k]).toFixed(3);
+      l.appendChild(nm); l.appendChild(val);
+      const inp = document.createElement('input'); inp.type='range';
+      inp.min=mn; inp.max=mx; inp.step=0.005; inp.value=b[k];
+      inp.oninput = e => { setBoxEdge(b, k, parseFloat(e.target.value)); val.textContent = b[k].toFixed(3); };
+      nums.appendChild(l); nums.appendChild(inp);
+    });
+    host.appendChild(nums);
+  }
+}
+// Set one edge of a box, clamped so edges never cross (keeps a min size).
+function setBoxEdge(b, key, v){
+  if (key === 'tMin') b.tMin = Math.max(0, Math.min(v, b.tMax - EPS));
+  else if (key === 'tMax') b.tMax = Math.min(1, Math.max(v, b.tMin + EPS));
+  else if (key === 'lMin') b.lMin = Math.max(-1, Math.min(v, b.lMax - EPS));
+  else if (key === 'lMax') b.lMax = Math.min(1, Math.max(v, b.lMin + EPS));
 }
 function addSlider(host, obj, key, label, min, max, step){
   const l = document.createElement('label'); l.className='s';
@@ -344,13 +565,13 @@ function addCheckbox(host, key, label){
 function updateReadout(p){
   const ro = document.getElementById('readout'); if (!ro) return;
   if (mode === 'cat') {
-    const inBand = L >= statue.lMin && L <= statue.lMax;
-    ro.textContent =
-      `player t ${t.toFixed(3)}  L ${L.toFixed(3)}\n` +
-      `facing   ${facing}\n` +
-      `box  tFront ${statue.tFront.toFixed(3)}\n` +
-      `     L [${statue.lMin.toFixed(3)}, ${statue.lMax.toFixed(3)}]\n` +
-      `in lateral band: ${inBand ? 'YES' : 'no'}`;
+    const b = statueBoxes[selBox];
+    let s = `player t ${t.toFixed(3)}  L ${L.toFixed(3)}\n` +
+            `facing   ${facing}\n` +
+            `boxes    ${statueBoxes.length}   selected: ${b ? (b.name || selBox) : '-'}\n`;
+    if (b) s += `  t [${b.tMin.toFixed(3)}, ${b.tMax.toFixed(3)}]\n` +
+                `  L [${b.lMin.toFixed(3)}, ${b.lMax.toFixed(3)}]`;
+    ro.textContent = s;
   } else {
     ro.textContent =
       `depth t   ${t.toFixed(3)}  (0 near · 1 far)\n` +
@@ -358,21 +579,31 @@ function updateReadout(p){
       `facing    ${facing}\n` +
       `size frac ${p.frac.toFixed(3)}  (× bg height)\n` +
       `foot px   ${p.x.toFixed(0)}, ${p.y.toFixed(0)}\n` +
-      `fracFar*  ${effFracFar().toFixed(3)}  ${params.perspLock?'(locked)':''}`;
+      `fracFar   slider ${params.fracFar.toFixed(3)} → used ${effFracFar().toFixed(3)}\n` +
+      `          ${params.perspLock ? 'LOCKED: slider IGNORED (far size from geometry)' : 'unlocked: slider is used'}`;
   }
 }
+// Export the perspective as a paste-ready `perspective: { ... }` block for the
+// stage's dungeon config in src/world/stages.js (DungeonScreen merges it over its
+// defaults via cfg.perspective). We export the RAW fracFar slider (NOT the
+// geometry-resolved value) together with perspLock, so the pair round-trips: with
+// perspLock:false the game uses this fracFar directly; with perspLock:true it
+// recomputes far size from geometry (and ignores fracFar) exactly like the tool.
 function paramJSON(){
-  const o = {};
-  for (const [k] of SLIDERS) o[k] = +params[k].toFixed(4);
-  o.fracFar = +effFracFar().toFixed(4);
-  o.perspLock = params.perspLock; o.perspSpeed = params.perspSpeed;
-  return JSON.stringify(o, null, 2);
+  const persp = {};
+  for (const [k] of SLIDERS) persp[k] = +params[k].toFixed(4); // vpX..moveSpeed, incl. raw fracFar
+  persp.perspLock = params.perspLock;
+  persp.perspSpeed = params.perspSpeed;
+  return JSON.stringify({ perspective: persp }, null, 2);
 }
 // Paste this into the stage's `dungeon` config in src/world/stages.js (as
-// `statue: { ... }`), which DungeonScreen reads via cfg.statue.
+// `statueBoxes: [ ... ]`), which DungeonScreen reads via cfg.statueBoxes.
 function statueJSON(){
+  const r3 = v => +v.toFixed(3);
   return JSON.stringify({
-    statue: { tFront: +statue.tFront.toFixed(3), lMin: +statue.lMin.toFixed(3), lMax: +statue.lMax.toFixed(3) }
+    statueBoxes: statueBoxes.map(b => ({
+      name: b.name, tMin: r3(b.tMin), tMax: r3(b.tMax), lMin: r3(b.lMin), lMax: r3(b.lMax)
+    }))
   }, null, 2);
 }
 
@@ -383,6 +614,58 @@ window.addEventListener('keydown', e => {
   keys[k] = true;
 });
 window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+// ---- mouse: drag box vertices / edges / whole box --------------------------
+let drag = null; // { keys:[...] } for a handle, or { whole:true, t0, L0, box:{...} }
+function canvasXY(e){ const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+function pointInBoxTL(pt, b){ return pt.t > b.tMin && pt.t < b.tMax && pt.L > b.lMin && pt.L < b.lMax; }
+
+cv.addEventListener('mousedown', e => {
+  if (mode !== 'cat') return;
+  const m = canvasXY(e);
+  // 1) A handle on the selected box?
+  const b = statueBoxes[selBox];
+  if (b) {
+    for (const h of boxHandles(b)) {
+      if (Math.hypot(h.x - m.x, h.y - m.y) <= 9) { drag = { keys: h.keys }; return; }
+    }
+  }
+  // 2) Otherwise select whichever box is under the cursor (topmost last-drawn),
+  //    and start a whole-box drag from there.
+  const tl = screenToTL(m.x, m.y);
+  for (let i = statueBoxes.length - 1; i >= 0; i--) {
+    if (pointInBoxTL(tl, statueBoxes[i])) {
+      selBox = i; buildPanel();
+      drag = { whole: true, t0: tl.t, L0: tl.L, box: { ...statueBoxes[i] } };
+      return;
+    }
+  }
+});
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const m = canvasXY(e);
+  const tl = screenToTL(m.x, m.y);
+  const b = statueBoxes[selBox]; if (!b) return;
+  if (drag.whole) {
+    // Translate all edges by the drag delta, clamped to stay in range + keep size.
+    const w = drag.box.tMax - drag.box.tMin, hgt = drag.box.lMax - drag.box.lMin;
+    let ntMin = drag.box.tMin + (tl.t - drag.t0);
+    let nlMin = drag.box.lMin + (tl.L - drag.L0);
+    ntMin = Math.max(0, Math.min(ntMin, 1 - w));
+    nlMin = Math.max(-1, Math.min(nlMin, 1 - hgt));
+    b.tMin = ntMin; b.tMax = ntMin + w; b.lMin = nlMin; b.lMax = nlMin + hgt;
+  } else {
+    for (const k of drag.keys) setBoxEdge(b, k, k[0] === 't' ? tl.t : tl.L);
+  }
+});
+window.addEventListener('mouseup', () => { if (drag) { drag = null; if (mode === 'cat') buildPanel(); } });
+cv.addEventListener('mousemove', e => {
+  if (mode !== 'cat' || drag) { cv.style.cursor = 'default'; return; }
+  const m = canvasXY(e); const b = statueBoxes[selBox];
+  let over = false;
+  if (b) for (const h of boxHandles(b)) if (Math.hypot(h.x - m.x, h.y - m.y) <= 9) { over = true; break; }
+  cv.style.cursor = over ? 'grab' : 'default';
+});
 
 function loop(now){
   const dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
