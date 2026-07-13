@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Tile Collision</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#1a1a2e; color:#eee; font-family:'Segoe UI',Tahoma,sans-serif;
+         display:flex; flex-direction:column; height:100vh; overflow:hidden; }
+  #bar { background:#16213e; padding:10px 16px; display:flex; align-items:center;
+         gap:14px; border-bottom:2px solid #0f3460; flex-shrink:0; flex-wrap:wrap; }
+  h1 { font-size:16px; color:#e94560; margin-right:6px; }
+  button, label.file { background:#0f3460; color:#eee; border:1px solid #53d8fb;
+           padding:6px 12px; border-radius:4px; font-size:13px; cursor:pointer; }
+  button:hover { background:#53d8fb; color:#1a1a2e; }
+  button.active { background:#53d8fb; color:#1a1a2e; }
+  .grp { display:flex; align-items:center; gap:6px; font-size:13px; }
+  .grp input[type=range] { width:120px; }
+  #stage { flex:1; overflow:auto; display:flex; justify-content:center;
+           align-items:flex-start; padding:16px; }
+  #wrap { position:relative; }
+  canvas { display:block; image-rendering:auto; box-shadow:0 0 0 1px #333; cursor:crosshair; }
+  #hint { font-size:12px; color:#9aa; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:2px;
+            vertical-align:middle; margin-right:3px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <h1>Tile Collision</h1>
+  <div class="grp">
+    <span><span class="swatch" style="background:#e94560"></span>solid</span>
+    <span><span class="swatch" style="background:#ffd166"></span>skull(auto)</span>
+    <span><span class="swatch" style="background:#39c">bush(auto)</span></span>
+  </div>
+  <div class="grp">cells
+    <input id="cols" type="range" min="20" max="64" value="40">
+    <span id="colsV">40</span>×<span id="rowsV">?</span>
+  </div>
+  <div class="grp">bush&nbsp;threshold
+    <input id="thr" type="range" min="0" max="100" value="42">
+    <span id="thrV">42%</span>
+  </div>
+  <button id="reseed">Re-seed auto</button>
+  <button id="paint" class="active">Paint</button>
+  <button id="erase">Erase</button>
+  <button id="clear">Clear all</button>
+  <button id="ovl">Overlay: ON</button>
+  <label class="file">Load JSON<input id="load" type="file" accept="application/json" hidden></label>
+  <button id="export">Export JSON</button>
+  <span id="hint">drag to paint · scroll to zoom is off (use browser)</span>
+</div>
+<div id="stage"><div id="wrap">
+  <canvas id="art"></canvas>
+  <canvas id="grid" style="position:absolute;left:0;top:0"></canvas>
+</div></div>
+
+<script>
+const TILE_SRC = '../assets-v2/rafe-saborosa-escaladalow-01.png';
+const artC = document.getElementById('art'), gridC = document.getElementById('grid');
+const artX = artC.getContext('2d'), gX = gridC.getContext('2d');
+
+let img = new Image();
+let NW = 0, NH = 0;             // native tile px
+let cols = 40, rows = 0;
+let mask = null;               // Uint8Array rows*cols (1 = solid)
+let auto = null;               // Uint8Array — per-cell auto class: 0 none,1 skull,2 bush
+let scale = 1;                 // display px per native px
+let mode = 'paint', overlay = true, dragging = false;
+
+// --- pixel classifiers -----------------------------------------------------
+function isYellow(r,g,b){ return r>150 && g>150 && b<120 && (g-b)>60 && (r-b)>60; }
+function isTan(r,g,b){    // warm brown/beige bush; excludes white/gray/black/yellow
+  if (isYellow(r,g,b)) return false;
+  return r>=g && g>b && (r-b)>24 && (r-b)<130 && b<200 && r>110;
+}
+
+// Build the auto class per cell from the tile pixels, then fold it into `mask`
+// (auto skull/bush → solid). Called on load, cols change, or threshold change.
+let srcData = null; // cached ImageData of the native tile
+function reseedAuto(){
+  const thr = +document.getElementById('thr').value / 100;
+  rows = Math.max(1, Math.round(NH / (NW / cols)));
+  document.getElementById('rowsV').textContent = rows;
+  auto = new Uint8Array(rows*cols);
+  const nm = new Uint8Array(rows*cols);
+  const d = srcData.data;
+  const cw = NW/cols, ch = NH/rows;
+  for (let ry=0; ry<rows; ry++){
+    for (let cx=0; cx<cols; cx++){
+      const x0=Math.floor(cx*cw), x1=Math.floor((cx+1)*cw);
+      const y0=Math.floor(ry*ch), y1=Math.floor((ry+1)*ch);
+      let yellow=0, tan=0, tot=0;
+      for (let y=y0; y<y1; y+=2){
+        for (let x=x0; x<x1; x+=2){
+          const i=(y*NW+x)*4, r=d[i],g=d[i+1],b=d[i+2];
+          tot++;
+          if (isYellow(r,g,b)) yellow++;
+          else if (isTan(r,g,b)) tan++;
+        }
+      }
+      let cls=0;
+      if (yellow > 0.02*tot) cls=1;                 // any real yellow → skull
+      else if (tan/Math.max(1,tot) >= thr) cls=2;   // dense tan → bush
+      auto[ry*cols+cx]=cls;
+      nm[ry*cols+cx] = cls?1:0;
+    }
+  }
+  mask = nm;
+  draw();
+}
+
+function layout(){
+  // Fit the tile to a comfortable on-screen width.
+  const maxW = Math.min(760, window.innerWidth-40);
+  scale = maxW / NW;
+  const dispW = Math.round(NW*scale), dispH = Math.round(NH*scale);
+  artC.width = dispW; artC.height = dispH;
+  gridC.width = dispW; gridC.height = dispH;
+  artX.imageSmoothingEnabled = true;
+  artX.clearRect(0,0,dispW,dispH);
+  artX.drawImage(img, 0,0, dispW, dispH);
+}
+
+function draw(){
+  const dispW = gridC.width, dispH = gridC.height;
+  gX.clearRect(0,0,dispW,dispH);
+  if (!mask) return;
+  const cw = dispW/cols, ch = dispH/rows;
+  for (let ry=0; ry<rows; ry++){
+    for (let cx=0; cx<cols; cx++){
+      const idx=ry*cols+cx;
+      if (!mask[idx]) continue;
+      // Color-code by source (auto skull / auto bush / hand-painted), all solid.
+      const a = auto ? auto[idx] : 0;
+      gX.fillStyle = a===1 ? 'rgba(255,209,102,0.45)'
+                   : a===2 ? 'rgba(51,153,204,0.45)'
+                   : 'rgba(233,69,96,0.5)';
+      gX.fillRect(cx*cw, ry*ch, cw, ch);
+    }
+  }
+  if (overlay){
+    gX.strokeStyle='rgba(255,255,255,0.08)'; gX.lineWidth=1;
+    for (let cx=0; cx<=cols; cx++){ gX.beginPath(); gX.moveTo(cx*cw,0); gX.lineTo(cx*cw,dispH); gX.stroke(); }
+    for (let ry=0; ry<=rows; ry++){ gX.beginPath(); gX.moveTo(0,ry*ch); gX.lineTo(dispW,ry*ch); gX.stroke(); }
+  }
+}
+
+function paintAt(ev){
+  const r = gridC.getBoundingClientRect();
+  const cx = Math.floor((ev.clientX-r.left) / (gridC.width/cols));
+  const ry = Math.floor((ev.clientY-r.top) / (gridC.height/rows));
+  if (cx<0||ry<0||cx>=cols||ry>=rows) return;
+  const idx=ry*cols+cx;
+  mask[idx] = (mode==='paint') ? 1 : 0;
+  if (auto) auto[idx]=0; // hand edits lose their auto-color tag → red
+  draw();
+}
+
+gridC.addEventListener('mousedown', e=>{ dragging=true; paintAt(e); });
+window.addEventListener('mouseup', ()=> dragging=false);
+gridC.addEventListener('mousemove', e=>{ if(dragging) paintAt(e); });
+
+document.getElementById('cols').addEventListener('input', e=>{
+  cols=+e.target.value; document.getElementById('colsV').textContent=cols; reseedAuto();
+});
+document.getElementById('thr').addEventListener('input', e=>{
+  document.getElementById('thrV').textContent = e.target.value+'%'; reseedAuto();
+});
+document.getElementById('reseed').addEventListener('click', reseedAuto);
+document.getElementById('paint').addEventListener('click', ()=>setMode('paint'));
+document.getElementById('erase').addEventListener('click', ()=>setMode('erase'));
+document.getElementById('clear').addEventListener('click', ()=>{ mask.fill(0); auto.fill(0); draw(); });
+document.getElementById('ovl').addEventListener('click', e=>{ overlay=!overlay;
+  e.target.textContent='Overlay: '+(overlay?'ON':'OFF'); draw(); });
+function setMode(m){ mode=m;
+  document.getElementById('paint').classList.toggle('active', m==='paint');
+  document.getElementById('erase').classList.toggle('active', m==='erase'); }
+
+document.getElementById('export').addEventListener('click', ()=>{
+  const cells=[];
+  for (let ry=0; ry<rows; ry++){
+    let s=''; for (let cx=0; cx<cols; cx++) s += mask[ry*cols+cx] ? '1':'0';
+    cells.push(s);
+  }
+  const out = { tile:'rafe-saborosa-escaladalow-01.png', nativeW:NW, nativeH:NH,
+                cols, rows, cells };
+  const blob=new Blob([JSON.stringify(out)], {type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='rafe-saborosa-escaladalow-01-collision.json'; a.click();
+});
+
+document.getElementById('load').addEventListener('change', ev=>{
+  const f=ev.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ const j=JSON.parse(rd.result);
+    cols=j.cols; rows=j.rows;
+    document.getElementById('cols').value=cols;
+    document.getElementById('colsV').textContent=cols;
+    document.getElementById('rowsV').textContent=rows;
+    mask=new Uint8Array(rows*cols); auto=new Uint8Array(rows*cols);
+    for (let ry=0; ry<rows; ry++){ const s=j.cells[ry];
+      for (let cx=0; cx<cols; cx++) mask[ry*cols+cx] = s[cx]==='1'?1:0; }
+    draw();
+  };
+  rd.readAsText(f);
+});
+
+img.onload = ()=>{
+  NW=img.naturalWidth; NH=img.naturalHeight;
+  // Cache native pixels for classification (offscreen at native res).
+  const off=document.createElement('canvas'); off.width=NW; off.height=NH;
+  const ox=off.getContext('2d'); ox.drawImage(img,0,0); srcData=ox.getImageData(0,0,NW,NH);
+  layout(); reseedAuto();
+};
+img.onerror = ()=>{ document.getElementById('hint').textContent='FAILED to load '+TILE_SRC; };
+img.src = TILE_SRC;
+window.addEventListener('resize', ()=>{ layout(); draw(); });
+</script>
+</body>
+</html>

@@ -29,6 +29,11 @@ class TileDungeonScreen {
         // Character draw size relative to its authored sprite frames. 1 ≈ the
         // overworld's ~1× camera, which is the look we're matching.
         this.charScale = cfg.charScale != null ? cfg.charScale : 1.0;
+        // Collision-footprint shrink, relative to the character. The overworld
+        // inflates the sprite by a perspective factor (>1) while the footprint
+        // stays at its base size, so the box reads smaller vs the character than
+        // it would here at a flat charScale. 0.7 (−30%) matches that feel.
+        this.colScale = cfg.colScale != null ? cfg.colScale : 0.7;
 
         // Virtual camera position in floor pixels. The character stays centred;
         // this is how far the floor has scrolled. Fractional start hides the
@@ -44,6 +49,23 @@ class TileDungeonScreen {
         if (player) { player.facing = 'down'; player.moving = false; }
         this.fadeIn = 1;       // black → clear on entry
 
+        // Per-tile collision grid (skulls + bushes = solid), authored in
+        // tools/tile-collision.html. Because the floor is one tile repeated
+        // forever, the mask tiles too: the player's feet plane-position is
+        // wrapped into tile-local cells (see _boxHitsSolid). Absent → open floor.
+        const col = game.getJSON(cfg.collision || 'dungeon_tile_collision');
+        this.colMask = null;
+        if (col && col.cells) {
+            this.colCols = col.cols; this.colRows = col.rows;
+            this.colNW = col.nativeW; this.colNH = col.nativeH;
+            const m = new Uint8Array(col.cols * col.rows);
+            for (let r = 0; r < col.rows; r++) {
+                const s = col.cells[r];
+                for (let c = 0; c < col.cols; c++) m[r * col.cols + c] = s[c] === '1' ? 1 : 0;
+            }
+            this.colMask = m;
+        }
+
         // Drop from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps step). Walking is locked until he lands.
         // Constant size the whole way down — only the feet position drops.
@@ -53,12 +75,83 @@ class TileDungeonScreen {
         this.fallStartSpeed = (player && player.fallStartSpeed) || 1.8;
         this.fallAccelPerSec = (player && player.fallAccelPerSec) || 18;
         this.fallMaxSpeed = (player && player.fallMaxSpeed) || 14.3;
+
+        // Never drop in wedged inside a skull/bush.
+        this._unstickSpawn();
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
     // floor is visible ahead than behind — same instinct as the overworld cam).
     _feetPoint() {
         return { x: this.game.width / 2, y: this.game.height * 0.56 };
+    }
+
+    // Player boxes in screen px, built EXACTLY like the overworld (stage 3):
+    // the full sprite bbox (player.width × player.height) feet-anchored at the
+    // screen feet-point and horizontally centred, then the collision footprint
+    // inset by the SAME colOffX/colOffY/colW/colH the overworld uses. So the box
+    // (and its C-debug drawing) is identical to stage 3, just at the dungeon's
+    // constant charScale instead of a camera zoom.
+    _spriteRect() {
+        const fp = this._feetPoint(), cs = this.charScale, p = this.player;
+        const w = p.width * cs, h = p.height * cs;
+        return { x: fp.x - w / 2, y: fp.y - h, w, h }; // bottom edge on the feet line
+    }
+    _footRect() {
+        const s = this._spriteRect(), cs = this.charScale, p = this.player;
+        // Base footprint (stage-3 offsets), then shrink by colScale about its
+        // centre so it stays over the feet, just smaller relative to the sprite.
+        const cxp = s.x + (p.colOffX + p.colW / 2) * cs;
+        const cyp = s.y + (p.colOffY + p.colH / 2) * cs;
+        const w = p.colW * cs * this.colScale, h = p.colH * cs * this.colScale;
+        return { x: cxp - w / 2, y: cyp - h / 2, w, h };
+    }
+
+    // True if the feet footprint would overlap ANY solid tile cell at camera
+    // (cx, cy). The player is pinned to the screen feet-point; a plane point P
+    // maps to screen as P - cam, so the feet's plane position is feet + cam.
+    // Everything is in screen px; convert to native tile px (÷ tileScale), wrap
+    // into the tile, and test every cell the footprint AABB covers (it spans a
+    // few cells, so we iterate rather than sample corners).
+    _boxHitsSolid(cx, cy) {
+        if (!this.colMask) return false;
+        const img = this.game.getDrawable(this.tileKey);
+        const nw = (img && (img.naturalWidth || img.width)) || this.colNW;
+        const nh = (img && (img.naturalHeight || img.height)) || this.colNH;
+        const s = this.tileScale;
+        // Footprint AABB in native tile px. The player is pinned to the screen,
+        // so a plane point P maps to screen P - cam → the footprint's plane
+        // position is its screen rect + cam. Convert to native (÷ tileScale).
+        const r = this._footRect();
+        const minX = (r.x + cx) / s, maxX = (r.x + r.w + cx) / s;
+        const minY = (r.y + cy) / s, maxY = (r.y + r.h + cy) / s;
+        const cW = nw / this.colCols, cH = nh / this.colRows;
+        const c0 = Math.floor(minX / cW), c1 = Math.floor(maxX / cW);
+        const r0 = Math.floor(minY / cH), r1 = Math.floor(maxY / cH);
+        for (let r = r0; r <= r1; r++) {
+            const rr = ((r % this.colRows) + this.colRows) % this.colRows;
+            for (let c = c0; c <= c1; c++) {
+                const cc = ((c % this.colCols) + this.colCols) % this.colCols;
+                if (this.colMask[rr * this.colCols + cc]) return true;
+            }
+        }
+        return false;
+    }
+
+    // If the drop-in spot lands the feet inside a solid cell, nudge the camera
+    // outward (spiral search over plane px) to the nearest open floor so the
+    // player never starts wedged in a skull/bush.
+    _unstickSpawn() {
+        if (!this._boxHitsSolid(this.camX, this.camY)) return;
+        const stepPx = this._footRect().w * 0.5 || 20;
+        for (let ring = 1; ring <= 40; ring++) {
+            for (let a = 0; a < 8; a++) {
+                const ang = a * Math.PI / 4;
+                const nx = this.camX + Math.cos(ang) * ring * stepPx;
+                const ny = this.camY + Math.sin(ang) * ring * stepPx;
+                if (!this._boxHitsSolid(nx, ny)) { this.camX = nx; this.camY = ny; return; }
+            }
+        }
     }
 
     update(dt) {
@@ -87,8 +180,11 @@ class TileDungeonScreen {
         const len = Math.hypot(dx, dy);
         if (len > 1) { dx /= len; dy /= len; }
         const step = this.moveSpeed * hustle * dt;
-        this.camX += dx * step;
-        this.camY += dy * step;
+        // Per-axis collision against the solid tile cells: try X then Y so a
+        // blocked axis still lets the player slide along a wall (skull/bush edge).
+        const sx = dx * step, sy = dy * step;
+        if (sx && !this._boxHitsSolid(this.camX + sx, this.camY)) this.camX += sx;
+        if (sy && !this._boxHitsSolid(this.camX, this.camY + sy)) this.camY += sy;
 
         // 8-way facing from the movement vector (matches DungeonScreen).
         const up = dy < 0, down = dy > 0, right = dx > 0, left = dx < 0;
@@ -217,11 +313,42 @@ class TileDungeonScreen {
     // mirroring the overworld and the perspective dungeon.
     renderDebug(ctx) {
         const g = this.game;
-        const fp = this._feetPoint();
 
-        // Feet marker.
-        ctx.fillStyle = '#0f0';
-        ctx.beginPath(); ctx.arc(fp.x, fp.y, 4, 0, Math.PI * 2); ctx.fill();
+        // Solid collision cells over the visible floor — red, tiled like the
+        // floor (plane→screen is P - cam, cells wrap into the tile).
+        if (this.colMask) {
+            const img = g.getDrawable(this.tileKey);
+            const nw = (img && (img.naturalWidth || img.width)) || this.colNW;
+            const nh = (img && (img.naturalHeight || img.height)) || this.colNH;
+            const cW = (nw / this.colCols) * this.tileScale;   // cell size in screen px
+            const cH = (nh / this.colRows) * this.tileScale;
+            const tw = nw * this.tileScale, th = nh * this.tileScale;
+            const ox = -(((this.camX % tw) + tw) % tw);
+            const oy = -(((this.camY % th) + th) % th);
+            ctx.fillStyle = 'rgba(233,69,96,0.35)';
+            for (let ty = oy; ty < g.height; ty += th) {
+                for (let tx = ox; tx < g.width; tx += tw) {
+                    for (let r = 0; r < this.colRows; r++) {
+                        for (let c = 0; c < this.colCols; c++) {
+                            if (!this.colMask[r * this.colCols + c]) continue;
+                            const x = tx + c * cW, y = ty + r * cH;
+                            if (x > g.width || y > g.height || x + cW < 0 || y + cH < 0) continue;
+                            ctx.fillRect(x, y, cW + 1, cH + 1);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Player boxes — identical to the overworld (player.render debug): lime
+        // full sprite bbox + red collision footprint, from the same colOff/colW
+        // ratios, at the dungeon's constant charScale.
+        const sb = this._spriteRect(), fb = this._footRect();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = 'lime';
+        ctx.strokeRect(sb.x, sb.y, sb.w, sb.h);
+        ctx.strokeStyle = 'red';
+        ctx.strokeRect(fb.x, fb.y, fb.w, fb.h);
 
         // Bottom-left info panel, same corner as the other screens.
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -230,7 +357,8 @@ class TileDungeonScreen {
         ctx.font = '12px monospace';
         ctx.fillText(`Location: ${this.name} (infinite)`, 10, g.height - 54);
         ctx.fillText(`cam: ${this.camX.toFixed(0)}, ${this.camY.toFixed(0)}  facing: ${this.facing}`, 10, g.height - 36);
-        ctx.fillText(`tileScale: ${this.tileScale}  charScale: ${this.charScale}`, 10, g.height - 16);
+        const solids = this.colMask ? `${this.colCols}×${this.colRows} grid` : 'none';
+        ctx.fillText(`tileScale: ${this.tileScale}  collision: ${solids}`, 10, g.height - 16);
 
         // Perf panel (top right) — identical to the overworld.
         if (window.PERF) window.PERF.render(ctx, g);

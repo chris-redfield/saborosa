@@ -150,6 +150,10 @@ const STAGES = {
             // ~1.3× and reads a touch soft — dropping in a true high-res master
             // makes it sharp AND proportionally huge with no code change.
             tileScale: 1.2722, charScale: 1.0,
+            // Collision footprint shrink relative to the character (−30%), so the
+            // box reads like the overworld (which inflates the sprite past its
+            // footprint via perspective). Lower = smaller box.
+            colScale: 0.7,
         },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).

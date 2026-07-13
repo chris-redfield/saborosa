@@ -218,6 +218,9 @@ class Game {
                 // "Infinite" tiled dungeon floor — one square tile repeated
                 // forever, top-down, constant character scale (see tiledungeon.js).
                 this.loadImage('dungeon_tile', 'assets-v2/rafe-saborosa-escaladalow-01.png'),
+                // Per-tile collision grid for that floor (skulls + bushes = solid),
+                // authored/auto-detected in tools/tile-collision.html.
+                this.loadJSON('dungeon_tile_collision', 'assets-v2/rafe-saborosa-escaladalow-01-collision.json'),
 
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
