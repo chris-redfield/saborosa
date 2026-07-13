@@ -244,8 +244,17 @@ function enterDungeon() {
     p._liftHoldStart = null;
     p.dashCharge = 0;       // start the hustle bar empty
     p.rechargeFlash = 0;
-    const cfg = (gameState.currentStage && gameState.currentStage.dungeon) || {};
-    gameState.dungeon = new DungeonScreen(game, p, cfg);
+    // Which dungeon the hole leads to: 'tiled' → the infinite top-down floor
+    // (TileDungeonScreen); anything else → the perspective room (DungeonScreen).
+    // Both screens share the update/render/renderDebug interface, so the rest of
+    // the loop (and gameState.dungeon) treats them identically.
+    const stage = gameState.currentStage || {};
+    const target = (gameState.dungeonFromHole && gameState.dungeonFromHole.target) || 'dungeon';
+    if (target === 'tiled') {
+        gameState.dungeon = new TileDungeonScreen(game, p, stage.dungeonTiled || {});
+    } else {
+        gameState.dungeon = new DungeonScreen(game, p, stage.dungeon || {});
+    }
     gameState.dungeonTransition = null;
     gameState.booms = [];
     gameState.screen = 'dungeon';

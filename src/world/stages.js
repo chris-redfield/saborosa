@@ -134,6 +134,23 @@ const STAGES = {
                 { name: 'paw R', tMin: 0.872, tMax: 0.956, lMin: 0.148, lMax: 0.482 },
             ],
         },
+        // A SECOND dungeon reached by a different hole (target: 'tiled'). Instead
+        // of the perspective room, this is an "infinite" top-down floor: one
+        // square tile repeated forever, character drawn at a CONSTANT size (see
+        // screens/tiledungeon.js). Tune tile/character size via tileScale/charScale.
+        dungeonTiled: {
+            name: 'Bone Pit', tile: 'dungeon_tile',
+            // tileScale ≈ the stage-3 map's own draw scale (world px per native
+            // px = backgroundImageRect.w / 5543 = 8815/5543 = 1.5903), dialled
+            // back 20% (× 0.8) to taste → 1.2722. Drawing the tile at ~this scale
+            // gives the dungeon roughly the SAME on-screen detail density as the
+            // overworld: one screen is a *piece* of a single tile (each tile
+            // bigger than the screen), not a field of little repeats. NOTE: the
+            // shipped tile is low-res (820×1169, "escaladalow"), so it upscales
+            // ~1.3× and reads a touch soft — dropping in a true high-res master
+            // makes it sharp AND proportionally huge with no code change.
+            tileScale: 1.2722, charScale: 1.0,
+        },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.
@@ -146,6 +163,13 @@ const STAGES = {
         holes: [
             {
                 x: 6257, y: 3465, w: 113, h: 122, target: 'dungeon',
+                triggerInset: 0.22,
+                vanishLine: 0.5
+            },
+            // Second hole → the "infinite" tiled dungeon. Centered on the buraco
+            // overlay graphic at world (4925, 3536).
+            {
+                x: 4865, y: 3476, w: 120, h: 120, target: 'tiled',
                 triggerInset: 0.22,
                 vanishLine: 0.5
             }

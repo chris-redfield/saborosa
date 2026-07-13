@@ -1,0 +1,240 @@
+/**
+ * TileDungeonScreen — an "infinite" top-down dungeon reached by falling into a
+ * hole (see main.js enterDungeon). Unlike DungeonScreen (the one-point
+ * perspective "fell in a pit" room), this one keeps the classic overworld look:
+ * a flat top-down floor with the character drawn at a CONSTANT size no matter
+ * where they walk. There's no room — the floor is a single square tile
+ * (assets-v2/rafe-saborosa-escaladalow-01.png) repeated forever in every
+ * direction, so the player can walk endlessly.
+ *
+ * Render model: the character is pinned to the centre of the canvas and the
+ * tiled floor scrolls underneath as the player moves (a virtual camera at
+ * camX/camY in floor-pixel space). Movement, facing, and the shared Player pose
+ * animation all work exactly like the overworld; only the "where does the world
+ * scroll" bookkeeping lives here. No collision, no props — just open floor.
+ */
+class TileDungeonScreen {
+    constructor(game, player, cfg = {}) {
+        this.game = game;
+        this.player = player;                 // for the current sprite pack + pose frames
+        this.name = cfg.name || 'Bone Pit';   // shown in the C-debug overlay
+        this.tileKey = cfg.tile || 'dungeon_tile';
+
+        // Floor tile draw size = native tile px × tileScale. Default ≈ the
+        // stage-3 map's own draw scale (8815/5543 ≈ 1.59 world px per native px)
+        // dialled back 20% → 1.2722, so the dungeon has ~the same detail density
+        // as the overworld and each tile is bigger than the screen — a screen is
+        // a *piece* of one tile, not a field of little repeats.
+        this.tileScale = cfg.tileScale != null ? cfg.tileScale : 1.2722;
+        // Character draw size relative to its authored sprite frames. 1 ≈ the
+        // overworld's ~1× camera, which is the look we're matching.
+        this.charScale = cfg.charScale != null ? cfg.charScale : 1.0;
+
+        // Virtual camera position in floor pixels. The character stays centred;
+        // this is how far the floor has scrolled. Fractional start hides the
+        // seam so the very first tile isn't perfectly axis-aligned.
+        this.camX = cfg.startX != null ? cfg.startX : 0;
+        this.camY = cfg.startY != null ? cfg.startY : 0;
+
+        // Overworld walk speed: player.speed is px per fixed 60fps step, so
+        // ×60 gives px/sec for our dt-based update.
+        this.moveSpeed = (player && player.speed ? player.speed : 3) * 60;
+
+        this.facing = 'down';  // faces the camera as he drops in
+        if (player) { player.facing = 'down'; player.moving = false; }
+        this.fadeIn = 1;       // black → clear on entry
+
+        // Drop from the ceiling on entry, reusing the overworld fall dynamics
+        // (px/frame @ the fixed 60fps step). Walking is locked until he lands.
+        // Constant size the whole way down — only the feet position drops.
+        this.falling = true;
+        this.fallTimerMs = 0;
+        this.dropOffset = cfg.dropHeight != null ? cfg.dropHeight : 460; // px above the floor line
+        this.fallStartSpeed = (player && player.fallStartSpeed) || 1.8;
+        this.fallAccelPerSec = (player && player.fallAccelPerSec) || 18;
+        this.fallMaxSpeed = (player && player.fallMaxSpeed) || 14.3;
+    }
+
+    // Where the character's feet rest on screen (centre, slightly low so more
+    // floor is visible ahead than behind — same instinct as the overworld cam).
+    _feetPoint() {
+        return { x: this.game.width / 2, y: this.game.height * 0.56 };
+    }
+
+    update(dt) {
+        // Ceiling drop on entry — same accel curve as the overworld fall.
+        if (this.falling) {
+            this.fallTimerMs += dt * 1000;
+            const vel = Math.min(this.fallMaxSpeed,
+                this.fallStartSpeed + this.fallAccelPerSec * (this.fallTimerMs / 1000));
+            this.dropOffset -= vel;
+            if (this.dropOffset <= 0) { this.dropOffset = 0; this.falling = false; }
+            if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
+            return; // airborne — no walking yet
+        }
+
+        const mv = this.game.input.getMovementVector(); // x:-1..1, y:-1..1 (up=-1)
+
+        // Hustle/charge bar (same as the overworld + perspective dungeon): mash
+        // the dash key to pump the bar against its drain; its level scales move
+        // speed up to dashSpeed.
+        this.player.updateCharge(dt);
+        if (this.game.input.isKeyJustPressed('dash')) this.player.chargeUp();
+        const hustle = Math.max(1, this.player.dashCharge * this.player.dashSpeed);
+
+        // Normalize diagonals so moving NE isn't faster than moving N.
+        let dx = mv.x, dy = mv.y;
+        const len = Math.hypot(dx, dy);
+        if (len > 1) { dx /= len; dy /= len; }
+        const step = this.moveSpeed * hustle * dt;
+        this.camX += dx * step;
+        this.camY += dy * step;
+
+        // 8-way facing from the movement vector (matches DungeonScreen).
+        const up = dy < 0, down = dy > 0, right = dx > 0, left = dx < 0;
+        if (up && right) this.facing = 'up_right';
+        else if (up && left) this.facing = 'up_left';
+        else if (down && right) this.facing = 'down_right';
+        else if (down && left) this.facing = 'down_left';
+        else if (up) this.facing = 'up';
+        else if (down) this.facing = 'down';
+        else if (right) this.facing = 'right';
+        else if (left) this.facing = 'left';
+
+        // Drive the shared Player pose animation from our own movement.
+        this.player.facing = this.facing;
+        this.player.moving = (dx !== 0 || dy !== 0);
+        this.player.advanceAnimations();
+
+        if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
+    }
+
+    // Infinite floor: repeat the tile across the whole canvas, scrolled by the
+    // virtual camera. Positive camX scrolls the floor left (player walks right).
+    //
+    // Seam-free tiling: at fractional scale/scroll, drawing each tile at a raw
+    // float position leaves a hairline gap (the dark bg bleeds through as a thin
+    // grey line) or a smoothed edge between neighbours. To kill it, every tile
+    // boundary is SNAPPED to an integer pixel that both neighbours share
+    // (tile i's right edge == tile i+1's left edge, exactly), and each tile is
+    // drawn 1px wider/taller so it OVERLAPS its neighbour — no gap can appear.
+    // The tiles are opaque, so the 1px overlap is invisible.
+    _drawFloor(ctx) {
+        const g = this.game;
+        const img = g.getDrawable(this.tileKey);
+        if (!img || !(img.naturalWidth || img.width)) return;
+        const tw = (img.naturalWidth || img.width) * this.tileScale;
+        const th = (img.naturalHeight || img.height) * this.tileScale;
+        if (tw <= 0 || th <= 0) return;
+
+        // Float offset of the first tile: wrap the camera into [-tile, 0] so a
+        // tile always starts off the top-left edge and the whole canvas is covered.
+        const ox = -(((this.camX % tw) + tw) % tw);
+        const oy = -(((this.camY % th) + th) % th);
+        for (let gy = 0; oy + gy * th < g.height; gy++) {
+            const y0 = Math.round(oy + gy * th);
+            const y1 = Math.round(oy + (gy + 1) * th);
+            for (let gx = 0; ox + gx * tw < g.width; gx++) {
+                const x0 = Math.round(ox + gx * tw);
+                const x1 = Math.round(ox + (gx + 1) * tw);
+                // +1 on the far edge overlaps into the next tile → no seam gap.
+                ctx.drawImage(img, x0, y0, (x1 - x0) + 1, (y1 - y0) + 1);
+            }
+        }
+    }
+
+    // Character — the Player's CURRENT pose frame, feet (bottom-centre) planted
+    // on the fixed screen feet-point, at a constant scale (no perspective). Sizes
+    // off the idle-frame height so every pose stays in proportion (a shorter
+    // throw/crouch frame sits lower, not stretched).
+    _drawCharacter(ctx) {
+        const fp = this._feetPoint();
+        const spr = this.player && this.player.sprites;
+        if (!spr) return;
+        const fr = (this.player.getCurrentFrame && this.player.getCurrentFrame())
+            || (spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0]);
+        const idle = (spr[`${this.facing}_idle`] && spr[`${this.facing}_idle`][0]) || fr;
+        if (!fr || !fr.image) return;
+        const unit = this.charScale;              // dungeon px per authored px
+        const drawH = fr.height * unit;
+        const drawW = fr.width * unit;
+        const drop = this.dropOffset || 0;        // lifted while falling in
+        const dx = fp.x - drawW / 2;
+        const dy = fp.y - drawH - drop + (fr.vAlign || 0) * unit;
+        if (fr.flipped) {
+            ctx.save();
+            ctx.translate(dx + drawW, dy);
+            ctx.scale(-1, 1);
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, 0, 0, drawW, drawH);
+            ctx.restore();
+        } else {
+            ctx.drawImage(fr.image, fr.sx, fr.sy, fr.sw, fr.sh, dx, dy, drawW, drawH);
+        }
+    }
+
+    render(ctx) {
+        const g = this.game;
+        ctx.fillStyle = '#0c1020';
+        ctx.fillRect(0, 0, g.width, g.height);
+        ctx.imageSmoothingEnabled = true;
+
+        this._drawFloor(ctx);
+        this._drawCharacter(ctx);
+
+        if (this.fadeIn > 0) {
+            ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
+            ctx.fillRect(0, 0, g.width, g.height);
+        }
+
+        this._drawHustleBar(ctx);
+
+        // Exit hint — press E to climb back out to the overworld.
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        ctx.font = '13px monospace';
+        ctx.fillText('[E] climb out', 14, g.height - 16);
+    }
+
+    // Hustle/charge bar — identical to the overworld + perspective dungeon HUD.
+    _drawHustleBar(ctx) {
+        const barX = 10, barY = 24, barW = 60, barH = 6;
+        const fill = this.player.dashCharge;
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fillRect(barX, barY, barW, barH);
+        ctx.fillStyle = fill >= 1 ? '#4f4' : '#2a2';
+        ctx.fillRect(barX, barY, barW * fill, barH);
+        const flash = this.player.rechargeFlash;
+        if (flash > 0 && fill > 0) {
+            const filledW = barW * fill;
+            const segW = Math.min(filledW, barW * 0.11);
+            ctx.globalAlpha = flash;
+            ctx.fillStyle = '#dfffdf';
+            ctx.fillRect(barX + filledW - segW, barY, segW, barH);
+            ctx.globalAlpha = 1;
+        }
+    }
+
+    // C-key debug overlay — bottom-left info panel + the shared perf panel,
+    // mirroring the overworld and the perspective dungeon.
+    renderDebug(ctx) {
+        const g = this.game;
+        const fp = this._feetPoint();
+
+        // Feet marker.
+        ctx.fillStyle = '#0f0';
+        ctx.beginPath(); ctx.arc(fp.x, fp.y, 4, 0, Math.PI * 2); ctx.fill();
+
+        // Bottom-left info panel, same corner as the other screens.
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(4, g.height - 72, 360, 68);
+        ctx.fillStyle = '#0f0';
+        ctx.font = '12px monospace';
+        ctx.fillText(`Location: ${this.name} (infinite)`, 10, g.height - 54);
+        ctx.fillText(`cam: ${this.camX.toFixed(0)}, ${this.camY.toFixed(0)}  facing: ${this.facing}`, 10, g.height - 36);
+        ctx.fillText(`tileScale: ${this.tileScale}  charScale: ${this.charScale}`, 10, g.height - 16);
+
+        // Perf panel (top right) — identical to the overworld.
+        if (window.PERF) window.PERF.render(ctx, g);
+    }
+}
+
+window.TileDungeonScreen = TileDungeonScreen;

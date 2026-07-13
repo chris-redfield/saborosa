@@ -215,6 +215,9 @@ class Game {
                 this.loadImage('dungeon_gato_1', 'assets/saborosa-dungeon-gato-01.png'),
                 this.loadImage('dungeon_gato_2', 'assets/saborosa-dungeon-gato-02.png'),
                 this.loadImage('dungeon_gato_3', 'assets/saborosa-dungeon-gato-03.png'),
+                // "Infinite" tiled dungeon floor — one square tile repeated
+                // forever, top-down, constant character scale (see tiledungeon.js).
+                this.loadImage('dungeon_tile', 'assets-v2/rafe-saborosa-escaladalow-01.png'),
 
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
