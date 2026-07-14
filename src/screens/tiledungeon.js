@@ -407,53 +407,68 @@ class TileDungeonScreen {
         // Bottom end in screen space; if it's off the bottom edge the rope isn't
         // visible (player walked away from it). The FAR end (anchor) is pinned
         // from the RESTING ground position and does NOT move with the hop — only
-        // the player's end lifts by jumpZ toward that fixed anchor. So the wire
-        // pivots/shortens with its top staying put (the near-player part rises
-        // most, the far end holds still) instead of the whole thing translating
-        // up like a rigid pole.
+        // the player's end lifts by jumpZ toward that fixed anchor.
         const hop = (r.attached ? this.jumpZ : 0) || 0;
         const bx = r.endPlaneX - this.camX;
         const groundBy = r.endPlaneY - this.camY; // where the end rests on the floor
         const by = groundBy - hop;                // player's end lifts with the hop
         if (by < -40) return; // whole rope above the screen
-        // Anchor directly above, CLAMPED off the top edge so it's never visible
-        // and always trails the camera. Computed from groundBy (NOT the lifted
-        // by) so the far end stays fixed through the hop. Sway drifts it sideways
-        // a few px; the hop "whip" briefly amplifies it and adds a fast decaying
-        // quiver so the wire shivers with tension when he pushes off.
-        let ax = bx + r.anchorDX;
+        const ax = bx + r.anchorDX;
         const ay = Math.min(groundBy - r.length, -60);
-        ax += r.sway * (1 + 2.2 * this.ropeWhip)
-              * (0.7 * Math.sin(r.t * 1.7) + 0.3 * Math.sin(r.t * 3.3 + 1.1));
-        ax += this.ropeWhip * 13 * Math.sin(r.t * 24);
 
+        // Baseline anchor→end and its perpendicular. Instead of drawing a rigid
+        // straight strip, we lay the twist tiles along a transverse TRAVELLING
+        // WAVE so the rope ripples like a real line, not a pole. The wave tapers
+        // to zero at BOTH ends — the pinned anchor and the hand gripping the end
+        // — and bulges between, travelling up the rope over time. Amplitude has a
+        // subtle idle shimmer, more while walking, and a big spike on a hop
+        // (ropeWhip) so pushing off sends a wave rippling up the line.
         const dirx = bx - ax, diry = by - ay;
         const len = Math.hypot(dirx, diry); if (len < 1) return;
-        const scale = r.width / nw;              // on-screen thickness / native width
-        const period = nh * scale;               // one twist period on screen
-        // Only tile as far as the visible screen: the rope is near-vertical and
-        // anchored just off the top, so past the bottom edge there's nothing to
-        // see. Caps drawImage calls to ~one screenful even if the (detached) end
-        // is far off-screen — no runaway when you walk away from the rope.
+        const ux = dirx / len, uy = diry / len;    // unit along the rope
+        const perpx = -uy, perpy = ux;             // unit perpendicular
+        const scale = r.width / nw;                // on-screen thickness / native width
+        const period = nh * scale;                 // one twist period on screen
+        // Only tile as far as the visible screen (rope is near-vertical, anchored
+        // off the top) — caps drawImage calls to ~one screenful.
         const drawLen = Math.min(len, this.game.height - ay + period);
-        const n = Math.ceil(drawLen / period) + 1; // tiles to cover the visible rope
-        const angle = Math.atan2(diry, dirx) - Math.PI / 2; // segment +y → A→B dir
+        const n = Math.ceil(drawLen / period) + 1;
+
+        // Same gentle shimmer whether stationary or walking; only a hop kicks up
+        // the big ripple (ropeWhip).
+        const amp = (r.waveIdle != null ? r.waveIdle : 3)          // resting shimmer
+                  + this.ropeWhip * (r.waveWhip != null ? r.waveWhip : 34); // hop ripple
+        const humps = r.waveHumps != null ? r.waveHumps : 2.3;     // wave count along length
+        const speed = r.waveSpeed != null ? r.waveSpeed : 7;       // travel speed up the rope
+        // Lateral offset (px) of the rope at parameter tt in [0,1] (0=anchor,
+        // 1=hand). sin(π·tt) pins both ends; the inner sin makes it travel.
+        const lat = (tt) => Math.sin(Math.PI * tt) * amp
+                          * Math.sin(humps * Math.PI * tt - speed * r.t);
 
         ctx.save();
         // Nearest-neighbour (not bilinear): the segment is downscaled ~14× to the
         // wire width, and bilinear greys the thin black twist lines into mush.
-        // Nearest keeps them solid black and crisp. imageSmoothingEnabled is part
-        // of the saved canvas state, so this stays scoped to the rope.
         ctx.imageSmoothingEnabled = false;
-        ctx.translate(ax, ay);
-        ctx.rotate(angle);
-        // Draw from the anchor down the +y axis; the last tile is clipped to the
-        // rope length so it doesn't overshoot past the end.
-        ctx.beginPath();
-        ctx.rect(-r.width / 2, 0, r.width, len);
-        ctx.clip();
-        for (let i = 0; i < n; i++) {
-            ctx.drawImage(img, -r.width / 2, i * period, r.width, period + 1);
+        // Walk down the rope one twist tile at a time, offsetting each point by
+        // the wave and rotating the tile to its own local tangent so the texture
+        // follows the curve. The last tile is clamped to the rope's end.
+        let prevX = ax, prevY = ay;                // anchor: lat(0) == 0
+        for (let i = 1; i <= n; i++) {
+            const dist = Math.min(i * period, len);
+            const tt = dist / len;
+            const l = lat(tt);
+            const x = ax + ux * dist + perpx * l;
+            const y = ay + uy * dist + perpy * l;
+            const segdx = x - prevX, segdy = y - prevY;
+            const segLen = Math.hypot(segdx, segdy) || period;
+            const a = Math.atan2(segdy, segdx) - Math.PI / 2; // texture +y → down-rope
+            ctx.save();
+            ctx.translate(prevX, prevY);
+            ctx.rotate(a);
+            ctx.drawImage(img, -r.width / 2, 0, r.width, segLen + 1);
+            ctx.restore();
+            prevX = x; prevY = y;
+            if (dist >= len) break;                // reached the hand — stop
         }
         ctx.restore();
     }
