@@ -34,8 +34,8 @@
     <span><span class="swatch" style="background:#39c">bush(auto)</span></span>
   </div>
   <div class="grp">cells
-    <input id="cols" type="range" min="20" max="64" value="40">
-    <span id="colsV">40</span>×<span id="rowsV">?</span>
+    <input id="cols" type="range" min="20" max="160" value="128">
+    <span id="colsV">128</span>×<span id="rowsV">?</span>
   </div>
   <div class="grp">bush&nbsp;threshold
     <input id="thr" type="range" min="0" max="100" value="42">
@@ -62,7 +62,7 @@ const artX = artC.getContext('2d'), gX = gridC.getContext('2d');
 
 let img = new Image();
 let NW = 0, NH = 0;             // native tile px
-let cols = 40, rows = 0;
+let cols = 128, rows = 0;
 let mask = null;               // Uint8Array rows*cols (1 = solid)
 let auto = null;               // Uint8Array — per-cell auto class: 0 none,1 skull,2 bush
 let scale = 1;                 // display px per native px
