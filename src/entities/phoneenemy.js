@@ -24,7 +24,8 @@
  */
 
 // A large enemy: bigger than the 0.855 character world-scale. Tune to taste.
-const PHONE_WORLD_SCALE = 1.05;
+// (Was 1.05; reduced 10% → 0.945.)
+const PHONE_WORLD_SCALE = 0.945;
 
 // Load the phone pack ONCE and memoize it on the game — every phone shares it.
 function _loadPhonePack(game) {
