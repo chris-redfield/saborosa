@@ -109,6 +109,31 @@ class TileDungeonScreen {
         } else {
             this.rope = null;
         }
+
+        // Little hop while holding the rope: press lift (Space / gamepad button
+        // 0 — see input.js keyMap) to jump. Purely VISUAL — like a thrown
+        // object's arc, a parabolic height (jumpZ) lifts the drawn sprite while
+        // a shadow stays pinned at the feet-point so the player can still read
+        // exactly where the character is on the floor. camX/camY and collision
+        // are untouched (the footprint never leaves the feet-point). Only armed
+        // while rope.attached; lift stays free otherwise. See _drawShadow and
+        // the jumpZ lift in _drawCharacter.
+        const jc = cfg.jump || {};
+        this.jumpActive = false;
+        this.jumpT = 0;                              // 0..jumpDur clock (sec)
+        this.jumpZ = 0;                              // current visual lift (px)
+        this.jumpDur = jc.dur != null ? jc.dur : 0.42;   // rise+fall time (sec)
+        this.jumpPeak = jc.peak != null ? jc.peak : 54;  // arc peak height (px)
+
+        // Bad-landing "stuck in a bush": while airborne the hop floats OVER every
+        // solid cell, but if the feet come down inside a bush/skull the player is
+        // pinned in place for a beat, shaking, before he can move or hop out (an
+        // escape mode then lets him walk off the solid). See the landing check in
+        // update(), the stuck lock at the top of update(), and the shake in
+        // _drawCharacter.
+        this.stuckTimer = 0;                             // sec remaining locked
+        this.stuckShakeT = 0;                            // shake animation clock
+        this.stuckDur = jc.stuckDur != null ? jc.stuckDur : 1.0; // lock time (sec)
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -199,6 +224,20 @@ class TileDungeonScreen {
             return; // airborne — no walking yet
         }
 
+        // Stuck after a bad hop into a bush/skull: locked in place and shaking
+        // for a beat. No walking, no hopping, no interact until it wears off —
+        // then normal update resumes with the feet still on a solid, so the
+        // escape mode in the collision test below lets him walk out.
+        if (this.stuckTimer > 0) {
+            this.stuckTimer -= dt;
+            this.stuckShakeT += dt;
+            this.player.facing = this.facing;
+            this.player.moving = false;
+            this.player.advanceAnimations();
+            if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
+            return;
+        }
+
         const mv = this.game.input.getMovementVector(); // x:-1..1, y:-1..1 (up=-1)
 
         // Hustle/charge bar (same as the overworld + perspective dungeon): mash
@@ -215,9 +254,14 @@ class TileDungeonScreen {
         const step = this.moveSpeed * hustle * dt;
         // Per-axis collision against the solid tile cells: try X then Y so a
         // blocked axis still lets the player slide along a wall (skull/bush edge).
+        // The wall test is skipped when he should pass through: mid-hop he floats
+        // OVER solids, and if his feet are currently inside a solid (a bad landing
+        // that's worn off) he can walk straight out of it — either way, don't trap
+        // him. Normal collision resumes the moment he's airborne-free and clear.
         const sx = dx * step, sy = dy * step;
-        if (sx && !this._boxHitsSolid(this.camX + sx, this.camY)) this.camX += sx;
-        if (sy && !this._boxHitsSolid(this.camX, this.camY + sy)) this.camY += sy;
+        const passThrough = this.jumpActive || this._boxHitsSolid(this.camX, this.camY);
+        if (sx && (passThrough || !this._boxHitsSolid(this.camX + sx, this.camY))) this.camX += sx;
+        if (sy && (passThrough || !this._boxHitsSolid(this.camX, this.camY + sy))) this.camY += sy;
 
         // 8-way facing from the movement vector (matches DungeonScreen).
         const up = dy < 0, down = dy > 0, right = dx > 0, left = dx < 0;
@@ -256,6 +300,33 @@ class TileDungeonScreen {
             if (this.rope && this.rope.attached) this.rope.attached = false;
             else if (this.rope && this._touchingRope()) this.rope.attached = true;
             else this.exitRequested = true;
+        }
+
+        // Rope hop: lift starts a jump only while gripping the rope and not
+        // already mid-hop. The character can still walk (the world scrolls) and
+        // the rope end tracks him during the arc — the jump is a pure vertical
+        // draw offset layered on top.
+        if (this.rope && this.rope.attached && !this.jumpActive
+            && this.game.input.isKeyJustPressed('lift')) {
+            this.jumpActive = true;
+            this.jumpT = 0;
+        }
+        if (this.jumpActive) {
+            this.jumpT += dt;
+            const p = Math.min(1, this.jumpT / this.jumpDur);
+            // Same parabola as a thrown object (throwZ = 4·H·p·(1−p)): 0 at the
+            // ground, peak at p=0.5.
+            this.jumpZ = 4 * this.jumpPeak * p * (1 - p);
+            if (this.jumpT >= this.jumpDur) {
+                this.jumpActive = false; this.jumpZ = 0;
+                // Touchdown: if the feet landed on a bush/skull, he's stuck for a
+                // beat (shaking) before he can move or hop again. Land on open
+                // floor and nothing happens — play just continues.
+                if (this._boxHitsSolid(this.camX, this.camY)) {
+                    this.stuckTimer = this.stuckDur;
+                    this.stuckShakeT = 0;
+                }
+            }
         }
 
         // Drive the shared Player pose animation from our own movement.
@@ -366,6 +437,25 @@ class TileDungeonScreen {
         ctx.restore();
     }
 
+    // Ground shadow for the rope-hop: a soft ellipse pinned at the feet-point
+    // (the character's real floor position) while the sprite is lifted by jumpZ.
+    // It stays put and shrinks a touch as he rises, so the height reads clearly
+    // and the player always knows where the character actually is. Only shown
+    // while airborne (jumpZ > 0).
+    _drawShadow(ctx) {
+        if (!(this.jumpZ > 0)) return;
+        const fp = this._feetPoint();
+        const fr = this._footRect();
+        const k = 1 - 0.28 * (this.jumpZ / this.jumpPeak); // shrink with height
+        const rx = (fr.w * 0.55) * k, ry = (fr.w * 0.22) * k;
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.beginPath();
+        ctx.ellipse(fp.x, fp.y - 2, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
     // Character — the Player's CURRENT pose frame, feet (bottom-centre) planted
     // on the fixed screen feet-point, at a constant scale (no perspective). Sizes
     // off the idle-frame height so every pose stays in proportion (a shorter
@@ -382,8 +472,14 @@ class TileDungeonScreen {
         const drawH = fr.height * unit;
         const drawW = fr.width * unit;
         const drop = this.dropOffset || 0;        // lifted while falling in
-        const dx = fp.x - drawW / 2;
-        const dy = fp.y - drawH - drop + (fr.vAlign || 0) * unit;
+        const hop = this.jumpZ || 0;              // rope-hop arc lift
+        // Struggle shake while stuck in a bush — a fast horizontal jitter on two
+        // detuned sines so it reads as frantic, not a clean wobble.
+        const shake = this.stuckTimer > 0
+            ? Math.sin(this.stuckShakeT * 52) * 3 + Math.sin(this.stuckShakeT * 31) * 1.5
+            : 0;
+        const dx = fp.x - drawW / 2 + shake;
+        const dy = fp.y - drawH - drop - hop + (fr.vAlign || 0) * unit;
         if (fr.flipped) {
             ctx.save();
             ctx.translate(dx + drawW, dy);
@@ -403,6 +499,7 @@ class TileDungeonScreen {
 
         this._drawFloor(ctx);
         this._drawRope(ctx);        // taut wire on the floor, under the character
+        this._drawShadow(ctx);      // rope-hop ground shadow, under the character
         this._drawCharacter(ctx);
 
         if (this.fadeIn > 0) {
