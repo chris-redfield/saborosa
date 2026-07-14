@@ -78,6 +78,37 @@ class TileDungeonScreen {
 
         // Never drop in wedged inside a skull/bush.
         this._unstickSpawn();
+
+        // Taut-wire rope (Mina-the-Hollower style): a rope stretched STRAIGHT
+        // from its bottom end up to an anchor — never a swinging pendulum. The
+        // anchor is ALWAYS off the top of the screen and travels with the camera
+        // (walk up and it rises with you). The bottom END is a real spot:
+        //  - detached (default): a fixed floor-plane point near the spawn — the
+        //    player drops in NEXT to it, not clipped onto it, and must walk over
+        //    and press interact (E) to grab on.
+        //  - attached: the end tracks the player (the taut wire follows him to
+        //    the sides), and the three down-facing poses are disabled (see update).
+        // The player owns the interact key here (handlesInteract) so grabbing the
+        // rope doesn't also climb out. See _drawRope / _touchingRope.
+        this.exitRequested = false;
+        this.handlesInteract = true;
+        const rc = cfg.rope || {};
+        if (rc.enabled !== false) {
+            const fp = this._feetPoint();
+            this.rope = {
+                // bottom end in PLANE coords (a world spot near the spawn).
+                endPlaneX: this.camX + fp.x + (rc.endDX != null ? rc.endDX : 90),
+                endPlaneY: this.camY + fp.y + (rc.endDY != null ? rc.endDY : 0),
+                length: rc.length != null ? rc.length : 540, // min anchor height above the end
+                width: rc.width != null ? rc.width : 15,     // on-screen thickness px
+                sway: rc.sway != null ? rc.sway : 10,        // ambient wire-quiver amplitude px
+                anchorDX: rc.anchorDX || 0,                  // anchor x offset (screen)
+                attached: false,
+                t: 0,                                        // sway clock
+            };
+        } else {
+            this.rope = null;
+        }
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -155,6 +186,8 @@ class TileDungeonScreen {
     }
 
     update(dt) {
+        if (this.rope) this.rope.t += dt; // taut-wire ambient sway clock
+
         // Ceiling drop on entry — same accel curve as the overworld fall.
         if (this.falling) {
             this.fallTimerMs += dt * 1000;
@@ -196,6 +229,34 @@ class TileDungeonScreen {
         else if (down) this.facing = 'down';
         else if (right) this.facing = 'right';
         else if (left) this.facing = 'left';
+
+        // While attached to the rope the character grips it facing away, so the
+        // three DOWNWARD poses are disabled — remap them to the up equivalent
+        // (up/up-diagonals + plain left/right stay). Mirrors the green-wall climb
+        // clamp in player.move(), but that one also kills plain left/right; here
+        // only the down set is dropped.
+        if (this.rope && this.rope.attached) {
+            if      (this.facing === 'down')       this.facing = 'up';
+            else if (this.facing === 'down_left')  this.facing = 'up_left';
+            else if (this.facing === 'down_right') this.facing = 'up_right';
+        }
+
+        // Attached rope end tracks the player (the taut wire follows him); the
+        // anchor stays off the top of the screen (see _drawRope).
+        if (this.rope && this.rope.attached) {
+            const fp = this._feetPoint();
+            this.rope.endPlaneX = this.camX + fp.x;
+            this.rope.endPlaneY = this.camY + fp.y;
+        }
+
+        // Interact (E / gamepad): grab the rope when touching it, release when
+        // already attached, otherwise climb out of the dungeon. main.js reads
+        // exitRequested (this screen owns the interact key — handlesInteract).
+        if (this.game.input.isKeyJustPressed('interact')) {
+            if (this.rope && this.rope.attached) this.rope.attached = false;
+            else if (this.rope && this._touchingRope()) this.rope.attached = true;
+            else this.exitRequested = true;
+        }
 
         // Drive the shared Player pose animation from our own movement.
         this.player.facing = this.facing;
@@ -239,6 +300,72 @@ class TileDungeonScreen {
         }
     }
 
+    // Is the player's footprint up against the rope? (near its vertical line,
+    // at or above its bottom end). Used to gate the interact grab.
+    _touchingRope() {
+        const r = this.rope; if (!r) return false;
+        const fp = this._feetPoint();
+        const fxp = this.camX + fp.x, fyp = this.camY + fp.y; // player feet (plane)
+        const ry = Math.min(fyp, r.endPlaneY);                // nearest point up the rope
+        const grab = r.width / 2 + this._footRect().w / 2 + 14;
+        return Math.hypot(fxp - r.endPlaneX, fyp - ry) < grab;
+    }
+
+    // Taut-wire rope: a STRAIGHT rope from the bottom END up to an anchor that is
+    // always kept off the top of the screen (Mina tether — the anchor rides with
+    // the camera, never pinned to a world spot). The end is a floor-plane point
+    // (→ screen via P − cam): a fixed world spot when detached, or the player
+    // when attached. The twist is tiled along the line, rotated to its angle, so
+    // it stays a rigid wire at any length/angle (no swing). The only motion is a
+    // subtle ambient sway: the (off-screen) anchor drifts a few px sideways on
+    // layered sines, quivering the taut line like a wire under tension.
+    _drawRope(ctx) {
+        const r = this.rope; if (!r) return;
+        const img = this.game.getDrawable('rope_segment');
+        if (!img || !(img.naturalWidth || img.width)) return;
+        const nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+
+        // Bottom end in screen space; if it's off the bottom edge the rope isn't
+        // visible (player walked away from it).
+        const bx = r.endPlaneX - this.camX, by = r.endPlaneY - this.camY;
+        if (by < -40) return; // whole rope above the screen
+        // Anchor directly above, CLAMPED off the top edge so it's never visible
+        // and always trails the camera. Sway drifts it sideways a few px.
+        let ax = bx + r.anchorDX;
+        const ay = Math.min(by - r.length, -60);
+        ax += r.sway * (0.7 * Math.sin(r.t * 1.7) + 0.3 * Math.sin(r.t * 3.3 + 1.1));
+
+        const dirx = bx - ax, diry = by - ay;
+        const len = Math.hypot(dirx, diry); if (len < 1) return;
+        const scale = r.width / nw;              // on-screen thickness / native width
+        const period = nh * scale;               // one twist period on screen
+        // Only tile as far as the visible screen: the rope is near-vertical and
+        // anchored just off the top, so past the bottom edge there's nothing to
+        // see. Caps drawImage calls to ~one screenful even if the (detached) end
+        // is far off-screen — no runaway when you walk away from the rope.
+        const drawLen = Math.min(len, this.game.height - ay + period);
+        const n = Math.ceil(drawLen / period) + 1; // tiles to cover the visible rope
+        const angle = Math.atan2(diry, dirx) - Math.PI / 2; // segment +y → A→B dir
+
+        ctx.save();
+        // Nearest-neighbour (not bilinear): the segment is downscaled ~14× to the
+        // wire width, and bilinear greys the thin black twist lines into mush.
+        // Nearest keeps them solid black and crisp. imageSmoothingEnabled is part
+        // of the saved canvas state, so this stays scoped to the rope.
+        ctx.imageSmoothingEnabled = false;
+        ctx.translate(ax, ay);
+        ctx.rotate(angle);
+        // Draw from the anchor down the +y axis; the last tile is clipped to the
+        // rope length so it doesn't overshoot past the end.
+        ctx.beginPath();
+        ctx.rect(-r.width / 2, 0, r.width, len);
+        ctx.clip();
+        for (let i = 0; i < n; i++) {
+            ctx.drawImage(img, -r.width / 2, i * period, r.width, period + 1);
+        }
+        ctx.restore();
+    }
+
     // Character — the Player's CURRENT pose frame, feet (bottom-centre) planted
     // on the fixed screen feet-point, at a constant scale (no perspective). Sizes
     // off the idle-frame height so every pose stays in proportion (a shorter
@@ -275,6 +402,7 @@ class TileDungeonScreen {
         ctx.imageSmoothingEnabled = true;
 
         this._drawFloor(ctx);
+        this._drawRope(ctx);        // taut wire on the floor, under the character
         this._drawCharacter(ctx);
 
         if (this.fadeIn > 0) {

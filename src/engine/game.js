@@ -221,6 +221,9 @@ class Game {
                 // Per-tile collision grid for that floor (skulls + bushes = solid),
                 // authored/auto-detected in tools/tile-collision.html.
                 this.loadJSON('dungeon_tile_collision', 'assets-v2/rafe-saborosa-escaladalow-01-collision.json'),
+                // Tileable twisted-rope segment (one vertical twist period, from
+                // the vecteezy rope .eps) for the dungeon's taut-wire rope.
+                this.loadImage('rope_segment', 'assets-v2/saborosa-rope-segment.png'),
 
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),

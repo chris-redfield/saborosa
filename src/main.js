@@ -400,10 +400,17 @@ function updateGame(dt) {
     const world = gameState.world;
 
     // Dungeon interior: a separate screen with its own perspective render/update
-    // (see dungeon.js). E climbs back out to the overworld at the hole.
+    // (see dungeon.js). E climbs back out to the overworld at the hole — unless
+    // the screen claims the interact key itself (the tiled dungeon uses it to
+    // grab/release the rope, and raises exitRequested only when it means "exit").
     if (gameState.screen === 'dungeon') {
-        gameState.dungeon.update(dt);
-        if (game.input.isKeyJustPressed('interact')) exitDungeon();
+        const d = gameState.dungeon;
+        d.update(dt);
+        if (d.handlesInteract) {
+            if (d.exitRequested) { d.exitRequested = false; exitDungeon(); }
+        } else if (game.input.isKeyJustPressed('interact')) {
+            exitDungeon();
+        }
         return;
     }
 

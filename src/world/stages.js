@@ -154,6 +154,15 @@ const STAGES = {
             // box reads like the overworld (which inflates the sprite past its
             // footprint via perspective). Lower = smaller box.
             colScale: 0.7,
+            // Taut-wire rope (Mina-the-Hollower style): a straight stretched rope
+            // whose anchor stays off the top of the screen (travels with the
+            // camera, never a world spot). The bottom END is a floor spot near the
+            // spawn — the player drops in NEXT to it (endDX/endDY offset from the
+            // spawn) and presses interact (E) while touching it to grab on; grabbed,
+            // the end follows the player and the down-facing poses are disabled.
+            // `length` = min anchor height above the end; `width` = thickness;
+            // `sway` = ambient quiver px; enabled:false removes it.
+            rope: { enabled: true, length: 540, width: 15, sway: 10, endDX: 90, endDY: 0 },
         },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
