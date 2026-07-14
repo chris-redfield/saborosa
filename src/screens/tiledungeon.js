@@ -134,6 +134,12 @@ class TileDungeonScreen {
         this.stuckTimer = 0;                             // sec remaining locked
         this.stuckShakeT = 0;                            // shake animation clock
         this.stuckDur = jc.stuckDur != null ? jc.stuckDur : 1.0; // lock time (sec)
+
+        // Rope "whip": pushing off for a hop spikes this to 1 and it decays over
+        // ~0.5s, briefly boosting the rope's ambient sway so the wire shivers
+        // with tension instead of rigidly translating. See _drawRope. (The rope
+        // also lifts by jumpZ during the hop so its end follows the player up.)
+        this.ropeWhip = 0;
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -212,6 +218,7 @@ class TileDungeonScreen {
 
     update(dt) {
         if (this.rope) this.rope.t += dt; // taut-wire ambient sway clock
+        if (this.ropeWhip > 0) this.ropeWhip = Math.max(0, this.ropeWhip - dt / 0.5);
 
         // Ceiling drop on entry — same accel curve as the overworld fall.
         if (this.falling) {
@@ -310,6 +317,7 @@ class TileDungeonScreen {
             && this.game.input.isKeyJustPressed('lift')) {
             this.jumpActive = true;
             this.jumpT = 0;
+            this.ropeWhip = 1; // kick the rope so it shivers as he pushes off
         }
         if (this.jumpActive) {
             this.jumpT += dt;
@@ -397,14 +405,27 @@ class TileDungeonScreen {
         const nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
 
         // Bottom end in screen space; if it's off the bottom edge the rope isn't
-        // visible (player walked away from it).
-        const bx = r.endPlaneX - this.camX, by = r.endPlaneY - this.camY;
+        // visible (player walked away from it). The FAR end (anchor) is pinned
+        // from the RESTING ground position and does NOT move with the hop — only
+        // the player's end lifts by jumpZ toward that fixed anchor. So the wire
+        // pivots/shortens with its top staying put (the near-player part rises
+        // most, the far end holds still) instead of the whole thing translating
+        // up like a rigid pole.
+        const hop = (r.attached ? this.jumpZ : 0) || 0;
+        const bx = r.endPlaneX - this.camX;
+        const groundBy = r.endPlaneY - this.camY; // where the end rests on the floor
+        const by = groundBy - hop;                // player's end lifts with the hop
         if (by < -40) return; // whole rope above the screen
         // Anchor directly above, CLAMPED off the top edge so it's never visible
-        // and always trails the camera. Sway drifts it sideways a few px.
+        // and always trails the camera. Computed from groundBy (NOT the lifted
+        // by) so the far end stays fixed through the hop. Sway drifts it sideways
+        // a few px; the hop "whip" briefly amplifies it and adds a fast decaying
+        // quiver so the wire shivers with tension when he pushes off.
         let ax = bx + r.anchorDX;
-        const ay = Math.min(by - r.length, -60);
-        ax += r.sway * (0.7 * Math.sin(r.t * 1.7) + 0.3 * Math.sin(r.t * 3.3 + 1.1));
+        const ay = Math.min(groundBy - r.length, -60);
+        ax += r.sway * (1 + 2.2 * this.ropeWhip)
+              * (0.7 * Math.sin(r.t * 1.7) + 0.3 * Math.sin(r.t * 3.3 + 1.1));
+        ax += this.ropeWhip * 13 * Math.sin(r.t * 24);
 
         const dirx = bx - ax, diry = by - ay;
         const len = Math.hypot(dirx, diry); if (len < 1) return;
