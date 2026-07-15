@@ -36,8 +36,8 @@ class DungeonScreen {
             perspSpeed: true          // constant ground speed (slower when far)
         }, cfg.perspective || {});
 
-        this.t = cfg.startT != null ? cfg.startT : 0.12; // land near the front
-        this.L = 0;
+        this.t = cfg.startT != null ? cfg.startT : 0.06; // land near the front (closer/lower)
+        this.L = cfg.startL != null ? cfg.startL : -0.90; // drop in on the far LEFT
         this.facing = 'down'; // faces the camera as he drops in
         this.bg = { x: 0, y: 0, w: 0, h: 0 };
         this.fadeIn = 1; // black → clear on entry
@@ -68,27 +68,76 @@ class DungeonScreen {
                     { name: 'paw R', tMin: 0.80, tMax: 0.90, lMin: 0.22, lMax: 0.50 },
                   ];
 
-        // A barrel prop (block_03 from the assets-002 sheet) dropped at a RANDOM
-        // floor spot every time the dungeon is entered (this screen is rebuilt on
-        // each entry, so a fresh Math.random() here reshuffles it). Kept in front
-        // of the cat (t well below the statue band) and off the side walls + the
-        // spawn point so it never lands on top of the player or the furnace. It's
-        // solid: a small (t,L) footprint added to the collision boxes.
-        const rnd = (a, b) => a + Math.random() * (b - a);
+        // A barrel prop (block_03 from the assets-002 sheet) spawned at a FIXED
+        // spot: the SAME depth as the player's drop-in (startT) but off to his
+        // RIGHT, so it's always right there beside him to pick up. Override via
+        // cfg.barrelStartT / cfg.barrelStartL. It's solid: a small (t,L) footprint
+        // added to the collision boxes.
         this.barrelHalfT = 0.028; // collision half-extents in (t, L)
         this.barrelHalfL = 0.06;
         this.barrel = {
             defKey: 'block_03',
-            t: rnd(0.30, 0.72),
-            L: rnd(-0.70, 0.70),
+            t: cfg.barrelStartT != null ? cfg.barrelStartT : this.t,
+            L: cfg.barrelStartL != null ? cfg.barrelStartL : 0.70, // right side, opposite the player
             scale: cfg.barrelScale != null ? cfg.barrelScale : 1.0,
             mass: 1,          // light → picked up with the normal (not heavy) grab pose
             flipX: false,
             fly: null,        // arc descriptor while thrown; null when resting/carried
             flyZ: 0,          // current arc lift (fraction of bg height), for the draw
+            gone: false,      // true once fed to the furnace (consumed, no longer drawn/solid)
             box: { name: 'barrel', tMin: 0, tMax: 0, lMin: 0, lMax: 0 },
         };
+        // Remember the barrel's ORIGINAL resting spot — the dropped letter falls
+        // here (where the barrel started), not where it struck the furnace.
+        this.barrel.startT = this.barrel.t;
+        this.barrel.startL = this.barrel.L;
         this._syncBarrelBox();
+
+        // --- Furnace-feeding mechanic --------------------------------------
+        // Throw the barrel into the cat's mouth → explosion → a SABOROSA letter
+        // drops from the ceiling where it hit, bounces to rest, and collecting it
+        // iris-wipes back out to the overworld.
+        //
+        // Mouth feed target on the BACK WALL — a rectangle in normalized bg coords.
+        // The cat is painted on the bg, so a screen rect sits right on the mouth
+        // (NOT flat on the floor plane). The thrown barrel arcs up toward the wall
+        // and a HIT is its on-screen position entering this rect; the explosion
+        // pops at its centre. Tune in tools/dungeon-perspective.html (Cat tab).
+        this.mouthRect = cfg.mouthRect || { x: 0.44, y: 0.40, w: 0.12, h: 0.12 };
+        this.mouthBoomScale = cfg.mouthBoomScale != null ? cfg.mouthBoomScale : 0.5; // 50% of the old size
+        this.mouthBoomOffsetY = cfg.mouthBoomOffsetY != null ? cfg.mouthBoomOffsetY : -25; // blast nudged UP (screen px)
+
+        // Dropped letter: perspective-drawn glyph with a real little bounce (NOT
+        // the floaty decorative Letter entity). Physics are in screen px.
+        this.letterScale = cfg.letterScale != null ? cfg.letterScale : 1.7; // × perspective height
+        this.letterGravity = cfg.letterGravity != null ? cfg.letterGravity : 2400; // px/s²
+        this.letterRestitution = 0.42;   // bounce energy kept
+        this.letterStopSpeed = 95;       // px/s below which a floor hit stops the bounce
+        this.letterCollectDist = 0.16;   // (t,L) proximity to auto-collect
+        this.hitLetterDelay = 0.28;      // sec after the blast before the letter drops
+
+        // Sequence state (fresh each entry — the screen is rebuilt on every fall).
+        this.booms = [];         // active explosion effects (dungeon-local)
+        this.letter = null;      // the dropped letter once it spawns
+        this.letterSpot = null;  // (t,L) where the barrel struck → where the letter falls
+        this.letterDelay = 0;    // countdown from hit → letter drop
+        this.iris = null;        // iris-out wipe descriptor once collected
+        this.hit = false;        // latched so the furnace only fires once
+
+        // This screen owns the interact key: E climbs out normally, but the collect
+        // sequence exits on its own (after the iris) via exitRequested (main.js).
+        this.handlesInteract = true;
+        this.exitRequested = false;
+
+        // Scorched ceiling tile where something dropped through: a black quad on
+        // the ceiling grid. The ceiling is the floor plane MIRRORED about the
+        // vanishing point (vpY), so a hole at (t,L) sits directly above the floor
+        // spot at (t,L) — the same screen column the fall drops down. The player's
+        // entry hole is blacked from the start; the letter adds its own when it
+        // drops (see _spawnLetter). Tile half-extents in (t,L) via cfg knobs.
+        this.ceilHoleDT = cfg.ceilHoleDT != null ? cfg.ceilHoleDT : 0.055;
+        this.ceilHoleDL = cfg.ceilHoleDL != null ? cfg.ceilHoleDL : 0.08;
+        this.ceilingHoles = [{ t: this.t, L: this.L }];
 
         // Fall from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps timestep). Movement is locked until he
@@ -141,6 +190,19 @@ class DungeonScreen {
         };
     }
 
+    // Ceiling sample at (depth tt, lateral LL) → screen px. The ceiling plane is
+    // the floor MIRRORED about the vanishing-point height (vpY): its near/far Y
+    // are 2·vpY − yNear/yFar, same half-widths, so it shares each floor point's
+    // screen X (the fall column) but rides the top of the room.
+    _ceilPoint(tt, LL) {
+        const p = this.params;
+        const yNear = 2 * p.vpY - p.yNear, yFar = 2 * p.vpY - p.yFar;
+        const yN = yNear + (yFar - yNear) * tt;
+        const halfW = p.halfNear + (p.halfFar - p.halfNear) * tt;
+        const xN = p.vpX + LL * halfW;
+        return { x: this.bg.x + xN * this.bg.w, y: this.bg.y + yN * this.bg.h };
+    }
+
     // True while the player is carrying the barrel (so it isn't also solid).
     _barrelCarried() { return this.player && this.player.liftedObject === this.barrel; }
 
@@ -153,7 +215,7 @@ class DungeonScreen {
 
     // The barrel is solid (blocks / can be pushed / shows a debug box) only when
     // resting on the floor — not while carried or mid-throw.
-    _barrelSolid() { return this.barrel && !this._barrelCarried() && !this.barrel.fly; }
+    _barrelSolid() { return this.barrel && !this.barrel.gone && !this._barrelCarried() && !this.barrel.fly; }
 
     // All solid collision boxes for the debug overlay: cat furnace + resting barrel.
     _solidBoxes() {
@@ -240,6 +302,14 @@ class DungeonScreen {
             this.gatoFrame = (this.gatoFrame + 1) % this.gatoFrames.length;
         }
 
+        // Iris-out after collecting the letter: gameplay is frozen while the wipe
+        // closes; when it finishes, ask main.js to climb back out to the overworld.
+        if (this.iris) {
+            this.iris.t += dt;
+            if (this.iris.t >= this.iris.dur) this.exitRequested = true;
+            return;
+        }
+
         // Ceiling fall on entry — same accel curve as the overworld fall. Walking
         // is locked until he touches the floor.
         if (this.falling) {
@@ -302,6 +372,13 @@ class DungeonScreen {
         this.player.advanceAnimations();
         if (this.barrel.fly) this._updateBarrelFlight(dt);
         this._handleLiftThrow();
+
+        // Explosion + letter drop + bounce/collect.
+        this._updateSequence(dt);
+
+        // Manual climb-out (E). The collect sequence exits on its own via the iris,
+        // so this only fires during normal play.
+        if (this.game.input.isKeyJustPressed('interact')) this.exitRequested = true;
 
         if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
     }
@@ -380,7 +457,10 @@ class DungeonScreen {
         const fpO = this._floorPoint(this.t, this.L);
         this.barrel.fly = {
             fromT: this.barrel.t, fromL: this.barrel.L,
-            toT: Math.max(this.barrelHalfT, Math.min(0.80, this.barrel.t + (-fv.y) * dist)),
+            // Allow a forward throw to reach the cat/mouth (t up to 0.94). If it
+            // MISSES the mouth trigger it lands deep, so _updateBarrelFlight nudges
+            // a barrel that came down inside the furnace back to its front face.
+            toT: Math.max(this.barrelHalfT, Math.min(0.94, this.barrel.t + (-fv.y) * dist)),
             toL: Math.max(-1 + this.barrelHalfL, Math.min(1 - this.barrelHalfL, this.barrel.L + fv.x * dist)),
             el: 0, dur: 0.35 + 0.45 * charge,
             carryZ: fpO.frac * 0.85,      // starts at hand/head height (frac of bg height)
@@ -396,7 +476,137 @@ class DungeonScreen {
         this.barrel.L = f.fromL + (f.toL - f.fromL) * k;
         // Leave the hands (carryZ) and land on the floor (0), with an arc bump.
         this.barrel.flyZ = (1 - k) * f.carryZ + Math.sin(Math.PI * k) * f.peakZ;
-        if (k >= 1) { this.barrel.fly = null; this.barrel.flyZ = 0; this._syncBarrelBox(); }
+        // Into the furnace? Test the barrel's ON-SCREEN point (which rises with the
+        // arc's flyZ) against the mouth rect on the back wall — feeding the furnace
+        // fires the sequence (explosion + letter) and consumes the barrel.
+        if (!this.hit) {
+            const fp = this._floorPoint(this.barrel.t, this.barrel.L);
+            const bh = fp.frac * this.bg.h * this.barrel.scale;
+            const bcx = fp.x, bcy = fp.y - this.barrel.flyZ * this.bg.h - bh / 2;
+            if (this._inMouthScreen(bcx, bcy)) { this._onFurnaceHit(); return; }
+        }
+        if (k >= 1) {
+            this.barrel.fly = null; this.barrel.flyZ = 0; this._syncBarrelBox();
+            this._nudgeBarrelOutOfCat(); // a missed deep throw shouldn't rest inside the furnace
+        }
+    }
+
+    // Push a just-landed barrel out to the front face of any cat box it overlaps,
+    // so a throw that reached deep but missed the mouth doesn't sit in the furnace.
+    _nudgeBarrelOutOfCat() {
+        const b = this.barrel;
+        for (const c of this.statueBoxes) {
+            if (b.t + this.barrelHalfT > c.tMin && b.t - this.barrelHalfT < c.tMax &&
+                b.L + this.barrelHalfL > c.lMin && b.L - this.barrelHalfL < c.lMax) {
+                b.t = c.tMin - this.barrelHalfT; // to the box's front face
+            }
+        }
+        b.t = Math.max(this.barrelHalfT, Math.min(1 - this.barrelHalfT, b.t));
+        this._syncBarrelBox();
+    }
+
+    // Barrel's on-screen point inside the back-wall mouth rect (bg-normalized)?
+    _inMouthScreen(cx, cy) {
+        const r = this.mouthRect;
+        const x0 = this.bg.x + r.x * this.bg.w, y0 = this.bg.y + r.y * this.bg.h;
+        return cx >= x0 && cx <= x0 + r.w * this.bg.w &&
+               cy >= y0 && cy <= y0 + r.h * this.bg.h;
+    }
+
+    // Screen centre of the mouth rect — where the blast pops.
+    _mouthCenter() {
+        const r = this.mouthRect;
+        return { x: this.bg.x + (r.x + r.w / 2) * this.bg.w,
+                 y: this.bg.y + (r.y + r.h / 2) * this.bg.h };
+    }
+
+    // Barrel fed to the furnace: consume it, pop the explosion at the mouth, and
+    // arm the letter drop at the spot it struck.
+    _onFurnaceHit() {
+        if (this.hit) return;
+        this.hit = true;
+        // Letter drops at the barrel's ORIGINAL spot (its random spawn), not the
+        // mouth it was thrown into.
+        this.letterSpot = { t: this.barrel.startT, L: this.barrel.startL };
+        this.barrel.fly = null; this.barrel.flyZ = 0; this.barrel.gone = true;
+        if (this.player.liftedObject === this.barrel) this.player.liftedObject = null;
+
+        // Reuse the hole-fall explosion, centred on the cat's mouth (screen space,
+        // so pass a 0,0 camera when rendering). scale via mouthBoomScale.
+        // Full 12-frame boom (grow→peak→fade) for the furnace, not the hole's
+        // tail-only subset. Falls back to boom_defs if the full set is absent.
+        const defs = this.game.getJSON('boom_full_defs') || this.game.getJSON('boom_defs');
+        if (defs) {
+            const mc = this._mouthCenter();
+            const bd = Object.assign({}, defs, { scale: (defs.scale || 1.3) * this.mouthBoomScale });
+            this.booms.push(new BoomEffect(this.game, mc.x, mc.y + this.mouthBoomOffsetY, bd));
+        }
+        this.letterDelay = this.hitLetterDelay;
+    }
+
+    // Advance explosions, the pending letter drop, and the falling/resting letter.
+    _updateSequence(dt) {
+        if (this.booms.length) {
+            for (const b of this.booms) b.update(dt);
+            this.booms = this.booms.filter(b => !b.done);
+        }
+        if (this.letterDelay > 0 && !this.letter) {
+            this.letterDelay -= dt;
+            if (this.letterDelay <= 0) this._spawnLetter();
+        }
+        if (this.letter) this._updateLetter(dt);
+    }
+
+    // Spawn the letter high above its floor spot so it drops from the ceiling. A
+    // random SABOROSA glyph (fresh per entry, like the barrel position).
+    _spawnLetter() {
+        const defs = this.game.getJSON('letter_defs');
+        if (!defs || !defs.assets) return;
+        const keys = Object.keys(defs.assets);
+        const key = keys[Math.floor(Math.random() * keys.length)];
+        const spot = this.letterSpot || { t: 0.6, L: 0 };
+        const fp = this._floorPoint(spot.t, spot.L);
+        const ceil = this._ceilPoint(spot.t, spot.L);
+        this.letter = {
+            def: defs.assets[key], defKey: key,
+            t: spot.t, L: spot.L,
+            // Start AT the ceiling hole (like the player's feet) and fall to the
+            // floor — not from the very top of the room.
+            z: Math.max(fp.y - ceil.y, 40),     // height above the floor point (px)
+            vy: 0,                              // downward velocity (px/s); dz/dt = -vy
+            phase: 'falling',
+            bounces: 0,
+        };
+        // Black out the ceiling tile the letter drops through — appears now, as it
+        // falls (same (t,L) as the letter, so the hole and letter share the column).
+        this.ceilingHoles.push({ t: spot.t, L: spot.L });
+    }
+
+    // Gravity + a couple of decaying bounces, then rest; collect on player contact.
+    _updateLetter(dt) {
+        const L = this.letter;
+        if (L.phase === 'falling') {
+            L.vy += this.letterGravity * dt;
+            L.z -= L.vy * dt;
+            if (L.z <= 0) {
+                L.z = 0;
+                if (Math.abs(L.vy) < this.letterStopSpeed) { L.vy = 0; L.phase = 'resting'; }
+                else { L.vy = -L.vy * this.letterRestitution; L.bounces++; } // bounce up
+            }
+        }
+        if (L.phase === 'resting') {
+            if (Math.hypot(L.t - this.t, L.L - this.L) < this.letterCollectDist) {
+                L.phase = 'collected';
+                this._startIris();
+            }
+        }
+    }
+
+    // Iris-out wipe centred on the player, freezing gameplay until it closes.
+    _startIris() {
+        const fp = this._floorPoint(this.t, this.L);
+        const ph = fp.frac * this.bg.h;
+        this.iris = { t: 0, dur: 0.75, cx: fp.x, cy: fp.y - ph * 0.4 };
     }
 
     // Character — draws the Player's CURRENT pose frame (idle/walk/grab/carry/
@@ -473,6 +683,25 @@ class DungeonScreen {
             cx - w / 2, bottomY - h, w, h);
     }
 
+    // Black scorched tiles on the ceiling grid where the player / letter dropped
+    // through — each a perspective quad on the mirrored ceiling plane.
+    _drawCeilingHoles(ctx) {
+        if (!this.ceilingHoles.length) return;
+        const cT = v => Math.max(0, Math.min(1, v));
+        const cL = v => Math.max(-1, Math.min(1, v));
+        ctx.fillStyle = '#0d0d0d';
+        for (const hle of this.ceilingHoles) {
+            const t0 = cT(hle.t - this.ceilHoleDT), t1 = cT(hle.t + this.ceilHoleDT);
+            const l0 = cL(hle.L - this.ceilHoleDL), l1 = cL(hle.L + this.ceilHoleDL);
+            const a = this._ceilPoint(t0, l0), b = this._ceilPoint(t0, l1);
+            const c = this._ceilPoint(t1, l1), d = this._ceilPoint(t1, l0);
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+            ctx.lineTo(c.x, c.y); ctx.lineTo(d.x, d.y); ctx.closePath();
+            ctx.fill();
+        }
+    }
+
     render(ctx) {
         this._layout();
         const g = this.game;
@@ -485,6 +714,9 @@ class DungeonScreen {
             ctx.drawImage(img, this.bg.x, this.bg.y, this.bg.w, this.bg.h);
         }
 
+        // Scorched ceiling holes sit on the ceiling grid, over the bg.
+        this._drawCeilingHoles(ctx);
+
         // Cat statue on the back wall — full-canvas overlay aligned to the bg, so
         // it shares the bg rect exactly. Drawn before the character so he passes
         // in front of it as he approaches the wall.
@@ -493,19 +725,27 @@ class DungeonScreen {
             ctx.drawImage(gato, this.bg.x + this.gatoOffsetX, this.bg.y, this.bg.w, this.bg.h);
         }
 
+        // Dropped letter sits at the back (near the cat), so draw it before the
+        // character — the player passes in front of it as he walks up to collect.
+        if (this.letter && this.letter.phase !== 'collected') this._drawLetter(ctx);
+
         // Floor objects (barrel + character) share the floor and must respect
         // depth: whichever sits further back (larger t) draws first so the nearer
         // one overlaps it. While carried, the barrel rides above the head and is
-        // drawn with the character (on top).
+        // drawn with the character (on top). A furnace-fed barrel (gone) isn't drawn.
+        const showBarrel = this.barrel && !this.barrel.gone;
         if (this._barrelCarried()) {
             this._drawCharacter(ctx);
             this._drawCarriedBarrel(ctx);
-        } else if (this.barrel && this.barrel.t > this.t) {
+        } else if (showBarrel && this.barrel.t > this.t) {
             this._drawBarrel(ctx); this._drawCharacter(ctx);
         } else {
             this._drawCharacter(ctx);
-            if (this.barrel) this._drawBarrel(ctx);
+            if (showBarrel) this._drawBarrel(ctx);
         }
+
+        // Explosions on top of the floor objects.
+        for (const b of this.booms) b.render(ctx, g, 0, 0);
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
@@ -518,6 +758,50 @@ class DungeonScreen {
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = '13px monospace';
         ctx.fillText('[E] climb out', 14, g.height - 16);
+
+        // Iris-out wipe closes over everything (incl. the hint) once collected.
+        if (this.iris) this._drawIris(ctx);
+    }
+
+    // Perspective-drawn dropped letter (bottom-centre on its floor point, lifted
+    // by its bounce height z), with a soft ground shadow while it's airborne.
+    _drawLetter(ctx) {
+        const L = this.letter; if (!L) return;
+        const sheet = this.game.getDrawable('letters_sheet');
+        if (!sheet || !(sheet.naturalWidth || sheet.width)) return;
+        const fp = this._floorPoint(L.t, L.L);
+        const h = fp.frac * this.bg.h * this.letterScale;
+        const w = h * (L.def.w / L.def.h);
+        const S = this.game.getSheetScale('letters_sheet');
+        // Ground shadow — shrinks with height so the fall reads clearly.
+        if (L.z > 2) {
+            const startZ = Math.max(fp.y - this.bg.y, 140);
+            const k = 1 - 0.5 * Math.min(1, L.z / startZ);
+            ctx.save();
+            ctx.fillStyle = 'rgba(0,0,0,0.28)';
+            ctx.beginPath();
+            ctx.ellipse(fp.x, fp.y, (w * 0.42) * k, (w * 0.16) * k, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+        const bottomY = fp.y - L.z;
+        ctx.drawImage(sheet, L.def.x * S, L.def.y * S, L.def.w * S, L.def.h * S,
+            fp.x - w / 2, bottomY - h, w, h);
+    }
+
+    // Iris-out: black fills the screen except a shrinking circle around the player.
+    _drawIris(ctx) {
+        const g = this.game, ir = this.iris;
+        const k = Math.min(1, ir.t / ir.dur);
+        const maxR = Math.hypot(g.width, g.height) * 0.62;
+        const r = Math.max(0, maxR * (1 - k));
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, g.width, g.height);
+        ctx.arc(ir.cx, ir.cy, r, 0, Math.PI * 2, true); // reverse winding → circular hole
+        ctx.fillStyle = '#000';
+        ctx.fill('evenodd');
+        ctx.restore();
     }
 
     // Hustle/charge bar — same look as the overworld HUD (top-left): empty by
@@ -572,6 +856,18 @@ class DungeonScreen {
             ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.moveTo(fL.x, fL.y); ctx.lineTo(fR.x, fR.y); ctx.stroke();
         }
+
+        // Mouth feed rect on the BACK WALL (magenta) — a bg-normalized screen rect,
+        // NOT a floor box. The barrel's on-screen point entering it feeds the
+        // furnace; the blast pops at its centre.
+        const mr = this.mouthRect;
+        const mx = this.bg.x + mr.x * this.bg.w, my = this.bg.y + mr.y * this.bg.h;
+        const mw = mr.w * this.bg.w, mh = mr.h * this.bg.h;
+        ctx.fillStyle = 'rgba(233,72,233,0.18)'; ctx.fillRect(mx, my, mw, mh);
+        ctx.strokeStyle = 'rgba(233,72,233,0.9)'; ctx.lineWidth = 2; ctx.strokeRect(mx, my, mw, mh);
+        const mc = this._mouthCenter();
+        ctx.fillStyle = '#ff48e9';
+        ctx.beginPath(); ctx.arc(mc.x, mc.y, 5, 0, Math.PI * 2); ctx.fill();
 
         // Player floor point marker.
         const fp = this._floorPoint(this.t, this.L);

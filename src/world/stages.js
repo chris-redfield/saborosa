@@ -129,10 +129,15 @@ const STAGES = {
             // so the character no longer shrinks too much at the back wall.
             perspective: { perspLock: false, fracNear: 0.160, fracFar: 0.08 },
             statueBoxes: [
-                { name: 'body',  tMin: 0.919, tMax: 1.000, lMin: -0.544, lMax: 0.553 },
-                { name: 'paw L', tMin: 0.872, tMax: 0.974, lMin: -0.475, lMax: -0.144 },
-                { name: 'paw R', tMin: 0.872, tMax: 0.956, lMin: 0.148, lMax: 0.482 },
+                { name: 'body',  tMin: 0.85, tMax: 1.00, lMin: -0.42, lMax: 0.50 },
+                { name: 'paw L', tMin: 0.80, tMax: 0.90, lMin: -0.42, lMax: -0.14 },
+                { name: 'paw R', tMin: 0.80, tMax: 0.90, lMin: 0.22, lMax: 0.50 },
             ],
+            // Mouth feed target on the back wall (bg-normalized screen rect),
+            // authored in the tool's Cat Collision tab. Throw the barrel through
+            // here → explosion + a letter drops at the barrel's spawn spot →
+            // collect it to iris-wipe back to the overworld. See dungeon.js.
+            mouthRect: { x: 0.469, y: 0.524, w: 0.074, h: 0.074 },
         },
         // A SECOND dungeon reached by a different hole (target: 'tiled'). Instead
         // of the perspective room, this is an "infinite" top-down floor: one

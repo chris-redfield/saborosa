@@ -228,6 +228,9 @@ class Game {
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
                 this.loadJSON('boom_defs', 'assets-v2/saborosa-boom.json'),
+                // Full 12-frame version (grow→peak→fade) — used by the dungeon
+                // furnace blast; the hole keeps the shorter tail-only boom_defs.
+                this.loadJSON('boom_full_defs', 'assets-v2/saborosa-boom-full.json'),
                 // Stage 3 — 4-LAYER MAP (assets-v2/mapa/, all aligned 5543x4075):
                 //   zoning    — never drawn; sampled for terrain zones AND the
                 //               mountain-occlusion mask. Transparent outside the
