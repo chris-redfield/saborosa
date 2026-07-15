@@ -300,6 +300,30 @@ function exitDungeon() {
     gameState.world.update(p); // recenter the camera on the exit spot
 }
 
+// Draw wooden lids over completed (sealed) holes. `holes_lid` is aligned to the
+// map (same rect as the background layers) with a seal painted at each hole, so
+// we blit just each sealed hole's region (source-rect) onto its world spot,
+// inside the camera transform. sealSize / sealOffsetX,Y (world px) tune it.
+function renderSealedHoles(ctx, world, camX, camY) {
+    const holes = world.stage && world.stage.holes;
+    const rect = world.stage && world.stage.backgroundImageRect;
+    if (!holes || !rect) return;
+    const img = game.getDrawable('holes_lid');
+    if (!img || !(img.naturalWidth || img.width)) return;
+    const nW = img.naturalWidth || img.width, nH = img.naturalHeight || img.height;
+    const sX = nW / rect.w, sY = nH / rect.h; // native px per world px
+    for (const h of holes) {
+        if (!h.sealed) continue;
+        const S = h.sealSize || 500;          // world-px clip window around the hole
+        const cx = h.x + h.w / 2 + (h.sealOffsetX || 0);
+        const cy = h.y + h.h / 2 + (h.sealOffsetY || 0);
+        const wx0 = cx - S / 2, wy0 = cy - S / 2;
+        ctx.drawImage(img,
+            (wx0 - rect.x) * sX, (wy0 - rect.y) * sY, S * sX, S * sY,
+            wx0 - camX, wy0 - camY, S, S);
+    }
+}
+
 function loadStage(stage) {
     gameState.currentStage = stage;
     gameState.world = new World(game, stage);
@@ -407,7 +431,13 @@ function updateGame(dt) {
         const d = gameState.dungeon;
         d.update(dt);
         if (d.handlesInteract) {
-            if (d.exitRequested) { d.exitRequested = false; exitDungeon(); }
+            if (d.exitRequested) {
+                d.exitRequested = false;
+                // Completed (letter collected) → seal the entry hole so it's no
+                // longer a hole: no re-trigger, and a wooden lid is drawn over it.
+                if (d.completed && gameState.dungeonFromHole) gameState.dungeonFromHole.sealed = true;
+                exitDungeon();
+            }
         } else if (game.input.isKeyJustPressed('interact')) {
             exitDungeon();
         }
@@ -793,6 +823,7 @@ function updateGame(dt) {
         const hy = player.y + player.colOffY + player.colH / 2;
         let onHole = null;
         for (const h of world.stage.holes) {
+            if (h.sealed) continue; // completed hole: lidded over, no longer falls
             // Trigger on the hole's inner (centered) region, not its outer edge,
             // so the fall only fires once the feet are actually ON TOP of it.
             const ins = h.triggerInset != null ? h.triggerInset : 0.22;
@@ -1055,6 +1086,11 @@ function renderGame(ctx) {
     if (PERF) PERF.begin('ground');
     world.renderGround(ctx, _viewRect);
     if (PERF) PERF.end('ground');
+
+    // Wooden lids over completed (sealed) holes: at the GROUND layer — over the
+    // pit graphic (also ground-layer), under the depth-sorted player/entities —
+    // so the player and everything else pass OVER them, just like the ground.
+    renderSealedHoles(ctx, world, camX, camY);
 
     // Foreground OVERLAYS (trees/holes), split at the player's BOTTOM EDGE so
     // they occlude exactly like the old depth-sorted objects (which sorted on

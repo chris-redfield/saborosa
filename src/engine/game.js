@@ -210,6 +210,10 @@ class Game {
 
                 // Dungeon interior background (fell-down-a-hole view).
                 this.loadImage('dungeon_bg', 'assets/saborosa-dungeon-fundo-novo.png'),
+                // Wooden seals ("tampa") painted at each hole's map position — a
+                // full-map-aligned overlay, drawn clipped over a hole once it's
+                // completed (letter collected) so it can't be fallen into again.
+                this.loadImage('holes_lid', 'assets/cor-saborosa-holes-tampa.png'),
                 // Cat statue on the dungeon's back wall — a 3-frame flame loop,
                 // full-canvas overlays pre-aligned to the background (see dungeon.js).
                 this.loadImage('dungeon_gato_1', 'assets/saborosa-dungeon-gato-01.png'),

@@ -128,6 +128,9 @@ class DungeonScreen {
         // sequence exits on its own (after the iris) via exitRequested (main.js).
         this.handlesInteract = true;
         this.exitRequested = false;
+        // Set true once the letter is collected — main.js seals the entry hole on
+        // exit so it can't be fallen into again (a plain E climb-out leaves it open).
+        this.completed = false;
 
         // Scorched ceiling tile where something dropped through: a black quad on
         // the ceiling grid. The ceiling is the floor plane MIRRORED about the
@@ -604,6 +607,7 @@ class DungeonScreen {
 
     // Iris-out wipe centred on the player, freezing gameplay until it closes.
     _startIris() {
+        this.completed = true; // letter secured → seal the hole on the way out
         const fp = this._floorPoint(this.t, this.L);
         const ph = fp.frac * this.bg.h;
         this.iris = { t: 0, dur: 0.75, cx: fp.x, cy: fp.y - ph * 0.4 };
