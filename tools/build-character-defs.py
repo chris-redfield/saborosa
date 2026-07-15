@@ -31,10 +31,13 @@ PAD = 8  # transparent margin kept around the content crop
 # 9x5 layout above; the newer `bonecos … low` skins just use a different source
 # naming, so we map each explicitly instead of templating off the name.
 SHEETS = [
-    ('saborosa-elementos-coconut.png',    'coconut'),
-    ('saborosa-elementos-tomato.png',     'tomato'),
-    ('saborosa-bonecos-eggplant low.png', 'eggplant'),
-    ('saborosa-bonecos-laranja low.png',  'laranja'),
+    ('saborosa-elementos-coconut.png',         'coconut'),
+    ('saborosa-elementos-tomato.png',          'tomato'),
+    ('saborosa-bonecos-eggplant low.png',      'eggplant'),
+    # ERKPA's beaten-up skin, shown after his first death. Same 9x5 layout as
+    # the alive master, so it packs through the identical path.
+    ('saborosa-bonecos-eggplant-dead-low.png', 'eggplant-dead'),
+    ('saborosa-bonecos-laranja low.png',       'laranja'),
 ]
 
 
@@ -61,12 +64,24 @@ def tight_bbox(alpha, x0, x1, y0, y1):
 
 
 def main():
+    # Optional args = build only those output basenames (e.g. `eggplant-dead`),
+    # so regenerating one skin doesn't rewrite the others' game PNGs.
+    only = set(sys.argv[1:])
     for src, name in SHEETS:
+        if only and name not in only:
+            continue
         im = Image.open(f'{SRC}{src}').convert('RGBA')
         alpha = np.array(im)[:, :, 3]
         op = alpha > 20
-        cb = bands(op.sum(axis=0) >= 1)
-        rb = bands(op.sum(axis=1) >= 1)
+        # A real row/column of sprites spans hundreds of opaque px at its peak;
+        # a handful of stray pixels sitting a few px outside the grid (e.g. the
+        # dead-eggplant master has 2 specks below the last row) would otherwise
+        # read as a phantom extra band. Detect bands generously (>=1, so real
+        # band bounds stay pixel-exact) then drop any whose peak is negligible.
+        BAND_MIN_PEAK = 20  # << thinnest real band peak (~700), >> a speck (~2)
+        colp, rowp = op.sum(axis=0), op.sum(axis=1)
+        cb = [b for b in bands(colp >= 1) if colp[b[0]:b[1] + 1].max() >= BAND_MIN_PEAK]
+        rb = [b for b in bands(rowp >= 1) if rowp[b[0]:b[1] + 1].max() >= BAND_MIN_PEAK]
         assert len(cb) == COLS, f'{name}: found {len(cb)} col bands, want {COLS}'
         assert len(rb) == ROWS, f'{name}: found {len(rb)} row bands, want {ROWS}'
 

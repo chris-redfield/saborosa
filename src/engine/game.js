@@ -55,6 +55,7 @@ class Game {
             coconut_sheet: 1.0,
             tomato_sheet: 1.0,
             eggplant_sheet: 1.0,
+            eggplant_dead_sheet: 1.0,
             laranja_sheet: 1.0,
             rock_sheet: 1.0,
             bush_sheet: 1.0,
@@ -276,6 +277,9 @@ class Game {
                 this.loadJSON('coconut_sprites', 'assets/saborosa-elementos-coconut-sprites.json'),
                 this.loadImage('eggplant_sheet', 'assets/saborosa-elementos-eggplant-game.png'),
                 this.loadJSON('eggplant_sprites', 'assets/saborosa-elementos-eggplant-sprites.json'),
+                // ERKPA's beaten-up skin — swapped in after his first death.
+                this.loadImage('eggplant_dead_sheet', 'assets/saborosa-elementos-eggplant-dead-game.png'),
+                this.loadJSON('eggplant_dead_sprites', 'assets/saborosa-elementos-eggplant-dead-sprites.json'),
                 this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
                 this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
                 // Sleeper enemy packs (rockenemy.js / bushenemy.js).

@@ -161,6 +161,11 @@ function respawnPlayer() {
     p.lastZone = null;
     p.lastOnMountain = false;
     p.lastAboveMidline = false;
+
+    // First death leaves a permanent mark: ERKPA respawns beaten up. Runs once
+    // per death (after the SPLAT); markBeatenUp is itself idempotent.
+    if (!gameState.hasDied) gameState.hasDied = true;
+    p.markBeatenUp();
 }
 
 // Drives the death state: hold SPLAT, then respawn + ease the camera over to

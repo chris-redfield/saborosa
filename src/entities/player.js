@@ -193,8 +193,28 @@ class Player {
             { sprites: eggplant.sprites, width: eggplant.width, height: eggplant.height },
             { sprites: laranja.sprites,  width: laranja.width,  height: laranja.height }
         ];
+        // ERKPA (index 2) is the only character with a beaten-up skin. It's
+        // built up front and swapped into his pack slot on his first death
+        // (markBeatenUp), so he stays banged up even after cycling characters.
+        const eggplantDead = spriteSheet.loadCharacterPack('eggplant_dead_sheet', 'eggplant_dead_sprites', ws, 'tan');
+        this.eggplantDeadPack = { sprites: eggplantDead.sprites, width: eggplantDead.width, height: eggplantDead.height };
+        this._beatenUp = false;
+
         this.characterIndex = 0;
         this._applyPackMetrics(this.spritePacks[0]);
+    }
+
+    // One-way: after ERKPA's first death he's permanently beaten up. Swap his
+    // pack slot (index 2) for the dead skin; if he's the one on screen, adopt
+    // it now. Idempotent and a no-op if the dead pack failed to load.
+    markBeatenUp() {
+        if (this._beatenUp || !this.eggplantDeadPack) return;
+        this._beatenUp = true;
+        const EGGPLANT = 2;
+        this.spritePacks[EGGPLANT] = this.eggplantDeadPack;
+        if (this.characterIndex === EGGPLANT) {
+            this._applyPackMetrics(this.spritePacks[EGGPLANT]);
+        }
     }
 
     // Adopt a pack's sprites, bounding box, and derived collision footprint.

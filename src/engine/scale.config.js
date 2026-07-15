@@ -29,6 +29,7 @@ window.ART = {
         coconut_sheet: 1.0,
         tomato_sheet: 1.0,
         eggplant_sheet: 1.0,
+        eggplant_dead_sheet: 1.0,
         laranja_sheet: 1.0,
         rock_sheet: 1.0,
         bush_sheet: 1.0,
