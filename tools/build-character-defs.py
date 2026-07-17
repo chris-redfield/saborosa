@@ -38,6 +38,15 @@ SHEETS = [
     # the alive master, so it packs through the identical path.
     ('saborosa-bonecos-eggplant-dead-low.png', 'eggplant-dead'),
     ('saborosa-bonecos-laranja low.png',       'laranja'),
+    # JUIXY's beaten-up skin (the yellow "laranja" pack, index 3), shown after
+    # his first death — the citrus art reads as a lemon, hence the master name.
+    # Same 9x5 layout as the alive master, so it packs through the identical path.
+    ('saborosa-bonecos-lemon-dead-1-low.png',  'laranja-dead'),
+    # TOM's beaten-up skins (the red "tomato" pack, index 0), a two-stage
+    # progression: dead-1 after his first death, dead-2 (last life) after his
+    # second. Same 9x5 layout as the alive master.
+    ('saborosa-bonecos-tomato-dead-1.png',     'tomato-dead'),
+    ('saborosa-bonecos-tomato-dead-2-low.png', 'tomato-dead2'),
 ]
 
 

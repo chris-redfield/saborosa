@@ -1,13 +1,14 @@
-// Global size for every block variant. The block sheet (saborosa-assets-002)
-// is high-res (~580–1020px native per crop), so this scales them down to world
-// px. It is FIXED — blocks are no longer randomly sized like the old cubes;
-// each variant keeps the sheet's relative proportions (a 3-crate row stays ~3x
-// a single crate). 0.14 puts the smallest crate at ~80px, matching the old
-// cube's small end. Tune this one number to make every block bigger/smaller.
-// Trimmed once depth perspective was applied, which enlarges blocks toward the
-// south — 0.8 brought them back to their pre-perspective feel, then 0.9 more to
-// taste (0.14 → ~0.101).
-const BLOCK_SCALE = 0.14 * 0.8 * 0.9;
+// Global size for every block variant. Scales a def's crop (in the objects
+// sheet's native px, ~60–230px per object) down to world px. It is FIXED —
+// blocks are not randomly sized; each keeps the sheet's relative proportions
+// (a 3-crate row stays ~3x a single crate). Tune this one number to make every
+// block bigger/smaller.
+//
+// The new objects sheet (saborosa-objetos-novos) has crops ~6x smaller than the
+// old assets-002 master, so the scale is ~6x the old value (0.14*0.8*0.9 ≈ 0.101)
+// for a comparable on-screen size. 0.86 matched the old world sizes; trimmed 15%
+// to 0.73 (user: blocks read too big).
+const BLOCK_SCALE = 0.73;
 
 /**
  * Rock - a pickable/throwable block. Driven by a def from block_defs
@@ -33,9 +34,12 @@ class Rock {
         this.def = def;
         this.sx = def.x; this.sy = def.y; this.sw = def.w; this.sh = def.h;
 
-        // Fixed world size (preserves the crop's aspect ratio).
-        this.width = Math.round(def.w * BLOCK_SCALE);
-        this.height = Math.round(def.h * BLOCK_SCALE);
+        // Fixed world size (preserves the crop's aspect ratio). def.sizeMul is a
+        // per-object tweak on top of the global scale (the crate/cube clusters on
+        // the sheet's last two rows ship at 0.8 — they read too big otherwise).
+        const scale = BLOCK_SCALE * (def.sizeMul || 1);
+        this.width = Math.round(def.w * scale);
+        this.height = Math.round(def.h * scale);
 
         // Red collision footprint from the def's normalized `col` box (offX/offY/
         // w/h as fractions of the sprite). Mirror offX when flipped so the box

@@ -1422,9 +1422,12 @@ class World {
         // valid spot is found in the attempts, so the density stays uneven too.
         if (this.stage.sandColor && this._isWalkableBlock(bx, by)) {
             const bd = this.game.getJSON('block_defs');
-            const def = (bd && bd.assets)
-                ? (bd.assets.block_00 || Object.values(bd.assets).find(d => d.kind === 'block'))
-                : null;
+            // Pick a RANDOM block variant (not a fixed id) so the scattered
+            // blocks vary across the map instead of repeating one object.
+            const blockDefs = (bd && bd.assets)
+                ? Object.values(bd.assets).filter(d => d.kind === 'block') : [];
+            const def = blockDefs.length
+                ? blockDefs[Math.floor(rand() * blockDefs.length)] : null;
             if (def) {
                 const rock = new Rock(this.game, 0, 0, def);
                 const w = rock.width, h = rock.height;

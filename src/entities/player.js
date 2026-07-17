@@ -193,27 +193,45 @@ class Player {
             { sprites: eggplant.sprites, width: eggplant.width, height: eggplant.height },
             { sprites: laranja.sprites,  width: laranja.width,  height: laranja.height }
         ];
-        // ERKPA (index 2) is the only character with a beaten-up skin. It's
-        // built up front and swapped into his pack slot on his first death
-        // (markBeatenUp), so he stays banged up even after cycling characters.
-        const eggplantDead = spriteSheet.loadCharacterPack('eggplant_dead_sheet', 'eggplant_dead_sprites', ws, 'tan');
-        this.eggplantDeadPack = { sprites: eggplantDead.sprites, width: eggplantDead.width, height: eggplantDead.height };
-        this._beatenUp = false;
+        // Beaten-up skins: some characters get progressively more banged up as
+        // they die, and stay that way for the rest of the run (even after cycling
+        // characters). `deadStages` maps a pack index to an ORDERED list of hurt
+        // packs — the Nth death advances to stage N (capped at the last). Most
+        // characters have a single stage; TOM has two (hurt, then last-life).
+        //   0 = TOM (tomato): [dead-1, dead-2]
+        //   2 = ERKPA (eggplant): [dead]
+        //   3 = JUIXY (laranja, the lemon-looking citrus): [dead]
+        const pack = (p) => ({ sprites: p.sprites, width: p.width, height: p.height });
+        const load = (sheet, defs, body) => pack(spriteSheet.loadCharacterPack(sheet, defs, ws, body));
+        this.deadStages = {
+            0: [load('tomato_dead_sheet',  'tomato_dead_sprites',  'red'),
+                load('tomato_dead2_sheet', 'tomato_dead2_sprites', 'red')],
+            2: [load('eggplant_dead_sheet', 'eggplant_dead_sprites', 'tan')],
+            3: [load('laranja_dead_sheet',  'laranja_dead_sprites',  'yellow')]
+        };
+        this._deathStage = 0; // how many deaths have been applied so far
 
         this.characterIndex = 0;
         this._applyPackMetrics(this.spritePacks[0]);
     }
 
-    // One-way: after ERKPA's first death he's permanently beaten up. Swap his
-    // pack slot (index 2) for the dead skin; if he's the one on screen, adopt
-    // it now. Idempotent and a no-op if the dead pack failed to load.
+    // One-way, called once per death (respawnPlayer in main.js): advance every
+    // character that has beaten-up skins to the stage matching the death count.
+    // A single-stage character (ERKPA/JUIXY) stays on its one hurt pack after the
+    // first death; TOM steps hurt -> last-life across his first two deaths. If the
+    // character on screen is one of them, it adopts the new pack now. No-op for
+    // any pack whose dead skin failed to load.
     markBeatenUp() {
-        if (this._beatenUp || !this.eggplantDeadPack) return;
-        this._beatenUp = true;
-        const EGGPLANT = 2;
-        this.spritePacks[EGGPLANT] = this.eggplantDeadPack;
-        if (this.characterIndex === EGGPLANT) {
-            this._applyPackMetrics(this.spritePacks[EGGPLANT]);
+        if (!this.deadStages) return;
+        this._deathStage++;
+        for (const key of Object.keys(this.deadStages)) {
+            const idx = Number(key);
+            const stages = this.deadStages[idx];
+            if (!stages || !stages.length) continue;
+            const pack = stages[Math.min(this._deathStage - 1, stages.length - 1)];
+            if (!pack) continue;
+            this.spritePacks[idx] = pack;
+            if (this.characterIndex === idx) this._applyPackMetrics(pack);
         }
     }
 

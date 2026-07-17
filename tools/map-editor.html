@@ -64,10 +64,11 @@ const BG = A + 'cor-saborosa-fundo-fim-island-01-combined.png'; // the real game
 const DEFS = A + 'saborosa-assets-001-sprites.json';
 const OBJS = A + 'painted-isle-objects.json';
 const LIVEROCK_SHEET = A + 'saborosa-cha-001.png';   // liverock animation sheet
-// Blocks/props sheet (assets-002): pickable blocks + the placeable tower/stack/
-// platform props. Authored by tools/build-block-defs.py. Loaded here too so any
-// of them can be hand-placed on the map.
-const SHEET2 = A + 'saborosa-assets-002.png';
+// Objects sheet (saborosa-objetos-novos): pickable blocks. Authored by
+// tools/build-block-defs.py, which ships it content-cropped 1:1 — so the defs'
+// crop rects index THIS -game.png directly (not the master). Loaded here too so
+// any of them can be hand-placed on the map.
+const SHEET2 = A + 'saborosa-assets-002-game.png';
 const DEFS2 = A + 'saborosa-assets-002-sprites.json';
 // Decorative SABOROSA letters (assets/saborosa-letters.png). Placed as
 // `kind:'letter'` objects that the game spawns as bob/flicker Letter entities
@@ -77,10 +78,11 @@ const LETTER_DEFS = A + 'saborosa-letters-sprites.json';
 // Must match STAGES[3].backgroundImageRect in src/world/stages.js
 const RECT = { x: 1352, y: 0, w: 8815, h: 6480 };
 const FIXED_SCALE = 0.3;   // assets-001 assets placed at this scale (halved from 0.6)
-// assets-002 are high-res; this matches BLOCK_SCALE in src/entities/environment.js
-// so the editor preview equals the in-game size. (A placed `block` ignores its
-// scale in-game and always uses BLOCK_SCALE; a `prop` honors this scale.)
-const BLOCK_PREVIEW_SCALE = 0.14;
+// Matches BLOCK_SCALE in src/entities/environment.js so the editor preview
+// equals the in-game size. (A placed `block` ignores its scale in-game and
+// always uses BLOCK_SCALE.) The objects sheet ships 1:1, so this is the full
+// scale (was 0.14 when the old assets-002 master was high-res).
+const BLOCK_PREVIEW_SCALE = 0.73;
 // Default scale a letter is placed at (full-res glyphs ~470px tall). The letter
 // inspector exposes a per-placement scale slider to size each one.
 const LETTER_DEFAULT_SCALE = 1;
@@ -111,7 +113,7 @@ const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
 const stage = document.getElementById('stage');
 let sheetImg = null, bgImg = null, liverockImg = null, blockImg = null, letterImg = null;
 let defs = { sheet: 'saborosa-assets-001.png', assets: {} };
-let blockDefs = { sheet: 'saborosa-assets-002.png', assets: {} };  // assets-002 blocks/props
+let blockDefs = { sheet: 'saborosa-assets-002-game.png', assets: {} };  // objects sheet blocks (overwritten on load)
 let letterDefs = { sheet: 'saborosa-letters.png', assets: {} };    // SABOROSA glyphs
 let objects = [];                 // { id, x, y, scale, flipX }
 let mode = 'place';               // 'place' | 'col'
@@ -148,7 +150,9 @@ async function boot() {
   try { letterDefs = await (await fetch(LETTER_DEFS, { cache: 'no-cache' })).json(); } catch (e) {}
   // Tag each 002 def so imgFor()/placement know its sheet + preview size.
   // (Both tags are editor-only and stripped on export.)
-  for (const d of Object.values(blockDefs.assets || {})) { d.sheet = 'block'; d.defaultScale = BLOCK_PREVIEW_SCALE; }
+  // Preview size = global scale × the def's per-object sizeMul (rows 4-5 ship 0.8),
+  // matching Rock's in-game sizing in src/entities/environment.js.
+  for (const d of Object.values(blockDefs.assets || {})) { d.sheet = 'block'; d.defaultScale = BLOCK_PREVIEW_SCALE * (d.sizeMul || 1); }
   // Same for letter glyphs (their game placements carry kind:'letter').
   for (const d of Object.values(letterDefs.assets || {})) { d.sheet = 'letter'; d.defaultScale = LETTER_DEFAULT_SCALE; }
   try {

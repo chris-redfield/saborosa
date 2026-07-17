@@ -23,7 +23,10 @@ from PIL import Image
 A = 'assets/'
 # (source, output, factor, max in-game draw scale)
 JOBS = [
-    ('saborosa-assets-002.png',  'saborosa-assets-002-game.png',  0.25, 0.14),
+    # NOTE: saborosa-assets-002-game.png is NO LONGER produced here. The objects
+    # sheet (saborosa-objetos-novos) is small and ships content-cropped 1:1 by
+    # tools/build-block-defs.py — do not re-add it, or you'd clobber that crop
+    # with a blurry 0.25 downscale of the old master.
     ('saborosa-assets-001.png',  'saborosa-assets-001-game.png',  0.45, 0.30),
     ('saborosa-chat-002-2.png',  'saborosa-chat-002-2-game.png',  0.45, 0.31),
 ]

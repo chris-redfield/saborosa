@@ -21,16 +21,22 @@ window.ART = {
     // time — see Game.getSheetScale). Temporary: collapses into `scale` once the
     // sheets are uniform.
     sheetScales: {
-        block_sheet: 0.25,
+        // The objects sheet (saborosa-objetos-novos) ships content-cropped 1:1
+        // with its defs (build-block-defs.py) — small art, no downscale. 1.0 =
+        // no remap. (Was 0.25 when the old assets-002 master shipped downscaled.)
+        block_sheet: 1.0,
         mapobjects_sheet: 0.45,
         // The character sheets ship cropped 1:1 with their defs (the new art is
         // drawn at small cells in a mostly-empty canvas, so downscaling would
         // only blur it — see tools/build-character-defs.py). 1.0 = no remap.
         coconut_sheet: 1.0,
         tomato_sheet: 1.0,
+        tomato_dead_sheet: 1.0,
+        tomato_dead2_sheet: 1.0,
         eggplant_sheet: 1.0,
         eggplant_dead_sheet: 1.0,
         laranja_sheet: 1.0,
+        laranja_dead_sheet: 1.0,
         rock_sheet: 1.0,
         bush_sheet: 1.0,
         phone_sheet: 1.0,

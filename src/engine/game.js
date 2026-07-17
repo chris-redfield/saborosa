@@ -49,14 +49,17 @@ class Game {
         // factor at draw time: getSheetScale(key). Sourced from the single
         // scale knob (scale.config.js); keep in sync with the downscale script.
         this.sheetScales = (window.ART && window.ART.sheetScales) || {
-            block_sheet: 0.25,
+            block_sheet: 1.0, // objects sheet ships cropped 1:1 (was 0.25 downscaled)
             mapobjects_sheet: 0.45,
             // Character sheets ship cropped 1:1 with their defs (not downscaled).
             coconut_sheet: 1.0,
             tomato_sheet: 1.0,
+            tomato_dead_sheet: 1.0,
+            tomato_dead2_sheet: 1.0,
             eggplant_sheet: 1.0,
             eggplant_dead_sheet: 1.0,
             laranja_sheet: 1.0,
+            laranja_dead_sheet: 1.0,
             rock_sheet: 1.0,
             bush_sheet: 1.0,
             phone_sheet: 1.0
@@ -273,6 +276,12 @@ class Game {
                 // 1 key cycles tomato -> coconut -> eggplant -> laranja.
                 this.loadImage('tomato_sheet', 'assets/saborosa-elementos-tomato-game.png'),
                 this.loadJSON('tomato_sprites', 'assets/saborosa-elementos-tomato-sprites.json'),
+                // TOM's beaten-up skins — a two-stage progression swapped in on
+                // his first death (dead) then his second (dead2, last life).
+                this.loadImage('tomato_dead_sheet', 'assets/saborosa-elementos-tomato-dead-game.png'),
+                this.loadJSON('tomato_dead_sprites', 'assets/saborosa-elementos-tomato-dead-sprites.json'),
+                this.loadImage('tomato_dead2_sheet', 'assets/saborosa-elementos-tomato-dead2-game.png'),
+                this.loadJSON('tomato_dead2_sprites', 'assets/saborosa-elementos-tomato-dead2-sprites.json'),
                 this.loadImage('coconut_sheet', 'assets/saborosa-elementos-coconut-game.png'),
                 this.loadJSON('coconut_sprites', 'assets/saborosa-elementos-coconut-sprites.json'),
                 this.loadImage('eggplant_sheet', 'assets/saborosa-elementos-eggplant-game.png'),
@@ -282,6 +291,9 @@ class Game {
                 this.loadJSON('eggplant_dead_sprites', 'assets/saborosa-elementos-eggplant-dead-sprites.json'),
                 this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
                 this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
+                // JUIXY's beaten-up skin — swapped in after his first death.
+                this.loadImage('laranja_dead_sheet', 'assets/saborosa-elementos-laranja-dead-game.png'),
+                this.loadJSON('laranja_dead_sprites', 'assets/saborosa-elementos-laranja-dead-sprites.json'),
                 // Sleeper enemy packs (rockenemy.js / bushenemy.js).
                 this.loadImage('rock_sheet', 'assets/saborosa-elementos-rock-game.png'),
                 this.loadJSON('rock_sprites', 'assets/saborosa-elementos-rock-sprites.json'),

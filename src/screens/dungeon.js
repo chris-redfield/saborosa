@@ -68,15 +68,15 @@ class DungeonScreen {
                     { name: 'paw R', tMin: 0.80, tMax: 0.90, lMin: 0.22, lMax: 0.50 },
                   ];
 
-        // A barrel prop (block_03 from the assets-002 sheet) spawned at a FIXED
-        // spot: the SAME depth as the player's drop-in (startT) but off to his
-        // RIGHT, so it's always right there beside him to pick up. Override via
-        // cfg.barrelStartT / cfg.barrelStartL. It's solid: a small (t,L) footprint
-        // added to the collision boxes.
+        // A barrel prop (block_01 — the STANDING barrel — from the objects sheet)
+        // spawned at a FIXED spot: the SAME depth as the player's drop-in (startT)
+        // but off to his RIGHT, so it's always right there beside him to pick up.
+        // Override via cfg.barrelStartT / cfg.barrelStartL. It's solid: a small
+        // (t,L) footprint added to the collision boxes.
         this.barrelHalfT = 0.028; // collision half-extents in (t, L)
         this.barrelHalfL = 0.06;
         this.barrel = {
-            defKey: 'block_03',
+            defKey: 'block_01',
             t: cfg.barrelStartT != null ? cfg.barrelStartT : this.t,
             L: cfg.barrelStartL != null ? cfg.barrelStartL : 0.70, // right side, opposite the player
             scale: cfg.barrelScale != null ? cfg.barrelScale : 1.0,
@@ -644,8 +644,9 @@ class DungeonScreen {
         ctx.restore();
     }
 
-    // Barrel prop — block_03 from the assets-002 sheet, feet (bottom-center) on
-    // its floor point, sized by perspective. Lifted by the arc height while thrown.
+    // Barrel prop — block_01 (standing barrel) from the objects sheet, feet
+    // (bottom-center) on its floor point, sized by perspective. Lifted by the
+    // arc height while thrown.
     _drawBarrel(ctx) {
         const fp = this._floorPoint(this.barrel.t, this.barrel.L);
         const h = fp.frac * this.bg.h * this.barrel.scale;
@@ -674,8 +675,8 @@ class DungeonScreen {
         this._blitBarrel(ctx, fp.x, fp.y - carryFrac * playerH + flatDrop, h);
     }
 
-    // Shared barrel blit: draw block_03 with bottom-centre at (cx, bottomY), height h.
-    // Def coords are author-resolution; the game sheet is downscaled (getSheetScale).
+    // Shared barrel blit: draw the barrel def with bottom-centre at (cx, bottomY),
+    // height h. Def coords index the game sheet directly (getSheetScale = 1.0 now).
     _blitBarrel(ctx, cx, bottomY, h) {
         const defs = this.game.getJSON('block_defs');
         const def = defs && defs.assets && defs.assets[this.barrel.defKey];
