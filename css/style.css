@@ -22,11 +22,28 @@ body {
 }
 
 #game-canvas {
+    position: relative; /* stack above #boot-logo */
+    z-index: 1;
     border: 2px solid #000000;
     border-radius: 4px;
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+}
+
+/* Boot logo: dead-centered on the canvas region, sitting behind it.
+   The canvas centers via the container's flexbox, so centering this
+   absolutely on the container's midpoint lines it up with the canvas. */
+#boot-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 0;
+    max-width: 60%;
+    height: auto;
+    image-rendering: pixelated;
+    pointer-events: none;
 }
 
 #fps-counter {

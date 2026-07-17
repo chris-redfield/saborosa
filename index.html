@@ -8,6 +8,10 @@
 </head>
 <body>
     <div id="game-container">
+        <!-- Studio logo shown behind the canvas during initial asset load.
+             In-body <img> so it paints before any script runs; the opaque
+             canvas covers it once the game renders its first frame. -->
+        <img id="boot-logo" src="assets/saborosa-logo-V3-low.png" alt="Saborosa">
         <canvas id="game-canvas"></canvas>
         <div id="fps-counter">FPS: 0</div>
         <div id="debug-info"></div>
