@@ -526,6 +526,16 @@ class Game {
         if (this.onRender) this.onRender(this.ctx);
         if (PERF) PERF.end('render');
 
+        // First real frame is now on the canvas: reveal it (it starts hidden so
+        // the boot logo shows through during the load) and drop the logo, which
+        // has served its purpose and now sits uselessly behind an opaque canvas.
+        if (!this._revealed) {
+            this._revealed = true;
+            this.canvas.style.visibility = 'visible';
+            const bootLogo = document.getElementById('boot-logo');
+            if (bootLogo) bootLogo.remove();
+        }
+
         requestAnimationFrame((t) => this.gameLoop(t));
     }
 }
