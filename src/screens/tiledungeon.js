@@ -165,6 +165,46 @@ class TileDungeonScreen {
         // with tension instead of rigidly translating. See _drawRope. (The rope
         // also lifts by jumpZ during the hop so its end follows the player up.)
         this.ropeWhip = 0;
+
+        // Optional roaming Telephone enemy (the same sand-roamer as the overworld,
+        // phoneenemy.js) reused INSIDE the dungeon. The overworld PhoneEnemy is
+        // welded to world zones / perspective / obstacles, none of which exist
+        // here, so we only borrow its SPRITE PACK (loaded once, memoized on the
+        // game) and run a compact roam→nervous→chase machine in the dungeon's own
+        // plane/camera model. It's drawn at the SAME charScale as the player, so
+        // the phone:player size ratio is exactly the overworld's (both packs bake
+        // their own world-scale; the shared charScale preserves the proportion).
+        // Position is a plane-space FEET point; spawnDX<0 puts it to the player's
+        // LEFT so he's pressured to run right. See _updatePhone / _drawPhone.
+        this.phone = null;
+        const pc = cfg.phone || {};
+        if (pc.enabled && typeof _loadPhonePack === 'function') {
+            const pack = _loadPhonePack(this.game);
+            if (pack && pack.sprites) {
+                const cc = ((this.game.getJSON('collision_config') || {}).character)
+                    || { colW: 0.80, colH: 0.50 };
+                const fp = this._feetPoint();
+                this.phone = {
+                    pack,
+                    // Feet in PLANE coords (player feet plane at spawn = cam + feetPoint).
+                    planeX: this.camX + fp.x + (pc.spawnDX != null ? pc.spawnDX : -340),
+                    planeY: this.camY + fp.y + (pc.spawnDY != null ? pc.spawnDY : 0),
+                    // Collision footprint in PLANE px (sprite px × charScale, using the
+                    // character footprint ratios like the overworld phone does).
+                    colW: (pack.width || 190) * cc.colW * this.charScale,
+                    colH: (pack.height || 150) * cc.colH * this.charScale,
+                    facing: 'right',
+                    state: 'roaming',          // roaming | nervous | chasing
+                    nervousT: 0,
+                    speed:      pc.speed      != null ? pc.speed      : 2.0, // px/frame roam
+                    chaseSpeed: pc.chaseSpeed != null ? pc.chaseSpeed : 2.3, // px/frame chase (< player)
+                    push:       pc.push       != null ? pc.push       : 2.6, // contact shove px/frame
+                    detect:     pc.detect     != null ? pc.detect     : 760, // range to wake
+                    lose:       pc.lose       != null ? pc.lose       : 980, // range to give up
+                    nervousDur: pc.nervousDur != null ? pc.nervousDur : 0.5, // startled beat (sec)
+                };
+            }
+        }
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -202,16 +242,26 @@ class TileDungeonScreen {
     // few cells, so we iterate rather than sample corners).
     _boxHitsSolid(cx, cy) {
         if (!this.colMask) return false;
+        // The player is pinned to the screen, so a plane point P maps to screen
+        // P − cam → the footprint's plane position is its screen rect + cam.
+        const r = this._footRect();
+        return this._planeBoxSolid(r.x + cx, r.y + cy, r.w, r.h);
+    }
+
+    // True if a plane-space AABB (px,py,pw,ph in the same floor-pixel units as the
+    // camera) overlaps ANY solid tile cell. Shared by the player footprint test
+    // above and the phone (see _updatePhone): convert to native tile px
+    // (÷ tileScale), wrap columns into the tile, and — in horizontal-bridge mode —
+    // treat anything off the strip's top/bottom as solid. Iterates every cell the
+    // AABB covers (it spans a few), rather than sampling corners.
+    _planeBoxSolid(px, py, pw, ph) {
+        if (!this.colMask) return false;
         const img = this.game.getDrawable(this.tileKey);
         const nw = (img && (img.naturalWidth || img.width)) || this.colNW;
         const nh = (img && (img.naturalHeight || img.height)) || this.colNH;
         const s = this.tileScale;
-        // Footprint AABB in native tile px. The player is pinned to the screen,
-        // so a plane point P maps to screen P - cam → the footprint's plane
-        // position is its screen rect + cam. Convert to native (÷ tileScale).
-        const r = this._footRect();
-        const minX = (r.x + cx) / s, maxX = (r.x + r.w + cx) / s;
-        const minY = (r.y + cy) / s, maxY = (r.y + r.h + cy) / s;
+        const minX = px / s, maxX = (px + pw) / s;
+        const minY = py / s, maxY = (py + ph) / s;
         const cW = nw / this.colCols, cH = nh / this.colRows;
         const c0 = Math.floor(minX / cW), c1 = Math.floor(maxX / cW);
         const r0 = Math.floor(minY / cH), r1 = Math.floor(maxY / cH);
@@ -373,6 +423,11 @@ class TileDungeonScreen {
         this.player.facing = this.facing;
         this.player.moving = (dx !== 0 || dy !== 0);
         this.player.advanceAnimations();
+
+        // Roaming Telephone chases the (now-updated) player. Runs only once he's
+        // landed and free — the early returns above already gate out the fall and
+        // the stuck-in-bush lock.
+        this._updatePhone(dt);
 
         if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
     }
@@ -603,6 +658,103 @@ class TileDungeonScreen {
         }
     }
 
+    // Telephone AI in the dungeon's plane/camera model. Mirrors the overworld
+    // phone's roam→nervous→chase beats, but movement is plane-space and confined
+    // to the walkable floor via _planeBoxSolid (so on the bridge it stays on the
+    // deck, blocked by the tan railings just like the player). On contact it shoves
+    // the player horizontally AWAY (by nudging the camera, the dungeon's stand-in
+    // for the player's world position), never damaging — same annoyance as the sand.
+    _updatePhone(dt) {
+        const ph = this.phone;
+        if (!ph) return;
+        const fp = this._feetPoint();
+        const pxp = this.camX + fp.x, pyp = this.camY + fp.y; // player feet (plane)
+        const ddx = pxp - ph.planeX, ddy = pyp - ph.planeY;
+        const dist = Math.hypot(ddx, ddy) || 0.001;
+        const step = 60 * dt; // px/frame → px this tick
+
+        if (ph.state === 'roaming') {
+            if (dist < ph.detect) { ph.state = 'nervous'; ph.nervousT = 0; }
+            this._facePhone(ph, ddx, ddy);
+        } else if (ph.state === 'nervous') {
+            this._facePhone(ph, ddx, ddy);          // freeze, face the player
+            ph.nervousT += dt;
+            if (ph.nervousT >= ph.nervousDur) ph.state = 'chasing';
+        } else { // chasing
+            if (dist > ph.lose) { ph.state = 'roaming'; }
+            else {
+                const inv = 1 / dist;
+                this._movePhone(ph, ddx * inv * ph.chaseSpeed * step,
+                                    ddy * inv * ph.chaseSpeed * step);
+                this._facePhone(ph, ddx, ddy);
+                // Contact shove: if the footprints overlap, push the player away
+                // horizontally (the deck is open in X, so a wall never traps him).
+                const pf = this._footRect();
+                const pfx = pf.x + this.camX, pfy = pf.y + this.camY;
+                const phx = ph.planeX - ph.colW / 2, phy = ph.planeY - ph.colH;
+                if (pfx < phx + ph.colW && pfx + pf.w > phx &&
+                    pfy < phy + ph.colH && pfy + pf.h > phy) {
+                    const away = ddx >= 0 ? 1 : -1; // shove player away from the phone
+                    const shove = ph.push * step * away;
+                    if (!this._boxHitsSolid(this.camX + shove, this.camY)) this.camX += shove;
+                }
+            }
+        }
+    }
+
+    // Move the phone by (dx,dy) plane px, per-axis, blocked by solid tile cells so
+    // it slides along the railings and can't leave the deck.
+    _movePhone(ph, dx, dy) {
+        const boxX = () => ph.planeX - ph.colW / 2;
+        const boxY = () => ph.planeY - ph.colH; // feet at the box bottom
+        if (dx && !this._planeBoxSolid(boxX() + dx, boxY(), ph.colW, ph.colH)) ph.planeX += dx;
+        if (dy && !this._planeBoxSolid(boxX(), boxY() + dy, ph.colW, ph.colH)) ph.planeY += dy;
+    }
+
+    // 8-way facing from a heading (matches PhoneEnemy._faceFrom); only switch if the
+    // pose exists in the pack.
+    _facePhone(ph, dx, dy) {
+        if (dx === 0 && dy === 0) return;
+        const ax = Math.abs(dx), ay = Math.abs(dy), DIAG = 0.45;
+        const n = Math.hypot(dx, dy), ux = dx / n, uy = dy / n;
+        let f;
+        if (Math.abs(ux) > DIAG && Math.abs(uy) > DIAG) f = (uy > 0 ? 'down' : 'up') + '_' + (ux > 0 ? 'right' : 'left');
+        else if (ax >= ay) f = dx > 0 ? 'right' : 'left';
+        else f = dy > 0 ? 'down' : 'up';
+        if (ph.pack.sprites[`${f}_normal`] && ph.pack.sprites[`${f}_normal`].length) ph.facing = f;
+    }
+
+    // The phone's current frame: nervous pose while startled, else normal.
+    _phoneSprite(ph) {
+        const st = ph.state === 'nervous' ? 'nervous' : 'normal';
+        const a = ph.pack.sprites[`${ph.facing}_${st}`]
+               || ph.pack.sprites[`${ph.facing}_normal`]
+               || ph.pack.sprites['down_normal'];
+        return a && a[0];
+    }
+
+    // Draw the phone feet-anchored at its plane point (screen = plane − cam), at the
+    // SAME charScale as the player so the size ratio matches the overworld.
+    _drawPhone(ctx) {
+        const ph = this.phone;
+        if (!ph) return;
+        const s = this._phoneSprite(ph);
+        if (!s || !s.image) return;
+        const unit = this.charScale;
+        const drawW = s.width * unit, drawH = s.height * unit;
+        const fx = ph.planeX - this.camX, fy = ph.planeY - this.camY; // feet on screen
+        const dx = fx - drawW / 2, dy = fy - drawH + (s.vAlign || 0) * unit;
+        if (s.flipped) {
+            ctx.save();
+            ctx.translate(dx + drawW, dy);
+            ctx.scale(-1, 1);
+            ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, 0, 0, drawW, drawH);
+            ctx.restore();
+        } else {
+            ctx.drawImage(s.image, s.sx, s.sy, s.sw, s.sh, dx, dy, drawW, drawH);
+        }
+    }
+
     render(ctx) {
         const g = this.game;
         ctx.fillStyle = this.bgColor;
@@ -612,8 +764,13 @@ class TileDungeonScreen {
         this._drawFloor(ctx);
         this._drawRope(ctx);        // taut wire on the floor, under the character
         this._drawShadow(ctx);      // rope-hop ground shadow, under the character
+        // Depth-sort the phone against the player by feet-Y: a phone lower on the
+        // deck (nearer the viewer) draws in front, higher draws behind.
+        const phoneInFront = this.phone && this.phone.planeY > this.camY + this._feetPoint().y;
+        if (this.phone && !phoneInFront) this._drawPhone(ctx);
         this._drawCharacter(ctx);
-        this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player
+        if (this.phone && phoneInFront) this._drawPhone(ctx);
+        this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;

@@ -198,6 +198,14 @@ const STAGES = {
             // segment ≈ fills the view width; the deck is ~170px tall to walk in.
             tileScale: 0.87, charScale: 1.0, colScale: 0.7,
             rope: { enabled: false },
+            // Roaming Telephone (same sprite pack as the overworld sand enemy),
+            // spawned to the player's LEFT so he's pressured to run right down the
+            // bridge. Drawn at the shared charScale so its size vs the player matches
+            // the overworld. Speeds are DUNGEON-ONLY (the overworld PhoneEnemy is
+            // untouched) and 50% quicker than the first pass: chase 2.3→3.45,
+            // roam 2.0→3.0 px/frame — chase now edges past the player's ~3, so he
+            // must juke, not just sprint. spawnDX = plane-px offset (negative = left).
+            phone: { enabled: true, spawnDX: -360, spawnDY: 0, speed: 3.0, chaseSpeed: 3.45 },
         },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
