@@ -268,6 +268,37 @@ function enterDungeon() {
 }
 
 // Climb back out to the overworld (world is untouched — only the player moved).
+// Find the nearest FEET position to (feetX, feetY) where the player's footprint
+// is clear of every solid obstacle and stands on walkable ground. Spirals outward
+// in rings (nearest-first) so the player is only displaced as far as needed; falls
+// back to the original spot if nothing opens up within the search radius. Used on
+// dungeon exit so climbing out never lands the player wedged in the blocks that
+// ring a buraco.
+function nearestOpenFeet(p, world, feetX, feetY) {
+    const obstacles = world.getObstacles().filter(o => o.getRect);
+    const walkable = (fx, fy) => {
+        const z = world.getZoneAt(fx, fy);
+        return z === Zone.WALKABLE || z === Zone.SAND || z === Zone.DENSE_SAND;
+    };
+    const clear = (fx, fy) => {
+        if (!walkable(fx, fy)) return false;
+        const x = fx - p.colOffX - p.colW / 2, y = fy - p.colOffY - p.colH / 2;
+        for (const o of obstacles) if (p._collides(x, y, o)) return false;
+        return true;
+    };
+    if (clear(feetX, feetY)) return { feetX, feetY };
+    const step = Math.max(8, p.colW * 0.5);
+    for (let ring = 1; ring <= 48; ring++) {
+        for (let a = 0; a < 12; a++) {
+            const ang = a * Math.PI / 6;
+            const fx = feetX + Math.cos(ang) * ring * step;
+            const fy = feetY + Math.sin(ang) * ring * step;
+            if (clear(fx, fy)) return { feetX: fx, feetY: fy };
+        }
+    }
+    return { feetX, feetY };
+}
+
 // Land the player just ABOVE the hole so they don't instantly fall back in, and
 // arm the edge-latch so it won't retrigger until they step off and back on.
 function exitDungeon() {
@@ -276,10 +307,14 @@ function exitDungeon() {
     gameState.screen = 'playing';
     gameState.dungeon = null;
     if (h) {
-        const feetX = h.x + h.w / 2;
-        const feetY = h.y - 24;
-        p.x = feetX - p.colOffX - p.colW / 2;
-        p.y = feetY - p.colOffY - p.colH / 2;
+        // Land just ABOVE the hole — but that spot can sit inside the ring of
+        // blocks/rocks the buraco is nestled in (the player would exit wedged).
+        // Nudge the feet to the nearest spot that's clear of every obstacle AND on
+        // walkable ground, so the exit is never stuck. Same idea as the dungeon's
+        // own _unstickSpawn; only moves the player when the natural spot is blocked.
+        const spot = nearestOpenFeet(p, gameState.world, h.x + h.w / 2, h.y - 24);
+        p.x = spot.feetX - p.colOffX - p.colW / 2;
+        p.y = spot.feetY - p.colOffY - p.colH / 2;
     }
     p.surfaceState = 'ground';
     p.behindMountain = false;
