@@ -114,8 +114,12 @@ class Rock {
         // player/enemy feet anchor.
         let baseX = sx;
         if (renderW !== this.width) {
+            // Raw sub-pixel, no round: the world scrolls fractionally, so
+            // rounding baseX here alone snapped the block in 1-px steps and made
+            // it shake against the ground as the camera moved. Matches
+            // MapObject/Player convention (see render_rounding_jitter notes).
             const colCenter = sx + this.colOffX + this.colW / 2;
-            baseX = Math.round(colCenter - renderW / 2);
+            baseX = colCenter - renderW / 2;
         }
         const baseY = sy + this.height - renderH;
 
