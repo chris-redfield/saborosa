@@ -229,6 +229,13 @@ class Game {
                 // Per-tile collision grid for that floor (skulls + bushes = solid),
                 // authored/auto-detected in tools/tile-collision.html.
                 this.loadJSON('dungeon_tile_collision', 'assets-v2/rafe-saborosa-escaladalow-01-collision.json'),
+                // Second tiled dungeon — the "pista": two same-resolution art
+                // layers (rafe-saborosa-pista-01/02) composited and cropped to
+                // their non-transparent extent, so the tile is the tan viaduct
+                // structure alone and the transparent parts fall through to a flat
+                // sand fill (dungeonTiled2.sandColor). Tan walls/legs are solid.
+                this.loadImage('dungeon_tile_pista', 'assets-v2/rafe-saborosa-pista.png'),
+                this.loadJSON('dungeon_tile_pista_collision', 'assets-v2/rafe-saborosa-pista-collision.json'),
                 // Tileable twisted-rope segment (one vertical twist period, from
                 // the vecteezy rope .eps) for the dungeon's taut-wire rope.
                 this.loadImage('rope_segment', 'assets-v2/saborosa-rope-segment.png'),

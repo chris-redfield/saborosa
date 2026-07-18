@@ -169,6 +169,36 @@ const STAGES = {
             // `sway` = ambient quiver px; enabled:false removes it.
             rope: { enabled: true, length: 540, width: 15, sway: 10, endDX: 90, endDY: 0 },
         },
+        // A THIRD dungeon (target: 'tiled2') — the "pista". Same infinite top-down
+        // engine as dungeonTiled, but the tile is a TRANSPARENT structure (the
+        // composited pista art, cropped to its non-transparent extent) drawn over
+        // a flat sand fill: `sandColor` paints the whole floor, then the tan
+        // viaduct tiles over it and its transparent parts show the sand through —
+        // exactly the flat-sand look of the stage-3 overworld. The tan walls/legs
+        // are solid (per-tile collision); the white field + the sand gaps between
+        // legs are walkable. No rope here.
+        dungeonTiled2: {
+            name: 'Pista', tile: 'dungeon_tile_pista',
+            collision: 'dungeon_tile_pista_collision',
+            // Same flat sand as the overworld ground (layers.sand.color), shown
+            // above/below the bridge and through the tile's transparent parts.
+            sandColor: '#c8bb9b',
+            // Horizontal BRIDGE: the pista tile only connects left↔right, so it's
+            // drawn as one road strip tiled in X (not a field repeating up/down).
+            // The player drops onto the deck and is walled to it — he never walks
+            // on the sand. deckYFrac = the deck centre as a fraction of native
+            // height (white road band ≈ native Y 65–260 of 659 → centre ~0.246),
+            // used to seed the camera so he lands on the road.
+            horizontal: true, deckYFrac: 0.246,
+            // Depth: the near/lower railing (the tan parapet below the deck, native
+            // Y ≈ 260 of 659 → ~0.39) is re-drawn on top of the player, so at the
+            // deck's lower edge he tucks BEHIND it. Lower this to tuck him deeper.
+            railYFrac: 0.39,
+            // The pista tile is wide+short (1193×659). At this scale one road
+            // segment ≈ fills the view width; the deck is ~170px tall to walk in.
+            tileScale: 0.87, charScale: 1.0, colScale: 0.7,
+            rope: { enabled: false },
+        },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.
@@ -188,6 +218,15 @@ const STAGES = {
             // overlay graphic at world (4925, 3536).
             {
                 x: 4865, y: 3476, w: 120, h: 120, target: 'tiled',
+                triggerInset: 0.22,
+                vanishLine: 0.5
+            },
+            // Third hole → the "pista" tiled dungeon (target: 'tiled2'). Centered on
+            // the THIRD buraco overlay graphic in overlay-objects.json (the one up on
+            // the plateau): its center converts through backgroundImageRect to world
+            // (5678, 2850)  [cx = (nx+nw/2)*rect.w + rect.x, cy = (ny+nh/2)*rect.h].
+            {
+                x: 5618, y: 2790, w: 120, h: 120, target: 'tiled2',
                 triggerInset: 0.22,
                 vanishLine: 0.5
             }

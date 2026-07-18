@@ -19,6 +19,11 @@ class TileDungeonScreen {
         this.player = player;                 // for the current sprite pack + pose frames
         this.name = cfg.name || 'Bone Pit';   // shown in the C-debug overlay
         this.tileKey = cfg.tile || 'dungeon_tile';
+        // Floor backdrop. Opaque tiles (the Bone Pit) cover it entirely so it only
+        // shows in the void behind the drop; a TRANSPARENT tile (the pista) lets
+        // it show through as the ground — pass `sandColor` to get the overworld's
+        // flat-sand look under the structure.
+        this.bgColor = cfg.sandColor || cfg.bgColor || '#0c1020';
 
         // Floor tile draw size = native tile px × tileScale. Default ≈ the
         // stage-3 map's own draw scale (8815/5543 ≈ 1.59 world px per native px)
@@ -64,6 +69,26 @@ class TileDungeonScreen {
                 for (let c = 0; c < col.cols; c++) m[r * col.cols + c] = s[c] === '1' ? 1 : 0;
             }
             this.colMask = m;
+        }
+
+        // Horizontal-bridge tiles (the pista) connect ONLY left↔right — they are a
+        // single road strip, not a field that repeats up/down. In this mode the
+        // floor is drawn as ONE strip tiled in X only, with the sand backdrop
+        // showing above and below it, and the player is confined to the deck: the
+        // tan railings wall the deck's top/bottom, and anything OUTSIDE the tile's
+        // vertical span counts as solid (see _drawFloor + _boxHitsSolid). The tile
+        // top sits at plane-Y 0; camY is seeded so the deck centre (deckYFrac of the
+        // native height) lands under the feet point, so the player drops onto the road.
+        this.horizontal = !!cfg.horizontal;
+        this.deckYFrac = cfg.deckYFrac != null ? cfg.deckYFrac : 0.5;
+        // Near (lower) railing depth-sort: the tile slice from this fraction of the
+        // native height downward is re-drawn OVER the player (see _drawBridgeRailing),
+        // so he walks behind the front parapet at the deck's lower edge. null = off.
+        this.railYFrac = cfg.railYFrac != null ? cfg.railYFrac : null;
+        if (this.horizontal && cfg.startY == null) {
+            const img = this.game.getDrawable(this.tileKey);
+            const nh = this.colNH || (img && (img.naturalHeight || img.height)) || 0;
+            this.camY = this.deckYFrac * nh * this.tileScale - this._feetPoint().y;
         }
 
         // Drop from the ceiling on entry, reusing the overworld fall dynamics
@@ -191,7 +216,14 @@ class TileDungeonScreen {
         const c0 = Math.floor(minX / cW), c1 = Math.floor(maxX / cW);
         const r0 = Math.floor(minY / cH), r1 = Math.floor(maxY / cH);
         for (let r = r0; r <= r1; r++) {
-            const rr = ((r % this.colRows) + this.colRows) % this.colRows;
+            let rr;
+            if (this.horizontal) {
+                // Off the top/bottom of the single strip = sand → not walkable.
+                if (r < 0 || r >= this.colRows) return true;
+                rr = r;
+            } else {
+                rr = ((r % this.colRows) + this.colRows) % this.colRows;
+            }
             for (let c = c0; c <= c1; c++) {
                 const cc = ((c % this.colCols) + this.colCols) % this.colCols;
                 if (this.colMask[rr * this.colCols + cc]) return true;
@@ -363,6 +395,20 @@ class TileDungeonScreen {
         const th = (img.naturalHeight || img.height) * this.tileScale;
         if (tw <= 0 || th <= 0) return;
 
+        // Horizontal bridge: draw ONE strip (tiled in X only). The tile top is at
+        // plane-Y 0 → screen-Y = −camY; the sand backdrop shows above and below.
+        if (this.horizontal) {
+            const ox = -(((this.camX % tw) + tw) % tw);
+            const yTop = Math.round(-this.camY);
+            const yBot = Math.round(th - this.camY);
+            for (let gx = 0; ox + gx * tw < g.width; gx++) {
+                const x0 = Math.round(ox + gx * tw);
+                const x1 = Math.round(ox + (gx + 1) * tw);
+                ctx.drawImage(img, x0, yTop, (x1 - x0) + 1, (yBot - yTop));
+            }
+            return;
+        }
+
         // Float offset of the first tile: wrap the camera into [-tile, 0] so a
         // tile always starts off the top-left edge and the whole canvas is covered.
         const ox = -(((this.camX % tw) + tw) % tw);
@@ -527,9 +573,39 @@ class TileDungeonScreen {
         }
     }
 
+    // Depth-sort the bridge's NEAR (lower) railing: everything from `railYFrac`
+    // of the tile downward — the near parapet + the legs — is drawn a SECOND time
+    // on top of the character, so when he walks to the lower edge of the deck his
+    // feet tuck BEHIND the railing instead of standing on it. It's the exact same
+    // slice of the tile, re-blitted with pixel-aligned scaling to the strip in
+    // _drawFloor, so it overlays seamlessly. Only meaningful for horizontal-bridge
+    // tiles that opt in via cfg.railYFrac.
+    _drawBridgeRailing(ctx) {
+        if (!this.horizontal || this.railYFrac == null) return;
+        const g = this.game;
+        const img = g.getDrawable(this.tileKey);
+        if (!img || !(img.naturalWidth || img.width)) return;
+        const nw = img.naturalWidth || img.width, nh = img.naturalHeight || img.height;
+        const tw = nw * this.tileScale, th = nh * this.tileScale;
+        // Same strip mapping as _drawFloor (tile top at plane 0 → screen −camY).
+        const yTop = Math.round(-this.camY);
+        const yBot = Math.round(th - this.camY);
+        const sNat = this.railYFrac * nh;                       // source Y where the railing starts
+        // Where that source row lands on screen within the already-drawn strip.
+        const railTop = Math.round(yTop + (sNat / nh) * (yBot - yTop));
+        const sh = nh - sNat;
+        if (sh <= 0 || yBot - railTop <= 0) return;
+        const ox = -(((this.camX % tw) + tw) % tw);
+        for (let gx = 0; ox + gx * tw < g.width; gx++) {
+            const x0 = Math.round(ox + gx * tw);
+            const x1 = Math.round(ox + (gx + 1) * tw);
+            ctx.drawImage(img, 0, sNat, nw, sh, x0, railTop, (x1 - x0) + 1, yBot - railTop);
+        }
+    }
+
     render(ctx) {
         const g = this.game;
-        ctx.fillStyle = '#0c1020';
+        ctx.fillStyle = this.bgColor;
         ctx.fillRect(0, 0, g.width, g.height);
         ctx.imageSmoothingEnabled = true;
 
@@ -537,6 +613,7 @@ class TileDungeonScreen {
         this._drawRope(ctx);        // taut wire on the floor, under the character
         this._drawShadow(ctx);      // rope-hop ground shadow, under the character
         this._drawCharacter(ctx);
+        this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
@@ -585,9 +662,13 @@ class TileDungeonScreen {
             const cH = (nh / this.colRows) * this.tileScale;
             const tw = nw * this.tileScale, th = nh * this.tileScale;
             const ox = -(((this.camX % tw) + tw) % tw);
-            const oy = -(((this.camY % th) + th) % th);
+            // Horizontal bridge: the strip exists once vertically (tile top = plane
+            // 0 → screen −camY), so don't wrap it up/down like the infinite floor.
+            const oy = this.horizontal ? Math.round(-this.camY)
+                                       : -(((this.camY % th) + th) % th);
+            const tyEnd = this.horizontal ? oy + th - 1 : g.height;
             ctx.fillStyle = 'rgba(233,69,96,0.35)';
-            for (let ty = oy; ty < g.height; ty += th) {
+            for (let ty = oy; ty < tyEnd; ty += th) {
                 for (let tx = ox; tx < g.width; tx += tw) {
                     for (let r = 0; r < this.colRows; r++) {
                         for (let c = 0; c < this.colCols; c++) {

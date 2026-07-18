@@ -56,7 +56,15 @@
 </div></div>
 
 <script>
-const TILE_SRC = '../assets-v2/rafe-saborosa-escaladalow-01.png';
+// Which tile to author collision for. Pass ?tile=<file-in-assets-v2> to switch
+// (e.g. ?tile=rafe-saborosa-pista.png); defaults to the skull-field tile. The
+// export filename + JSON `tile` field are derived from the basename, so one tool
+// serves every tiled dungeon.
+const TILE_FILE = new URLSearchParams(location.search).get('tile')
+                  || 'rafe-saborosa-escaladalow-01.png';
+const TILE_SRC = '../assets-v2/' + TILE_FILE;
+const TILE_BASE = TILE_FILE.replace(/\.[^.]+$/, '');   // strip extension
+document.title = 'Saborosa — Tile Collision · ' + TILE_FILE;
 const artC = document.getElementById('art'), gridC = document.getElementById('grid');
 const artX = artC.getContext('2d'), gX = gridC.getContext('2d');
 
@@ -183,11 +191,10 @@ document.getElementById('export').addEventListener('click', ()=>{
     let s=''; for (let cx=0; cx<cols; cx++) s += mask[ry*cols+cx] ? '1':'0';
     cells.push(s);
   }
-  const out = { tile:'rafe-saborosa-escaladalow-01.png', nativeW:NW, nativeH:NH,
-                cols, rows, cells };
+  const out = { tile:TILE_FILE, nativeW:NW, nativeH:NH, cols, rows, cells };
   const blob=new Blob([JSON.stringify(out)], {type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download='rafe-saborosa-escaladalow-01-collision.json'; a.click();
+  a.download=TILE_BASE+'-collision.json'; a.click();
 });
 
 document.getElementById('load').addEventListener('change', ev=>{
