@@ -586,7 +586,7 @@ class TileDungeonScreen {
         const k = 1 - 0.28 * (this.jumpZ / this.jumpPeak); // shrink with height
         const rx = (fr.w * 0.55) * k, ry = (fr.w * 0.22) * k;
         ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.fillStyle = '#000';
         ctx.beginPath();
         ctx.ellipse(fp.x, fp.y - 2, rx, ry, 0, 0, Math.PI * 2);
         ctx.fill();

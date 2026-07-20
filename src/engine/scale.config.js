@@ -35,6 +35,7 @@ window.ART = {
         tomato_dead2_sheet: 1.0,
         eggplant_sheet: 1.0,
         eggplant_dead_sheet: 1.0,
+        eggplant_dead2_sheet: 1.0,
         laranja_sheet: 1.0,
         laranja_dead_sheet: 1.0,
         rock_sheet: 1.0,

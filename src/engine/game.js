@@ -58,6 +58,7 @@ class Game {
             tomato_dead2_sheet: 1.0,
             eggplant_sheet: 1.0,
             eggplant_dead_sheet: 1.0,
+            eggplant_dead2_sheet: 1.0,
             laranja_sheet: 1.0,
             laranja_dead_sheet: 1.0,
             rock_sheet: 1.0,
@@ -246,9 +247,10 @@ class Game {
                 // sand fill (dungeonTiled2.sandColor). Tan walls/legs are solid.
                 this.loadImage('dungeon_tile_pista', 'assets-v2/rafe-saborosa-pista.png'),
                 this.loadJSON('dungeon_tile_pista_collision', 'assets-v2/rafe-saborosa-pista-collision.json'),
-                // Tileable twisted-rope segment (one vertical twist period, from
-                // the vecteezy rope .eps) for the dungeon's taut-wire rope.
-                this.loadImage('rope_segment', 'assets-v2/saborosa-rope-segment.png'),
+                // Tileable twisted-rope segment (one vertical twist period) for the
+                // dungeon's taut-wire rope — hand-drawn v2 (same 206x176 dims as
+                // the old vecteezy segment, so the tiling math is unchanged).
+                this.loadImage('rope_segment', 'assets-v2/saborosa-rope-segment-v2.png'),
 
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
@@ -306,6 +308,8 @@ class Game {
                 // ERKPA's beaten-up skin — swapped in after his first death.
                 this.loadImage('eggplant_dead_sheet', 'assets/saborosa-elementos-eggplant-dead-game.png'),
                 this.loadJSON('eggplant_dead_sprites', 'assets/saborosa-elementos-eggplant-dead-sprites.json'),
+                this.loadImage('eggplant_dead2_sheet', 'assets/saborosa-elementos-eggplant-dead2-game.png'),
+                this.loadJSON('eggplant_dead2_sprites', 'assets/saborosa-elementos-eggplant-dead2-sprites.json'),
                 this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
                 this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
                 // JUIXY's beaten-up skin — swapped in after his first death.

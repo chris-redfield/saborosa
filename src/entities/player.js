@@ -206,7 +206,8 @@ class Player {
         this.deadStages = {
             0: [load('tomato_dead_sheet',  'tomato_dead_sprites',  'red'),
                 load('tomato_dead2_sheet', 'tomato_dead2_sprites', 'red')],
-            2: [load('eggplant_dead_sheet', 'eggplant_dead_sprites', 'tan')],
+            2: [load('eggplant_dead_sheet',  'eggplant_dead_sprites',  'tan'),
+                load('eggplant_dead2_sheet', 'eggplant_dead2_sprites', 'tan')],
             3: [load('laranja_dead_sheet',  'laranja_dead_sprites',  'yellow')]
         };
         this._deathStage = 0; // how many deaths have been applied so far

@@ -37,6 +37,9 @@ SHEETS = [
     # ERKPA's beaten-up skin, shown after his first death. Same 9x5 layout as
     # the alive master, so it packs through the identical path.
     ('saborosa-bonecos-eggplant-dead-low.png', 'eggplant-dead'),
+    # ERKPA's second (last-life) beaten-up skin, shown after his second death —
+    # a two-stage progression like TOM. Same 9x5 layout.
+    ('saborosa-bonecos-eggplant-dead-2-low.png', 'eggplant-dead2'),
     ('saborosa-bonecos-laranja low.png',       'laranja'),
     # JUIXY's beaten-up skin (the yellow "laranja" pack, index 3), shown after
     # his first death — the citrus art reads as a lemon, hence the master name.
