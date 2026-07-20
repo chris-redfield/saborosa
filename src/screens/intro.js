@@ -68,8 +68,9 @@ class IntroScreen {
         this._pollenOn = true;
         this._titleBW = false;
         this._menuBW = false;
-        // The pointing hand defaults to the WHITE line-art variant (intro-hand-bw).
-        this._handBW = true;
+        // Both hands (menu pointer + OPTIONS thumbs-up) use the YELLOW variant
+        // (intro-hand.png / intro-thumb.png), not the white line-art (_bw).
+        this._handBW = false;
         this._titleBob = true;     // idle bob on the SABOROSA title
         // Style for UNSELECTED menu words: 'standard' (current yellow art),
         // 'white' or 'red' (transparent line-art variants from letras-02).
@@ -441,9 +442,9 @@ class IntroScreen {
             // Off-screen start: +offset (right) for START, -offset (left) for OPTIONS.
             const dir = i === 0 ? 1 : -1;
             const enterX = (1 - enterEase) * dir * M.enterOffset;
-            // Art is pre-colored, so selection reads through scale + opacity
-            // (unselected items dim toward idleAlpha) rather than a color tween.
-            const baseAlpha = 1;                        // words stay fully solid; selection reads through scale/slide
+            // Art is pre-colored, so selection reads through scale + slide; the
+            // words stay fully solid (no opacity dim).
+            const baseAlpha = 1;
 
             ctx.save();
             ctx.translate(W / 2 + slide + enterX, y);
@@ -486,13 +487,6 @@ class IntroScreen {
             }
             ctx.restore();
         });
-
-        ctx.save();
-        ctx.globalAlpha = menuAlpha;
-        ctx.font = '18px Georgia, serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('↑ / ↓ to choose   ·   Space / Enter to select', W / 2, H * 0.9 + 57);
-        ctx.restore();
     }
 
     // Draw an image centered at (x, y) scaled to a target height, keeping aspect.
@@ -522,8 +516,8 @@ class IntroScreen {
         const offAmt = 1 - this._volAnim;   // 1 when OFF selected
         const drawValue = (img, x, amt) => {
             const scale = this._lerp(1, O.valueSelScale, amt);
-            const alpha = this._lerp(O.idleAlpha, 1, amt);
-            this._drawImageCentered(ctx, img, x, valY, O.valueHeight * scale, alpha);
+            // Both values stay fully solid; selection reads through the scale bump.
+            this._drawImageCentered(ctx, img, x, valY, O.valueHeight * scale, 1);
         };
         drawValue(this.game.getImage('intro_off'), offX, offAmt);
         drawValue(this.game.getImage('intro_on'), onX, onAmt);
@@ -540,10 +534,6 @@ class IntroScreen {
             const topY = valBottom + O.thumbGap + breathe;
             ctx.drawImage(thumb, handX - hw / 2, topY, hw, hh);
         }
-
-        ctx.font = '18px Georgia, serif';
-        ctx.fillStyle = 'rgba(255,255,255,0.6)';
-        ctx.fillText('← / → to choose   ·   Esc to go back', cx, H * 0.9 + 57);
     }
 }
 

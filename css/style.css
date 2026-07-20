@@ -36,19 +36,53 @@ body {
     image-rendering: crisp-edges;
 }
 
-/* Boot logo: dead-centered on the canvas region, sitting behind it.
-   The canvas centers via the container's flexbox, so centering this
-   absolutely on the container's midpoint lines it up with the canvas. */
-#boot-logo {
+/* Boot splash: logo + loading letters, dead-centered on the canvas region and
+   sitting behind it. The canvas centers via the container's flexbox, so
+   centering this absolutely on the container's midpoint lines it up with the
+   canvas. The letters stack directly below the logo. */
+#boot-splash {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
     z-index: 0;
-    max-width: 60%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    /* Sized so the (now trimmed) logo keeps roughly its previous on-screen
+       size; the letters sit just under it at their natural proportion. */
+    max-width: 49%;
+    pointer-events: none;
+}
+
+#boot-logo {
+    max-width: 100%;
     height: auto;
     image-rendering: pixelated;
-    pointer-events: none;
+}
+
+/* "LOADING..." row: each glyph is its own <img>, tiled edge-to-edge via
+   flex-grow (= its pixel width) so the word reads seamlessly, then bobbed
+   individually on a shared baseline for a travelling sine wave. */
+#boot-letters {
+    display: flex;
+    align-items: flex-end;   /* common baseline so the bob reads as a wave */
+    width: 54%;
+}
+
+.boot-letter {
+    flex: 0 0 auto;          /* width set inline per slice (its % of the word) */
+    height: auto;            /* keep each glyph's aspect ratio */
+    image-rendering: pixelated;
+    animation: boot-wave 1.2s ease-in-out infinite;
+}
+
+/* translateY in % is relative to each glyph's own height, so the bob is
+   uniform across differently-sized letters and scales with the screen. */
+@keyframes boot-wave {
+    0%, 100% { transform: translateY(14%); }
+    50%      { transform: translateY(-14%); }
 }
 
 #fps-counter {

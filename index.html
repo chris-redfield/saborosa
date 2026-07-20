@@ -8,10 +8,28 @@
 </head>
 <body>
     <div id="game-container">
-        <!-- Studio logo shown behind the canvas during initial asset load.
-             In-body <img> so it paints before any script runs; the opaque
-             canvas covers it once the game renders its first frame. -->
-        <img id="boot-logo" src="assets/saborosa-logo-V3-low.png" alt="Saborosa">
+        <!-- Studio logo + loading letters shown behind the canvas during initial
+             asset load. In-body <img>s so they paint before any script runs; the
+             opaque canvas covers them once the game renders its first frame. -->
+        <div id="boot-splash">
+            <img id="boot-logo" src="assets/saborosa-logo-V3-low.png" alt="Saborosa">
+            <!-- "LOADING..." split into per-glyph slices so each can bob on its
+                 own; the staggered animation-delays make a travelling sine wave.
+                 Each width % is the slice's share of the original 480px so they
+                 tile back together seamlessly. -->
+            <div id="boot-letters" role="img" aria-label="Loading">
+                <img class="boot-letter" style="width:10.417%;animation-delay:0s"    src="assets/saborosa-loading-0.png" alt="">
+                <img class="boot-letter" style="width:10.625%;animation-delay:-.08s" src="assets/saborosa-loading-1.png" alt="">
+                <img class="boot-letter" style="width:12.500%;animation-delay:-.16s" src="assets/saborosa-loading-2.png" alt="">
+                <img class="boot-letter" style="width:11.042%;animation-delay:-.24s" src="assets/saborosa-loading-3.png" alt="">
+                <img class="boot-letter" style="width:7.708%;animation-delay:-.32s"  src="assets/saborosa-loading-4.png" alt="">
+                <img class="boot-letter" style="width:15.417%;animation-delay:-.40s" src="assets/saborosa-loading-5.png" alt="">
+                <img class="boot-letter" style="width:11.042%;animation-delay:-.48s" src="assets/saborosa-loading-6.png" alt="">
+                <img class="boot-letter" style="width:7.292%;animation-delay:-.56s"  src="assets/saborosa-loading-7.png" alt="">
+                <img class="boot-letter" style="width:6.667%;animation-delay:-.64s"  src="assets/saborosa-loading-8.png" alt="">
+                <img class="boot-letter" style="width:7.292%;animation-delay:-.72s"  src="assets/saborosa-loading-9.png" alt="">
+            </div>
+        </div>
         <canvas id="game-canvas"></canvas>
         <div id="fps-counter">FPS: 0</div>
         <div id="debug-info"></div>

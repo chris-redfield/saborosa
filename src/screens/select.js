@@ -214,17 +214,6 @@ class CharacterSelectScreen {
             ctx.restore();
         }
 
-        // Hint (hidden once the player has committed).
-        if (!this.confirming) {
-            ctx.save();
-            ctx.fillStyle = 'rgba(40,30,20,0.55)';
-            ctx.font = `${Math.round(H * 0.028)}px monospace`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'alphabetic';
-            ctx.fillText('← →  choose      SPACE  select', W / 2, H - Math.round(H * 0.05) + 30);
-            ctx.restore();
-        }
-
         ctx.restore(); // end art-group fade
 
         // Trailing fade-to-black — covers the hand-off (and the stage load).

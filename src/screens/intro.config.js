@@ -40,7 +40,6 @@ window.INTRO_JUICE = {
         pulseScale: 0.10,        // extra scale on a selection change
         selScale: 1.18,          // selected item scale
         selSlide: 6,             // px — selected item slides right
-        idleAlpha: 0.82,         // alpha of unselected items (selected = 1)
         handHeight: 37,          // px — on-screen height of the pointing-hand cursor
         handGap: 28,             // px — base distance from the word's left edge
         handBreatheFreq: 4,      // rad/sec — hand in/out motion
@@ -54,7 +53,6 @@ window.INTRO_JUICE = {
         volumeHeight: 52,        // px — on-screen height of the VOLUME label art (matches menu.itemHeight)
         valueHeight: 52,         // px — on-screen height of the OFF / ON art (matches menu.itemHeight)
         valueSpread: 150,        // px — half-distance between the OFF and ON centers
-        idleAlpha: 0.7,          // dim factor for the unselected value
         valueSelScale: 1.12,     // scale bump on the selected value
         selectEaseRate: 16,      // how fast the thumb glides between OFF and ON
         thumbHeight: 57,         // px — on-screen height of the thumbs-up cursor (30% under original)
