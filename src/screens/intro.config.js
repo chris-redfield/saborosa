@@ -25,7 +25,6 @@ window.INTRO_JUICE = {
         bobFreq: 1.6,            // rad/sec
         breatheAmp: 0.012,       // scale wobble amount
         breatheFreq: 1.2,        // rad/sec
-        punchKick: 0.35,         // extra scale added during the confirm punch
     },
 
     // Menu: animated selection feel.
@@ -47,7 +46,6 @@ window.INTRO_JUICE = {
         handGap: 28,             // px — base distance from the word's left edge
         handBreatheFreq: 4,      // rad/sec — hand in/out motion
         handBreatheAmp: 9,       // px — hand in/out amplitude
-        fadeOnStartFactor: 0.6,  // menu fades over (punch.dur * this) during punch
     },
 
     // OPTIONS sub-screen (VOLUME with OFF / ON, selected by a thumbs-up hand).
@@ -66,15 +64,20 @@ window.INTRO_JUICE = {
         thumbBreatheAmp: 8,      // px — thumb up/down amplitude
     },
 
-    // Confirm punch when START is pressed.
+    // Confirm beat when START is pressed — mirrors the character-select "lock in"
+    // (see src/screens/select.js): a stamp pop on the chosen word + white flash +
+    // shake, then a trailing fade-to-black that covers the hand-off.
     punch: {
-        dur: 0.55,               // sec — total punch length before handoff
-        flashStrength: 0.7,      // peak white-flash alpha
-        flashDecay: 0.35,        // sec — flash fade
-        shakeAmp: 14,            // px — peak shake
-        shakeFreqX: 62,          // rad/sec — horizontal jitter
-        shakeFreqY: 53,          // rad/sec — vertical jitter
-        shakeYScale: 0.6,        // vertical shake is gentler than horizontal
+        dur: 0.55,               // sec — total beat length before handoff
+        stampDur: 0.40,          // sec — pop settle time
+        popAmount: 0.25,         // selected word swells 1.25 → ~1.0 (easeOutBack bounce)
+        flashStrength: 0.85,     // peak white-flash alpha over the chosen word
+        flashDur: 0.22,          // sec — flash linear decay
+        shakeAmp: 9,             // px — peak shake
+        shakeDur: 0.18,          // sec — shake linear decay
+        shakeFreqX: 82,          // rad/sec — horizontal jitter
+        shakeFreqY: 71,          // rad/sec — vertical jitter
+        fadeDur: 0.20,           // sec — trailing fade-to-black covering the hand-off
     },
 
     // Black cover + game fade-in after START.

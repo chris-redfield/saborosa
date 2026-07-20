@@ -41,12 +41,12 @@ class IntroScreen {
         // _volAnim eases 0 (OFF) .. 1 (ON) so the thumb glides between values.
         this._volumeOn = !(this.game.audio && this.game.audio.muted);
         this._volAnim = this._volumeOn ? 1 : 0;
-        // Confirm punch: once START is chosen we play a short flash/shake/kick
-        // before actually handing control to the game.
+        // Confirm beat: once START is chosen we play the character-select "lock
+        // in" beat (stamp pop on the word + flash + shake + fade-to-black) before
+        // actually handing control to the game.
         this.starting = false;
         this.startT = 0;
         this.startDur = this.cfg.punch.dur;
-        this.flash = 0;            // 0..1 white screen flash, decays
 
         // Fade-in from black: the whole window starts black and fades to clear
         // to reveal the page. A canvas can only paint itself, so to cover the
@@ -202,7 +202,6 @@ class IntroScreen {
             this._optAnim[i] = this._approach(this._optAnim[i], target, this.cfg.menu.selectEaseRate, dt);
         });
         if (this.selPulse > 0) this.selPulse = Math.max(0, this.selPulse - dt / this.cfg.menu.pulseDecay);
-        if (this.flash > 0) this.flash = Math.max(0, this.flash - dt / this.cfg.punch.flashDecay);
         // Glide the volume thumb toward the chosen value.
         this._volAnim = this._approach(this._volAnim, this._volumeOn ? 1 : 0, this.cfg.options.selectEaseRate, dt);
 
@@ -244,11 +243,9 @@ class IntroScreen {
                 const opt = this.options[this.selected];
                 if (opt === 'OPTIONS') {
                     this.mode = 'options';
-                } else { // START — kick off the confirm punch, return later
+                } else { // START — kick off the confirm beat, return later
                     this.starting = true;
                     this.startT = 0;
-                    this.flash = 1;
-                    this.selPulse = 1;
                 }
             }
         } else { // options
@@ -329,15 +326,15 @@ class IntroScreen {
         this._renderVignette(ctx, W, H);
         this._renderParticles(ctx);
 
-        // Foreground (title + menu) is shaken as one group during the punch.
+        // Foreground (title + menu) is shaken as one group during the beat —
+        // same decaying jitter the character-select lock-in uses.
         ctx.save();
         if (this.starting) {
             const p = this.cfg.punch;
-            const k = 1 - this.startT / this.startDur;     // 1 → 0 over the punch
-            const amp = p.shakeAmp * k * k;
+            const amp = p.shakeAmp * Math.max(0, 1 - this.startT / p.shakeDur);
             ctx.translate(
                 Math.sin(this.startT * p.shakeFreqX) * amp,
-                Math.cos(this.startT * p.shakeFreqY) * amp * p.shakeYScale
+                Math.cos(this.startT * p.shakeFreqY) * amp
             );
         }
 
@@ -356,10 +353,15 @@ class IntroScreen {
         ctx.textBaseline = 'alphabetic';
         ctx.restore();
 
-        // White flash on confirm, drawn last so it covers the whole screen.
-        if (this.flash > 0) {
-            ctx.fillStyle = `rgba(255,255,255,${this.cfg.punch.flashStrength * this.flash})`;
-            ctx.fillRect(0, 0, W, H);
+        // Trailing fade-to-black covers the hand-off to the character-select
+        // screen (and hides the synchronous stage load), same as select.js.
+        if (this.starting) {
+            const p = this.cfg.punch;
+            const fadeA = Math.min(1, Math.max(0, (this.startT - (this.startDur - p.fadeDur)) / p.fadeDur));
+            if (fadeA > 0) {
+                ctx.fillStyle = `rgba(0,0,0,${fadeA})`;
+                ctx.fillRect(0, 0, W, H);
+            }
         }
         // The fade-in from black is a DOM overlay (see _makeFade / _updateFade)
         // so it can cover the whole window, not just this canvas.
@@ -379,12 +381,8 @@ class IntroScreen {
         const bob = this._titleBob ? Math.sin(this.t * T.bobFreq) * T.bobAmp * settled : 0;
         if (this._titleBob) scale *= 1 + Math.sin(this.t * T.breatheFreq) * T.breatheAmp * settled;
 
-        // Confirm punch: title kicks bigger and fades out as we hand off.
-        if (this.starting) {
-            const k = this.startT / this.startDur;
-            scale *= 1 + this._easeOutCubic(k) * T.punchKick;
-            alpha *= 1 - k;
-        }
+        // During the confirm beat the title holds steady (no kick/fade) — the
+        // trailing fade-to-black carries it off, matching the select screen.
 
         ctx.save();
         ctx.translate(W / 2, H * 0.34 + enterDy + bob);
@@ -407,8 +405,9 @@ class IntroScreen {
         const M = this.cfg.menu;
         const baseY = H * 0.60 + 30;
         const gap = 72;
-        // Fade the whole menu out during the confirm punch.
-        const menuAlpha = this.starting ? Math.max(0, 1 - this.startT / (this.startDur * M.fadeOnStartFactor)) : 1;
+        // The menu stays solid during the confirm beat — the trailing
+        // fade-to-black (not a menu fade) now carries it off, like select.js.
+        const menuAlpha = 1;
         const imgKeys = ['intro_start', 'intro_options'];
 
         // Entrance: START (i=0) slides in from the right, OPTIONS (i=1) from the
@@ -426,7 +425,14 @@ class IntroScreen {
             const y = baseY + i * gap;
             // Selected item scales up a touch (+ a pop on change) and slides right.
             const pulse = sel ? this.selPulse * M.pulseScale : 0;
-            const scale = this._lerp(1, M.selScale, a) + pulse;
+            let scale = this._lerp(1, M.selScale, a) + pulse;
+            // Confirm beat: the chosen word "stamps" — swells 1.25 → ~1.0 with the
+            // same easeOutBack bounce the character-select lock-in uses.
+            if (this.starting && sel) {
+                const P = this.cfg.punch;
+                const sp = Math.min(1, this.startT / P.stampDur);
+                scale *= 1 + P.popAmount * (1 - this._easeOutBack(sp));
+            }
             const slide = this._lerp(0, M.selSlide, a);
             // Off-screen start: +offset (right) for START, -offset (left) for OPTIONS.
             const dir = i === 0 ? 1 : -1;
@@ -452,6 +458,17 @@ class IntroScreen {
                 const w = h * (img.naturalWidth / img.naturalHeight);
                 halfW = w / 2;
                 ctx.drawImage(img, -halfW, -h / 2, w, h);
+                // White flash over the chosen word during the confirm beat
+                // (peak alpha, linear decay — same as the select-panel flash).
+                if (this.starting && sel) {
+                    const P = this.cfg.punch;
+                    const flashA = P.flashStrength * Math.max(0, 1 - this.startT / P.flashDur);
+                    if (flashA > 0) {
+                        ctx.globalAlpha = flashA;
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(-halfW, -h / 2, w, h);
+                    }
+                }
             } else { // fallback while the art loads
                 ctx.font = `${a > 0.5 ? 'bold ' : ''}38px Georgia, serif`;
                 ctx.fillStyle = '#ffd166';
