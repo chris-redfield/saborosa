@@ -54,6 +54,14 @@ class TileDungeonScreen {
         if (player) { player.facing = 'down'; player.moving = false; }
         this.fadeIn = 1;       // black → clear on entry
 
+        // Ambient no-collision FX — the same twinkles/balls the overworld pops in
+        // (FxManager, see main.js). Modest count so it's not a party, but frequent
+        // and a touch bigger than default so they actually read against the dark
+        // dungeon floor (the surface gets them for free via the camera zoom).
+        this.fxManager = new FxManager(game, {
+            target: 4, spawnGapMin: 1.0, spawnGapJitter: 1.8, scale: 0.3
+        });
+
         // Per-tile collision grid (skulls + bushes = solid), authored in
         // tools/tile-collision.html. Because the floor is one tile repeated
         // forever, the mask tiles too: the player's feet plane-position is
@@ -301,6 +309,13 @@ class TileDungeonScreen {
     update(dt) {
         if (this.rope) this.rope.t += dt; // taut-wire ambient sway clock
         if (this.ropeWhip > 0) this.ropeWhip = Math.max(0, this.ropeWhip - dt / 0.5);
+
+        // Ambient FX tick every frame (so twinkles keep shimmering even while
+        // falling in or stuck), scattered around the visible deck in world/plane
+        // coords and scrolling with the camera.
+        if (this.fxManager) {
+            this.fxManager.update(dt, this.camX + this.game.width / 2, this.camY + this.game.height / 2, 1);
+        }
 
         // Ceiling drop on entry — same accel curve as the overworld fall.
         if (this.falling) {
@@ -771,6 +786,10 @@ class TileDungeonScreen {
         this._drawCharacter(ctx);
         if (this.phone && phoneInFront) this._drawPhone(ctx);
         this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
+
+        // Ambient FX on top of the scene (no collision/depth sort), same as the
+        // overworld. Under the entry fade so they don't flash during the drop-in.
+        if (this.fxManager) this.fxManager.render(ctx, this.camX, this.camY);
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
