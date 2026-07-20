@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Boss Animation Preview</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c1020; }
+  #stage.check { background-image:linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+                            linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+                 background-size:32px 32px; background-position:0 0,16px 16px; }
+  #stage.black { background:#000; }
+  #stage.white { background:#d8d8d8; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:340px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; overflow-y:auto; }
+  #side .group { padding:8px 12px; border-bottom:1px solid #0c1226; }
+  #side h3 { margin:4px 0 8px; color:var(--accent); font-size:12px; letter-spacing:.5px; }
+  label.s { display:flex; justify-content:space-between; margin:7px 0 1px; color:#9ab; font-size:11px; }
+  label.s span { color:#cfe; }
+  input[type=range] { width:100%; }
+  label.cb { display:flex; align-items:center; gap:6px; margin:6px 0; color:#cfe; }
+  .row { display:flex; gap:6px; margin:6px 0; flex-wrap:wrap; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #readout { white-space:pre; color:#8fce8f; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  pre#out { background:#0e1730; border:1px solid #2a3a5a; border-radius:4px;
+            padding:6px; font-size:10px; color:#cfe; white-space:pre-wrap; max-height:160px;
+            overflow:auto; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>BOSS ANIM</b>
+  <span class="hint">Space play/pause · ← → step frames · "sheet view" to check slicing (click a frame to drop it)</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage" class="check"><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+const A = '../assets-v2/';
+const SHEET = A + 'saborosa-boss-test-low-01.png';
+
+const params = {
+  mode: 'auto',    // 'auto' (projection cut) | 'grid' (even cols×rows)
+  gap: 14,         // auto: min transparent run (px) separating frames
+  alpha: 16,       // alpha threshold for an "occupied" pixel
+  cols: 8,         // grid: columns
+  rows: 1,         // grid: rows
+  frameMs: 90,     // ms per frame
+  scale: 0.5,      // draw scale (× frame px)
+  playing: true,
+  showBoxes: false,
+  bg: 'check',     // 'check' | 'black' | 'white'
+};
+
+const SLIDERS = [
+  ['gap','frame gap (px)',2,60,1],
+  ['alpha','alpha threshold',1,128,1],
+  ['cols','grid columns',1,24,1],
+  ['rows','grid rows',1,12,1],
+  ['frameMs','frame time (ms)',16,400,1],
+  ['scale','draw scale',0.05,2,0.01],
+];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let img = null, sheet = null;
+let frames = [], selected = [];
+let cur = 0;               // current active-frame index
+let acc = 0, last = 0;     // ms accumulator for advancing frames
+
+function loadImg(src){ return new Promise(r=>{ const i=new Image(); i.onload=()=>r(i); i.src=src; }); }
+
+async function boot(){
+  img = await loadImg(SHEET);
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  const cc = c.getContext('2d', { willReadFrequently:true });
+  cc.drawImage(img, 0, 0);
+  sheet = { w: img.width, h: img.height, data: cc.getImageData(0,0,img.width,img.height).data };
+  reslice();
+  buildPanel();
+  resize();
+  last = performance.now();
+  requestAnimationFrame(loop);
+}
+function status(s){ document.getElementById('status').textContent = s; }
+function resize(){ cv.width = stage.clientWidth; cv.height = stage.clientHeight; }
+window.addEventListener('resize', resize);
+
+// --- frame slicing ----------------------------------------------------------
+function bands1D(len, isOcc, gap){
+  const out = []; let s=-1, lastOn=-1;
+  for (let i=0;i<len;i++){
+    if (isOcc(i)){ if (s<0) s=i; else if (i-lastOn>gap){ out.push([s,lastOn]); s=i; } lastOn=i; }
+  }
+  if (s>=0) out.push([s,lastOn]);
+  return out;
+}
+// Auto: split into content rows, each into columns. Every frame in a row keeps
+// the SAME vertical band (ry0..ry1) — we do NOT tighten each cell's height, so
+// the frames all share one height/baseline and the boss doesn't bob or resize
+// between frames (the content sits at its true position inside the fixed band).
+function detectAuto(){
+  const { w, h, data } = sheet;
+  frames = [];
+  const rowOcc = (y)=>{ for (let x=0;x<w;x++) if (data[(y*w+x)*4+3]>params.alpha) return true; return false; };
+  for (const [ry0,ry1] of bands1D(h, rowOcc, params.gap)){
+    const colOcc = (x)=>{ for (let y=ry0;y<=ry1;y++) if (data[(y*w+x)*4+3]>params.alpha) return true; return false; };
+    for (const [cx0,cx1] of bands1D(w, colOcc, params.gap)){
+      frames.push({ x:cx0, y:ry0, w:cx1-cx0+1, h:ry1-ry0+1 });
+    }
+  }
+}
+// Grid: even cols×rows split of the whole sheet (uniform cells → stable playback).
+function detectGrid(){
+  const { w, h } = sheet;
+  frames = [];
+  const cw = w / params.cols, ch = h / params.rows;
+  for (let r=0;r<params.rows;r++) for (let c=0;c<params.cols;c++)
+    frames.push({ x:Math.round(c*cw), y:Math.round(r*ch), w:Math.round(cw), h:Math.round(ch) });
+}
+function reslice(){
+  (params.mode === 'grid' ? detectGrid : detectAuto)();
+  selected = frames.map(()=>true);
+  cur = 0;
+  status(`${params.mode} · ${frames.length} frames`);
+}
+function activeIdx(){ const a=[]; for (let i=0;i<frames.length;i++) if (selected[i]) a.push(i); return a; }
+
+// --- draw -------------------------------------------------------------------
+function draw(now){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  if (params.showBoxes){ drawSheetView(); updateReadout(); return; }
+
+  const active = activeIdx();
+  if (!active.length){ updateReadout(); return; }
+  cur = ((cur % active.length) + active.length) % active.length;
+  const f = frames[active[cur]];
+  const dw = f.w * params.scale, dh = f.h * params.scale;
+  // Centre the frame on the stage; a ground line marks the vertical middle.
+  const cx = cv.width/2, cy = cv.height/2;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(img, f.x, f.y, f.w, f.h, cx - dw/2, cy - dh/2, dw, dh);
+  updateReadout();
+}
+
+function sheetTransform(){
+  const s = Math.min(cv.width/img.width, cv.height/img.height) * 0.95;
+  return { s, ox:(cv.width-img.width*s)/2, oy:(cv.height-img.height*s)/2 };
+}
+function drawSheetView(){
+  const { s, ox, oy } = sheetTransform();
+  ctx.drawImage(img, ox, oy, img.width*s, img.height*s);
+  ctx.lineWidth = 1.5; ctx.font = '13px monospace'; ctx.textBaseline = 'top';
+  frames.forEach((f,i)=>{
+    const x=ox+f.x*s, y=oy+f.y*s, w=f.w*s, h=f.h*s;
+    if (selected[i]){
+      ctx.strokeStyle = 'rgba(233,69,96,0.9)'; ctx.strokeRect(x,y,w,h);
+      ctx.fillStyle = '#53d8fb'; ctx.fillText(i, x+3, y+2);
+    } else {
+      ctx.fillStyle = 'rgba(12,16,32,0.66)'; ctx.fillRect(x,y,w,h);
+      ctx.strokeStyle = 'rgba(120,138,168,0.9)'; ctx.strokeRect(x,y,w,h);
+      ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+w,y+h); ctx.moveTo(x+w,y); ctx.lineTo(x,y+h); ctx.stroke();
+      ctx.fillStyle = '#7a8aa8'; ctx.fillText(i, x+3, y+2);
+    }
+  });
+}
+
+// --- side panel -------------------------------------------------------------
+function buildPanel(){
+  const side = document.getElementById('side'); side.innerHTML = '';
+
+  const g1 = group(side, 'Slicing');
+  const modeRow = document.createElement('div'); modeRow.className='row';
+  ['auto','grid'].forEach(m=>{
+    const b=document.createElement('button'); b.textContent=m; b.dataset.mode=m;
+    b.className = params.mode===m ? 'on':'';
+    b.onclick=()=>{ params.mode=m; [...modeRow.children].forEach(x=>x.className=x.dataset.mode===m?'on':''); reslice(); syncSliceRows(); };
+    modeRow.appendChild(b);
+  });
+  g1.appendChild(modeRow);
+  addSlider(g1,'gap'); addSlider(g1,'alpha');
+  addSlider(g1,'cols'); addSlider(g1,'rows');
+  syncSliceRows();
+
+  const g2 = group(side, 'Playback');
+  playBtn = document.createElement('button'); playBtn.textContent = params.playing?'⏸ pause':'▶ play';
+  playBtn.className = params.playing?'on':'';
+  playBtn.onclick = togglePlay;
+  const stepRow = document.createElement('div'); stepRow.className='row';
+  const prev=document.createElement('button'); prev.textContent='◀ prev'; prev.onclick=()=>step(-1);
+  const next=document.createElement('button'); next.textContent='next ▶'; next.onclick=()=>step(1);
+  stepRow.appendChild(prev); stepRow.appendChild(next);
+  g2.appendChild(playBtn); g2.appendChild(stepRow);
+  addSlider(g2,'frameMs'); addSlider(g2,'scale');
+  const bgRow = document.createElement('div'); bgRow.className='row';
+  ['check','black','white'].forEach(b=>{
+    const btn=document.createElement('button'); btn.textContent=b; btn.dataset.bg=b;
+    btn.className = params.bg===b?'on':'';
+    btn.onclick=()=>{ params.bg=b; stage.className=b; [...bgRow.children].forEach(x=>x.className=x.dataset.bg===b?'on':''); };
+    bgRow.appendChild(btn);
+  });
+  g2.appendChild(bgRow);
+  addCheckbox(g2,'showBoxes','sheet view (check slicing · click frames)');
+
+  const g3 = group(side, 'Readout');
+  const ro = document.createElement('div'); ro.id='readout'; g3.appendChild(ro);
+
+  const g4 = group(side, 'Export');
+  const copy = document.createElement('button'); copy.textContent='Copy defs JSON';
+  g4.appendChild(copy);
+  const out = document.createElement('pre'); out.id='out'; out.style.marginTop='6px'; g4.appendChild(out);
+  copy.onclick = ()=>{ const j=defsJSON(); out.textContent=j; navigator.clipboard && navigator.clipboard.writeText(j); status('defs copied'); };
+}
+let playBtn = null;
+// Show only the sliders relevant to the current slicing mode.
+function syncSliceRows(){
+  const auto = params.mode==='auto';
+  toggleSlider('gap', auto); toggleSlider('alpha', auto);
+  toggleSlider('cols', !auto); toggleSlider('rows', !auto);
+}
+function toggleSlider(key, on){
+  const el = document.querySelector(`[data-slider="${key}"]`);
+  if (el) el.style.display = on ? '' : 'none';
+}
+function group(host, title){
+  const d=document.createElement('div'); d.className='group';
+  const h=document.createElement('h3'); h.textContent=title; d.appendChild(h);
+  host.appendChild(d); return d;
+}
+function addSlider(host, key){
+  const [k,label,min,max,step] = SLIDERS.find(s=>s[0]===key);
+  const wrap = document.createElement('div'); wrap.dataset.slider = k;
+  const l=document.createElement('label'); l.className='s';
+  const name=document.createElement('span'); name.textContent=label;
+  const val=document.createElement('span'); val.textContent=fmt(params[k],step);
+  l.appendChild(name); l.appendChild(val);
+  const inp=document.createElement('input'); inp.type='range';
+  inp.min=min; inp.max=max; inp.step=step; inp.value=params[k];
+  inp.oninput = e=>{
+    params[k]=parseFloat(e.target.value); val.textContent=fmt(params[k],step);
+    if (k==='gap'||k==='alpha'||k==='cols'||k==='rows') reslice();
+    if (k==='frameMs') updateReadout();
+  };
+  wrap.appendChild(l); wrap.appendChild(inp); host.appendChild(wrap);
+}
+function fmt(v,step){ return step<1 ? (+v).toFixed(2) : (+v).toFixed(0); }
+function addCheckbox(host, key, label){
+  const l=document.createElement('label'); l.className='cb';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=!!params[key];
+  c.onchange=e=>{ params[key]=e.target.checked; };
+  l.appendChild(c); l.appendChild(document.createTextNode(label));
+  host.appendChild(l);
+}
+function updateReadout(){
+  const ro=document.getElementById('readout'); if (!ro) return;
+  const used=activeIdx().length;
+  const fps = params.frameMs>0 ? (1000/params.frameMs) : 0;
+  ro.textContent =
+    `mode      ${params.mode}\n`+
+    `frames    ${used}/${frames.length} used\n`+
+    `current   ${used?cur:'-'}\n`+
+    `frame ms  ${params.frameMs|0}   (${fps.toFixed(1)} fps)\n`+
+    `loop      ${(used*params.frameMs)|0} ms\n`+
+    `scale     ${params.scale.toFixed(2)}\n`+
+    `state     ${params.playing?'playing':'paused'}`;
+}
+function defsJSON(){
+  return JSON.stringify({
+    sheet: 'assets-v2/saborosa-boss-test-low-01.png',
+    frameMs: Math.round(params.frameMs),
+    scale: +params.scale.toFixed(3),
+    frames: frames.filter((f,i)=>selected[i]).map(f=>[f.x,f.y,f.w,f.h])
+  }, null, 2);
+}
+
+// --- controls ---------------------------------------------------------------
+function togglePlay(){ params.playing=!params.playing; if (playBtn){ playBtn.textContent=params.playing?'⏸ pause':'▶ play'; playBtn.className=params.playing?'on':''; } }
+function step(d){ const n=activeIdx().length; if (!n) return; params.playing=false; if (playBtn){ playBtn.textContent='▶ play'; playBtn.className=''; } cur=((cur+d)%n+n)%n; }
+
+cv.addEventListener('mousedown', e=>{
+  if (!params.showBoxes) return;
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const { s, ox, oy } = sheetTransform();
+  for (let i=0;i<frames.length;i++){
+    const f=frames[i], x0=ox+f.x*s, y0=oy+f.y*s;
+    if (mx>=x0 && mx<=x0+f.w*s && my>=y0 && my<=y0+f.h*s){
+      selected[i]=!selected[i]; status(`frame ${i} ${selected[i]?'ON':'OFF'} · ${activeIdx().length}/${frames.length} used`); break;
+    }
+  }
+});
+window.addEventListener('keydown', e=>{
+  if (e.code==='Space'){ e.preventDefault(); togglePlay(); }
+  else if (e.code==='ArrowRight'){ e.preventDefault(); step(1); }
+  else if (e.code==='ArrowLeft'){ e.preventDefault(); step(-1); }
+});
+
+function loop(now){
+  const dt = now - last; last = now;
+  if (params.playing && !params.showBoxes){
+    acc += dt;
+    const n = activeIdx().length;
+    while (n>0 && params.frameMs>0 && acc >= params.frameMs){ acc -= params.frameMs; cur = (cur+1)%n; }
+  }
+  draw(now);
+  requestAnimationFrame(loop);
+}
+
+boot();
+</script>
+</body>
+</html>

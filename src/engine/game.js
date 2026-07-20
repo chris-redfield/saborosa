@@ -252,6 +252,13 @@ class Game {
                 // the old vecteezy segment, so the tiling math is unchanged).
                 this.loadImage('rope_segment', 'assets-v2/saborosa-rope-segment-v2.png'),
 
+                // Test boss for the tiled dungeon — an 8-frame animated sheet (defs
+                // authored in tools/boss-anim.html). NOTE: this is the full-res
+                // master (~6075x1116); crop/downscale into a game sheet when it
+                // graduates from a test.
+                this.loadImage('boss_sheet', 'assets-v2/saborosa-boss-test-low-01.png'),
+                this.loadJSON('boss_defs', 'assets/saborosa-boss-test-defs.json'),
+
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
                 this.loadJSON('boom_defs', 'assets-v2/saborosa-boom.json'),

@@ -168,6 +168,12 @@ const STAGES = {
             // `length` = min anchor height above the end; `width` = thickness;
             // `sway` = ambient quiver px; enabled:false removes it.
             rope: { enabled: true, length: 540, width: 15, sway: 10, endDX: 90, endDY: 0 },
+            // Test boss (8-frame animated sheet, defs in assets/saborosa-boss-test-
+            // defs.json). Spawns OFF-SCREEN (spawnDX far to the right of the drop-in),
+            // waits chaseDelayMs, then homes STRAIGHT at the player ignoring all
+            // collision (walks through rocks/skulls/bushes). speed matches the pista
+            // telephone's chaseSpeed (3.45 px/frame).
+            boss: { enabled: true, spawnDX: 1000, spawnDY: 0, scale: 0.7, speed: 3.45, chaseDelayMs: 3000 },
         },
         // A THIRD dungeon (target: 'tiled2') — the "pista". Same infinite top-down
         // engine as dungeonTiled, but the tile is a TRANSPARENT structure (the

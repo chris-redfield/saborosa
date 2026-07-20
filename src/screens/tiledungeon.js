@@ -55,12 +55,32 @@ class TileDungeonScreen {
         this.fadeIn = 1;       // black → clear on entry
 
         // Ambient no-collision FX — the same twinkles/balls the overworld pops in
-        // (FxManager, see main.js). Modest count so it's not a party, but frequent
-        // and a touch bigger than default so they actually read against the dark
-        // dungeon floor (the surface gets them for free via the camera zoom).
+        // (FxManager, see main.js). Default size (no scale override — the overworld
+        // only looks smaller because the camera is zoomed; down here 1:1 matches).
+        // Modest count, but frequent enough to notice against the dark floor.
         this.fxManager = new FxManager(game, {
-            target: 4, spawnGapMin: 1.0, spawnGapJitter: 1.8, scale: 0.3
+            target: 4, spawnGapMin: 1.0, spawnGapJitter: 1.8
         });
+
+        // Scattered pickable rocks (assets-002 blocks). The infinite floor is one
+        // tile repeated, so each tile-instance is seeded ONCE with ONE OF EACH
+        // block type, every type at a spot chosen by a deterministic hash of the
+        // tile's grid coords — stable as you scroll back and forth, and truly
+        // infinite. They start SOLID + PUSHABLE (walk into one to shove it);
+        // picking them up comes later. plane coords == screen px here (no camera
+        // zoom), so the Rock's own collision boxes drop straight in.
+        const blockEntries = Object.entries(((game.getJSON('block_defs') || {}).assets) || {})
+            .filter(([, d]) => d.kind === 'block');
+        this.rockDefs = blockEntries.map(([, d]) => d);
+        // Placement pool = one of each type, PLUS two extra copies of the two
+        // barrels (block_00 = on the ground, block_01 = standing) so each barrel
+        // shows up THREE times per tile (each copy gets its own hashed spot via
+        // its list index).
+        const BARREL_KEYS = new Set(['block_00', 'block_01']);
+        const barrels = blockEntries.filter(([k]) => BARREL_KEYS.has(k)).map(([, d]) => d);
+        this.placeDefs = this.rockDefs.concat(barrels, barrels);
+        this.rocks = [];
+        this._rockTiles = new Set(); // tile keys already seeded (one attempt each)
 
         // Per-tile collision grid (skulls + bushes = solid), authored in
         // tools/tile-collision.html. Because the floor is one tile repeated
@@ -213,6 +233,28 @@ class TileDungeonScreen {
                 };
             }
         }
+
+        // Test boss — an 8-frame animated sheet, feet-anchored at a plane spot
+        // (defs in assets/saborosa-boss-test-defs.json). Spawns off-screen, waits
+        // `chaseDelay`, then homes STRAIGHT at the player with NO collision (walks
+        // through everything). Depth-sorts vs the player like the phone.
+        this.boss = null;
+        const bc = cfg.boss || {};
+        const bd = game.getJSON('boss_defs');
+        if (bc.enabled && bd && bd.frames && bd.frames.length) {
+            const fp = this._feetPoint();
+            this.boss = {
+                frames: bd.frames,
+                frameMs: bc.frameMs != null ? bc.frameMs : (bd.frameMs || 120),
+                scale:   bc.scale   != null ? bc.scale   : (bd.scale || 0.5),
+                planeX: this.camX + fp.x + (bc.spawnDX != null ? bc.spawnDX : 1000),
+                planeY: this.camY + fp.y + (bc.spawnDY != null ? bc.spawnDY : 0),
+                speed:      bc.speed       != null ? bc.speed       : 3.45, // px/frame (pista phone chaseSpeed)
+                chaseDelay: bc.chaseDelayMs != null ? bc.chaseDelayMs : 3000, // ms after spawn before it hunts
+                age: 0,      // ms since the dungeon was entered
+                t: 0, frameI: 0,
+            };
+        }
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -316,6 +358,25 @@ class TileDungeonScreen {
         if (this.fxManager) {
             this.fxManager.update(dt, this.camX + this.game.width / 2, this.camY + this.game.height / 2, 1);
         }
+        this._ensureRocks(); // seed rocks for any newly-visible tiles
+        if (this.boss) {
+            const b = this.boss;
+            // Looping animation.
+            b.t += dt * 1000;
+            b.frameI = Math.floor(b.t / b.frameMs) % b.frames.length;
+            // After the delay, home STRAIGHT at the player's feet (plane) at a
+            // fixed speed — no collision, so nothing stops him.
+            b.age += dt * 1000;
+            if (b.age >= b.chaseDelay) {
+                const fp = this._feetPoint();
+                const ddx = (this.camX + fp.x) - b.planeX;
+                const ddy = (this.camY + fp.y) - b.planeY;
+                const dist = Math.hypot(ddx, ddy) || 0.001;
+                const move = b.speed * 60 * dt; // px/frame → px this tick (matches the phone)
+                b.planeX += (ddx / dist) * move;
+                b.planeY += (ddy / dist) * move;
+            }
+        }
 
         // Ceiling drop on entry — same accel curve as the overworld fall.
         if (this.falling) {
@@ -363,9 +424,12 @@ class TileDungeonScreen {
         // that's worn off) he can walk straight out of it — either way, don't trap
         // him. Normal collision resumes the moment he's airborne-free and clear.
         const sx = dx * step, sy = dy * step;
+        // Mid-hop (or a bad landing inside a solid) floats over everything —
+        // otherwise each axis is gated by solid tiles AND rocks (which get shoved
+        // along if they've got room). Per-axis so a blocked axis still slides.
         const passThrough = this.jumpActive || this._boxHitsSolid(this.camX, this.camY);
-        if (sx && (passThrough || !this._boxHitsSolid(this.camX + sx, this.camY))) this.camX += sx;
-        if (sy && (passThrough || !this._boxHitsSolid(this.camX, this.camY + sy))) this.camY += sy;
+        if (sx && (passThrough || this._canMove(sx, 0))) this.camX += sx;
+        if (sy && (passThrough || this._canMove(0, sy))) this.camY += sy;
 
         // 8-way facing from the movement vector (matches DungeonScreen).
         const up = dy < 0, down = dy > 0, right = dx > 0, left = dx < 0;
@@ -445,6 +509,121 @@ class TileDungeonScreen {
         this._updatePhone(dt);
 
         if (this.fadeIn > 0) this.fadeIn = Math.max(0, this.fadeIn - dt / 0.35);
+    }
+
+    // --- Scattered pickable rocks ------------------------------------------
+
+    // Deterministic hash → [0,1) from a tile's grid coords + a salt (so one tile
+    // yields several independent "random" values). Stable across scroll/reload.
+    _rng(a, b, salt) {
+        let h = (Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663) ^ Math.imul(salt | 0, 83492791)) >>> 0;
+        h = Math.imul(h ^ (h >>> 15), 2246822519);
+        h = Math.imul(h ^ (h >>> 13), 3266489917);
+        h ^= h >>> 16;
+        return (h >>> 0) / 4294967296;
+    }
+
+    _aabb(ax, ay, aw, ah, bx, by, bw, bh) {
+        return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    // Seed at most one rock per tile-instance for every tile currently in view
+    // (plus a one-tile margin). Each tile is attempted exactly once; a candidate
+    // is dropped if it lands on a solid cell (skull/bush/off-deck) or overlaps a
+    // rock already placed. Pushed rocks keep their moved position (never re-seeded).
+    _ensureRocks() {
+        if (!this.rockDefs.length) return;
+        const img = this.game.getDrawable(this.tileKey);
+        if (!img) return;
+        const tw = (img.naturalWidth || img.width) * this.tileScale;
+        const th = (img.naturalHeight || img.height) * this.tileScale;
+        if (tw <= 0 || th <= 0) return;
+        const g = this.game;
+        const ix0 = Math.floor((this.camX - tw) / tw), ix1 = Math.floor((this.camX + g.width + tw) / tw);
+        const iy0 = Math.floor((this.camY - th) / th), iy1 = Math.floor((this.camY + g.height + th) / th);
+        for (let iy = iy0; iy <= iy1; iy++) {
+            for (let ix = ix0; ix <= ix1; ix++) {
+                const key = ix + ',' + iy;
+                if (this._rockTiles.has(key)) continue;
+                this._rockTiles.add(key);
+                // ONE OF EACH block type per tile (barrels twice — see placeDefs),
+                // each at its own hashed spot in the tile. A copy is skipped only if
+                // its spot lands on a solid cell (skull/bush/off-deck) or would
+                // overlap an already-placed rock — so they spread out, not stack.
+                for (let t = 0; t < this.placeDefs.length; t++) {
+                    const rock = new Rock(g, 0, 0, this.placeDefs[t]);
+                    const fx = ix * tw + (0.06 + 0.88 * this._rng(ix, iy, t * 2 + 1)) * tw;
+                    const fy = iy * th + (0.06 + 0.88 * this._rng(ix, iy, t * 2 + 2)) * th;
+                    rock.x = Math.round(fx - (rock.colOffX + rock.colW / 2));
+                    rock.y = Math.round(fy - (rock.colOffY + rock.colH / 2));
+                    const rr = rock.getRect();
+                    if (this._planeBoxSolid(rr.x, rr.y, rr.width, rr.height)) continue;
+                    if (this._rockOverlaps(rr, null)) continue;
+                    this.rocks.push(rock);
+                }
+            }
+        }
+    }
+
+    _rockOverlaps(rect, exclude) {
+        for (const o of this.rocks) {
+            if (o === exclude) continue;
+            const or = o.getRect();
+            if (this._aabb(rect.x, rect.y, rect.width, rect.height, or.x, or.y, or.width, or.height)) return true;
+        }
+        return false;
+    }
+
+    // Can the player's footprint move by (mx,my)? Blocked by solid tiles; rocks in
+    // the way are shoved along if every one of them has room (tested before any is
+    // moved, so a partial push never desyncs the player from a stuck rock).
+    _canMove(mx, my) {
+        const ncx = this.camX + mx, ncy = this.camY + my;
+        if (this._boxHitsSolid(ncx, ncy)) return false;
+        if (!this.rocks.length) return true;
+        const r = this._footRect();
+        const px = r.x + ncx, py = r.y + ncy;
+        const hit = [];
+        for (const rock of this.rocks) {
+            const rr = rock.getRect();
+            if (this._aabb(px, py, r.w, r.h, rr.x, rr.y, rr.width, rr.height)) hit.push(rock);
+        }
+        if (!hit.length) return true;
+        for (const rock of hit) if (!this._canRockMove(rock, mx, my, hit)) return false;
+        for (const rock of hit) { rock.x += mx; rock.y += my; }
+        return true;
+    }
+
+    // A rock can slide by (mx,my) unless it would enter a solid tile cell or a
+    // rock that isn't part of this same push (single-step shove, no chaining yet).
+    _canRockMove(rock, mx, my, movingSet) {
+        const rr = rock.getRect();
+        const nx = rr.x + mx, ny = rr.y + my;
+        if (this._planeBoxSolid(nx, ny, rr.width, rr.height)) return false;
+        for (const o of this.rocks) {
+            if (o === rock || movingSet.includes(o)) continue;
+            const or = o.getRect();
+            if (this._aabb(nx, ny, rr.width, rr.height, or.x, or.y, or.width, or.height)) return false;
+        }
+        return true;
+    }
+
+    // All objects, drawn straight from the block sheet crop (no perspective — the
+    // dungeon has no camera zoom). They all sit behind the rope and character now,
+    // so there's no per-rock depth split; off-screen ones are culled.
+    _drawRocks(ctx) {
+        if (!this.rocks.length) return;
+        const img = this.game.getDrawable('block_sheet');
+        if (!img) return;
+        const g = this.game;
+        for (const rock of this.rocks) {
+            // RAW sub-pixel screen pos (no Math.round) — the world scrolls
+            // sub-pixel, so per-entity rounding makes them shake against it.
+            // See render_rounding_jitter: match the phone/Rock/Player convention.
+            const dx = rock.x - this.camX, dy = rock.y - this.camY;
+            if (dx > g.width || dx + rock.width < 0 || dy > g.height || dy + rock.height < 0) continue;
+            ctx.drawImage(img, rock.sx, rock.sy, rock.sw, rock.sh, dx, dy, rock.width, rock.height);
+        }
     }
 
     // Infinite floor: repeat the tile across the whole canvas, scrolled by the
@@ -750,6 +929,21 @@ class TileDungeonScreen {
 
     // Draw the phone feet-anchored at its plane point (screen = plane − cam), at the
     // SAME charScale as the player so the size ratio matches the overworld.
+    // The boss's current animation frame, feet-anchored at its plane point
+    // (screen = plane − cam) and horizontally centred, drawn straight from the
+    // full-res sheet crop at the def's scale.
+    _drawBoss(ctx) {
+        const b = this.boss;
+        if (!b) return;
+        const img = this.game.getDrawable('boss_sheet');
+        if (!img) return;
+        const f = b.frames[b.frameI] || b.frames[0];
+        const drawW = f[2] * b.scale, drawH = f[3] * b.scale;
+        const fx = b.planeX - this.camX, fy = b.planeY - this.camY; // feet on screen
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(img, f[0], f[1], f[2], f[3], fx - drawW / 2, fy - drawH, drawW, drawH);
+    }
+
     _drawPhone(ctx) {
         const ph = this.phone;
         if (!ph) return;
@@ -777,14 +971,20 @@ class TileDungeonScreen {
         ctx.imageSmoothingEnabled = true;
 
         this._drawFloor(ctx);
-        this._drawRope(ctx);        // taut wire on the floor, under the character
+        this._drawRocks(ctx);       // ALL objects (rocks/barrels) sit behind the rope
+        this._drawRope(ctx);        // rope always in front of the objects...
         this._drawShadow(ctx);      // rope-hop ground shadow, under the character
-        // Depth-sort the phone against the player by feet-Y: a phone lower on the
-        // deck (nearer the viewer) draws in front, higher draws behind.
-        const phoneInFront = this.phone && this.phone.planeY > this.camY + this._feetPoint().y;
+        // ...but the character is always on top of the rope. Enemies (boss, phone)
+        // depth-sort vs the player by feet-Y — drawn behind him when their feet are
+        // higher on the deck, in front when lower.
+        const feetY = this.camY + this._feetPoint().y;
+        const phoneInFront = this.phone && this.phone.planeY > feetY;
+        const bossInFront = this.boss && this.boss.planeY > feetY;
+        if (this.boss && !bossInFront) this._drawBoss(ctx);
         if (this.phone && !phoneInFront) this._drawPhone(ctx);
         this._drawCharacter(ctx);
         if (this.phone && phoneInFront) this._drawPhone(ctx);
+        if (this.boss && bossInFront) this._drawBoss(ctx);
         this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
 
         // Ambient FX on top of the scene (no collision/depth sort), same as the
