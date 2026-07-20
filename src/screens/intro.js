@@ -64,7 +64,7 @@ class IntroScreen {
 
         // Art / atmosphere variant flags. These used to be wired to on-screen
         // dev toggle buttons (removed); they now just hold the shipping defaults.
-        this._vignetteOn = true;
+        this._vignetteOn = false;
         this._pollenOn = true;
         this._titleBW = false;
         this._menuBW = false;
@@ -324,8 +324,6 @@ class IntroScreen {
         // Background + readability darken sit UNDER the shake so screen edges
         // never reveal gaps when the foreground jolts.
         this._drawScrollingBackground(ctx);
-        ctx.fillStyle = 'rgba(0,0,0,0.30)';
-        ctx.fillRect(0, 0, W, H);
 
         // Atmosphere sits over the art but under the text (keeps it readable).
         this._renderVignette(ctx, W, H);
@@ -392,9 +390,6 @@ class IntroScreen {
         ctx.translate(W / 2, H * 0.34 + enterDy + bob);
         ctx.scale(scale, scale);
         ctx.globalAlpha = alpha;
-        ctx.shadowColor = 'rgba(0,0,0,0.6)';
-        ctx.shadowBlur = 14;
-        ctx.shadowOffsetY = 5;
         const img = this.game.getImage(this._art('intro_title', this._titleBW));
         if (img) {
             const h = T.imgHeight;
@@ -438,7 +433,7 @@ class IntroScreen {
             const enterX = (1 - enterEase) * dir * M.enterOffset;
             // Art is pre-colored, so selection reads through scale + opacity
             // (unselected items dim toward idleAlpha) rather than a color tween.
-            const baseAlpha = this._lerp(M.idleAlpha, 1, a);
+            const baseAlpha = 1;                        // words stay fully solid; selection reads through scale/slide
 
             ctx.save();
             ctx.translate(W / 2 + slide + enterX, y);
