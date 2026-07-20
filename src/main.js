@@ -136,12 +136,15 @@ function makeMapStyleToggle() {
 // --- Death / respawn ---------------------------------------------------------
 const DEATH_SPLAT_MS = 700;  // frozen "SPLAT" beat at the splat spot
 const DEATH_PAN_MS = 650;    // eased camera pan to the respawn point
+const DEATH_LIMIT = 3;       // deaths before it's game over (SPLAT → THANK YOU)
+const GAMEOVER_INPUT_MS = 500; // grace before "press any button" is accepted
 const easeInOutCubic = (k) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 
 // Begin the death sequence. The player is already positioned where they
 // splatted (the midline landing); we just freeze and start the SPLAT beat.
 function killPlayer() {
     if (gameState.death) return; // already dying
+    gameState.deaths = (gameState.deaths || 0) + 1;
     gameState.death = { phase: 'splat', t: 0 };
 }
 
@@ -175,11 +178,23 @@ function updateDeath(dt) {
     d.t += dt * 1000;
     if (d.phase === 'splat') {
         if (d.t >= DEATH_SPLAT_MS) {
+            // Third death → game over: hold on the SPLAT beat, then show the
+            // THANK YOU / OBRIGADO card until the player presses any button.
+            if (gameState.deaths >= DEATH_LIMIT) {
+                d.phase = 'gameover'; d.t = 0;
+                return;
+            }
             respawnPlayer();
             const tgt = world.cameraTargetFor(player);
             d.camFromX = world.cameraX; d.camFromY = world.cameraY;
             d.camToX = tgt.x; d.camToY = tgt.y;
             d.phase = 'pan'; d.t = 0;
+        }
+    } else if (d.phase === 'gameover') {
+        // Wait for any key/button (after a short grace so a queued input from
+        // the death doesn't dismiss it instantly), then back to the title.
+        if (d.t >= GAMEOVER_INPUT_MS && game.input.anyJustPressed()) {
+            returnToIntro();
         }
     } else { // 'pan'
         const k = Math.min(1, d.t / DEATH_PAN_MS);
@@ -188,6 +203,21 @@ function updateDeath(dt) {
         world.cameraY = d.camFromY + (d.camToY - d.camFromY) * e;
         if (k >= 1) gameState.death = null; // hand control back to the follow-cam
     }
+}
+
+// Game over → back to the title screen as a fresh run: clear the death state
+// and count, drop the player so the next START rebuilds a clean one (resets the
+// in-place beaten-up skin swaps), and resume the intro theme.
+function returnToIntro() {
+    gameState.death = null;
+    gameState.deaths = 0;
+    gameState.hasDied = false;
+    gameState.player = null;   // next loadStage() builds a fresh Player
+    gameState.world = null;
+    gameState.intro = new IntroScreen(game);
+    gameState.intro.primeHeld(); // don't let the dismiss press leak into a menu action
+    gameState.screen = 'intro';
+    game.audio.startMenu();
 }
 
 // --- Dungeon (fall into a hole) ---------------------------------------------
@@ -1172,7 +1202,7 @@ function renderGame(ctx) {
     // the entities/overlays) so he sits in FRONT of the hole graphic and reads as
     // sinking into it — not depth-sorted, where the pit overlay draws over him.
     const dungeonFalling = !!gameState.dungeonTransition;
-    const hideDeadPlayer = gameState.death && gameState.death.phase === 'splat';
+    const hideDeadPlayer = gameState.death && (gameState.death.phase === 'splat' || gameState.death.phase === 'gameover');
     const behindAlive = hasOverlay && player.behindMountain && !hideDeadPlayer;
     if (!hideDeadPlayer && !behindAlive && !dungeonFalling) entities.push(player);
     // Stacked rocks use their parent's bottom edge + 1 so they render in front
@@ -1315,6 +1345,19 @@ function renderGame(ctx) {
         if (img) {
             const h = 480;
             const w = h * (img.naturalWidth / img.naturalHeight);
+            const cx = game.width / 2, cy = game.height / 2;
+            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+        }
+    }
+
+    // GAME OVER (after the 3rd death) — "THANK YOU FOR PLAYING / OBRIGADO",
+    // same 3-frame boil, held on screen until the player presses any button.
+    if (gameState.death && gameState.death.phase === 'gameover') {
+        const frame = Math.floor(gameState.death.t / 180) % 3;
+        const img = game.getImage(`gameover_${frame + 1}`);
+        if (img) {
+            const w = game.width * 0.82;
+            const h = w * (img.naturalHeight / img.naturalWidth);
             const cx = game.width / 2, cy = game.height / 2;
             ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
         }

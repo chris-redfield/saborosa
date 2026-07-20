@@ -200,6 +200,11 @@ class Game {
                 this.loadImage('death_splat_1', 'assets/death-splat-1.png'),
                 this.loadImage('death_splat_2', 'assets/death-splat-2.png'),
                 this.loadImage('death_splat_3', 'assets/death-splat-3.png'),
+                // "THANK YOU FOR PLAYING / OBRIGADO" game-over text — same 3-frame
+                // boil, shown after the 3rd death.
+                this.loadImage('gameover_1', 'assets/gameover-1.png'),
+                this.loadImage('gameover_2', 'assets/gameover-2.png'),
+                this.loadImage('gameover_3', 'assets/gameover-3.png'),
                 // Transparent line-art word variants (from saborosa-letras-02),
                 // used for UNSELECTED menu items when that toggle is on.
                 this.loadImage('intro_start_white', 'assets/intro-start-white.png'),

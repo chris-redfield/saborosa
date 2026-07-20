@@ -166,6 +166,13 @@ class InputHandler {
         return false;
     }
 
+    // True if ANY keyboard key or gamepad button was pressed this frame,
+    // regardless of mapping. Used for "press any button to continue" prompts.
+    anyJustPressed() {
+        return Object.keys(this.keysJustPressed).length > 0
+            || Object.keys(this.gamepadButtonsJustPressed).length > 0;
+    }
+
     getMovementVector() {
         let x = 0, y = 0;
         if (this.isKeyDown('left')) x -= 1;

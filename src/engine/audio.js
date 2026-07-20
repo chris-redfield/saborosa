@@ -65,6 +65,17 @@ class AudioManager {
         if (this.music) this.music.pause();
     }
 
+    // Return to the title/menu: drop the gameplay layers and resume the theme
+    // (MIKE.mp3), which was paused when gameplay began. Used on game-over.
+    startMenu() {
+        this.stopLayer('bass');
+        this.stopLayer('beats');
+        if (this.music) {
+            const p = this.music.play();
+            if (p && p.catch) p.catch(() => {});
+        }
+    }
+
     // Both are cheap to call every frame — they no-op unless the state flips.
     playLayer(name) {
         const L = this.layers[name];

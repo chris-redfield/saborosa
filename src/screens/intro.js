@@ -189,6 +189,15 @@ class IntroScreen {
         return down && !was;
     }
 
+    // Seed the edge state from whatever is currently held, so a key still down
+    // from a transition INTO the intro (e.g. the "press any button" on game
+    // over) isn't read as a fresh press and doesn't fire a menu action.
+    primeHeld() {
+        for (const a of ['up', 'down', 'left', 'right', 'lift', 'confirm', 'interact', 'escape']) {
+            this._held[a] = this.game.input.isKeyDown(a);
+        }
+    }
+
     // Returns 'START' when the player commits to starting, else null.
     update(dt) {
         this.t += dt;
