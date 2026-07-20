@@ -60,14 +60,13 @@ class CharacterSelectScreen {
 
         // Confirm ("lock-in") animation. While `confirming`, the idle loop
         // freezes and update() withholds the pick until the beat finishes:
-        // a stamp pop on the chosen fruit + white flash + shake, fading to
-        // black (which also hides the synchronous stage load). Timings in s.
+        // a stamp pop on the chosen fruit + shake, fading to black (which also
+        // hides the synchronous stage load). Timings in s.
         this.confirming = false;
         this.confirmT = 0;
         this.confirmDur = 0.55;
         this.stampDur = 0.40; // pop settle time
         this.shakeDur = 0.18;
-        this.flashDur = 0.22;
         this.fadeDur = 0.20;  // trailing fade-to-black
         this.pickedPack = null;
 
@@ -175,11 +174,10 @@ class CharacterSelectScreen {
 
         // Confirm-beat parameters (all inert / defaults when not confirming).
         const t = this.confirmT;
-        let popK = 1, flashA = 0;
+        let popK = 1;
         if (this.confirming) {
             const sp = Math.min(1, t / this.stampDur);
             popK = 1 + 0.25 * (1 - this._easeOutBack(sp)); // 1.25 -> ~1.0 bounce
-            flashA = Math.max(0, 1 - t / this.flashDur) * 0.85;
             // Decaying screen shake, applied to the whole board.
             const amp = 9 * Math.max(0, 1 - t / this.shakeDur);
             ox += Math.sin(t * 82) * amp;
@@ -214,12 +212,6 @@ class CharacterSelectScreen {
             }
             ctx.drawImage(color, ox, oy, dw, dh);
             ctx.restore();
-            // Flash over the panel (screen space, so it isn't warped by the pop
-            // scale — the rect already matches the panel, no clip needed).
-            if (flashA > 0) {
-                ctx.fillStyle = `rgba(255,255,255,${flashA})`;
-                ctx.fillRect(px, py, pw, ph);
-            }
         }
 
         // Hint (hidden once the player has committed).

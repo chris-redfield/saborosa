@@ -65,14 +65,12 @@ window.INTRO_JUICE = {
     },
 
     // Confirm beat when START is pressed — mirrors the character-select "lock in"
-    // (see src/screens/select.js): a stamp pop on the chosen word + white flash +
-    // shake, then a trailing fade-to-black that covers the hand-off.
+    // (see src/screens/select.js): a stamp pop on the chosen word + shake, then a
+    // trailing fade-to-black that covers the hand-off.
     punch: {
         dur: 0.55,               // sec — total beat length before handoff
         stampDur: 0.40,          // sec — pop settle time
         popAmount: 0.25,         // selected word swells 1.25 → ~1.0 (easeOutBack bounce)
-        flashStrength: 0.85,     // peak white-flash alpha over the chosen word
-        flashDur: 0.22,          // sec — flash linear decay
         shakeAmp: 9,             // px — peak shake
         shakeDur: 0.18,          // sec — shake linear decay
         shakeFreqX: 82,          // rad/sec — horizontal jitter

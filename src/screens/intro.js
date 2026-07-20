@@ -458,17 +458,6 @@ class IntroScreen {
                 const w = h * (img.naturalWidth / img.naturalHeight);
                 halfW = w / 2;
                 ctx.drawImage(img, -halfW, -h / 2, w, h);
-                // White flash over the chosen word during the confirm beat
-                // (peak alpha, linear decay — same as the select-panel flash).
-                if (this.starting && sel) {
-                    const P = this.cfg.punch;
-                    const flashA = P.flashStrength * Math.max(0, 1 - this.startT / P.flashDur);
-                    if (flashA > 0) {
-                        ctx.globalAlpha = flashA;
-                        ctx.fillStyle = '#fff';
-                        ctx.fillRect(-halfW, -h / 2, w, h);
-                    }
-                }
             } else { // fallback while the art loads
                 ctx.font = `${a > 0.5 ? 'bold ' : ''}38px Georgia, serif`;
                 ctx.fillStyle = '#ffd166';
