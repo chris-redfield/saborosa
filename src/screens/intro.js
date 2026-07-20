@@ -369,11 +369,12 @@ class IntroScreen {
 
     _renderTitle(ctx, W, H) {
         const T = this.cfg.title;
-        // Entrance: drop in from above with a slight overshoot + fade.
+        // Entrance: drop in from above with a slight overshoot. The letters are
+        // "dry" — full opacity from the first frame, only the drop moves.
         const inP = Math.min(1, this.t / T.enterDur);
         const eased = this._easeOutBack(inP);
         const enterDy = (1 - eased) * -T.enterDrop;
-        let alpha = Math.min(1, this.t / T.fadeInDur);
+        let alpha = 1;
         let scale = 1;
 
         // Idle: gentle vertical bob + breathing once it has settled.
@@ -415,7 +416,10 @@ class IntroScreen {
         const enterT = this.t - M.enterDelay;
         const enterP = Math.min(1, Math.max(0, enterT / M.enterDur));
         const enterEase = this._easeOutBack(enterP);
-        const enterAlpha = Math.min(1, Math.max(0, enterT / (M.enterDur * 0.6)));
+        // "Dry" entrance: the words snap to full opacity the instant their slide
+        // begins (no fade), and stay hidden during the pre-entrance delay so they
+        // don't sit parked off-centre. The slide-in movement is kept.
+        const enterAlpha = enterT >= 0 ? 1 : 0;
         // Hand pops in only after the words have arrived.
         const handP = Math.min(1, Math.max(0, (enterT - M.enterDur) / M.handEnterDur));
 

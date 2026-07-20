@@ -13,12 +13,11 @@ window.INTRO_JUICE = {
     // Fade-in from black when the title screen first appears.
     bootFadeDur: 0.9,            // sec
 
-    // Title: entrance (drop-in + fade) then perpetual idle motion.
+    // Title: entrance (drop-in, no fade) then perpetual idle motion.
     title: {
         imgHeight: 150,          // px — on-screen height of the SABOROSA art (width keeps aspect)
         enterDur: 0.7,           // sec — drop-in with slight overshoot
         enterDrop: 70,           // px it falls in from
-        fadeInDur: 0.5,          // sec — opacity ramp
         settleDelay: 0.5,        // sec before idle motion starts ramping in
         settleDur: 0.5,          // sec for idle motion to reach full strength
         bobAmp: 6,               // px — vertical idle bob
