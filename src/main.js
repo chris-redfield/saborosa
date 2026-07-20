@@ -1306,19 +1306,18 @@ function renderGame(ctx) {
     }
 
     // SPLAT — shown during the frozen death beat, centered on screen (the camera
-    // is parked on the splat spot, so center ≈ where the player landed).
+    // is parked on the splat spot, so center ≈ where the player landed). The
+    // hand-drawn art cycles 3 frames (~0.18s each) for a line-boil wobble, the
+    // same trick the fruit-select idle loop uses.
     if (gameState.death && gameState.death.phase === 'splat') {
-        ctx.save();
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = 'bold 96px monospace';
-        ctx.lineWidth = 8;
-        ctx.strokeStyle = '#000';
-        ctx.fillStyle = '#e94560';
-        const cx = game.width / 2, cy = game.height / 2;
-        ctx.strokeText('SPLAT!', cx, cy);
-        ctx.fillText('SPLAT!', cx, cy);
-        ctx.restore();
+        const frame = Math.floor(gameState.death.t / 180) % 3;
+        const img = game.getImage(`death_splat_${frame + 1}`);
+        if (img) {
+            const h = 480;
+            const w = h * (img.naturalWidth / img.naturalHeight);
+            const cx = game.width / 2, cy = game.height / 2;
+            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
+        }
     }
 
     // Stage name

@@ -195,6 +195,11 @@ class Game {
                 this.loadImage('select_color_1', 'assets/fruit-select-01.png'),
                 this.loadImage('select_color_2', 'assets/fruit-select-02.png'),
                 this.loadImage('select_color_3', 'assets/fruit-select-03.png'),
+                // Hand-drawn "SPLAT!" death text — 3 frames cycled for a line-boil
+                // effect (same idea as the fruit-select idle loop).
+                this.loadImage('death_splat_1', 'assets/death-splat-1.png'),
+                this.loadImage('death_splat_2', 'assets/death-splat-2.png'),
+                this.loadImage('death_splat_3', 'assets/death-splat-3.png'),
                 // Transparent line-art word variants (from saborosa-letras-02),
                 // used for UNSELECTED menu items when that toggle is on.
                 this.loadImage('intro_start_white', 'assets/intro-start-white.png'),
