@@ -180,6 +180,19 @@ class TileDungeonScreen {
         // Never drop in wedged inside a skull/bush.
         this._unstickSpawn();
 
+        // Death by fire. When the flames reach the collision footprint the screen
+        // freezes and plays the SPLAT itself (that's where he died, so that's
+        // where it should read), then raises `deathRequested`; main.js climbs him
+        // out and does the life/skin/respawn bookkeeping. Mirrors `exitRequested`.
+        this.dying = false;
+        this.dyingT = 0;
+        this.deathRequested = false;
+        // Set once the beat is over and main.js has taken the death. Stops this
+        // screen drawing SPLAT, so on the last life the GAME OVER card main.js
+        // holds over the dungeon doesn't land on top of it. Character stays
+        // hidden either way (`dying` remains true).
+        this.deathHandedOff = false;
+
         // Taut-wire rope (Mina-the-Hollower style): a rope stretched STRAIGHT
         // from its bottom end up to an anchor — never a swinging pendulum. The
         // anchor is ALWAYS off the top of the screen and travels with the camera
@@ -345,6 +358,14 @@ class TileDungeonScreen {
                 // Vertical pitch between rows. null = one full band height, so the
                 // rows sit flush; smaller overlaps them into a denser mass.
                 rowGap: fc.rowGap != null ? fc.rowGap : null,
+                // How far BELOW the band's top edge the lethal line sits. The top
+                // of the art is a sparse sawtooth of flame tips; dying to a stray
+                // 2px spike reads as unfair, so the kill line is set just into the
+                // denser part of the flame. Raise for more mercy, 0 = outermost tip.
+                hitInset: fc.hitInset != null ? fc.hitInset : 24,
+                // Length of the frozen SPLAT beat before we hand back to main.js.
+                // Matches DEATH_SPLAT_MS there so both deaths feel identical.
+                splatMs: fc.splatMs != null ? fc.splatMs : 700,
                 t: 0, frameI: 0,
             };
         }
@@ -482,14 +503,35 @@ class TileDungeonScreen {
         }
         this._ensureRocks(); // seed rocks for any newly-visible tiles
 
+        // Frozen SPLAT beat: everything stops — the fire included — while the
+        // death card holds. When it's done, hand off to main.js.
+        if (this.dying) {
+            this.dyingT += dt * 1000;
+            if (this.dyingT >= (this.fire ? this.fire.splatMs : 700)) {
+                this.deathRequested = true;
+                this.deathHandedOff = true;
+            }
+            return;
+        }
+
         // Fire: flicker + climb. Ticks before the drop-in early-return below, so
         // it keeps rising while the player is still falling in and never pauses.
-        // Nothing stops it — it just goes up forever (no collision or damage yet).
+        // Nothing stops it climbing — but it kills on contact (below).
         if (this.fire) {
             const f = this.fire;
             f.t += dt * 1000;
             f.frameI = Math.floor(f.t / f.frameMs) % f.frames.length;
             f.planeY -= f.speed * 60 * dt;  // px/frame @60fps → px this tick
+            // Caught by the flames? The band spans the full width, so this is a
+            // pure vertical test: the lethal line (top of the flames, inset past
+            // the sparse tips) versus the BOTTOM of the collision footprint —
+            // the same red box the C-debug draws. Not while still dropping in.
+            if (!this.falling) {
+                const fr = this._footRect();
+                const footBottomPlane = fr.y + fr.h + this.camY;
+                const fireTopPlane = f.planeY - f.frames[0][3] * f.scale + f.hitInset;
+                if (fireTopPlane <= footBottomPlane) { this.dying = true; this.dyingT = 0; }
+            }
         }
 
         if (this.boss) {
@@ -1189,7 +1231,9 @@ class TileDungeonScreen {
         const bossInFront = this.boss && this.boss.planeY > feetY;
         if (this.boss && !bossInFront) this._drawBoss(ctx);
         if (this.phone && !phoneInFront) this._drawPhone(ctx);
-        this._drawCharacter(ctx);
+        // On the SPLAT beat he isn't drawn at all — same as the overworld death,
+        // where the card stands in for the body.
+        if (!this.dying) this._drawCharacter(ctx);
         if (this.phone && phoneInFront) this._drawPhone(ctx);
         if (this.boss && bossInFront) this._drawBoss(ctx);
         this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
@@ -1216,6 +1260,11 @@ class TileDungeonScreen {
         ctx.fillStyle = 'rgba(255,255,255,0.55)';
         ctx.font = '13px monospace';
         ctx.fillText('[E] climb out', 14, g.height - 16);
+
+        // SPLAT card over everything, drawn by the SAME helper the overworld uses
+        // (main.js drawDeathSplat), so a death down here looks identical to one
+        // up there — same art, same 480px height, same 3-frame boil.
+        if (this.dying && !this.deathHandedOff) drawDeathSplat(ctx, g, this.dyingT);
     }
 
     // Hustle/charge bar — identical to the overworld + perspective dungeon HUD.

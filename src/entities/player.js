@@ -196,11 +196,12 @@ class Player {
         // Beaten-up skins: some characters get progressively more banged up as
         // they die, and stay that way for the rest of the run (even after cycling
         // characters). `deadStages` maps a pack index to an ORDERED list of hurt
-        // packs — the Nth death advances to stage N (capped at the last). Most
-        // characters have a single stage; TOM has two (hurt, then last-life).
+        // packs — the Nth death advances to stage N (capped at the last). Each of
+        // the three now has two (hurt, then last-life); coconut has none and
+        // never changes.
         //   0 = TOM (tomato): [dead-1, dead-2]
-        //   2 = ERKPA (eggplant): [dead]
-        //   3 = JUIXY (laranja, the lemon-looking citrus): [dead]
+        //   2 = ERKPA (eggplant): [dead-1, dead-2]
+        //   3 = JUIXY (laranja, the lemon-looking citrus): [dead-1, dead-2]
         const pack = (p) => ({ sprites: p.sprites, width: p.width, height: p.height });
         const load = (sheet, defs, body) => pack(spriteSheet.loadCharacterPack(sheet, defs, ws, body));
         this.deadStages = {
@@ -208,7 +209,8 @@ class Player {
                 load('tomato_dead2_sheet', 'tomato_dead2_sprites', 'red')],
             2: [load('eggplant_dead_sheet',  'eggplant_dead_sprites',  'tan'),
                 load('eggplant_dead2_sheet', 'eggplant_dead2_sprites', 'tan')],
-            3: [load('laranja_dead_sheet',  'laranja_dead_sprites',  'yellow')]
+            3: [load('laranja_dead_sheet',  'laranja_dead_sprites',  'yellow'),
+                load('laranja_dead2_sheet', 'laranja_dead2_sprites', 'yellow')]
         };
         this._deathStage = 0; // how many deaths have been applied so far
 
@@ -218,10 +220,10 @@ class Player {
 
     // One-way, called once per death (respawnPlayer in main.js): advance every
     // character that has beaten-up skins to the stage matching the death count.
-    // A single-stage character (ERKPA/JUIXY) stays on its one hurt pack after the
-    // first death; TOM steps hurt -> last-life across his first two deaths. If the
-    // character on screen is one of them, it adopts the new pack now. No-op for
-    // any pack whose dead skin failed to load.
+    // TOM, ERKPA and JUIXY each step hurt -> last-life across their first two
+    // deaths, then stay on the last one. If the character on screen is one of
+    // them, it adopts the new pack now. No-op for any pack whose dead skin failed
+    // to load.
     markBeatenUp() {
         if (!this.deadStages) return;
         this._deathStage++;

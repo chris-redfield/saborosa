@@ -61,6 +61,7 @@ class Game {
             eggplant_dead2_sheet: 1.0,
             laranja_sheet: 1.0,
             laranja_dead_sheet: 1.0,
+            laranja_dead2_sheet: 1.0,
             rock_sheet: 1.0,
             bush_sheet: 1.0,
             phone_sheet: 1.0
@@ -327,9 +328,12 @@ class Game {
                 this.loadJSON('eggplant_dead2_sprites', 'assets/saborosa-elementos-eggplant-dead2-sprites.json'),
                 this.loadImage('laranja_sheet', 'assets/saborosa-elementos-laranja-game.png'),
                 this.loadJSON('laranja_sprites', 'assets/saborosa-elementos-laranja-sprites.json'),
-                // JUIXY's beaten-up skin — swapped in after his first death.
+                // JUIXY's beaten-up skins — the first after his first death, the
+                // second (last life) after his second, like TOM and ERKPA.
                 this.loadImage('laranja_dead_sheet', 'assets/saborosa-elementos-laranja-dead-game.png'),
                 this.loadJSON('laranja_dead_sprites', 'assets/saborosa-elementos-laranja-dead-sprites.json'),
+                this.loadImage('laranja_dead2_sheet', 'assets/saborosa-elementos-laranja-dead2-game.png'),
+                this.loadJSON('laranja_dead2_sprites', 'assets/saborosa-elementos-laranja-dead2-sprites.json'),
                 // Sleeper enemy packs (rockenemy.js / bushenemy.js).
                 this.loadImage('rock_sheet', 'assets/saborosa-elementos-rock-game.png'),
                 this.loadJSON('rock_sprites', 'assets/saborosa-elementos-rock-sprites.json'),

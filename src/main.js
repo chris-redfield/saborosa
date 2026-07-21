@@ -140,19 +140,62 @@ const DEATH_LIMIT = 3;       // deaths before it's game over (SPLAT → THANK YO
 const GAMEOVER_INPUT_MS = 500; // grace before "press any button" is accepted
 const easeInOutCubic = (k) => k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
 
+// The hand-drawn SPLAT card, centered. 3 frames cycled at ~0.18s give the
+// line-boil wobble (same trick as the fruit-select idle loop). Shared so the
+// dungeons draw an identical splat to the overworld's — see TileDungeonScreen,
+// which plays its own beat before handing back here.
+function drawDeathSplat(ctx, g, tMs) {
+    const frame = Math.floor(tMs / 180) % 3;
+    const img = g.getImage(`death_splat_${frame + 1}`);
+    if (!img) return;
+    const h = 480;
+    const w = h * (img.naturalWidth / img.naturalHeight);
+    ctx.drawImage(img, g.width / 2 - w / 2, g.height / 2 - h / 2, w, h);
+}
+
+// "THANK YOU FOR PLAYING / OBRIGADO" after the last life, same 3-frame boil.
+// Shared like drawDeathSplat, because the run can end inside a dungeon — and it
+// should end THERE, on the screen the player was actually looking at, rather
+// than cutting back to the map first.
+function drawGameOverCard(ctx, g, tMs) {
+    const frame = Math.floor(tMs / 180) % 3;
+    const img = g.getImage(`gameover_${frame + 1}`);
+    if (!img) return;
+    const w = g.width * 0.82;
+    const h = w * (img.naturalHeight / img.naturalWidth);
+    ctx.drawImage(img, g.width / 2 - w / 2, g.height / 2 - h / 2, w, h);
+}
+
 // Begin the death sequence. The player is already positioned where they
 // splatted (the midline landing); we just freeze and start the SPLAT beat.
-function killPlayer() {
+// `skipSplat` starts the clock already expired, for a death whose SPLAT has
+// ALREADY been shown elsewhere (the fire dungeon plays it on its own screen,
+// where the player actually died, then climbs out). The rest — life counting,
+// beaten-up skin, respawn, game-over on the 3rd — runs exactly the same.
+function killPlayer(opts = {}) {
     if (gameState.death) return; // already dying
     gameState.deaths = (gameState.deaths || 0) + 1;
-    gameState.death = { phase: 'splat', t: 0 };
+    gameState.death = {
+        phase: 'splat',
+        t: opts.skipSplat ? DEATH_SPLAT_MS : 0,
+        // Already shown by the dungeon. update() runs before render(), but the
+        // phase only advances on the NEXT tick — without this the overworld
+        // would flash the card again for one frame as we land at the hole.
+        splatShown: !!opts.skipSplat,
+        // Respawn where he already stands instead of at the stage start.
+        keepPosition: !!opts.keepPosition,
+    };
 }
 
 // Put the player back at the stage start WITHOUT reloading the level — every
 // object/rock stays exactly where it was; only the player is reset.
-function respawnPlayer() {
+// `keepPosition` leaves him wherever he already is instead of sending him to the
+// stage start — used by the dungeon deaths, which have already placed him at the
+// mouth of the hole he fell into (the same spot climbing out with E lands on).
+// Dying down there shouldn't cost the whole walk back across the map.
+function respawnPlayer(opts = {}) {
     const p = gameState.player, s = gameState.currentStage;
-    p.x = s.spawnX; p.y = s.spawnY;
+    if (!opts.keepPosition) { p.x = s.spawnX; p.y = s.spawnY; }
     p.moving = false; p.frame = 0; p.animationCounter = 0;
     p.surfaceState = 'ground';
     p.behindMountain = false;
@@ -184,7 +227,7 @@ function updateDeath(dt) {
                 d.phase = 'gameover'; d.t = 0;
                 return;
             }
-            respawnPlayer();
+            respawnPlayer({ keepPosition: d.keepPosition });
             const tgt = world.cameraTargetFor(player);
             d.camFromX = world.cameraX; d.camFromY = world.cameraY;
             d.camToX = tgt.x; d.camToY = tgt.y;
@@ -214,6 +257,7 @@ function returnToIntro() {
     gameState.hasDied = false;
     gameState.player = null;   // next loadStage() builds a fresh Player
     gameState.world = null;
+    gameState.dungeon = null;  // the run can end inside one — don't keep it alive
     gameState.intro = new IntroScreen(game);
     gameState.intro.primeHeld(); // don't let the dismiss press leak into a menu action
     gameState.screen = 'intro';
@@ -502,8 +546,28 @@ function updateGame(dt) {
     // the screen claims the interact key itself (the tiled dungeon uses it to
     // grab/release the rope, and raises exitRequested only when it means "exit").
     if (gameState.screen === 'dungeon') {
+        // The run ended down here: the GAME OVER card is held over the dungeon
+        // itself, so the death state is driven from this branch (the dungeon
+        // stays frozen — we never call d.update again).
+        if (gameState.death) { updateDeath(dt); return; }
+
         const d = gameState.dungeon;
         d.update(dt);
+        // Died down there (the fire caught him). The screen has already frozen and
+        // played the SPLAT where he actually died, so all that's left is the
+        // bookkeeping: life lost, beaten-up skin.
+        if (d.deathRequested) {
+            d.deathRequested = false;
+            // keepPosition: climbing out drops him at the mouth of the hole, and
+            // that's where he should reappear — dying in a dungeon shouldn't cost
+            // the whole walk back from the stage start.
+            killPlayer({ skipSplat: true, keepPosition: true });
+            // Lives left → climb out and respawn at the hole. LAST life → stay
+            // put, so updateDeath flips to 'gameover' next tick and the card
+            // draws over the dungeon until any button returns to the intro.
+            if (gameState.deaths < DEATH_LIMIT) exitDungeon();
+            return;
+        }
         if (d.handlesInteract) {
             if (d.exitRequested) {
                 d.exitRequested = false;
@@ -1125,6 +1189,12 @@ function renderGame(ctx) {
     if (gameState.screen === 'dungeon') {
         gameState.dungeon.render(ctx);
         if (game.showDebug) gameState.dungeon.renderDebug(ctx);
+        // The run can end down here — hold THANK YOU / OBRIGADO over the dungeon
+        // rather than cutting to the map first. (The SPLAT that precedes it is
+        // drawn by the screen itself, which knows where the body fell.)
+        if (gameState.death && gameState.death.phase === 'gameover') {
+            drawGameOverCard(ctx, game, gameState.death.t);
+        }
         return;
     }
 
@@ -1341,28 +1411,14 @@ function renderGame(ctx) {
     // is parked on the splat spot, so center ≈ where the player landed). The
     // hand-drawn art cycles 3 frames (~0.18s each) for a line-boil wobble, the
     // same trick the fruit-select idle loop uses.
-    if (gameState.death && gameState.death.phase === 'splat') {
-        const frame = Math.floor(gameState.death.t / 180) % 3;
-        const img = game.getImage(`death_splat_${frame + 1}`);
-        if (img) {
-            const h = 480;
-            const w = h * (img.naturalWidth / img.naturalHeight);
-            const cx = game.width / 2, cy = game.height / 2;
-            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-        }
+    if (gameState.death && gameState.death.phase === 'splat' && !gameState.death.splatShown) {
+        drawDeathSplat(ctx, game, gameState.death.t);
     }
 
     // GAME OVER (after the 3rd death) — "THANK YOU FOR PLAYING / OBRIGADO",
     // same 3-frame boil, held on screen until the player presses any button.
     if (gameState.death && gameState.death.phase === 'gameover') {
-        const frame = Math.floor(gameState.death.t / 180) % 3;
-        const img = game.getImage(`gameover_${frame + 1}`);
-        if (img) {
-            const w = game.width * 0.82;
-            const h = w * (img.naturalHeight / img.naturalWidth);
-            const cx = game.width / 2, cy = game.height / 2;
-            ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
-        }
+        drawGameOverCard(ctx, game, gameState.death.t);
     }
 
     // Stage name

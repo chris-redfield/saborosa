@@ -45,6 +45,9 @@ SHEETS = [
     # his first death — the citrus art reads as a lemon, hence the master name.
     # Same 9x5 layout as the alive master, so it packs through the identical path.
     ('saborosa-bonecos-lemon-dead-1-low.png',  'laranja-dead'),
+    # JUIXY's second (last-life) beaten-up skin, after his second death — same
+    # two-stage progression as TOM and ERKPA. Same 9x5 layout.
+    ('saborosa-bonecos-lemon-dead-2-low.png',  'laranja-dead2'),
     # TOM's beaten-up skins (the red "tomato" pack, index 0), a two-stage
     # progression: dead-1 after his first death, dead-2 (last life) after his
     # second. Same 9x5 layout as the alive master.
