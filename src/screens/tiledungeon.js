@@ -303,6 +303,43 @@ class TileDungeonScreen {
                 t: 0, frameI: 0,
             };
         }
+
+        // Rising wall of fire (the fire shaft). A wide flame band that starts
+        // BELOW the drop-in, off the bottom of the screen, and climbs the shaft
+        // forever — the player has to keep heading up. Plane coords, so it scrolls
+        // with the floor like everything else. `planeY` is the band's BASELINE
+        // (its bottom edge): the art fills solid from the flame tips down, and the
+        // frames are bottom-anchored, so anchoring the draw to the bottom is what
+        // keeps the flames flickering in place instead of bobbing.
+        this.fire = null;
+        const fc = cfg.fire || {};
+        const fd = game.getJSON('fire_defs');
+        if (fc.enabled && fd && fd.frames && fd.frames.length) {
+            const fp = this._feetPoint();
+            this.fire = {
+                frames: fd.frames,
+                frameMs: fc.frameMs != null ? fc.frameMs : (fd.frameMs || 129),
+                scale:   fc.scale   != null ? fc.scale   : (fd.scale || 1),
+                // Baseline starts spawnDY below the player's feet — a screen-ish
+                // gap, so he sees it coming rather than landing in it.
+                planeY: this.camY + fp.y + (fc.spawnDY != null ? fc.spawnDY : 900),
+                speed: fc.speed != null ? fc.speed : 0.6,  // px/frame UP (@60fps)
+                // Solid fill painted below the baseline. Default is the exact
+                // yellow the band fills with (sampled from the sheet), so the
+                // flames and the burnt area read as one body with no seam.
+                fill: fc.fill || '#ffea3e',
+                // How wide ONE flame band is drawn. null = the art's natural size
+                // (828 × scale) repeated across the screen. Set it to the canvas
+                // width to get a SINGLE stretched flame instead — fewer, bigger
+                // waves, but the line art softens at a 1.55x upscale.
+                bandWidth: fc.bandWidth != null ? fc.bandWidth : null,
+                // Source-rect inset that trims the sheet's semi-transparent 1px
+                // border, and the destination overlap that closes the tile join.
+                // See _drawFire — 2 is the measured-clean value, don't drop to 1.
+                edgeInset: fc.edgeInset != null ? fc.edgeInset : 2,
+                t: 0, frameI: 0,
+            };
+        }
     }
 
     // Where the character's feet rest on screen (centre, slightly low so more
@@ -436,6 +473,17 @@ class TileDungeonScreen {
             this.fxManager.update(dt, this.camX + this.game.width / 2, this.camY + this.game.height / 2, 1);
         }
         this._ensureRocks(); // seed rocks for any newly-visible tiles
+
+        // Fire: flicker + climb. Ticks before the drop-in early-return below, so
+        // it keeps rising while the player is still falling in and never pauses.
+        // Nothing stops it — it just goes up forever (no collision or damage yet).
+        if (this.fire) {
+            const f = this.fire;
+            f.t += dt * 1000;
+            f.frameI = Math.floor(f.t / f.frameMs) % f.frames.length;
+            f.planeY -= f.speed * 60 * dt;  // px/frame @60fps → px this tick
+        }
+
         if (this.boss) {
             const b = this.boss;
             // Looping animation.
@@ -1042,6 +1090,48 @@ class TileDungeonScreen {
         ctx.drawImage(img, f[0], f[1], f[2], f[3], fx - drawW / 2, fy - drawH, drawW, drawH);
     }
 
+    // Rising wall of fire. The band is one wide flame drawn REPEATED across the
+    // full canvas width (the art tiles horizontally), so it reads as a solid
+    // front filling the shaft rather than a single flame in the middle. Set
+    // cfg.fire.bandWidth to the canvas width for one stretched flame instead.
+    //
+    // Anchored by its BOTTOM edge to the plane baseline: every frame is the same
+    // 828x216 box cut to a shared bottom, which is what makes the flames flicker
+    // in place instead of bobbing (see the fire-animation notes). Below the
+    // baseline the shaft is drawn solid in the fire's own colour, so what's
+    // already burnt reads as filled rather than showing floor under the flames.
+    //
+    // SEAM FIX — the crop's outermost 1px border is SEMI-TRANSPARENT (alpha ~128
+    // to ~158 vs 255 inside). Left as-is, two of those translucent columns meet
+    // at every tile join and the dark floor shows through as a vertical line, and
+    // the translucent bottom row draws a line along the baseline (see bug.png).
+    // So: inset the SOURCE rect on all four sides to cut the fringe off, overlap
+    // the destinations by the same amount to close the join, and start the fill
+    // 1px high. Measured clean at inset 2 — inset 1 still leaked, because
+    // rescaling 826→828 lets the sampler bleed back toward the edge.
+    _drawFire(ctx) {
+        const f = this.fire;
+        if (!f) return;
+        const img = this.game.getDrawable('fire_sheet');
+        if (!img) return;
+        const fr = f.frames[f.frameI] || f.frames[0];
+        const g = this.game;
+        const ins = f.edgeInset;
+        const drawW = f.bandWidth || (fr[2] * f.scale), drawH = fr[3] * f.scale;
+        const by = f.planeY - this.camY;            // baseline on screen
+        if (by - drawH > g.height) return;          // still far below the view
+        // Burnt-out fill below the flames (1px high, tucked under the band).
+        if (by < g.height) {
+            ctx.fillStyle = f.fill;
+            ctx.fillRect(0, by - 1, g.width, g.height - by + 1);
+        }
+        const step = Math.max(1, drawW - ins);
+        for (let x = 0; x < g.width; x += step) {
+            ctx.drawImage(img, fr[0] + ins, fr[1] + ins, fr[2] - ins * 2, fr[3] - ins * 2,
+                          x, by - drawH, drawW, drawH);
+        }
+    }
+
     _drawPhone(ctx) {
         const ph = this.phone;
         if (!ph) return;
@@ -1084,6 +1174,9 @@ class TileDungeonScreen {
         if (this.phone && phoneInFront) this._drawPhone(ctx);
         if (this.boss && bossInFront) this._drawBoss(ctx);
         this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
+        // Fire last of the scene: it's a wall the player is fleeing, so when it
+        // catches up it should swallow him rather than let him stand in front.
+        this._drawFire(ctx);
 
         // Ambient FX on top of the scene (no collision/depth sort), same as the
         // overworld. Under the entry fade so they don't flash during the drop-in.

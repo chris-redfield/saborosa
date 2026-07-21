@@ -239,6 +239,15 @@ const STAGES = {
             tileScale: 1.2722, charScale: 1.0, colScale: 0.7,
             // Same taut-wire rope as the Bone Pit — a shaft is where it belongs.
             rope: { enabled: true, length: 540, width: 15, sway: 10, endDX: 90, endDY: 0 },
+            // Rising wall of fire (assets/saborosa-dungeon-fire-defs.json, frames
+            // validated in tools/fire-anim.html). Starts spawnDY below the drop-in
+            // — off the bottom of the screen, so he sees it arrive — and climbs at
+            // `speed` px/frame forever. FIRST PASS: it only moves; it doesn't
+            // collide, damage, or interact with anything yet.
+            // bandWidth: null = the art at 1:1, repeated (~1.5 across the 1280
+            // canvas). Set it to 1280 for ONE stretched flame — fewer, bigger
+            // waves, but a 1.55x upscale visibly softens the line art.
+            fire: { enabled: true, spawnDY: 900, speed: 0.6, bandWidth: null },
             // No boss/phone down here yet.
         },
         // Non-colliding trigger boxes: when the player's FEET enter one, they

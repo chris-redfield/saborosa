@@ -259,6 +259,14 @@ class Game {
                 this.loadImage('boss_sheet', 'assets-v2/saborosa-boss-test-low-01.png'),
                 this.loadJSON('boss_defs', 'assets/saborosa-boss-test-defs.json'),
 
+                // Rising flame band for the fire shaft — 3 frames of ONE flicker
+                // stacked vertically, all 828x216 and BOTTOM-anchored (the bands
+                // are unevenly pitched, so grid/auto slicing cuts them wrong; the
+                // coords in the defs are hand-validated, don't re-derive them).
+                // Authored in tools/fire-anim.html.
+                this.loadImage('fire_sheet', 'assets-v2/saborosa-dungeon-fire-test-2.png'),
+                this.loadJSON('fire_defs', 'assets/saborosa-dungeon-fire-defs.json'),
+
                 // Explosion effect played at the spot the player falls into a hole.
                 this.loadImage('boom_sheet', 'assets-v2/saborosa-boom.png'),
                 this.loadJSON('boom_defs', 'assets-v2/saborosa-boom.json'),

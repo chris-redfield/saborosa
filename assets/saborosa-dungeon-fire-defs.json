@@ -1,0 +1,10 @@
+{
+  "sheet": "assets-v2/saborosa-dungeon-fire-test-2.png",
+  "frameMs": 129,
+  "scale": 1,
+  "frames": [
+    [97, 50, 828, 216],
+    [97, 275, 828, 216],
+    [97, 502, 828, 216]
+  ]
+}
