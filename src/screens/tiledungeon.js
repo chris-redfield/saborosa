@@ -119,6 +119,54 @@ class TileDungeonScreen {
             this.camY = this.deckYFrac * nh * this.tileScale - this._feetPoint().y;
         }
 
+        // Vertical-shaft tiles (the fire dungeon) are the mirror image of the
+        // bridge: the tile repeats ONLY up↔down, endlessly deep. camX is seeded so
+        // `deckXFrac` of the CENTRE tile's native width lands under the feet point
+        // (0.5 = drop in mid-tile). `horizontal` wins if both are somehow set.
+        this.vertical = !this.horizontal && !!cfg.vertical;
+        this.deckXFrac = cfg.deckXFrac != null ? cfg.deckXFrac : 0.5;
+        // How many tiles wide the shaft is, side by side (odd, centred on the
+        // spawn tile — 3 = one left, the spawn tile, one right). One tile is
+        // narrower than the canvas (820 × 1.2722 ≈ 1043 of 1280), so a 1-wide
+        // shaft leaves bare backdrop down both screen edges; the flanking tiles
+        // cover it. The centre tile's left edge is always plane-X 0, so the spawn
+        // seeding below is independent of the count.
+        this.shaftTiles = cfg.shaftTiles != null ? cfg.shaftTiles : 1;
+        this.shaftHalf = Math.floor(this.shaftTiles / 2);
+        // Collision-column window spanning the whole shaft. The mask REPEATS per
+        // tile (each flanking tile gets its own copy of the same skull/bush
+        // layout), and anything outside the window is solid — the shaft walls.
+        this.shaftC0 = -this.shaftHalf * (this.colCols || 0);
+        this.shaftSpan = this.shaftTiles * (this.colCols || 0);
+        if (this.vertical && cfg.startX == null) {
+            const img = this.game.getDrawable(this.tileKey);
+            const nw = this.colNW || (img && (img.naturalWidth || img.width)) || 0;
+            this.camX = this.deckXFrac * nw * this.tileScale - this._feetPoint().x;
+        }
+
+        // Frozen-X camera (the fire shaft). Normally the character is pinned to
+        // the screen and the whole floor scrolls under him on BOTH axes. In a
+        // shaft that's wrong: scrolling sideways slides the whole corridor across
+        // the screen as he steps left/right. With freezeCamX the corridor stays
+        // PUT and the character walks left/right within it — the camera follows
+        // on Y only, the classic vertical-scroller framing.
+        //
+        // `camX` stays the player's plane position, so every logic path
+        // (collision, rope grab, rock pushes, spawns) is untouched. Only the DRAW
+        // frame is frozen: everything blits at plane − _camDrawX(), and the
+        // character is shifted off the screen centre by _charOffX() to make up
+        // the difference.
+        //
+        // Set BEFORE _unstickSpawn so the viewport fence below is already live
+        // while the spawn nudge searches — the drop-in can't land off-camera.
+        this.freezeCamX = !!cfg.freezeCamX;
+        this._viewCamX = this.camX;
+        // With the camera frozen, walking past the screen edge would carry the
+        // character out of frame (the floor no longer follows him), so the
+        // viewport itself is a wall — see the fence in _planeBoxSolid. Inset
+        // keeps him a little clear of the very edge.
+        this.viewWallInset = cfg.viewWallInset != null ? cfg.viewWallInset : 24;
+
         // Drop from the ceiling on entry, reusing the overworld fall dynamics
         // (px/frame @ the fixed 60fps step). Walking is locked until he lands.
         // Constant size the whole way down — only the feet position drops.
@@ -284,6 +332,18 @@ class TileDungeonScreen {
         return { x: cxp - w / 2, y: cyp - h / 2, w, h };
     }
 
+    // Camera X used for DRAWING only (see freezeCamX): the frozen spawn X in a
+    // shaft, the live camera everywhere else. Logic always uses this.camX.
+    _camDrawX() {
+        return this.freezeCamX ? this._viewCamX : this.camX;
+    }
+    // How far the character is drawn from the screen feet-point, so that his
+    // pinned logical position (feet + camX) still lands on the right floor spot
+    // once the floor is drawn at the frozen _camDrawX(). Zero unless frozen.
+    _charOffX() {
+        return this.camX - this._camDrawX();
+    }
+
     // True if the feet footprint would overlap ANY solid tile cell at camera
     // (cx, cy). The player is pinned to the screen feet-point; a plane point P
     // maps to screen as P - cam, so the feet's plane position is feet + cam.
@@ -305,6 +365,14 @@ class TileDungeonScreen {
     // treat anything off the strip's top/bottom as solid. Iterates every cell the
     // AABB covers (it spans a few), rather than sampling corners.
     _planeBoxSolid(px, py, pw, ph) {
+        // Frozen-camera fence: the view never scrolls in X, so anything that left
+        // the visible strip would simply walk off-camera. Treat the viewport edges
+        // as walls. Checked before the mask so it holds even on a maskless floor.
+        if (this.freezeCamX && this._viewCamX != null) {
+            const left = this._viewCamX + this.viewWallInset;
+            const right = this._viewCamX + this.game.width - this.viewWallInset;
+            if (px < left || px + pw > right) return true;
+        }
         if (!this.colMask) return false;
         const img = this.game.getDrawable(this.tileKey);
         const nw = (img && (img.naturalWidth || img.width)) || this.colNW;
@@ -325,7 +393,16 @@ class TileDungeonScreen {
                 rr = ((r % this.colRows) + this.colRows) % this.colRows;
             }
             for (let c = c0; c <= c1; c++) {
-                const cc = ((c % this.colCols) + this.colCols) % this.colCols;
+                let cc;
+                if (this.vertical) {
+                    // Off the left/right end of the shaft = void → not walkable.
+                    // Inside it the mask repeats per tile, so each flanking tile
+                    // carries the same skulls/bushes as the centre one.
+                    if (c < this.shaftC0 || c >= this.shaftC0 + this.shaftSpan) return true;
+                    cc = ((c % this.colCols) + this.colCols) % this.colCols;
+                } else {
+                    cc = ((c % this.colCols) + this.colCols) % this.colCols;
+                }
                 if (this.colMask[rr * this.colCols + cc]) return true;
             }
         }
@@ -620,7 +697,7 @@ class TileDungeonScreen {
             // RAW sub-pixel screen pos (no Math.round) — the world scrolls
             // sub-pixel, so per-entity rounding makes them shake against it.
             // See render_rounding_jitter: match the phone/Rock/Player convention.
-            const dx = rock.x - this.camX, dy = rock.y - this.camY;
+            const dx = rock.x - this._camDrawX(), dy = rock.y - this.camY;
             if (dx > g.width || dx + rock.width < 0 || dy > g.height || dy + rock.height < 0) continue;
             ctx.drawImage(img, rock.sx, rock.sy, rock.sw, rock.sh, dx, dy, rock.width, rock.height);
         }
@@ -647,7 +724,7 @@ class TileDungeonScreen {
         // Horizontal bridge: draw ONE strip (tiled in X only). The tile top is at
         // plane-Y 0 → screen-Y = −camY; the sand backdrop shows above and below.
         if (this.horizontal) {
-            const ox = -(((this.camX % tw) + tw) % tw);
+            const ox = -(((this._camDrawX() % tw) + tw) % tw);
             const yTop = Math.round(-this.camY);
             const yBot = Math.round(th - this.camY);
             for (let gx = 0; ox + gx * tw < g.width; gx++) {
@@ -658,9 +735,28 @@ class TileDungeonScreen {
             return;
         }
 
+        // Vertical shaft: draw ONE column (tiled in Y only). The tile's left edge
+        // is at plane-X 0 → screen-X = −camX; the backdrop shows to either side.
+        if (this.vertical) {
+            const oy = -(((this.camY % th) + th) % th);
+            for (let gx = -this.shaftHalf; gx <= this.shaftHalf; gx++) {
+                // Same shared-integer-edge snapping as the infinite floor, so the
+                // side tiles butt against the centre one with no hairline seam.
+                const xL = Math.round(gx * tw - this._camDrawX());
+                const xR = Math.round((gx + 1) * tw - this._camDrawX());
+                if (xL > g.width || xR < 0) continue;
+                for (let gy = 0; oy + gy * th < g.height; gy++) {
+                    const y0 = Math.round(oy + gy * th);
+                    const y1 = Math.round(oy + (gy + 1) * th);
+                    ctx.drawImage(img, xL, y0, (xR - xL) + 1, (y1 - y0) + 1);
+                }
+            }
+            return;
+        }
+
         // Float offset of the first tile: wrap the camera into [-tile, 0] so a
         // tile always starts off the top-left edge and the whole canvas is covered.
-        const ox = -(((this.camX % tw) + tw) % tw);
+        const ox = -(((this._camDrawX() % tw) + tw) % tw);
         const oy = -(((this.camY % th) + th) % th);
         for (let gy = 0; oy + gy * th < g.height; gy++) {
             const y0 = Math.round(oy + gy * th);
@@ -704,7 +800,7 @@ class TileDungeonScreen {
         // from the RESTING ground position and does NOT move with the hop — only
         // the player's end lifts by jumpZ toward that fixed anchor.
         const hop = (r.attached ? this.jumpZ : 0) || 0;
-        const bx = r.endPlaneX - this.camX;
+        const bx = r.endPlaneX - this._camDrawX();
         const groundBy = r.endPlaneY - this.camY; // where the end rests on the floor
         const by = groundBy - hop;                // player's end lifts with the hop
         if (by < -40) return; // whole rope above the screen
@@ -768,11 +864,13 @@ class TileDungeonScreen {
         ctx.restore();
     }
 
-    // Ground shadow for the rope-hop: a soft ellipse pinned at the feet-point
-    // (the character's real floor position) while the sprite is lifted by jumpZ.
-    // It stays put and shrinks a touch as he rises, so the height reads clearly
-    // and the player always knows where the character actually is. Only shown
-    // while airborne (jumpZ > 0).
+    // Ground shadow for the rope-hop: a soft ellipse on the character's real floor
+    // position while the sprite is lifted by jumpZ. It stays put and shrinks a
+    // touch as he rises, so the height reads clearly and the player always knows
+    // where the character actually is. Only shown while airborne (jumpZ > 0).
+    // Offset by _charOffX() like the sprite — with a frozen camera the feet-point
+    // is no longer where the character is, so an unshifted shadow would sit at the
+    // screen centre while he walks away from it.
     _drawShadow(ctx) {
         if (!(this.jumpZ > 0)) return;
         const fp = this._feetPoint();
@@ -782,7 +880,7 @@ class TileDungeonScreen {
         ctx.save();
         ctx.fillStyle = '#000';
         ctx.beginPath();
-        ctx.ellipse(fp.x, fp.y - 2, rx, ry, 0, 0, Math.PI * 2);
+        ctx.ellipse(fp.x + this._charOffX(), fp.y - 2, rx, ry, 0, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
     }
@@ -809,7 +907,7 @@ class TileDungeonScreen {
         const shake = this.stuckTimer > 0
             ? Math.sin(this.stuckShakeT * 52) * 3 + Math.sin(this.stuckShakeT * 31) * 1.5
             : 0;
-        const dx = fp.x - drawW / 2 + shake;
+        const dx = fp.x - drawW / 2 + shake + this._charOffX();
         const dy = fp.y - drawH - drop - hop + (fr.vAlign || 0) * unit;
         if (fr.flipped) {
             ctx.save();
@@ -844,7 +942,7 @@ class TileDungeonScreen {
         const railTop = Math.round(yTop + (sNat / nh) * (yBot - yTop));
         const sh = nh - sNat;
         if (sh <= 0 || yBot - railTop <= 0) return;
-        const ox = -(((this.camX % tw) + tw) % tw);
+        const ox = -(((this._camDrawX() % tw) + tw) % tw);
         for (let gx = 0; ox + gx * tw < g.width; gx++) {
             const x0 = Math.round(ox + gx * tw);
             const x1 = Math.round(ox + (gx + 1) * tw);
@@ -939,7 +1037,7 @@ class TileDungeonScreen {
         if (!img) return;
         const f = b.frames[b.frameI] || b.frames[0];
         const drawW = f[2] * b.scale, drawH = f[3] * b.scale;
-        const fx = b.planeX - this.camX, fy = b.planeY - this.camY; // feet on screen
+        const fx = b.planeX - this._camDrawX(), fy = b.planeY - this.camY; // feet on screen
         ctx.imageSmoothingEnabled = true;
         ctx.drawImage(img, f[0], f[1], f[2], f[3], fx - drawW / 2, fy - drawH, drawW, drawH);
     }
@@ -951,7 +1049,7 @@ class TileDungeonScreen {
         if (!s || !s.image) return;
         const unit = this.charScale;
         const drawW = s.width * unit, drawH = s.height * unit;
-        const fx = ph.planeX - this.camX, fy = ph.planeY - this.camY; // feet on screen
+        const fx = ph.planeX - this._camDrawX(), fy = ph.planeY - this.camY; // feet on screen
         const dx = fx - drawW / 2, dy = fy - drawH + (s.vAlign || 0) * unit;
         if (s.flipped) {
             ctx.save();
@@ -989,7 +1087,7 @@ class TileDungeonScreen {
 
         // Ambient FX on top of the scene (no collision/depth sort), same as the
         // overworld. Under the entry fade so they don't flash during the drop-in.
-        if (this.fxManager) this.fxManager.render(ctx, this.camX, this.camY);
+        if (this.fxManager) this.fxManager.render(ctx, this._camDrawX(), this.camY);
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
@@ -1037,15 +1135,17 @@ class TileDungeonScreen {
             const cW = (nw / this.colCols) * this.tileScale;   // cell size in screen px
             const cH = (nh / this.colRows) * this.tileScale;
             const tw = nw * this.tileScale, th = nh * this.tileScale;
-            const ox = -(((this.camX % tw) + tw) % tw);
-            // Horizontal bridge: the strip exists once vertically (tile top = plane
-            // 0 → screen −camY), so don't wrap it up/down like the infinite floor.
+            // Bridge/shaft exist ONCE on their walled axis (tile edge = plane 0 →
+            // screen −cam), so don't wrap that axis like the infinite floor.
+            const ox = this.vertical ? Math.round(-this.shaftHalf * tw - this._camDrawX())
+                                     : -(((this._camDrawX() % tw) + tw) % tw);
             const oy = this.horizontal ? Math.round(-this.camY)
                                        : -(((this.camY % th) + th) % th);
+            const txEnd = this.vertical ? ox + this.shaftTiles * tw - 1 : g.width;
             const tyEnd = this.horizontal ? oy + th - 1 : g.height;
             ctx.fillStyle = 'rgba(233,69,96,0.35)';
             for (let ty = oy; ty < tyEnd; ty += th) {
-                for (let tx = ox; tx < g.width; tx += tw) {
+                for (let tx = ox; tx < txEnd; tx += tw) {
                     for (let r = 0; r < this.colRows; r++) {
                         for (let c = 0; c < this.colCols; c++) {
                             if (!this.colMask[r * this.colCols + c]) continue;
@@ -1061,12 +1161,14 @@ class TileDungeonScreen {
         // Player boxes — identical to the overworld (player.render debug): lime
         // full sprite bbox + red collision footprint, from the same colOff/colW
         // ratios, at the dungeon's constant charScale.
-        const sb = this._spriteRect(), fb = this._footRect();
+        // Shifted by _charOffX() like the sprite, so with a frozen camera the
+        // boxes stay on the character instead of at the screen centre.
+        const sb = this._spriteRect(), fb = this._footRect(), coff = this._charOffX();
         ctx.lineWidth = 1;
         ctx.strokeStyle = 'lime';
-        ctx.strokeRect(sb.x, sb.y, sb.w, sb.h);
+        ctx.strokeRect(sb.x + coff, sb.y, sb.w, sb.h);
         ctx.strokeStyle = 'red';
-        ctx.strokeRect(fb.x, fb.y, fb.w, fb.h);
+        ctx.strokeRect(fb.x + coff, fb.y, fb.w, fb.h);
 
         // Bottom-left info panel, same corner as the other screens.
         ctx.fillStyle = 'rgba(0,0,0,0.6)';

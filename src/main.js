@@ -289,6 +289,8 @@ function enterDungeon() {
         gameState.dungeon = new TileDungeonScreen(game, p, stage.dungeonTiled || {});
     } else if (target === 'tiled2') {
         gameState.dungeon = new TileDungeonScreen(game, p, stage.dungeonTiled2 || {});
+    } else if (target === 'fire') {
+        gameState.dungeon = new TileDungeonScreen(game, p, stage.dungeonTiledFire || {});
     } else {
         gameState.dungeon = new DungeonScreen(game, p, stage.dungeon || {});
     }

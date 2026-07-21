@@ -213,6 +213,34 @@ const STAGES = {
             // must juke, not just sprint. spawnDX = plane-px offset (negative = left).
             phone: { enabled: true, spawnDX: -360, spawnDY: 0, speed: 3.0, chaseSpeed: 3.45 },
         },
+        // A FOURTH dungeon (target: 'fire') — the fire dungeon, reached by the
+        // lower-right hole. Same infinite tiled engine and the SAME tile as the
+        // Bone Pit, but `vertical: true` tiles it only up↔down: the floor is one
+        // tile wide (≈1043px of the 1280 screen) and endlessly deep, walled left
+        // and right, so this reads as a shaft you descend rather than open floor.
+        // Keeps the Bone Pit's furniture — rope + the scattered pushable blocks.
+        // The 3-frame flame band (assets-v2/saborosa-dungeon-fire-test-2.png) is
+        // NOT wired yet; that's the next step.
+        dungeonTiledFire: {
+            name: 'Fire Shaft', tile: 'dungeon_tile',
+            collision: 'dungeon_tile_collision',
+            vertical: true,
+            // Three tiles side by side (left / spawn / right). One tile is 1043px
+            // of the 1280 canvas, so a single column left bare backdrop down both
+            // edges; the flanking tiles fill it and carry the same collision.
+            shaftTiles: 3,
+            // Drop in mid-shaft (0.5 of the tile's native width under the feet).
+            deckXFrac: 0.5,
+            // Lock the camera's X: the shaft stays put on screen and the player
+            // walks left/right within it, instead of the corridor sliding under a
+            // pinned character. Camera still follows on Y (see freezeCamX).
+            freezeCamX: true,
+            // Same scales as the Bone Pit so the character reads identically.
+            tileScale: 1.2722, charScale: 1.0, colScale: 0.7,
+            // Same taut-wire rope as the Bone Pit — a shaft is where it belongs.
+            rope: { enabled: true, length: 540, width: 15, sway: 10, endDX: 90, endDY: 0 },
+            // No boss/phone down here yet.
+        },
         // Non-colliding trigger boxes: when the player's FEET enter one, they
         // fall into the dungeon. World-space; tune with the magenta debug box (C).
         // This first one sits on the black pit just right of the spawn approach.
@@ -241,6 +269,15 @@ const STAGES = {
             // (5678, 2850)  [cx = (nx+nw/2)*rect.w + rect.x, cy = (ny+nh/2)*rect.h].
             {
                 x: 5618, y: 2790, w: 120, h: 120, target: 'tiled2',
+                triggerInset: 0.22,
+                vanishLine: 0.5
+            },
+            // Fourth hole → the fire dungeon (target: 'fire'), on the lower-right
+            // plateau. Hand-placed from the debug HUD (player at world 8745,4469);
+            // there's no buraco overlay graphic here yet, so this is a bare trigger.
+            // Leads to `dungeonTiledFire` above (see enterDungeon in main.js).
+            {
+                x: 8685, y: 4459, w: 120, h: 120, target: 'fire',
                 triggerInset: 0.22,
                 vanishLine: 0.5
             }
