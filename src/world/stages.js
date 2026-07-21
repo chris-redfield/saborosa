@@ -247,7 +247,13 @@ const STAGES = {
             // bandWidth: null = the art at 1:1, repeated (~1.5 across the 1280
             // canvas). Set it to 1280 for ONE stretched flame — fewer, bigger
             // waves, but a 1.55x upscale visibly softens the line art.
-            fire: { enabled: true, spawnDY: 900, speed: 0.6, bandWidth: null },
+            // rows = flame bands stacked down from the leading edge, so the body
+            // isn't flat fill once the front climbs past the top of the screen.
+            // rowGap < the 216 band height pulls the rows together: each band has
+            // solid yellow below its lowest wave, so stacking them flush leaves a
+            // flat strip between. 165 puts the rows' waves at about the same
+            // spacing as the waves inside a single band.
+            fire: { enabled: true, spawnDY: 900, speed: 0.6, bandWidth: null, rows: 3, rowGap: 155 },
             // No boss/phone down here yet.
         },
         // Non-colliding trigger boxes: when the player's FEET enter one, they

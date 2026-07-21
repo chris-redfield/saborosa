@@ -337,6 +337,14 @@ class TileDungeonScreen {
                 // border, and the destination overlap that closes the tile join.
                 // See _drawFire — 2 is the measured-clean value, don't drop to 1.
                 edgeInset: fc.edgeInset != null ? fc.edgeInset : 2,
+                // How many flame bands are stacked DOWN from the leading edge.
+                // 1 = the old look (flames on top, flat fill below). 2+ puts more
+                // waves inside the body, so as the front climbs past the top of
+                // the screen there's still fire to look at behind it.
+                rows: fc.rows != null ? fc.rows : 2,
+                // Vertical pitch between rows. null = one full band height, so the
+                // rows sit flush; smaller overlaps them into a denser mass.
+                rowGap: fc.rowGap != null ? fc.rowGap : null,
                 t: 0, frameI: 0,
             };
         }
@@ -1126,9 +1134,20 @@ class TileDungeonScreen {
             ctx.fillRect(0, by - 1, g.width, g.height - by + 1);
         }
         const step = Math.max(1, drawW - ins);
-        for (let x = 0; x < g.width; x += step) {
-            ctx.drawImage(img, fr[0] + ins, fr[1] + ins, fr[2] - ins * 2, fr[3] - ins * 2,
-                          x, by - drawH, drawW, drawH);
+        // Stacked rows, leading edge first and each one drawn OVER the fill (and
+        // over the previous row's solid body when they overlap), so every row's
+        // flame tips stay visible instead of being buried. Rows below the bottom
+        // of the screen are skipped. Each row is one animation frame out of step
+        // with the one above it, so the wall churns instead of pulsing in unison.
+        const gap = f.rowGap || drawH;
+        for (let r = 0; r < f.rows; r++) {
+            const rowBy = by + r * gap;
+            if (rowBy - drawH > g.height) break;
+            const rf = f.frames[(f.frameI + r) % f.frames.length] || fr;
+            for (let x = 0; x < g.width; x += step) {
+                ctx.drawImage(img, rf[0] + ins, rf[1] + ins, rf[2] - ins * 2, rf[3] - ins * 2,
+                              x, rowBy - drawH, drawW, drawH);
+            }
         }
     }
 
@@ -1174,13 +1193,17 @@ class TileDungeonScreen {
         if (this.phone && phoneInFront) this._drawPhone(ctx);
         if (this.boss && bossInFront) this._drawBoss(ctx);
         this._drawBridgeRailing(ctx); // near/lower railing paints OVER the player + phone
-        // Fire last of the scene: it's a wall the player is fleeing, so when it
-        // catches up it should swallow him rather than let him stand in front.
-        this._drawFire(ctx);
 
         // Ambient FX on top of the scene (no collision/depth sort), same as the
         // overworld. Under the entry fade so they don't flash during the drop-in.
         if (this.fxManager) this.fxManager.render(ctx, this._camDrawX(), this.camY);
+
+        // Fire absolutely last: it's an opaque wall the player is fleeing, so
+        // nothing stands in front of it — not the character, and not the ambient
+        // twinkles, which would otherwise sparkle THROUGH the flames. Only this
+        // dungeon has a fire, so the other tiled dungeons are unaffected (the
+        // call no-ops when this.fire is null).
+        this._drawFire(ctx);
 
         if (this.fadeIn > 0) {
             ctx.fillStyle = `rgba(0,0,0,${this.fadeIn})`;
