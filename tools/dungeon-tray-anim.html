@@ -110,6 +110,31 @@ let playBtn = null;
 function loadImg(src, onProgress){
   return new Promise(res=>{ const i=new Image(); i.onload=()=>{ onProgress&&onProgress(); res(i); }; i.onerror=()=>{ onProgress&&onProgress(); res(null); }; i.src=src; });
 }
+
+// The tray frames are 3784×3800 (~57 MP) but the stage never shows them bigger
+// than ~1000px. Keeping 16–32 full-res textures resident thrashes VRAM on older
+// GPUs, so each loop re-uploads them → periodic multi-100ms main-thread stalls.
+// Fix: decode+downscale ONCE, off the main thread, to a modest cap. The result
+// is a small ImageBitmap that draws straight from a resident texture — no lazy
+// decode, no re-upload, no hitch. Falls back to a full-res Image if unsupported.
+const FRAME_NATIVE = 3800;   // longest native side
+const FRAME_CAP    = 1280;   // longest side after downscale (plenty for preview)
+async function loadFrame(src, onProgress){
+  try {
+    if (typeof createImageBitmap !== 'function') throw 0;
+    const blob = await (await fetch(src, { cache:'force-cache' })).blob();
+    const s = Math.min(1, FRAME_CAP / FRAME_NATIVE);
+    const bmp = await createImageBitmap(blob, {
+      resizeWidth:  Math.round(3784 * s),
+      resizeHeight: Math.round(3800 * s),
+      resizeQuality: 'high',
+    });
+    onProgress && onProgress();
+    return bmp;
+  } catch (e) {
+    return loadImg(src, onProgress);   // fallback: full-res (may still hitch)
+  }
+}
 function status(s){ document.getElementById('status').textContent = s; }
 
 // The playback sequence: always built in forward order 1,(1-B),2,(2-B),…,16.
@@ -146,8 +171,8 @@ async function boot(){
   const tick = ()=>{ done++; loadbar.style.width = (done/total*100)+'%'; status(`loading ${done}/${total}`); };
   // Kick them all off but keep them in their slots.
   const jobs = [];
-  for (let i=0;i<N;i++) jobs.push(loadImg(sharpSrc(i+1), tick).then(im=>{ sharp[i]=im; if(im){ iw=im.width; ih=im.height; } }));
-  for (let i=0;i<N;i++) jobs.push(loadImg(blurSrc(i+1),  tick).then(im=>{ blur[i]=im; }));
+  for (let i=0;i<N;i++) jobs.push(loadFrame(sharpSrc(i+1), tick).then(im=>{ sharp[i]=im; if(im){ iw=im.width; ih=im.height; } }));
+  for (let i=0;i<N;i++) jobs.push(loadFrame(blurSrc(i+1),  tick).then(im=>{ blur[i]=im; }));
   // Juixy sheet + frame defs (best-effort — needs a local server for the fetch).
   jobs.push(loadImg(JU_SHEET).then(im=>{ ju.img=im; }));
   jobs.push(fetch(JU_DEFS,{cache:'no-cache'}).then(r=>r.json())
