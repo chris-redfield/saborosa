@@ -32,7 +32,7 @@ const CONFIG = {
   CHARACTERS: ['lemon', 'tomato', 'eggplant'],
   CH_FRAMES: 6,          // pitch poses per character
   CH_REST: 3,            // level pose (0-based frame 4)
-  planeScale: 0.32,      // plane height as a fraction of the stage height
+  planeScale: 0.32 * 0.6, // plane height as a fraction of the stage height (60% of prior)
   tiltMs: 110,           // ms per pitch-pose step
   moveSpeed: 0.30,       // vertical speed, stage-fraction / sec
   startX: 0.49,          // pinned horizontal position
