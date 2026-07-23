@@ -41,7 +41,7 @@
 <body>
 <div id="top">
   <b>TRAY DUNGEON</b>
-  <span class="hint">Space play/pause · ← → step frames · 16 angles of the fruit tray</span>
+  <span class="hint">arrows/WASD fly · hold Space = machine gun · 1 = character · P = play/pause</span>
   <span id="status"></span>
 </div>
 <div id="main">
@@ -56,44 +56,63 @@ const sharpSrc = i => `${DIR}saborosa-fundo-natureza-frame-${pad(i)}.webp`;
 const blurSrc  = i => `${DIR}saborosa-fundo-natureza-frame-${pad(i)}-B.webp`;
 
 const params = {
-  frameMs: 170,      // ms per sharp (angle) frame
-  blurMs: 95,        // ms per blurred (-B) frame — usually a quicker flash
+  frameMs: 60,       // ms per sharp (angle) frame
+  blurMs: 24,        // ms per blurred (-B) frame — usually a quicker flash
   scale: 0.90,       // × the contain-fit size
   withBlur: true,    // interleave the -B blurred variants
+  dupFrames: true,   // EXPERIMENT: each frame twice in the sequence (1,1,1-B,1-B,…)
   reverse: true,     // play the sequence backwards
   playing: true,
   bg: 'black',       // 'check' | 'black' | 'white'
-  // --- Juixy (the lemon-citrus, aka "laranja") overlay -------------------
-  // Juixy has no animation cycle (walk == idle); he's a single directional
-  // sprite you walk around the scene with the keyboard, like in-game.
-  showJu: true,      // draw Juixy on top of the tray background
-  juScale: 0.07,     // Juixy height as a fraction of the stage height
+  // --- Player (plane) overlay --------------------------------------------
+  // Dungeon-specific character sheets: each fruit pilots a plane. The 6
+  // frames are pitch poses driven by vertical movement (no idle animation).
+  // 1 key cycles the character.
+  showJu: true,      // draw the player on top of the tray background
+  juScale: 0.32,     // player height as a fraction of the stage height
+  chFrameMs: 110,    // ms per pitch-pose step while tilting
+  fireMs: 70,        // ms per machine-gun flash frame while Space is held
 };
 
-// Juixy's game sheet is a 9-col × 5-row grid (frame idx = row*9 + col).
-// Rows map to facings; the right-side facings are the left rows mirrored.
-// Col 0 is the resting/idle pose — the one we draw for every facing.
-const JU_SHEET = '../assets/saborosa-elementos-laranja-game.png';
-const JU_DEFS  = '../assets/saborosa-elementos-laranja-sprites.json';
-const JU_ROWS = {                                  // dir -> {row, flip}
-  down:       { row:0, flip:false },
-  down_left:  { row:1, flip:false }, down_right: { row:1, flip:true },
-  left:       { row:2, flip:false }, right:      { row:2, flip:true },
-  up_left:    { row:3, flip:false }, up_right:   { row:3, flip:true },
-  up:         { row:4, flip:false },
-};
-// Juixy movement / keyboard state. He starts near bottom-centre and walks with
-// the arrow keys or WASD (position in stage-fraction). `engaged` flips true the
-// moment the user first touches a movement key — before that the background
-// just free-runs its default loop.
-const ju = { img:null, frames:[], cols:9, x:0.49, y:0.90, dir:'down', engaged:false, speed:0.30 };
+// Plane character sheets for THIS dungeon: 3 characters, each a 6-frame flight
+// loop, one 660×507 PNG per frame. All art faces LEFT — flying right mirrors it.
+// The 1 key cycles characters (like in-game), in CH_NAMES order.
+const CH_DIR    = '../assets-v2/flying-dungeon/character-sheets/';
+const CH_NAMES  = ['lemon','tomato','eggplant'];
+const CH_FRAMES = 6;
+const chSrc = (name,i) => `${CH_DIR}saborosa-plane-${name}-${pad(i)}.png`;
+// The 6 frames are PITCH POSES, not a time loop: 1→3 dive (steepest first),
+// 4→6 climb (steepest last), frame 4 (index 3) is the level resting pose.
+const CH_REST = 3;                                 // 0-based index of frame 4
+// Floating bob — the SAME sine as the SABOROSA loading letters (letter.js):
+// sin(t·2.1 rad/s) with amplitude 5% of the sprite's height (min 6px). Always
+// on, moving or not, so the plane reads as riding the air.
+const CH_BOB_FREQ = 2.52;                          // rad/sec — letters' 2.1 sped up 20%
+const CH_BOB_REL  = 0.05;                          // amplitude ÷ sprite height
+const CH_BOB_MIN  = 6;                             // px floor
+// Machine gun: 6 muzzle-flash frames on a 1980×1521 canvas — 3× the plane
+// canvas at the same aspect, authored to composite into the SAME box as the
+// plane frame (the flash lands on the nose). Held Space loops them.
+const GUN_FRAMES = 6;
+const GUN_OFF_X  = 12;                              // px toward the plane (closes the nose gap)
+const GUN_OFF_Y  = 5;                               // px upward (aligns flash with the muzzle)
+const gunSrc = i => `${CH_DIR}saborosa-plane-fire-${pad(i)}.png`;
+const gun = { frames:[], on:false, cur:0, acc:0 };
+// Player movement / keyboard state. Position is in stage-fraction; `engaged`
+// flips true the moment the user first touches a movement key — before that
+// the background just free-runs its default loop. `cur` is the current pitch
+// pose index; it ramps toward the held vertical direction and back to rest.
+const ju = { sheets:{}, charIdx:0, cur:CH_REST, acc:0,
+             x:0.49, y:0.90, flip:false, engaged:false, speed:0.30 };
 const held = { left:false, right:false, up:false, down:false };
 
 const SLIDERS = [
   ['frameMs','frame time (ms)',16,600,1],
   ['blurMs','blur frame time (ms)',4,600,1],
   ['scale','draw scale',0.1,3,0.01],
-  ['juScale','juixy size (× stage h)',0.02,0.5,0.005],
+  ['juScale','player size (× stage h)',0.02,0.5,0.005],
+  ['chFrameMs','tilt step (ms)',30,400,1],
+  ['fireMs','fire anim (ms)',30,300,1],
 ];
 
 const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
@@ -144,9 +163,10 @@ function status(s){ document.getElementById('status').textContent = s; }
 // isBlur lets each blurred frame hold for its own (usually shorter) duration.
 function sequence(){
   const seq = [];
+  const times = params.dupFrames ? 2 : 1;    // experiment: double every frame
   for (let i=0;i<N;i++){
-    seq.push({ img: sharp[i], isBlur:false });
-    if (params.withBlur) seq.push({ img: blur[i], isBlur:true });
+    for (let t=0;t<times;t++) seq.push({ img: sharp[i], isBlur:false });
+    if (params.withBlur) for (let t=0;t<times;t++) seq.push({ img: blur[i], isBlur:true });
   }
   return seq;
 }
@@ -174,11 +194,16 @@ async function boot(){
   const jobs = [];
   for (let i=0;i<N;i++) jobs.push(loadFrame(sharpSrc(i+1), tick).then(im=>{ sharp[i]=im; if(im){ iw=im.width; ih=im.height; } }));
   for (let i=0;i<N;i++) jobs.push(loadFrame(blurSrc(i+1),  tick).then(im=>{ blur[i]=im; }));
-  // Juixy sheet + frame defs (best-effort — needs a local server for the fetch).
-  jobs.push(loadImg(JU_SHEET).then(im=>{ ju.img=im; }));
-  jobs.push(fetch(JU_DEFS,{cache:'no-cache'}).then(r=>r.json())
-    .then(d=>{ ju.frames=d.frames||[]; ju.cols=d.cols||9; })
-    .catch(()=>{ status('Juixy defs failed — serve from repo root'); }));
+  // Plane character sheets: 3 characters × 6 frames (small PNGs, plain Images).
+  for (const nm of CH_NAMES){
+    ju.sheets[nm] = new Array(CH_FRAMES).fill(null);
+    for (let i=0;i<CH_FRAMES;i++)
+      jobs.push(loadImg(chSrc(nm,i+1)).then(im=>{ ju.sheets[nm][i]=im; }));
+  }
+  // Machine-gun muzzle-flash frames.
+  gun.frames = new Array(GUN_FRAMES).fill(null);
+  for (let i=0;i<GUN_FRAMES;i++)
+    jobs.push(loadImg(gunSrc(i+1)).then(im=>{ gun.frames[i]=im; }));
   buildPanel();
   last = performance.now();
   requestAnimationFrame(loop);
@@ -207,21 +232,35 @@ function draw(){
   drawJuixy();
 }
 
-// Juixy overlay: the idle (col 0) frame for his current facing, scaled to a
-// fraction of the stage height, feet anchored at his walk position (ju.x,ju.y).
+// Player overlay: current character's flight-loop frame, scaled to a fraction
+// of the stage height, CENTRE-anchored at (ju.x,ju.y) — it flies, no feet.
+// Art faces left; ju.flip mirrors it when flying right.
 function drawJuixy(){
-  if (!params.showJu || !ju.img || !ju.frames.length) return;
-  const { row, flip } = JU_ROWS[ju.dir] || JU_ROWS.down;
-  const f = ju.frames[row*ju.cols + 0];
-  if (!f) return;
-  const s = (cv.height * params.juScale) / f.h;    // height-driven scale
-  const dw = f.w*s, dh = f.h*s;
-  const fx = ju.x * cv.width, fy = ju.y * cv.height;
+  if (!params.showJu) return;
+  const frames = ju.sheets[CH_NAMES[ju.charIdx]];
+  const f = frames && frames[ju.cur % CH_FRAMES];
+  if (!f) return;                                   // still loading
+  const s = (cv.height * params.juScale) / f.height;
+  const dw = f.width*s, dh = f.height*s;
+  const t = performance.now() / 1000;
+  const bob = Math.sin(t * CH_BOB_FREQ) * Math.max(CH_BOB_MIN, dh * CH_BOB_REL);
   ctx.save();
-  ctx.translate(fx, fy);                            // anchor = feet (bottom-center)
-  if (flip) ctx.scale(-1,1);
+  ctx.translate(ju.x * cv.width, ju.y * cv.height + bob);
+  if (ju.flip) ctx.scale(-1,1);
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(ju.img, f.x, f.y, f.w, f.h, -dw/2, -dh, dw, dh);
+  // Muzzle flash composites into the SAME box as the plane frame (its canvas
+  // is the plane's at 3× res), so it inherits the flip + bob automatically.
+  // Nudged toward the plane (local −x, mirrors with the flip) to close the
+  // small gap between the nose and the flash. Drawn BEFORE the plane so it
+  // reads as coming from behind the body.
+  if (gun.on){
+    const g = gun.frames[gun.cur % GUN_FRAMES];
+    // The upward nudge only aligns on the level pose; on the pitched (dive/
+    // climb) frames the muzzle drops back, so cancel it there.
+    const offY = (ju.cur === CH_REST) ? GUN_OFF_Y : 0;
+    if (g) ctx.drawImage(g, -dw/2 - GUN_OFF_X, -dh/2 - offY, dw, dh);
+  }
+  ctx.drawImage(f, -dw/2, -dh/2, dw, dh);
   ctx.restore();
 }
 
@@ -231,6 +270,7 @@ function buildPanel(){
 
   const g1 = group(side, 'Sequence');
   addCheckbox(g1,'withBlur','include blurred (-B) frames', ()=>{ cur=0; syncBlurRow(); });
+  addCheckbox(g1,'dupFrames','double each frame (experiment)', ()=>{ cur=0; });
   addCheckbox(g1,'reverse','play in reverse order', ()=>{ cur=0; });
 
   const g2 = group(side, 'Playback');
@@ -254,11 +294,11 @@ function buildPanel(){
   g2.appendChild(bgRow);
   stage.className = params.bg;
 
-  const g3 = group(side, 'Juixy');
-  addCheckbox(g3,'showJu','show Juixy overlay');
-  addSlider(g3,'juScale');
+  const g3 = group(side, 'Player (plane)');
+  addCheckbox(g3,'showJu','show player overlay');
+  addSlider(g3,'juScale'); addSlider(g3,'chFrameMs'); addSlider(g3,'fireMs');
   const jhint = document.createElement('div'); jhint.className='hint';
-  jhint.textContent = 'Move with arrows / WASD. Walk right → reverse order · walk left → regular order.';
+  jhint.textContent = '1 cycles character · arrows/WASD move · hold Space = machine gun · fly right → reverse order · fly left → regular order.';
   g3.appendChild(jhint);
 
   const g4 = group(side, 'Readout');
@@ -300,15 +340,16 @@ function updateReadout(seqLen){
   const order = s>0 ? 'regular' : s<0 ? 'reverse' : 'frozen';
   const control = ju.engaged ? 'keyboard' : 'default';
   const mode  = params.withBlur ? '1,1-B,…,16,16-B' : '1,…,16';
-  // Loop length = 16 sharp holds (+ 16 blur holds when enabled).
-  const loopMs = N*params.frameMs + (params.withBlur ? N*params.blurMs : 0);
+  // Loop length = 16 sharp holds (+ 16 blur holds when enabled), ×2 if doubled.
+  const dup = params.dupFrames ? 2 : 1;
+  const loopMs = dup * (N*params.frameMs + (params.withBlur ? N*params.blurMs : 0));
   ro.textContent =
     `sequence  ${mode}\n`+
     `control   ${control}\n`+
     `order     ${order}\n`+
     `frames    ${seqLen} in loop\n`+
     `current   ${cur+1}/${seqLen}\n`+
-    `juixy     ${ju.dir}  (${ju.x.toFixed(2)},${ju.y.toFixed(2)})\n`+
+    `player    ${CH_NAMES[ju.charIdx]} ${ju.flip?'←':'→'}${gun.on?' FIRING':''}  (${ju.x.toFixed(2)},${ju.y.toFixed(2)})\n`+
     `sharp ms  ${params.frameMs|0}   (${fps.toFixed(1)} fps)\n`+
     (params.withBlur ? `blur ms   ${params.blurMs|0}\n` : '')+
     `loop      ${loopMs|0} ms\n`+
@@ -329,35 +370,45 @@ const MOVE_KEYS = {
 window.addEventListener('keydown', e=>{
   const m = MOVE_KEYS[e.code];
   if (m){ e.preventDefault(); held[m]=true; ju.engaged=true; return; }
-  if (e.code==='Space'){ e.preventDefault(); togglePlay(); }
+  if (e.code==='Space'){ e.preventDefault(); gun.on = true; }     // hold to fire
+  else if (e.code==='KeyP'){ e.preventDefault(); togglePlay(); }
+  else if (e.code==='Digit1' || e.code==='Numpad1'){   // cycle character, like in-game
+    ju.charIdx = (ju.charIdx+1) % CH_NAMES.length;
+    status(`player: ${CH_NAMES[ju.charIdx]}`);
+  }
 });
 window.addEventListener('keyup', e=>{
   const m = MOVE_KEYS[e.code];
-  if (m){ e.preventDefault(); held[m]=false; }
+  if (m){ e.preventDefault(); held[m]=false; return; }
+  if (e.code==='Space'){ e.preventDefault(); gun.on = false; gun.cur = 0; gun.acc = 0; }
 });
-
-// Derive Juixy's 8-way facing from the currently held keys (null if standing).
-function facingFromKeys(){
-  const dx = (held.right?1:0) - (held.left?1:0);
-  const dy = (held.down?1:0) - (held.up?1:0);
-  if (!dx && !dy) return null;
-  const v = dy>0 ? 'down' : dy<0 ? 'up' : '';
-  const h = dx>0 ? 'right' : dx<0 ? 'left' : '';
-  return v && h ? `${v}_${h}` : (v || h);
-}
 
 function loop(now){
   const dt = now - last; last = now;
 
-  // --- Juixy walk ----------------------------------------------------------
-  // He faces his true 8-way movement direction (correct sprite), but his SCREEN
-  // position only moves vertically: up/down slide his Y, while left/right leave
-  // his X pinned — that horizontal input only drives the background (bgStep).
-  const face = facingFromKeys();
-  if (face){
-    ju.dir = face;
-    const dy = (held.down?1:0) - (held.up?1:0);
-    if (dy) ju.y = Math.min(1, Math.max(0, ju.y + dy * ju.speed * (dt/1000)));
+  // --- Player flight -------------------------------------------------------
+  // No idle animation — the sprite only changes with movement. The pitch pose
+  // ramps one frame per chFrameMs toward the held vertical direction's extreme
+  // (down → frame 1, up → frame 6), passing through the 3/4 transition poses,
+  // and settles back onto frame 4 (rest) when released. Screen position only
+  // moves vertically: left/right just mirror the art and drive the background.
+  const dy = (held.down?1:0) - (held.up?1:0);
+  const targetPose = dy>0 ? 0 : dy<0 ? CH_FRAMES-1 : CH_REST;
+  if (ju.cur === targetPose){ ju.acc = 0; }
+  else {
+    ju.acc += dt;
+    while (params.chFrameMs>0 && ju.acc >= params.chFrameMs && ju.cur !== targetPose){
+      ju.acc -= params.chFrameMs;
+      ju.cur += (ju.cur < targetPose) ? 1 : -1;
+    }
+  }
+  if (held.left && !held.right) ju.flip = true;       // art faces right natively
+  else if (held.right && !held.left) ju.flip = false;
+  if (dy) ju.y = Math.min(1, Math.max(0, ju.y + dy * ju.speed * (dt/1000)));
+  // Machine gun: loop the 6 flash frames while Space is held.
+  if (gun.on){
+    gun.acc += dt;
+    while (params.fireMs>0 && gun.acc >= params.fireMs){ gun.acc -= params.fireMs; gun.cur = (gun.cur+1)%GUN_FRAMES; }
   }
 
   // --- Background: advance per the resolved step direction -----------------
@@ -374,10 +425,12 @@ function loop(now){
   } else {
     acc = 0;                                          // frozen: no carry-over
     // Never rest on a blurred frame — it's a motion-transition, not an angle.
-    // Settle onto the adjacent sharp frame in the direction we last rotated
-    // (one step always lands on a sharp, since blurs sit between sharps).
+    // Settle onto the nearest sharp frame in the direction we last rotated
+    // (guarded walk: doubled blurs occupy consecutive slots).
     const seq = sequence(); const n = seq.length;
-    if (n && seq[((cur%n)+n)%n].isBlur) cur = ((cur+lastDir)%n+n)%n;
+    cur = ((cur%n)+n)%n;
+    let g = 0;
+    while (n && seq[cur].isBlur && g++ < 4) cur = ((cur+lastDir)%n+n)%n;
   }
 
   draw();
