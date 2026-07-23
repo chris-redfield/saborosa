@@ -78,17 +78,17 @@ class TrayBackground {
     }
   }
 
-  // Scaled world height (px) when the tray fills width W — the camera's range.
-  worldHeight(W) { return W * (this.ih / this.iw); }
+  // World size = the frame's own (reduced) pixel size — larger than the canvas.
+  worldWidth()  { return this.iw; }
+  worldHeight() { return this.ih; }
 
-  // Fill the canvas WIDTH; the frame is taller than the viewport, so `camY`
-  // (px down from the image top) selects which vertical slice is shown. The
-  // shell pans camY with the plane, revealing the tray above/below.
-  render(ctx, W, H, camY, worldH) {
+  // Draw the frame 1:1 at (−camX, −camY): the canvas is a cropped window into
+  // it, and the shell pans camX/camY with the plane to reveal the rest of the tray.
+  render(ctx, camX, camY) {
     const seq = this._sequence(), n = seq.length;
     const img = this.assets.getDrawable(seq[((this.cur % n) + n) % n].key);
     if (!img) return;
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(img, 0, -camY, W, worldH);
+    ctx.drawImage(img, -camX, -camY);
   }
 }

@@ -50,16 +50,14 @@
       plane.update(dt, input);
 
       const W = canvas.width, H = canvas.height;
-      // The tray fills the canvas WIDTH (true aspect, no stretch) and is taller
-      // than the viewport. The camera pans that extra height with the plane's
-      // vertical position: near the bottom shows the lower tray, near the top
-      // shows the upper tray. The plane itself is untouched (canvas-space).
-      const worldH = bg.worldHeight(W);
-      const range = Math.max(0, worldH - H);
-      const camY = plane.y * range;
+      // The tray world is larger than the canvas; the camera shows a cropped
+      // window and pans it with the plane's position (both axes), clamped to
+      // the world edges. The plane itself is untouched (canvas-space).
+      const camX = plane.x * Math.max(0, bg.worldWidth()  - W);
+      const camY = plane.y * Math.max(0, bg.worldHeight() - H);
 
       ctx.clearRect(0, 0, W, H);
-      bg.render(ctx, W, H, camY, worldH);
+      bg.render(ctx, camX, camY);
       plane.render(ctx, W, H);
       hud.textContent = plane.characterName.toUpperCase();
     }

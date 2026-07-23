@@ -15,13 +15,16 @@ const CONFIG = {
   GAME_H: 720,           // CSS-scaled to the window with letterboxing
 
   // --- Background: the orbiting fruit tray --------------------------------
-  // The tray fills the canvas WIDTH; the frame is taller than 720 at that
-  // width, so the extra height is revealed vertically by the camera as the
-  // plane climbs/dives.
+  // The frame is drawn 1:1 at its (reduced) resolution — LARGER than the
+  // 1280×720 canvas — so the canvas shows a cropped WINDOW into it. The camera
+  // pans that window with the plane, in both axes, revealing the rest of the
+  // tray. FRAME_CAP is therefore both the texture resolution AND the world
+  // size: raise it to see a smaller/zoomed piece (more room to pan, more VRAM),
+  // lower it to see more of the tray at once (less VRAM).
   FRAMES: 16,            // camera angles
   FRAME_W: 3784,         // native frame size (all frames share it)
   FRAME_H: 3800,
-  FRAME_CAP: 1280,       // downscale longest side to this on load (VRAM/perf)
+  FRAME_CAP: 1600,       // downscale longest side to this on load = world size
   frameMs: 60,           // ms per sharp angle
   blurMs: 24,            // ms per blurred (-B) transition frame
   withBlur: true,        // interleave the -B frames
