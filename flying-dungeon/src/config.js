@@ -46,6 +46,31 @@ const CONFIG = {
   bobRel: 0.05,          // amplitude ÷ sprite height
   bobMin: 6,             // px floor
 
+  // --- Enemies ------------------------------------------------------------
+  // Enemies live in the tray's WORLD space (the same larger plane the camera
+  // pans), so they stay put in the dungeon while the player/camera moves — not
+  // glued to the screen. X WRAPS at the world width: reach the edge and circle
+  // back to the start, the same loop the tray makes around the basket.
+  FLY_SHEET: 'enemy-sheets/saborosa-mosca.png',
+  // Tight per-frame source rects [x, y, w, h]; the sheet is NOT evenly spaced.
+  // Frame 0 = live fly; 1-4 = its burst/death animation (wired up later).
+  FLY_RECTS: [
+    [20, 98, 168, 181],
+    [245, 92, 181, 192],
+    [447, 80, 188, 222],
+    [707, 84, 238, 225],
+    [1002, 54, 273, 263],
+  ],
+  flyScale: 0.13 * 0.5,  // fly height as a fraction of the canvas height (50% of prior)
+  flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
+  flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
+  flyRetargetMin: 0.25,  // s — shortest hold before it changes heading
+  flyRetargetMax: 0.90,  // s — longest hold
+  flyWobbleAmp: 6,       // px — fast micro-buzz on top of the wander
+  flyWobbleFreq: 13,     // rad/sec
+  flyMaxTilt: 15,        // deg — frame rotation at full vertical speed
+  flyTiltEase: 9,        // how fast the tilt eases toward the heading (1/sec)
+
   // --- Machine gun --------------------------------------------------------
   GUN_FRAMES: 6,
   fireMs: 70,            // ms per muzzle-flash frame while firing

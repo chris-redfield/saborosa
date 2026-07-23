@@ -32,11 +32,12 @@
   const input = new Input();
   const bg = new TrayBackground(assets, CONFIG);
   const plane = new Plane(assets, CONFIG);
+  const enemies = [];
 
-  // Loading progress across every asset the two subsystems pull in.
+  // Loading progress across every asset the subsystems pull in (+1 for the fly).
   const TOTAL = CONFIG.FRAMES * 2
     + CONFIG.CHARACTERS.length * CONFIG.CH_FRAMES
-    + CONFIG.GUN_FRAMES;
+    + CONFIG.GUN_FRAMES + 1;
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
 
@@ -48,6 +49,7 @@
       if (input.takeCycle()) plane.cycleCharacter();
       bg.update(dt, input);
       plane.update(dt, input);
+      for (const e of enemies) e.update(dt, bg.worldWidth(), bg.worldHeight());
 
       const W = canvas.width, H = canvas.height;
       // The tray world is larger than the canvas; the camera shows a cropped
@@ -58,6 +60,7 @@
 
       ctx.clearRect(0, 0, W, H);
       bg.render(ctx, camX, camY);
+      for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
       plane.render(ctx, W, H);
       hud.textContent = plane.characterName.toUpperCase();
     }
@@ -65,7 +68,14 @@
   }
   requestAnimationFrame(loop);
 
-  Promise.all([bg.load(tick), plane.load(tick)]).then(() => {
+  Promise.all([
+    bg.load(tick),
+    plane.load(tick),
+    assets.loadImage('fly', CONFIG.ASSET_BASE + CONFIG.FLY_SHEET).then(tick),
+  ]).then(() => {
+    // One fly for now, placed in WORLD space so the camera reveals it: near the
+    // right edge, at a height that's visible from the plane's start position.
+    enemies.push(new Fly(assets, CONFIG, bg.worldWidth() * 0.98, bg.worldHeight() * 0.72));
     ready = true;
     bar.style.display = 'none';
   });
