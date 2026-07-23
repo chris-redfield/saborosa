@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Fruit Tray Dungeon Preview</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:10px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); }
+  button { padding:5px 10px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  #main { display:flex; height:calc(100% - 43px); }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c1020; }
+  #stage.check { background-image:linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+                            linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+                 background-size:32px 32px; background-position:0 0,16px 16px; }
+  #stage.black { background:#000; }
+  #stage.white { background:#d8d8d8; }
+  canvas { display:block; position:absolute; inset:0; }
+  #side { width:340px; background:var(--panel); border-left:1px solid #0c1226;
+          display:flex; flex-direction:column; overflow-y:auto; }
+  #side .group { padding:8px 12px; border-bottom:1px solid #0c1226; }
+  #side h3 { margin:4px 0 8px; color:var(--accent); font-size:12px; letter-spacing:.5px; }
+  label.s { display:flex; justify-content:space-between; margin:7px 0 1px; color:#9ab; font-size:11px; }
+  label.s span { color:#cfe; }
+  input[type=range] { width:100%; }
+  label.cb { display:flex; align-items:center; gap:6px; margin:8px 0; color:#cfe; cursor:pointer; }
+  .row { display:flex; gap:6px; margin:6px 0; flex-wrap:wrap; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #readout { white-space:pre; color:#8fce8f; font-size:11px; }
+  #status { margin-left:auto; color:#8fce8f; }
+  #loadbar { position:absolute; left:0; top:0; height:3px; width:0; background:var(--accent); transition:width .1s; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>TRAY DUNGEON</b>
+  <span class="hint">Space play/pause · ← → step frames · 16 angles of the fruit tray</span>
+  <span id="status"></span>
+</div>
+<div id="main">
+  <div id="stage" class="check"><div id="loadbar"></div><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+const DIR = '../assets-v2/flying-dungeon/';
+const N = 16;                                     // 16 camera angles
+const pad = n => String(n).padStart(2,'0');
+const sharpSrc = i => `${DIR}saborosa-fundo-natureza-frame-${pad(i)}.webp`;
+const blurSrc  = i => `${DIR}saborosa-fundo-natureza-frame-${pad(i)}-B.webp`;
+
+const params = {
+  frameMs: 170,      // ms per sharp (angle) frame
+  blurMs: 95,        // ms per blurred (-B) frame — usually a quicker flash
+  scale: 0.90,       // × the contain-fit size
+  withBlur: true,    // interleave the -B blurred variants
+  reverse: true,     // play the sequence backwards
+  playing: true,
+  bg: 'black',       // 'check' | 'black' | 'white'
+  // --- Juixy (the lemon-citrus, aka "laranja") overlay -------------------
+  // Juixy has no animation cycle (walk == idle); he's a single directional
+  // sprite you walk around the scene with the keyboard, like in-game.
+  showJu: true,      // draw Juixy on top of the tray background
+  juScale: 0.07,     // Juixy height as a fraction of the stage height
+};
+
+// Juixy's game sheet is a 9-col × 5-row grid (frame idx = row*9 + col).
+// Rows map to facings; the right-side facings are the left rows mirrored.
+// Col 0 is the resting/idle pose — the one we draw for every facing.
+const JU_SHEET = '../assets/saborosa-elementos-laranja-game.png';
+const JU_DEFS  = '../assets/saborosa-elementos-laranja-sprites.json';
+const JU_ROWS = {                                  // dir -> {row, flip}
+  down:       { row:0, flip:false },
+  down_left:  { row:1, flip:false }, down_right: { row:1, flip:true },
+  left:       { row:2, flip:false }, right:      { row:2, flip:true },
+  up_left:    { row:3, flip:false }, up_right:   { row:3, flip:true },
+  up:         { row:4, flip:false },
+};
+// Juixy movement / keyboard state. He starts near bottom-centre and walks with
+// the arrow keys or WASD (position in stage-fraction). `engaged` flips true the
+// moment the user first touches a movement key — before that the background
+// just free-runs its default loop.
+const ju = { img:null, frames:[], cols:9, x:0.49, y:0.90, dir:'down', engaged:false, speed:0.30 };
+const held = { left:false, right:false, up:false, down:false };
+
+const SLIDERS = [
+  ['frameMs','frame time (ms)',16,600,1],
+  ['blurMs','blur frame time (ms)',4,600,1],
+  ['scale','draw scale',0.1,3,0.01],
+  ['juScale','juixy size (× stage h)',0.02,0.5,0.005],
+];
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+const loadbar = document.getElementById('loadbar');
+
+const sharp = new Array(N).fill(null);            // Image | null
+const blur  = new Array(N).fill(null);
+let iw = 3784, ih = 3800;                          // native frame size
+let cur = 0;                                       // index into current sequence
+let acc = 0, last = 0;
+let playBtn = null;
+
+function loadImg(src, onProgress){
+  return new Promise(res=>{ const i=new Image(); i.onload=()=>{ onProgress&&onProgress(); res(i); }; i.onerror=()=>{ onProgress&&onProgress(); res(null); }; i.src=src; });
+}
+function status(s){ document.getElementById('status').textContent = s; }
+
+// The playback sequence: always built in forward order 1,(1-B),2,(2-B),…,16.
+// Playback DIRECTION is a ±1 step sign (see bgStep), so regular vs reverse is
+// just which way we walk this array — that lets the keyboard flip it live.
+// isBlur lets each blurred frame hold for its own (usually shorter) duration.
+function sequence(){
+  const seq = [];
+  for (let i=0;i<N;i++){
+    seq.push({ img: sharp[i], isBlur:false });
+    if (params.withBlur) seq.push({ img: blur[i], isBlur:true });
+  }
+  return seq;
+}
+function frameDur(entry){ return entry && entry.isBlur ? params.blurMs : params.frameMs; }
+
+// Resolve how the background should advance THIS frame:
+//   { step: -1|0|+1, ... }  where +1 = regular order, -1 = reverse order.
+// Before the keyboard is touched, it free-runs in the default order (params
+// .reverse). Once engaged, movement drives it: walking right → reverse order,
+// walking left → regular order, standing still → frozen.
+function bgStep(){
+  if (!ju.engaged) return params.reverse ? -1 : +1;   // default loop
+  if (held.right && !held.left) return -1;            // right → reverse
+  if (held.left && !held.right) return +1;            // left  → regular
+  return 0;                                           // idle → hold frame
+}
+
+async function boot(){
+  resize();
+  // Load sharp frames first (they carry the size), then blur variants.
+  const total = N*2;
+  let done = 0;
+  const tick = ()=>{ done++; loadbar.style.width = (done/total*100)+'%'; status(`loading ${done}/${total}`); };
+  // Kick them all off but keep them in their slots.
+  const jobs = [];
+  for (let i=0;i<N;i++) jobs.push(loadImg(sharpSrc(i+1), tick).then(im=>{ sharp[i]=im; if(im){ iw=im.width; ih=im.height; } }));
+  for (let i=0;i<N;i++) jobs.push(loadImg(blurSrc(i+1),  tick).then(im=>{ blur[i]=im; }));
+  // Juixy sheet + frame defs (best-effort — needs a local server for the fetch).
+  jobs.push(loadImg(JU_SHEET).then(im=>{ ju.img=im; }));
+  jobs.push(fetch(JU_DEFS,{cache:'no-cache'}).then(r=>r.json())
+    .then(d=>{ ju.frames=d.frames||[]; ju.cols=d.cols||9; })
+    .catch(()=>{ status('Juixy defs failed — serve from repo root'); }));
+  buildPanel();
+  last = performance.now();
+  requestAnimationFrame(loop);
+  await Promise.all(jobs);
+  loadbar.style.width = '0';
+  status(`${N} frames ready`);
+}
+
+function resize(){ cv.width = stage.clientWidth; cv.height = stage.clientHeight; }
+window.addEventListener('resize', resize);
+
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const seq = sequence();
+  if (!seq.length){ updateReadout(seq.length); return; }
+  cur = ((cur % seq.length) + seq.length) % seq.length;
+  const img = seq[cur].img;
+  updateReadout(seq.length);
+  if (!img) return;                                // frame still loading
+  // Contain-fit the native frame into the stage, then apply the scale knob.
+  const fit = Math.min(cv.width/iw, cv.height/ih);
+  const s = fit * params.scale;
+  const dw = iw*s, dh = ih*s;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(img, (cv.width-dw)/2, (cv.height-dh)/2, dw, dh);
+  drawJuixy();
+}
+
+// Juixy overlay: the idle (col 0) frame for his current facing, scaled to a
+// fraction of the stage height, feet anchored at his walk position (ju.x,ju.y).
+function drawJuixy(){
+  if (!params.showJu || !ju.img || !ju.frames.length) return;
+  const { row, flip } = JU_ROWS[ju.dir] || JU_ROWS.down;
+  const f = ju.frames[row*ju.cols + 0];
+  if (!f) return;
+  const s = (cv.height * params.juScale) / f.h;    // height-driven scale
+  const dw = f.w*s, dh = f.h*s;
+  const fx = ju.x * cv.width, fy = ju.y * cv.height;
+  ctx.save();
+  ctx.translate(fx, fy);                            // anchor = feet (bottom-center)
+  if (flip) ctx.scale(-1,1);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(ju.img, f.x, f.y, f.w, f.h, -dw/2, -dh, dw, dh);
+  ctx.restore();
+}
+
+// --- side panel -------------------------------------------------------------
+function buildPanel(){
+  const side = document.getElementById('side'); side.innerHTML = '';
+
+  const g1 = group(side, 'Sequence');
+  addCheckbox(g1,'withBlur','include blurred (-B) frames', ()=>{ cur=0; syncBlurRow(); });
+  addCheckbox(g1,'reverse','play in reverse order', ()=>{ cur=0; });
+
+  const g2 = group(side, 'Playback');
+  playBtn = document.createElement('button'); playBtn.textContent = params.playing?'⏸ pause':'▶ play';
+  playBtn.className = params.playing?'on':'';
+  playBtn.onclick = togglePlay;
+  const stepRow = document.createElement('div'); stepRow.className='row';
+  const prev=document.createElement('button'); prev.textContent='◀ prev'; prev.onclick=()=>step(-1);
+  const next=document.createElement('button'); next.textContent='next ▶'; next.onclick=()=>step(1);
+  stepRow.appendChild(prev); stepRow.appendChild(next);
+  g2.appendChild(playBtn); g2.appendChild(stepRow);
+  addSlider(g2,'frameMs'); addSlider(g2,'blurMs'); addSlider(g2,'scale');
+  syncBlurRow();
+  const bgRow = document.createElement('div'); bgRow.className='row';
+  ['check','black','white'].forEach(b=>{
+    const btn=document.createElement('button'); btn.textContent=b; btn.dataset.bg=b;
+    btn.className = params.bg===b?'on':'';
+    btn.onclick=()=>{ params.bg=b; stage.className=b; [...bgRow.children].forEach(x=>x.className=x.dataset.bg===b?'on':''); };
+    bgRow.appendChild(btn);
+  });
+  g2.appendChild(bgRow);
+  stage.className = params.bg;
+
+  const g3 = group(side, 'Juixy');
+  addCheckbox(g3,'showJu','show Juixy overlay');
+  addSlider(g3,'juScale');
+  const jhint = document.createElement('div'); jhint.className='hint';
+  jhint.textContent = 'Move with arrows / WASD. Walk right → reverse order · walk left → regular order.';
+  g3.appendChild(jhint);
+
+  const g4 = group(side, 'Readout');
+  const ro = document.createElement('div'); ro.id='readout'; g4.appendChild(ro);
+}
+function group(host, title){
+  const d=document.createElement('div'); d.className='group';
+  const h=document.createElement('h3'); h.textContent=title; d.appendChild(h);
+  host.appendChild(d); return d;
+}
+function syncBlurRow(){
+  const el = document.querySelector('[data-slider="blurMs"]');
+  if (el) el.style.display = params.withBlur ? '' : 'none';
+}
+function addSlider(host, key){
+  const [k,label,min,max,step] = SLIDERS.find(s=>s[0]===key);
+  const wrap = document.createElement('div'); wrap.dataset.slider = k;
+  const l=document.createElement('label'); l.className='s';
+  const name=document.createElement('span'); name.textContent=label;
+  const val=document.createElement('span'); val.textContent=fmt(params[k],step);
+  l.appendChild(name); l.appendChild(val);
+  const inp=document.createElement('input'); inp.type='range';
+  inp.min=min; inp.max=max; inp.step=step; inp.value=params[k];
+  inp.oninput = e=>{ params[k]=parseFloat(e.target.value); val.textContent=fmt(params[k],step); };
+  wrap.appendChild(l); wrap.appendChild(inp); host.appendChild(wrap);
+}
+function fmt(v,step){ return step<1 ? (+v).toFixed(2) : (+v).toFixed(0); }
+function addCheckbox(host, key, label, after){
+  const l=document.createElement('label'); l.className='cb';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=!!params[key];
+  c.onchange=e=>{ params[key]=e.target.checked; after&&after(); };
+  l.appendChild(c); l.appendChild(document.createTextNode(label));
+  host.appendChild(l);
+}
+function updateReadout(seqLen){
+  const ro=document.getElementById('readout'); if (!ro) return;
+  const fps = params.frameMs>0 ? (1000/params.frameMs) : 0;
+  const s = bgStep();
+  const order = s>0 ? 'regular' : s<0 ? 'reverse' : 'frozen';
+  const control = ju.engaged ? 'keyboard' : 'default';
+  const mode  = params.withBlur ? '1,1-B,…,16,16-B' : '1,…,16';
+  // Loop length = 16 sharp holds (+ 16 blur holds when enabled).
+  const loopMs = N*params.frameMs + (params.withBlur ? N*params.blurMs : 0);
+  ro.textContent =
+    `sequence  ${mode}\n`+
+    `control   ${control}\n`+
+    `order     ${order}\n`+
+    `frames    ${seqLen} in loop\n`+
+    `current   ${cur+1}/${seqLen}\n`+
+    `juixy     ${ju.dir}  (${ju.x.toFixed(2)},${ju.y.toFixed(2)})\n`+
+    `sharp ms  ${params.frameMs|0}   (${fps.toFixed(1)} fps)\n`+
+    (params.withBlur ? `blur ms   ${params.blurMs|0}\n` : '')+
+    `loop      ${loopMs|0} ms\n`+
+    `scale     ${params.scale.toFixed(2)}\n`+
+    `state     ${params.playing?'playing':'paused'}`;
+}
+
+// --- controls ---------------------------------------------------------------
+function togglePlay(){ params.playing=!params.playing; if (playBtn){ playBtn.textContent=params.playing?'⏸ pause':'▶ play'; playBtn.className=params.playing?'on':''; } }
+function step(d){ const n=sequence().length; if (!n) return; params.playing=false; if (playBtn){ playBtn.textContent='▶ play'; playBtn.className=''; } cur=((cur+d)%n+n)%n; }
+
+// Movement keys: arrows + WASD. The first one pressed "engages" keyboard mode,
+// handing background playback over to Juixy's walk direction.
+const MOVE_KEYS = {
+  ArrowLeft:'left', KeyA:'left', ArrowRight:'right', KeyD:'right',
+  ArrowUp:'up', KeyW:'up', ArrowDown:'down', KeyS:'down',
+};
+window.addEventListener('keydown', e=>{
+  const m = MOVE_KEYS[e.code];
+  if (m){ e.preventDefault(); held[m]=true; ju.engaged=true; return; }
+  if (e.code==='Space'){ e.preventDefault(); togglePlay(); }
+});
+window.addEventListener('keyup', e=>{
+  const m = MOVE_KEYS[e.code];
+  if (m){ e.preventDefault(); held[m]=false; }
+});
+
+// Derive Juixy's 8-way facing from the currently held keys (null if standing).
+function facingFromKeys(){
+  const dx = (held.right?1:0) - (held.left?1:0);
+  const dy = (held.down?1:0) - (held.up?1:0);
+  if (!dx && !dy) return null;
+  const v = dy>0 ? 'down' : dy<0 ? 'up' : '';
+  const h = dx>0 ? 'right' : dx<0 ? 'left' : '';
+  return v && h ? `${v}_${h}` : (v || h);
+}
+
+function loop(now){
+  const dt = now - last; last = now;
+
+  // --- Juixy walk (keeps his feet inside the stage) ------------------------
+  const face = facingFromKeys();
+  if (face){
+    ju.dir = face;
+    const dx = (held.right?1:0) - (held.left?1:0);
+    const dy = (held.down?1:0) - (held.up?1:0);
+    const norm = (dx&&dy) ? Math.SQRT1_2 : 1;         // no diagonal speed boost
+    const d = ju.speed * norm * (dt/1000);
+    ju.x = Math.min(1, Math.max(0, ju.x + dx*d));
+    ju.y = Math.min(1, Math.max(0, ju.y + dy*d));
+  }
+
+  // --- Background: advance per the resolved step direction -----------------
+  const dir = bgStep();                               // -1 | 0 | +1
+  if (params.playing && dir !== 0){
+    acc += dt;
+    const seq = sequence(); const n = seq.length;
+    let dur = frameDur(seq[((cur%n)+n)%n]);
+    let guard = 0;
+    while (n>0 && dur>0 && acc >= dur && guard++ < 256){
+      acc -= dur; cur = ((cur+dir)%n+n)%n; dur = frameDur(seq[cur]);
+    }
+  } else {
+    acc = 0;                                          // frozen: no carry-over
+  }
+
+  draw();
+  requestAnimationFrame(loop);
+}
+
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+# Full-resolution source PNGs for the flying-dungeon tray frames.
+# Only the compressed .webp frames are committed; these originals are huge
+# (~300MB) and kept locally / regenerated via cwebp.
+assets-v2/flying-dungeon/originals/
