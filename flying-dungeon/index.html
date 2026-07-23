@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saborosa — Flying Dungeon</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #game { display: block; position: absolute; top: 50%; left: 50%;
+          transform: translate(-50%, -50%); background: #000; }
+  #bar  { position: absolute; left: 0; top: 0; height: 4px; width: 0;
+          background: #f2d94c; transition: width .1s; z-index: 2; }
+  #hud  { position: absolute; left: 14px; top: 12px; z-index: 2;
+          color: #fff; font: 15px/1.2 monospace; letter-spacing: 2px;
+          text-shadow: 0 1px 3px #000; }
+  #help { position: absolute; left: 14px; bottom: 12px; z-index: 2;
+          color: #cfe; opacity: .7; font: 12px/1.4 monospace;
+          text-shadow: 0 1px 3px #000; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="bar"></div>
+  <div id="hud"></div>
+  <div id="help">arrows / WASD to fly &middot; hold SPACE to fire &middot; 1 to switch pilot</div>
+
+  <!-- Load order matters (plain globals, like the main Saborosa game). -->
+  <script src="src/config.js"></script>
+  <script src="src/assets.js"></script>
+  <script src="src/input.js"></script>
+  <script src="src/tray-background.js"></script>
+  <script src="src/plane.js"></script>
+  <script src="src/game.js"></script>
+</body>
+</html>
