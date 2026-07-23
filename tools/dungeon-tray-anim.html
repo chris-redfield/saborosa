@@ -104,6 +104,7 @@ const sharp = new Array(N).fill(null);            // Image | null
 const blur  = new Array(N).fill(null);
 let iw = 3784, ih = 3800;                          // native frame size
 let cur = 0;                                       // index into current sequence
+let lastDir = 1;                                   // last non-zero rotation step
 let acc = 0, last = 0;
 let playBtn = null;
 
@@ -348,21 +349,21 @@ function facingFromKeys(){
 function loop(now){
   const dt = now - last; last = now;
 
-  // --- Juixy walk (keeps his feet inside the stage) ------------------------
+  // --- Juixy walk ----------------------------------------------------------
+  // He faces his true 8-way movement direction (correct sprite), but his SCREEN
+  // position only moves vertically: up/down slide his Y, while left/right leave
+  // his X pinned — that horizontal input only drives the background (bgStep).
   const face = facingFromKeys();
   if (face){
     ju.dir = face;
-    const dx = (held.right?1:0) - (held.left?1:0);
     const dy = (held.down?1:0) - (held.up?1:0);
-    const norm = (dx&&dy) ? Math.SQRT1_2 : 1;         // no diagonal speed boost
-    const d = ju.speed * norm * (dt/1000);
-    ju.x = Math.min(1, Math.max(0, ju.x + dx*d));
-    ju.y = Math.min(1, Math.max(0, ju.y + dy*d));
+    if (dy) ju.y = Math.min(1, Math.max(0, ju.y + dy * ju.speed * (dt/1000)));
   }
 
   // --- Background: advance per the resolved step direction -----------------
   const dir = bgStep();                               // -1 | 0 | +1
   if (params.playing && dir !== 0){
+    lastDir = dir;
     acc += dt;
     const seq = sequence(); const n = seq.length;
     let dur = frameDur(seq[((cur%n)+n)%n]);
@@ -372,6 +373,11 @@ function loop(now){
     }
   } else {
     acc = 0;                                          // frozen: no carry-over
+    // Never rest on a blurred frame — it's a motion-transition, not an angle.
+    // Settle onto the adjacent sharp frame in the direction we last rotated
+    // (one step always lands on a sharp, since blurs sit between sharps).
+    const seq = sequence(); const n = seq.length;
+    if (n && seq[((cur%n)+n)%n].isBlur) cur = ((cur+lastDir)%n+n)%n;
   }
 
   draw();
