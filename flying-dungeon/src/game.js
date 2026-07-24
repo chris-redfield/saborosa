@@ -28,6 +28,18 @@
   window.addEventListener('resize', fit);
   fit();
 
+  // Live toggle: ballistic (inherits the fly's velocity) vs straight-down drop.
+  // blur() after changing so SPACE keeps firing the gun instead of re-toggling
+  // the focused checkbox.
+  const ballisticEl = document.getElementById('ballistic');
+  if (ballisticEl) {
+    ballisticEl.checked = CONFIG.corpseBallistic;
+    ballisticEl.addEventListener('change', () => {
+      CONFIG.corpseBallistic = ballisticEl.checked;
+      ballisticEl.blur();
+    });
+  }
+
   const assets = new Assets();
   const input = new Input();
   const bg = new TrayBackground(assets, CONFIG);

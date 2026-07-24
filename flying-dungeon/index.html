@@ -16,6 +16,10 @@
   #help { position: absolute; left: 14px; bottom: 12px; z-index: 2;
           color: #cfe; opacity: .7; font: 12px/1.4 monospace;
           text-shadow: 0 1px 3px #000; }
+  #controls { position: absolute; right: 14px; bottom: 12px; z-index: 3;
+              background: rgba(0,0,0,.5); padding: 7px 11px; border-radius: 4px;
+              color: #cfe; font: 12px/1.4 monospace; }
+  #controls label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -23,6 +27,9 @@
   <div id="bar"></div>
   <div id="hud"></div>
   <div id="help">arrows / WASD to fly &middot; hold SPACE to fire &middot; 1 to switch pilot &middot; hold C for hitboxes</div>
+  <div id="controls">
+    <label><input type="checkbox" id="ballistic" checked> ballistic corpse (arc)</label>
+  </div>
 
   <!-- Load order matters (plain globals, like the main Saborosa game). -->
   <script src="src/config.js"></script>

@@ -65,6 +65,10 @@ const CONFIG = {
   FLY_DEAD_SHEET: 'enemy-sheets/saborosa-mosca dead.png',
   FLY_DEAD_RECT: [547, 102, 189, 178],
   flyGravity: 900,       // px/sec² — how fast the corpse accelerates downward
+  // true  = corpse inherits the fly's velocity → parabolic arc
+  // false = corpse just drops straight down (the original behaviour)
+  // Live-toggled by the checkbox under the canvas.
+  corpseBallistic: true,
   // How long BEFORE the burst ends the corpse drops in, so the two overlap.
   // Clamped to the moment of the hit (the burst itself is only ~280ms), so
   // anything >= that makes the body fall the instant the fly is shot.

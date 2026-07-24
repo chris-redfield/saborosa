@@ -31,8 +31,9 @@ class Fly {
     this.frame = 0;           // index into FLY_RECTS (0 = live, 1-4 = burst)
     this.deathT = 0;          // ms since the hit
     this.corpseActive = false;
-    this.corpseY = 0;
-    this.corpseVy = 0;
+    this.corpseX = 0; this.corpseY = 0;
+    this.corpseVx = 0; this.corpseVy = 0;
+    this.deathVx = 0; this.deathVy = 0;   // velocity captured at the moment of the hit
   }
 
   isAlive() { return this.state === 'alive'; }
@@ -45,6 +46,9 @@ class Fly {
     this.frame = 1;
     this.deathT = 0;
     this.corpseActive = false;
+    // Remember how it was flying so the body carries that momentum into its arc.
+    this.deathVx = this.vx;
+    this.deathVy = this.vy;
   }
 
   update(dt, worldW, worldH) {
@@ -62,12 +66,19 @@ class Fly {
       const corpseStart = Math.max(0, burstTotal - c.flyCorpseLead);
       if (!this.corpseActive && this.deathT >= corpseStart) {
         this.corpseActive = true;
-        this.corpseY = this.y;
-        this.corpseVy = 0;
+        this.corpseX = this.x; this.corpseY = this.y;
+        // Ballistic: inherit the fly's heading so gravity bends it into an arc.
+        // Otherwise start from rest and just drop straight down.
+        this.corpseVx = c.corpseBallistic ? this.deathVx : 0;
+        this.corpseVy = c.corpseBallistic ? this.deathVy : 0;
       }
       if (this.corpseActive) {
+        // Ballistic arc: constant horizontal velocity + gravity on the vertical.
+        // Four adds and two multiplies — no allocation, no trig.
         this.corpseVy += c.flyGravity * s;
+        this.corpseX += this.corpseVx * s;
         this.corpseY += this.corpseVy * s;
+        if (worldW > 0) this.corpseX = ((this.corpseX % worldW) + worldW) % worldW;
         if (worldH > 0 && this.corpseY > worldH + 120) this.state = 'dead';
       }
       return;
@@ -130,10 +141,11 @@ class Fly {
     const c = this.cfg, s = this._scale();
     ctx.imageSmoothingEnabled = true;
 
-    // Draw one sprite across all three wrap copies (off-screen ones are no-ops).
-    const blit = (img, r, sy, angle) => {
+    // Draw one sprite at world x `wxWorld`, across all three wrap copies
+    // (off-screen ones are no-ops).
+    const blit = (img, r, wxWorld, sy, angle) => {
       const dw = r[2] * s, dh = r[3] * s;
-      for (const wx of [this.x - worldW, this.x, this.x + worldW]) {
+      for (const wx of [wxWorld - worldW, wxWorld, wxWorld + worldW]) {
         ctx.save();
         ctx.translate(wx - camX, sy);
         if (angle) ctx.rotate(angle);
@@ -144,18 +156,19 @@ class Fly {
 
     if (this.state === 'alive') {
       const img = this.assets.getDrawable('fly');
-      if (img) blit(img, c.FLY_RECTS[0], this._screenY(camY), this.angle);
+      if (img) blit(img, c.FLY_RECTS[0], this.x, this._screenY(camY), this.angle);
       return;
     }
 
-    // Dying: the burst and the falling corpse can be on screen at the same time.
+    // Dying: the burst and the arcing corpse can be on screen at the same time.
     const sheet = this.assets.getDrawable('fly');
     if (sheet && this.frame < c.FLY_RECTS.length) {
-      blit(sheet, c.FLY_RECTS[this.frame], this._screenY(camY), this.angle);
+      blit(sheet, c.FLY_RECTS[this.frame], this.x, this._screenY(camY), this.angle);
     }
     const dead = this.assets.getDrawable('flyDead');
     if (dead && this.corpseActive) {
-      blit(dead, c.FLY_DEAD_RECT, this.corpseY - camY, 0);  // corpse: no buzz, no bank
+      // Corpse follows its own arc: no buzz, no bank.
+      blit(dead, c.FLY_DEAD_RECT, this.corpseX, this.corpseY - camY, 0);
     }
   }
 }
