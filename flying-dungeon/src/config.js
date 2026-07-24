@@ -26,6 +26,14 @@ const CONFIG = {
   FRAME_H: 3800,
   FRAME_CAP: 2000,       // downscale longest side to this on load = world size
                          // (world ~1992×2000; canvas covers ~64%W/36%H; ~510MB VRAM)
+  // Camera clamp: the frames have a blank studio margin around the tray (~11%
+  // left, ~12% right; almost none top/bottom). These fractions of the world are
+  // fenced off so the camera never pans into that white — measured across all
+  // frames, plus a small safety buffer.
+  camInsetLeft: 0.12,
+  camInsetRight: 0.13,
+  camInsetTop: 0.02,
+  camInsetBottom: 0.0,
   frameMs: 60,           // ms per sharp angle
   blurMs: 24,            // ms per blurred (-B) transition frame
   withBlur: true,        // interleave the -B frames

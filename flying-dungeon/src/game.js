@@ -106,10 +106,16 @@
 
       const W = canvas.width, H = canvas.height;
       // The tray world is larger than the canvas; the camera shows a cropped
-      // window and pans it with the plane's position (both axes), clamped to
-      // the world edges. The plane itself is untouched (canvas-space).
-      const camX = plane.displayX() * Math.max(0, bg.worldWidth()  - W);
-      const camY = plane.displayY() * Math.max(0, bg.worldHeight() - H);
+      // window and pans it with the plane's position (both axes). The pan range
+      // is fenced off the blank studio margins (camInset*) so the white edges
+      // never come into view. The plane itself is untouched (canvas-space).
+      const worldW = bg.worldWidth(), worldH = bg.worldHeight();
+      const minX = CONFIG.camInsetLeft * worldW;
+      const maxX = worldW * (1 - CONFIG.camInsetRight) - W;
+      const minY = CONFIG.camInsetTop * worldH;
+      const maxY = worldH * (1 - CONFIG.camInsetBottom) - H;
+      const camX = minX + plane.displayX() * Math.max(0, maxX - minX);
+      const camY = minY + plane.displayY() * Math.max(0, maxY - minY);
 
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
