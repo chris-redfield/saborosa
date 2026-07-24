@@ -24,8 +24,8 @@ const CONFIG = {
   FRAMES: 16,            // camera angles
   FRAME_W: 3784,         // native frame size (all frames share it)
   FRAME_H: 3800,
-  FRAME_CAP: 2000,       // downscale longest side to this on load = world size
-                         // (world ~1992×2000; canvas covers ~64%W/36%H; ~510MB VRAM)
+  FRAME_CAP: 2400,       // downscale longest side to this on load = world size
+                         // (world ~2389×2400; canvas covers ~54%W/30%H; ~730MB VRAM)
   // Camera clamp: the frames have a blank studio margin around the tray (~11%
   // left, ~12% right; almost none top/bottom). These fractions of the world are
   // fenced off so the camera never pans into that white — measured across all
@@ -44,7 +44,7 @@ const CONFIG = {
   CHARACTERS: ['lemon', 'tomato', 'eggplant'],
   CH_FRAMES: 6,          // pitch poses per character
   CH_REST: 3,            // level pose (0-based frame 4)
-  planeScale: 0.32 * 0.6, // plane height as a fraction of the stage height (60% of prior)
+  planeScale: 0.32 * 0.6 * 1.6, // plane height as a fraction of the stage height (60% of prior, then +60%)
   tiltMs: 110,           // ms per pitch-pose step
   moveSpeed: 0.30,       // vertical speed, stage-fraction / sec
   startX: 0.49,          // pinned horizontal position
@@ -109,7 +109,7 @@ const CONFIG = {
   // anything >= that makes the body fall the instant the fly is shot.
   flyCorpseLead: 500,    // ms
   flyCount: 15,          // how many spawn (killed for good — no respawn, for testing)
-  flyScale: 0.13 * 0.5,  // fly height as a fraction of the canvas height (50% of prior)
+  flyScale: 0.13 * 0.5 * 1.4, // fly height as a fraction of the canvas height (50% of prior, then +40%)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
   flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
   flyRetargetMin: 0.25,  // s — shortest hold before it changes heading
@@ -124,7 +124,10 @@ const CONFIG = {
   // collision box the line crosses is hit and plays its burst animation.
   // Hold C to visualise the boxes (and the line, while firing).
   rayThickness: 2,       // px — thickness of the shot line
-  rayOffsetY: 9,         // px — nudge the shot line down from the muzzle
+  // px at gunOffRefScale; muzzle() scales it by planeScale/gunOffRefScale (same
+  // as the flash offsets) so the shot line tracks the plane through any resize.
+  // 15 here ≈ the hand-tuned 9px at the pre-resize scale.
+  rayOffsetY: 15,
   flyHitScale: 0.8,      // fly collision box vs its drawn size
   flyBurstMs: 70,        // ms per burst (death) frame
 

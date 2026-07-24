@@ -124,7 +124,7 @@ class Plane {
     const c = this.cfg;
     const k = c.planeScale / c.gunOffRefScale;
     const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
-    return { x: this.disp.x * W + m.dw / 2, y: this.disp.y * H + m.bob - offY + c.rayOffsetY };
+    return { x: this.disp.x * W + m.dw / 2, y: this.disp.y * H + m.bob - offY + c.rayOffsetY * k };
   }
 
   render(ctx, W, H) {
