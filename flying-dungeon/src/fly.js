@@ -10,8 +10,9 @@
  * style, entering from the right) but re-picking a new heading every fraction
  * of a second, banking into its vertical turns, with a fast micro-buzz on top.
  *
- * States: 'alive' → shot → 'burst' (plays sheet frames 1-4, the fly coming
- * apart) → 'dead', removed for good (no respawn).
+ * States: 'alive' → shot → 'dying' → 'dead', removed for good (no respawn).
+ * While 'dying' the sheet's frames 1-4 play the fly coming apart AND the dead
+ * body drops away under gravity — the two overlap, timed by flyCorpseLead.
  *
  * Dependencies injected (assets store + config). No DOM, no globals.
  */
@@ -26,38 +27,53 @@ class Fly {
     this.retarget = 0;        // countdown to the next heading change
     this.angle = 0;           // current frame tilt (rad), eases toward heading
     this.phase = Math.random() * Math.PI * 2;  // desync the buzz per fly
-    this.state = 'alive';     // 'alive' | 'burst' | 'dead'
+    this.state = 'alive';     // 'alive' | 'dying' | 'dead'
     this.frame = 0;           // index into FLY_RECTS (0 = live, 1-4 = burst)
-    this.burstT = 0;
+    this.deathT = 0;          // ms since the hit
+    this.corpseActive = false;
+    this.corpseY = 0;
+    this.corpseVy = 0;
   }
 
   isAlive() { return this.state === 'alive'; }
   isDead()  { return this.state === 'dead'; }
 
-  // A shot connected: play the burst frames from the sheet.
+  // A shot connected: play the burst frames and drop the corpse (they overlap).
   hit() {
     if (this.state !== 'alive') return;
-    this.state = 'burst';
+    this.state = 'dying';
     this.frame = 1;
-    this.burstT = 0;
+    this.deathT = 0;
+    this.corpseActive = false;
   }
 
   update(dt, worldW, worldH) {
     const c = this.cfg, s = dt / 1000;
     if (this.state === 'dead') return;
-    this.phase += s;
 
-    // Bursting: hold position and step through the death frames, then it's gone
-    // for good (no respawn — kill them all and the dungeon stays clear).
-    if (this.state === 'burst') {
-      this.burstT += dt;
-      while (this.burstT >= c.flyBurstMs) {
-        this.burstT -= c.flyBurstMs;
-        this.frame++;
-        if (this.frame >= c.FLY_RECTS.length) { this.state = 'dead'; return; }
+    // Dying: the disintegration frames play from the hit, and the corpse drops
+    // in `flyCorpseLead` ms before they finish — so the body is already falling
+    // while the fly comes apart. Gone once it clears the bottom of the world.
+    if (this.state === 'dying') {
+      this.deathT += dt;
+      this.frame = 1 + Math.floor(this.deathT / c.flyBurstMs);
+
+      const burstTotal = (c.FLY_RECTS.length - 1) * c.flyBurstMs;
+      const corpseStart = Math.max(0, burstTotal - c.flyCorpseLead);
+      if (!this.corpseActive && this.deathT >= corpseStart) {
+        this.corpseActive = true;
+        this.corpseY = this.y;
+        this.corpseVy = 0;
+      }
+      if (this.corpseActive) {
+        this.corpseVy += c.flyGravity * s;
+        this.corpseY += this.corpseVy * s;
+        if (worldH > 0 && this.corpseY > worldH + 120) this.state = 'dead';
       }
       return;
     }
+
+    this.phase += s;
 
     // Erratic fly steering: every so often pick a new heading. X stays leftward
     // (varied speed) so it never backtracks; Y darts up or down.
@@ -111,24 +127,35 @@ class Fly {
 
   render(ctx, camX, camY, worldW) {
     if (this.state === 'dead') return;
-    const img = this.assets.getDrawable('fly');
-    if (!img) return;
-    const c = this.cfg;
-    const r = c.FLY_RECTS[this.frame] || c.FLY_RECTS[0];
-    const s = this._scale();
-    const dw = r[2] * s, dh = r[3] * s;
-    const sy = this._screenY(camY);
-
+    const c = this.cfg, s = this._scale();
     ctx.imageSmoothingEnabled = true;
-    const draw = (wx) => {
-      ctx.save();
-      ctx.translate(wx - camX, sy);
-      ctx.rotate(this.angle);
-      ctx.drawImage(img, r[0], r[1], r[2], r[3], -dw / 2, -dh / 2, dw, dh);
-      ctx.restore();
+
+    // Draw one sprite across all three wrap copies (off-screen ones are no-ops).
+    const blit = (img, r, sy, angle) => {
+      const dw = r[2] * s, dh = r[3] * s;
+      for (const wx of [this.x - worldW, this.x, this.x + worldW]) {
+        ctx.save();
+        ctx.translate(wx - camX, sy);
+        if (angle) ctx.rotate(angle);
+        ctx.drawImage(img, r[0], r[1], r[2], r[3], -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
+      }
     };
-    draw(this.x - worldW);   // wrapped copies (off-screen ones are no-ops)
-    draw(this.x);
-    draw(this.x + worldW);
+
+    if (this.state === 'alive') {
+      const img = this.assets.getDrawable('fly');
+      if (img) blit(img, c.FLY_RECTS[0], this._screenY(camY), this.angle);
+      return;
+    }
+
+    // Dying: the burst and the falling corpse can be on screen at the same time.
+    const sheet = this.assets.getDrawable('fly');
+    if (sheet && this.frame < c.FLY_RECTS.length) {
+      blit(sheet, c.FLY_RECTS[this.frame], this._screenY(camY), this.angle);
+    }
+    const dead = this.assets.getDrawable('flyDead');
+    if (dead && this.corpseActive) {
+      blit(dead, c.FLY_DEAD_RECT, this.corpseY - camY, 0);  // corpse: no buzz, no bank
+    }
   }
 }

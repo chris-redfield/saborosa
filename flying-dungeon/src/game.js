@@ -37,7 +37,7 @@
   // Loading progress across every asset the subsystems pull in (+1 for the fly).
   const TOTAL = CONFIG.FRAMES * 2
     + CONFIG.CHARACTERS.length * CONFIG.CH_FRAMES
-    + CONFIG.GUN_FRAMES + 1;
+    + CONFIG.GUN_FRAMES + 2;   // +2: the fly sheet and the dead-fly sprite
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
 
@@ -108,7 +108,8 @@
         ctx.restore();
       }
 
-      hud.textContent = `${plane.characterName.toUpperCase()}   FLIES ${enemies.length}`;
+      const liveFlies = enemies.reduce((n, e) => n + (e.isAlive() ? 1 : 0), 0);
+      hud.textContent = `${plane.characterName.toUpperCase()}   FLIES ${liveFlies}`;
     }
     requestAnimationFrame(loop);
   }
@@ -118,6 +119,8 @@
     bg.load(tick),
     plane.load(tick),
     assets.loadImage('fly', CONFIG.ASSET_BASE + CONFIG.FLY_SHEET).then(tick),
+    // encodeURI: this filename contains a space.
+    assets.loadImage('flyDead', encodeURI(CONFIG.ASSET_BASE + CONFIG.FLY_DEAD_SHEET)).then(tick),
   ]).then(() => {
     // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
     // across the width is fair game). Killed flies are gone for good.

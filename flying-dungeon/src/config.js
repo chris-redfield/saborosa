@@ -61,6 +61,14 @@ const CONFIG = {
     [707, 84, 238, 225],
     [1002, 54, 273, 263],
   ],
+  // Dead fly (single sprite, on its back) — drops after the burst finishes.
+  FLY_DEAD_SHEET: 'enemy-sheets/saborosa-mosca dead.png',
+  FLY_DEAD_RECT: [547, 102, 189, 178],
+  flyGravity: 900,       // px/sec² — how fast the corpse accelerates downward
+  // How long BEFORE the burst ends the corpse drops in, so the two overlap.
+  // Clamped to the moment of the hit (the burst itself is only ~280ms), so
+  // anything >= that makes the body fall the instant the fly is shot.
+  flyCorpseLead: 500,    // ms
   flyCount: 15,          // how many spawn (killed for good — no respawn, for testing)
   flyScale: 0.13 * 0.5,  // fly height as a fraction of the canvas height (50% of prior)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
