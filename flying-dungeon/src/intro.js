@@ -6,90 +6,120 @@
  *   CUT  — the next panel appears IN FRONT of the current one, same position,
  *          camera still. This is most of them: the picture doesn't change, only
  *          what's printed over it (STILL LIFE, SELECT FRUIT, 3, 2, 1, GO!).
- *   ROLL — the camera rolls DOWN to the next panel, which sits one screen lower
- *          in the strip. This is the actual camera move, and only happens where
- *          the shot genuinely changes (panel 3->4, 6->7).
+ *   ROLL — the camera rolls DOWN to the next panel, which sits lower in the
+ *          strip. Only where the shot genuinely changes (boards 3->4, 6->7).
  *
- * So the panels don't stack 12-high: they stack by STATION. Every panel reached
- * by a cut shares its predecessor's station, giving three screens of strip —
- *   station 0: panels 0,1,2   station 1: panels 3,4,5   station 2: panels 6..11
- * — and the camera only ever moves down, never in X.
+ * The rolling boards OVERLAP — they're crops of one taller scene, so board 4's
+ * top 414px is board 3's bottom. The camera therefore drops by only the unshared
+ * part (introRollPx), not a whole screen, or that band plays twice and you see
+ * the join. Those offsets are measured by tools/intro-align.py.
  *
- * Which panels the camera rolls to is data: CONFIG.introRollBefore.
+ * Boards can be OMITTED (introOmit) without renumbering the art, so every index
+ * in config still means the board with that number on disk. `order` is the
+ * played sequence of raw board indices; `this.i` is a position within it.
  *
- * Dependencies are injected (assets store + config), same as Plane /
- * TrayBackground, so this drops into the main engine unchanged.
+ * One board can hand over to an interactive step (introSelectAt): the sequence
+ * parks there, the injected `select` object takes input, and the roll resumes
+ * with the player's pick recorded on `pickedCharacter`.
+ *
+ * Dependencies are injected (assets store, config, optional select), same as
+ * Plane / TrayBackground, so this drops into the main engine unchanged.
  */
 class Intro {
-  constructor(assets, cfg) {
+  constructor(assets, cfg, select) {
     this.assets = assets;
     this.cfg = cfg;
-    this.n = cfg.INTRO_FRAMES;
+    this.select = select || null;
 
-    // Panel -> its Y in the strip. A panel listed in introRollBefore opens a new
-    // station further down; every other panel cuts in over its predecessor.
-    //
-    // How far down is NOT a whole screen. The rolling boards overlap — they're
-    // crops of one taller scene — so the station drops by only the unshared
-    // part (introRollPx), which is what makes the join invisible. Panels with no
-    // measured offset fall back to a full screen.
+    // Played sequence of RAW board indices. Everything in config (introRollPx,
+    // introBeats, introSelectAt…) is keyed by raw index, so omitting a board
+    // never shifts what those numbers refer to.
+    const omit = new Set(cfg.introOmit || []);
+    this.order = [];
+    for (let i = 0; i < cfg.INTRO_FRAMES; i++) if (!omit.has(i)) this.order.push(i);
+    this.n = this.order.length;
+
     this._rollTo = new Set(cfg.introRollBefore || []);
+
+    // Position -> Y in the strip. A board reached by a roll opens a station
+    // further down; one reached by a cut shares its predecessor's.
     this.stationY = [];
     let y = 0;
-    for (let i = 0; i < this.n; i++) {
-      if (i > 0 && this._rollTo.has(i)) y += this._rollDist(i);
+    for (let k = 0; k < this.n; k++) {
+      if (k > 0 && this._isRoll(k)) y += this._rollDist(this.order[k]);
       this.stationY.push(y);
     }
 
-    this.i = 0;              // panel on screen
-    this.mode = 'hold';      // 'hold' → ('roll') → … → 'out'
+    this.i = 0;              // POSITION in `order`, not a raw board index
+    this.mode = 'hold';      // 'hold' → ('select') → ('roll') → … → 'out'
     this.t = 0;              // ms elapsed in the current mode
-    this.elapsed = 0;        // ms since the intro started (drives the fade-in + hint)
+    this.elapsed = 0;        // ms since the intro started (drives fade-in + hint)
     this.done = false;
     this.skipped = false;
+    this.pickedCharacter = null;
+  }
+
+  panel(k) { return this.order[k]; }             // position -> raw board index
+  _isRoll(k) { return k > 0 && this._rollTo.has(this.order[k]); }
+
+  // Is this position the one that hands over to the interactive step?
+  _isSelectAt(k) {
+    return !!this.select && this.cfg.introSelectAt === this.order[k];
   }
 
   async load(onProgress) {
     const c = this.cfg, jobs = [];
-    for (let i = 0; i < this.n; i++) {
+    for (const i of this.order) {              // omitted boards are never fetched
       const n = String(i + 1).padStart(2, '0');
       jobs.push(this.assets.loadImage('intro_' + i, `${c.ASSET_BASE}saborosa-intro-${n}.webp`)
         .then(() => { onProgress && onProgress(); }));
     }
+    if (this.select) jobs.push(this.select.load(onProgress));
     await Promise.all(jobs);
   }
 
-  // How far the camera drops to reach panel i (only meaningful if i is a roll).
+  // How far the camera drops to reach raw board i (only meaningful for a roll).
   _rollDist(i) {
     const px = this.cfg.introRollPx && this.cfg.introRollPx[i];
     return px !== undefined ? px : this.cfg.GAME_H;
   }
 
-  // Beat for a panel: the defaults, with any per-panel override applied (the
-  // 3-2-1-GO countdown runs snappier than the title cards). The roll time is
-  // scaled by DISTANCE off introRollMs (which is quoted for a full-height roll)
-  // so a short roll and a long one move at the same speed.
-  _beat(i) {
-    const c = this.cfg, o = (c.introBeats && c.introBeats[i]) || {};
+  // Beat for the board at position k: the defaults, with any per-board override.
+  // The roll time is scaled by DISTANCE off introRollMs (quoted for a full-height
+  // roll) so a short roll and a long one move at the same speed.
+  _beat(k) {
+    const c = this.cfg, o = (c.introBeats && c.introBeats[this.order[k]]) || {};
     let roll = c.introRollMs;
-    if (i < this.n - 1 && this._rollTo.has(i + 1))
-      roll = c.introRollMs * this._rollDist(i + 1) / c.GAME_H;
+    if (k < this.n - 1 && this._isRoll(k + 1))
+      roll = c.introRollMs * this._rollDist(this.order[k + 1]) / c.GAME_H;
     return {
       hold: o.hold !== undefined ? o.hold : c.introHoldMs,
       roll: o.roll !== undefined ? o.roll : roll,
     };
   }
 
-  // Cut the sequence short — the player pressed something. Fades out fast
-  // rather than snapping, so it never feels like a glitch.
+  // Cut the sequence short — the player pressed something. Ignored while the
+  // selection is up: there, keys are the player choosing a fruit, not skipping.
   skip() {
-    if (this.mode === 'out' || this.done) return;
+    if (this.mode === 'out' || this.mode === 'select' || this.done) return;
     this.skipped = true;
     this.mode = 'out';
     this.t = 0;
   }
 
-  update(dt) {
+  // True while the board is waiting on the player (the shell stops treating
+  // keypresses as "skip the intro").
+  get awaitingInput() { return this.mode === 'select'; }
+
+  // Leave the current board: roll to the next, cut to it, or end the sequence.
+  _advance() {
+    if (this.i >= this.n - 1) { this.mode = 'out'; this.t = 0; return; }
+    const b = this._beat(this.i);
+    if (this._isRoll(this.i + 1) && b.roll > 0) this.mode = 'roll';
+    else this.i++;                             // CUT: the next board is just there
+  }
+
+  update(dt, input) {
     if (this.done) return;
     this.elapsed += dt;
     this.t += dt;
@@ -98,9 +128,16 @@ class Intro {
       const b = this._beat(this.i);
       if (this.t >= b.hold) {
         this.t -= b.hold;
-        if (this.i >= this.n - 1) { this.mode = 'out'; this.t = 0; }
-        else if (this._rollTo.has(this.i + 1) && b.roll > 0) this.mode = 'roll';
-        else this.i++;                       // CUT: the next panel is just there
+        // This board opens the fruit select — park here until the player picks.
+        if (this._isSelectAt(this.i)) { this.mode = 'select'; this.t = 0; }
+        else this._advance();
+      }
+    } else if (this.mode === 'select') {
+      const picked = this.select.update(dt, input || {});
+      if (picked !== null && picked !== undefined) {
+        this.pickedCharacter = picked;
+        this.t = 0;
+        this._advance();
       }
     } else if (this.mode === 'roll') {
       const b = this._beat(this.i);
@@ -111,7 +148,7 @@ class Intro {
     }
   }
 
-  // Camera Y in strip space, in px. Parked on the current panel's station,
+  // Camera Y in strip space, in px. Parked on the current board's station,
   // except mid-roll where it travels to the next one's.
   _camY() {
     const from = this.stationY[this.i];
@@ -130,15 +167,19 @@ class Intro {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
 
-    // The current panel, plus the incoming one while the camera is rolling.
-    // Never the other panels sharing a station — those are the frames this one
+    // The current board, plus the incoming one while the camera is rolling.
+    // Never the other boards sharing a station — those are the frames this one
     // already replaced, and they sit at exactly the same Y.
     this._draw(ctx, this.i, camY, W, H);
     if (this.mode === 'roll' && this.i < this.n - 1) this._draw(ctx, this.i + 1, camY, W, H);
 
-    // Skip hint — fades in after a beat, fades out once it has been read.
+    // The select board opens in front of the panel that's already on screen.
+    if (this.mode === 'select') this.select.render(ctx, W, H);
+
+    // Skip hint — fades in after a beat, out once it has been read. Suppressed
+    // while the player is choosing, where "any key" means something else.
     const c = this.cfg;
-    if (!this.skipped && c.introHintText) {
+    if (!this.skipped && this.mode !== 'select' && c.introHintText) {
       const a = this._hintAlpha();
       if (a > 0) {
         ctx.save();
@@ -167,9 +208,9 @@ class Intro {
     }
   }
 
-  _draw(ctx, i, camY, W, H) {
-    const im = this.assets.getDrawable('intro_' + i);
-    if (im) ctx.drawImage(im, 0, Math.round(this.stationY[i] - camY), W, H);
+  _draw(ctx, k, camY, W, H) {
+    const im = this.assets.getDrawable('intro_' + this.order[k]);
+    if (im) ctx.drawImage(im, 0, Math.round(this.stationY[k] - camY), W, H);
   }
 
   _hintAlpha() {

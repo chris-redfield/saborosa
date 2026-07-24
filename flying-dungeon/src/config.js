@@ -24,6 +24,15 @@ const CONFIG = {
   // The camera rolls down only where the shot actually changes.
   INTRO_FRAMES: 12,
   intro: true,           // false = straight into the game
+  // Boards to leave out, by 0-based index — they're skipped, not renumbered, so
+  // every index below still means the board with that number on disk (and the
+  // file is never even fetched). Board 6 was a MOCK-UP of the fruit select
+  // (cards drawn onto the picture); the real interactive one now opens over
+  // board 5 instead, so 6 would just play it twice.
+  introOmit: [5],
+  // Board the sequence parks on to hand over to the player. It holds, the select
+  // window opens in front of it, and the roll resumes once a fruit is confirmed.
+  introSelectAt: 4,      // board 5, the "SELECT FRUIT" card
   // 0-based indices of the panels the camera ROLLS DOWN to. Everything else
   // cuts in place. Boards 3->4 and 6->7 are the two real camera moves (the
   // fruit rising into frame, then the push in on the basket).
@@ -56,6 +65,44 @@ const CONFIG = {
   introHintText: 'press any key to skip',
   introHintInMs: 1600,   // when the hint fades in
   introHintHoldMs: 3200, // how long it stays before fading out
+
+  // --- Fruit select (the interactive board inside the intro) --------------
+  // Same art and same trick as the main game's src/screens/select.js: a 3-frame
+  // idle loop that exists twice over, pixel-aligned — a GRAY line-art base and a
+  // COLOURED twin. Both loops always run (every fruit keeps moving); the chosen
+  // one lights up because the coloured twin of the SAME frame is drawn clipped
+  // to its panel. Art built by tools/build-select-frames.py.
+  //
+  // Rects are in the art's own 866x682 space and are the main game's tuned
+  // values (from tools/fruit-select-editor.html) — they hug the fruit frames,
+  // clear of the "SELECT FRUIT" title band. `character` indexes CHARACTERS.
+  SELECT_PANELS: [
+    { name: 'JUIXY', character: 0, rect: { x: 163, y: 147, w: 212, h: 400 } }, // lemon
+    { name: 'ERKPA', character: 2, rect: { x: 386, y: 147, w: 190, h: 400 } }, // eggplant
+    { name: 'TOM',   character: 1, rect: { x: 585, y: 147, w: 205, h: 400 } }, // tomato
+  ],
+  // Rows of art to cut off the TOP. The board carries its own "SELECT FRUIT"
+  // title, but the intro panel underneath already says it — so the title band
+  // (rows 62-142) is dropped and only the three fruit panels are drawn. 146 is
+  // the last empty row of the gutter above the panels in all six frames, so the
+  // cut takes no art with it.
+  selectCropTop: 146,
+  // Fraction of the screen the board fills. Measured against the FULL content
+  // box (title included), so this number keeps meaning what it did before the
+  // crop. 0.81 is the main game's value; × 0.6 shrinks the window to 60% of it.
+  selectFill: 0.81 * 0.6 * 0.85,
+  // Nudge off centre, in canvas px. The board is parked just clear of the "T"
+  // of FRUIT printed on the panel underneath: that T ends at x=744 (measured on
+  // saborosa-intro-05.webp), and at this scale the panels are 412px wide, so
+  // +326 puts their left edge at 760 and still leaves a 107px right margin.
+  selectOffsetX: 326,
+  selectOffsetY: 120,
+  selectFrameMs: 180,    // ms per idle frame (the "moving" effect)
+  selectEnterMs: 400,    // fade + scale-up as the window opens
+  selectConfirmMs: 550,  // total lock-in beat before the intro resumes
+  selectStampMs: 400,    // pop settle time on the chosen fruit
+  selectShakeMs: 180,    // board shake decay
+  selectShakeAmp: 9,     // px
 
   // --- Background: the orbiting fruit tray --------------------------------
   // The frame is drawn 1:1 at its (reduced) resolution — LARGER than the
@@ -121,7 +168,7 @@ const CONFIG = {
   filmBarDark: 0.78,     // how dark the gap gets (0-1)
   filmGrain: 0.11,       // grain opacity
   filmFlicker: 0.12,     // max brightness dip (black overlay alpha)
-  filmVignette: 0.55,    // corner darkening strength
+  filmVignette: 0.275,   // corner darkening strength (half the original 0.55)
   filmWeave: 1.4,        // px vertical gate jitter of the whole picture
   filmScratchChance: 0.04, // per-frame chance a vertical scratch flickers in
   // Optional CSS grade for the canvas (kept EMPTY = full colour). You could put

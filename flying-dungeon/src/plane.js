@@ -57,6 +57,11 @@ class Plane {
 
   get characterName() { return this.cfg.CHARACTERS[this.charIdx]; }
   cycleCharacter() { this.charIdx = (this.charIdx + 1) % this.cfg.CHARACTERS.length; }
+  // Set by the intro's fruit select; ignored if the index is out of range so a
+  // bad pick can never leave the plane with no sprite.
+  setCharacter(i) {
+    if (i >= 0 && i < this.cfg.CHARACTERS.length) this.charIdx = i;
+  }
 
   update(dt, input) {
     const c = this.cfg;

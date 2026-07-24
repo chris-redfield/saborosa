@@ -71,7 +71,8 @@
   const plane = new Plane(assets, CONFIG);
   const enemies = [];
   const film = new Film(CONFIG);
-  const intro = new Intro(assets, CONFIG);
+  const fruitSelect = new FruitSelect(assets, CONFIG);
+  const intro = new Intro(assets, CONFIG, fruitSelect);
 
   // The HUD / help / toggles belong to the game, not the title sequence.
   const chrome = ['hud', 'help', 'controls'].map(id => document.getElementById(id));
@@ -104,6 +105,8 @@
   // Skip the title sequence on any key or click. Bound only while it plays.
   function onSkip(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    // While the fruit select is up, keys are the player choosing — not skipping.
+    if (intro.awaitingInput) return;
     intro.skip();
   }
   function bindSkip(on) {
@@ -116,6 +119,9 @@
     phase = 'game';
     bar.style.display = 'none';
     showChrome(true);
+    // Fly whoever the player picked in the intro (null if they skipped past it,
+    // in which case the plane keeps its default).
+    if (intro.pickedCharacter !== null) plane.setCharacter(intro.pickedCharacter);
     // The key that skipped the intro shouldn't read as "the player is flying":
     // un-latch, so the tray free-runs until they actually take control.
     input.engaged = false;
@@ -126,7 +132,7 @@
     const dt = now - last; last = now;
 
     if (phase === 'intro') {
-      intro.update(dt);
+      intro.update(dt, input);
       if (CONFIG.film) film.update(dt);
 
       const W = canvas.width, H = canvas.height;
