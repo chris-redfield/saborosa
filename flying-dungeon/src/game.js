@@ -41,6 +41,14 @@
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
 
+  // Horizontal hitscan segment (from ray.x to ray.end at ray.y, `t` px thick)
+  // against an axis-aligned box.
+  function rayHitsBox(ray, t, b) {
+    const half = t / 2;
+    return (ray.y + half >= b.y) && (ray.y - half <= b.y + b.h)
+        && (b.x + b.w >= ray.x) && (b.x <= ray.end);
+  }
+
   let last = performance.now(), ready = false;
 
   function loop(now) {
@@ -50,6 +58,8 @@
       bg.update(dt, input);
       plane.update(dt, input);
       for (const e of enemies) e.update(dt, bg.worldWidth(), bg.worldHeight());
+      // Drop flies that finished bursting — they don't come back.
+      for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
 
       const W = canvas.width, H = canvas.height;
       // The tray world is larger than the canvas; the camera shows a cropped
@@ -58,11 +68,47 @@
       const camX = plane.x * Math.max(0, bg.worldWidth()  - W);
       const camY = plane.y * Math.max(0, bg.worldHeight() - H);
 
+      // --- Shooting: while firing, project a thin hitscan line forward from
+      // the nose. Anything whose box it crosses is hit and bursts.
+      let ray = null;
+      if (input.firing) {
+        const m = plane.muzzle(W, H);
+        if (m) {
+          ray = { x: m.x, y: m.y, end: W };
+          for (const e of enemies) {
+            if (!e.isAlive()) continue;
+            for (const b of e.boxes(camX, camY, bg.worldWidth())) {
+              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { e.hit(); break; }
+            }
+          }
+        }
+      }
+
       ctx.clearRect(0, 0, W, H);
       bg.render(ctx, camX, camY);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
       plane.render(ctx, W, H);
-      hud.textContent = plane.characterName.toUpperCase();
+
+      // Hold C: show the fly collision boxes, and the shot line while firing.
+      if (input.debug) {
+        ctx.save();
+        ctx.strokeStyle = '#53d8fb';
+        ctx.lineWidth = 1;
+        for (const e of enemies)
+          for (const b of e.boxes(camX, camY, bg.worldWidth()))
+            ctx.strokeRect(b.x, b.y, b.w, b.h);
+        if (ray) {
+          ctx.strokeStyle = '#e94560';
+          ctx.lineWidth = CONFIG.rayThickness;
+          ctx.beginPath();
+          ctx.moveTo(ray.x, ray.y);
+          ctx.lineTo(ray.end, ray.y);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      hud.textContent = `${plane.characterName.toUpperCase()}   FLIES ${enemies.length}`;
     }
     requestAnimationFrame(loop);
   }
@@ -73,9 +119,14 @@
     plane.load(tick),
     assets.loadImage('fly', CONFIG.ASSET_BASE + CONFIG.FLY_SHEET).then(tick),
   ]).then(() => {
-    // One fly for now, placed in WORLD space so the camera reveals it: near the
-    // right edge, at a height that's visible from the plane's start position.
-    enemies.push(new Fly(assets, CONFIG, bg.worldWidth() * 0.98, bg.worldHeight() * 0.72));
+    // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
+    // across the width is fair game). Killed flies are gone for good.
+    const worldW = bg.worldWidth(), worldH = bg.worldHeight();
+    for (let i = 0; i < CONFIG.flyCount; i++) {
+      enemies.push(new Fly(assets, CONFIG,
+        Math.random() * worldW,
+        80 + Math.random() * Math.max(1, worldH - 160)));
+    }
     ready = true;
     bar.style.display = 'none';
   });

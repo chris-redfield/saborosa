@@ -12,6 +12,7 @@ class Input {
   constructor(target) {
     this.left = this.right = this.up = this.down = false;
     this.firing = false;
+    this.debug = false;       // hold C: show collision boxes + the shot line
     this.engaged = false;
     this._cycleQueued = false;
     this._bind(target || window);
@@ -26,12 +27,14 @@ class Input {
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this[m] = true; this.engaged = true; return; }
       if (e.code === 'Space') { e.preventDefault(); this.firing = true; }
+      else if (e.code === 'KeyC') { this.debug = true; }
       else if (e.code === 'Digit1' || e.code === 'Numpad1') { this._cycleQueued = true; }
     });
     t.addEventListener('keyup', e => {
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this[m] = false; return; }
       if (e.code === 'Space') { e.preventDefault(); this.firing = false; }
+      else if (e.code === 'KeyC') { this.debug = false; }
     });
   }
 

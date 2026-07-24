@@ -77,14 +77,34 @@ class Plane {
     } else { this.gunCur = 0; this.gunAcc = 0; }
   }
 
-  render(ctx, W, H) {
+  // Current draw metrics (frame, scaled size, bob offset) — shared by render()
+  // and muzzle() so the shot line always leaves the nose it's drawn at.
+  _metrics(H) {
     const c = this.cfg;
     const f = this.assets.getDrawable(`plane_${this.characterName}_${this.pose % c.CH_FRAMES}`);
-    if (!f) return;
+    if (!f) return null;
     const s = (H * c.planeScale) / f.height;
-    const dw = f.width * s, dh = f.height * s;
+    const dh = f.height * s;
     const t = performance.now() / 1000;
-    const bob = Math.sin(t * c.bobFreq) * Math.max(c.bobMin, dh * c.bobRel);
+    return { f, dw: f.width * s, dh, bob: Math.sin(t * c.bobFreq) * Math.max(c.bobMin, dh * c.bobRel) };
+  }
+
+  // Screen-space point the machine gun fires from: the nose (the plane always
+  // faces right), on the same vertical line the muzzle flash sits on.
+  muzzle(W, H) {
+    const m = this._metrics(H);
+    if (!m) return null;
+    const c = this.cfg;
+    const k = c.planeScale / c.gunOffRefScale;
+    const offY = ((this.pose === c.CH_REST) ? c.gunOffY : 0) * k;
+    return { x: this.x * W + m.dw / 2, y: this.y * H + m.bob - offY + c.rayOffsetY };
+  }
+
+  render(ctx, W, H) {
+    const c = this.cfg;
+    const m = this._metrics(H);
+    if (!m) return;
+    const f = m.f, dw = m.dw, dh = m.dh, bob = m.bob;
 
     ctx.save();
     ctx.translate(this.x * W, this.y * H + bob);

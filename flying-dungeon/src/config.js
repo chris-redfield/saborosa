@@ -61,6 +61,7 @@ const CONFIG = {
     [707, 84, 238, 225],
     [1002, 54, 273, 263],
   ],
+  flyCount: 15,          // how many spawn (killed for good — no respawn, for testing)
   flyScale: 0.13 * 0.5,  // fly height as a fraction of the canvas height (50% of prior)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
   flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
@@ -70,6 +71,15 @@ const CONFIG = {
   flyWobbleFreq: 13,     // rad/sec
   flyMaxTilt: 15,        // deg — frame rotation at full vertical speed
   flyTiltEase: 9,        // how fast the tilt eases toward the heading (1/sec)
+
+  // --- Shooting -----------------------------------------------------------
+  // Firing projects a thin hitscan line forward from the nose. Anything whose
+  // collision box the line crosses is hit and plays its burst animation.
+  // Hold C to visualise the boxes (and the line, while firing).
+  rayThickness: 2,       // px — thickness of the shot line
+  rayOffsetY: 9,         // px — nudge the shot line down from the muzzle
+  flyHitScale: 0.8,      // fly collision box vs its drawn size
+  flyBurstMs: 70,        // ms per burst (death) frame
 
   // --- Machine gun --------------------------------------------------------
   GUN_FRAMES: 6,
