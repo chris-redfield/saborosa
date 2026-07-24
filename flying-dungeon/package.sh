@@ -23,7 +23,8 @@ if [ ! -d "$src_assets" ]; then
 fi
 
 rm -rf "$dist"
-mkdir -p "$dist/src" "$dist/assets/flying-dungeon/character-sheets"
+mkdir -p "$dist/src" "$dist/assets/flying-dungeon/character-sheets" \
+         "$dist/assets/flying-dungeon/enemy-sheets"
 
 # --- code ---
 cp "$here/index.html" "$dist/"
@@ -32,6 +33,7 @@ cp "$here/src/"*.js "$dist/src/"
 # --- assets (compressed webp frames + character/fire sheets; NOT originals/) ---
 cp "$src_assets/"*.webp "$dist/assets/flying-dungeon/"
 cp "$src_assets/character-sheets/"*.png "$dist/assets/flying-dungeon/character-sheets/"
+cp "$src_assets/enemy-sheets/"*.png "$dist/assets/flying-dungeon/enemy-sheets/"
 
 # --- point the build at its local assets (single-line rewrite) ---
 sed -i "s#ASSET_BASE: '../assets-v2/flying-dungeon/'#ASSET_BASE: './assets/flying-dungeon/'#" "$dist/src/config.js"

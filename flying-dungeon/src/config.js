@@ -14,6 +14,49 @@ const CONFIG = {
   GAME_W: 1280,
   GAME_H: 720,           // CSS-scaled to the window with letterboxing
 
+  // --- Intro: the storyboard roll -----------------------------------------
+  // 12 panels, drawn from the masters by tools/build-intro-frames.py (64MB of
+  // PNG -> 1MB of webp), each exactly canvas-sized. The camera only ever moves
+  // DOWN, never in X.
+  //
+  // Most panels don't move the camera at all: the shot is identical and only
+  // the printed text changes, so the new panel CUTS IN in front of the old one.
+  // The camera rolls down only where the shot actually changes.
+  INTRO_FRAMES: 12,
+  intro: true,           // false = straight into the game
+  // 0-based indices of the panels the camera ROLLS DOWN to. Everything else
+  // cuts in place. Boards 3->4 and 6->7 are the two real camera moves (the
+  // fruit rising into frame, then the push in on the basket).
+  introRollBefore: [3, 6],
+  // How FAR each of those rolls travels, in px. The rolling boards are
+  // overlapping crops of one taller scene — board 4's top 414px IS board 3's
+  // bottom — so travelling a full canvas height replays scene that was already
+  // on screen, and you see the join. These are the offsets where the shared
+  // content registers, measured by tools/intro-align.py (re-run it if the art
+  // changes). Anything not listed rolls a full GAME_H.
+  introRollPx: {
+    3: 306,   // boards 3->4 share 414 px of scene
+    6: 672,   // boards 6->7 share 48 px of scene
+  },
+  introHoldMs: 520,      // dwell on a panel before the next one
+  // Travel time for a FULL canvas-height roll; a shorter roll scales down
+  // proportionally, so the camera moves at one constant speed throughout.
+  introRollMs: 620,
+  // Per-panel overrides, by 0-based index. Panels 8-10 are the 3-2-1 countdown
+  // and 11 is GO! — these cut, so the hold IS the whole beat.
+  introBeats: {
+    8:  { hold: 420 },
+    9:  { hold: 420 },
+    10: { hold: 420 },
+    11: { hold: 560 },
+  },
+  introFadeInMs: 550,    // black -> first panel
+  introFadeOutMs: 420,   // last panel -> black -> game
+  introSkipFadeMs: 200,  // faster fade when the player skips out
+  introHintText: 'press any key to skip',
+  introHintInMs: 1600,   // when the hint fades in
+  introHintHoldMs: 3200, // how long it stays before fading out
+
   // --- Background: the orbiting fruit tray --------------------------------
   // The frame is drawn 1:1 at its (reduced) resolution — LARGER than the
   // 1280×720 canvas — so the canvas shows a cropped WINDOW into it. The camera
@@ -34,8 +77,8 @@ const CONFIG = {
   camInsetRight: 0.13,
   camInsetTop: 0.02,
   camInsetBottom: 0.0,
-  frameMs: 60,           // ms per sharp angle
-  blurMs: 24,            // ms per blurred (-B) transition frame
+  frameMs: 42,           // ms per sharp angle
+  blurMs: 8,             // ms per blurred (-B) transition frame
   withBlur: true,        // interleave the -B frames
   dupFrames: true,       // each frame twice → smoother cadence
   defaultReverse: true,  // free-run order before the player takes control
@@ -61,7 +104,11 @@ const CONFIG = {
   // frame, and pan the camera off that same stepped value so plane + world hop
   // together. Toggled + tuned live by the controls under the canvas.
   stepped: true,
-  steppedMs: 60,         // hold per visual step (~16 fps; matches bg sharp frame)
+  steppedMs: 60,         // hold per visual step (~16 fps). NOTE: this used to be
+                         // frameMs, so plane and background hopped in lockstep;
+                         // the background is faster now, so they no longer match.
+                         // Set it to 32 to re-lock them, or keep the plane slower
+                         // than the world on purpose. Live slider under the canvas.
 
   // --- Old-film style (post effect) ---------------------------------------
   // The headline is the FRAME LINE: the dark gap between film frames, rolling

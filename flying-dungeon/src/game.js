@@ -71,6 +71,12 @@
   const plane = new Plane(assets, CONFIG);
   const enemies = [];
   const film = new Film(CONFIG);
+  const intro = new Intro(assets, CONFIG);
+
+  // The HUD / help / toggles belong to the game, not the title sequence.
+  const chrome = ['hud', 'help', 'controls'].map(id => document.getElementById(id));
+  const showChrome = on => chrome.forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
+  showChrome(false);
 
   // Black & white via a GPU-cheap CSS filter on the canvas; keep it in sync.
   const applyFilmCss = () => { canvas.style.filter = CONFIG.film ? CONFIG.filmCss : ''; };
@@ -91,11 +97,54 @@
         && (b.x + b.w >= ray.x) && (b.x <= ray.end);
   }
 
-  let last = performance.now(), ready = false;
+  let last = performance.now();
+  let phase = 'boot';       // 'boot' (black) → 'intro' → 'game'
+  let gameReady = false;
+
+  // Skip the title sequence on any key or click. Bound only while it plays.
+  function onSkip(e) {
+    if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    intro.skip();
+  }
+  function bindSkip(on) {
+    const m = on ? 'addEventListener' : 'removeEventListener';
+    window[m]('keydown', onSkip);
+    window[m]('mousedown', onSkip);
+  }
+
+  function startGame() {
+    phase = 'game';
+    bar.style.display = 'none';
+    showChrome(true);
+    // The key that skipped the intro shouldn't read as "the player is flying":
+    // un-latch, so the tray free-runs until they actually take control.
+    input.engaged = false;
+    last = performance.now();   // don't hand the first frame the load's dt
+  }
 
   function loop(now) {
     const dt = now - last; last = now;
-    if (ready) {
+
+    if (phase === 'intro') {
+      intro.update(dt);
+      if (CONFIG.film) film.update(dt);
+
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.save();
+      if (CONFIG.film) ctx.translate(0, film.weaveOffset());
+      intro.render(ctx, W, H);
+      ctx.restore();
+      if (CONFIG.film) film.render(ctx, W, H);
+
+      if (intro.done) {
+        bindSkip(false);
+        // The intro doubles as the loading screen: the heavy tray frames stream
+        // in behind it. If it outran them, sit on black with the bar until they land.
+        if (gameReady) startGame();
+        else { phase = 'boot'; bar.style.display = ''; ctx.clearRect(0, 0, W, H); }
+      }
+    } else if (phase === 'game') {
       if (input.takeCycle()) plane.cycleCharacter();
       bg.update(dt, input);
       plane.update(dt, input);
@@ -172,6 +221,19 @@
   }
   requestAnimationFrame(loop);
 
+  // The intro panels are small (~1MB all told), so they load FIRST and the
+  // sequence starts playing right away — the tray frames (the heavy part)
+  // stream in underneath it. The title sequence IS the loading screen.
+  if (CONFIG.intro) {
+    intro.load().then(() => {
+      if (phase !== 'boot') return;               // assets beat it; already playing
+      phase = 'intro';
+      bar.style.display = 'none';                 // the intro replaces the loading bar
+      last = performance.now();
+      bindSkip(true);
+    });
+  }
+
   Promise.all([
     bg.load(tick),
     plane.load(tick),
@@ -187,7 +249,9 @@
         Math.random() * worldW,
         80 + Math.random() * Math.max(1, worldH - 160)));
     }
-    ready = true;
-    bar.style.display = 'none';
+    gameReady = true;
+    // If the intro is still rolling, it gets to finish — startGame() runs when
+    // it does. Otherwise (skipped, disabled, or slower art) go now.
+    if (phase !== 'intro') startGame();
   });
 })();
