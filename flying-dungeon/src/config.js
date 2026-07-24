@@ -24,7 +24,8 @@ const CONFIG = {
   FRAMES: 16,            // camera angles
   FRAME_W: 3784,         // native frame size (all frames share it)
   FRAME_H: 3800,
-  FRAME_CAP: 1600,       // downscale longest side to this on load = world size
+  FRAME_CAP: 2000,       // downscale longest side to this on load = world size
+                         // (world ~1992×2000; canvas covers ~64%W/36%H; ~510MB VRAM)
   frameMs: 60,           // ms per sharp angle
   blurMs: 24,            // ms per blurred (-B) transition frame
   withBlur: true,        // interleave the -B frames
@@ -45,6 +46,32 @@ const CONFIG = {
   bobFreq: 2.52,         // rad/sec
   bobRel: 0.05,          // amplitude ÷ sprite height
   bobMin: 6,             // px floor
+
+  // --- Stepped "stop-motion" plane (experiment) ---------------------------
+  // Reproduce the background's low-framerate jank on the plane: sample its
+  // drawn state (position, bob, pose) only every steppedMs instead of every
+  // frame, and pan the camera off that same stepped value so plane + world hop
+  // together. Toggled + tuned live by the controls under the canvas.
+  stepped: true,
+  steppedMs: 60,         // hold per visual step (~16 fps; matches bg sharp frame)
+
+  // --- Old-film style (post effect) ---------------------------------------
+  // The headline is the FRAME LINE: the dark gap between film frames, rolling
+  // down the picture like a misframed projector. Around it: grain, brightness
+  // flicker, a vignette, gate weave, and the odd scratch. Colour is KEPT — just
+  // the projector artifacts. Toggled live under the canvas.
+  film: true,
+  filmBarSpeed: 60,      // px/sec the frame-gap bar rolls down
+  filmBarHeight: 0,      // px thickness of the dark frame gap (0 = no frame line)
+  filmBarDark: 0.78,     // how dark the gap gets (0-1)
+  filmGrain: 0.11,       // grain opacity
+  filmFlicker: 0.12,     // max brightness dip (black overlay alpha)
+  filmVignette: 0.55,    // corner darkening strength
+  filmWeave: 1.4,        // px vertical gate jitter of the whole picture
+  filmScratchChance: 0.04, // per-frame chance a vertical scratch flickers in
+  // Optional CSS grade for the canvas (kept EMPTY = full colour). You could put
+  // a gentle 'contrast(1.08)' here for a filmic punch, but no desaturation.
+  filmCss: '',
 
   // --- Enemies ------------------------------------------------------------
   // Enemies live in the tray's WORLD space (the same larger plane the camera

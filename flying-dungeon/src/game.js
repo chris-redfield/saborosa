@@ -40,11 +40,41 @@
     });
   }
 
+  // Stop-motion plane: on/off + the framerate to hop at (steppedMs = 1000/fps).
+  const steppedEl = document.getElementById('stepped');
+  if (steppedEl) {
+    steppedEl.checked = CONFIG.stepped;
+    steppedEl.addEventListener('change', () => { CONFIG.stepped = steppedEl.checked; steppedEl.blur(); });
+  }
+  const filmEl = document.getElementById('film');
+  if (filmEl) {
+    filmEl.checked = CONFIG.film;
+    filmEl.addEventListener('change', () => { CONFIG.film = filmEl.checked; applyFilmCss(); filmEl.blur(); });
+  }
+
+  const fpsEl = document.getElementById('steppedFps');
+  const fpsVal = document.getElementById('steppedFpsVal');
+  if (fpsEl) {
+    const setLabel = () => { if (fpsVal) fpsVal.textContent = fpsEl.value; };
+    fpsEl.value = Math.round(1000 / CONFIG.steppedMs);
+    setLabel();
+    fpsEl.addEventListener('input', () => {
+      CONFIG.steppedMs = 1000 / parseFloat(fpsEl.value);
+      setLabel();
+      fpsEl.blur();
+    });
+  }
+
   const assets = new Assets();
   const input = new Input();
   const bg = new TrayBackground(assets, CONFIG);
   const plane = new Plane(assets, CONFIG);
   const enemies = [];
+  const film = new Film(CONFIG);
+
+  // Black & white via a GPU-cheap CSS filter on the canvas; keep it in sync.
+  const applyFilmCss = () => { canvas.style.filter = CONFIG.film ? CONFIG.filmCss : ''; };
+  applyFilmCss();
 
   // Loading progress across every asset the subsystems pull in (+1 for the fly).
   const TOTAL = CONFIG.FRAMES * 2
@@ -69,6 +99,7 @@
       if (input.takeCycle()) plane.cycleCharacter();
       bg.update(dt, input);
       plane.update(dt, input);
+      if (CONFIG.film) film.update(dt);
       for (const e of enemies) e.update(dt, bg.worldWidth(), bg.worldHeight());
       // Drop flies that finished bursting — they don't come back.
       for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
@@ -77,8 +108,8 @@
       // The tray world is larger than the canvas; the camera shows a cropped
       // window and pans it with the plane's position (both axes), clamped to
       // the world edges. The plane itself is untouched (canvas-space).
-      const camX = plane.x * Math.max(0, bg.worldWidth()  - W);
-      const camY = plane.y * Math.max(0, bg.worldHeight() - H);
+      const camX = plane.displayX() * Math.max(0, bg.worldWidth()  - W);
+      const camY = plane.displayY() * Math.max(0, bg.worldHeight() - H);
 
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
@@ -97,6 +128,11 @@
       }
 
       ctx.clearRect(0, 0, W, H);
+
+      // The scene weaves vertically (gate jitter) under the film effect; the
+      // film overlay itself (grain/bar/vignette) stays fixed to the screen.
+      ctx.save();
+      if (CONFIG.film) ctx.translate(0, film.weaveOffset());
       bg.render(ctx, camX, camY);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
       plane.render(ctx, W, H);
@@ -119,6 +155,9 @@
         }
         ctx.restore();
       }
+      ctx.restore();
+
+      if (CONFIG.film) film.render(ctx, W, H);
 
       const liveFlies = enemies.reduce((n, e) => n + (e.isAlive() ? 1 : 0), 0);
       hud.textContent = `${plane.characterName.toUpperCase()}   FLIES ${liveFlies}`;

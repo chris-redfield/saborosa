@@ -25,7 +25,21 @@ class Plane {
     this.gunOn = false;
     this.gunCur = 0;
     this.gunAcc = 0;
+    // Stop-motion sampling: `x/y/pose` update every frame (smooth logic), but
+    // everything DRAWN reads `disp`, refreshed only every steppedMs → the plane
+    // hops at a low framerate like the background. `_clock` is the plane's own
+    // animation time so the bob steps too.
+    this._clock = 0;
+    this._stepAcc = 0;
+    this.disp = { x: this.x, y: this.y, pose: this.pose, t: 0 };
   }
+
+  _snapshot() {
+    const d = this.disp;
+    d.x = this.x; d.y = this.y; d.pose = this.pose; d.t = this._clock;
+  }
+  displayX() { return this.disp.x; }   // camera reads these so world hops in sync
+  displayY() { return this.disp.y; }
 
   async load(onProgress) {
     const c = this.cfg, base = c.ASSET_BASE + 'character-sheets/', jobs = [];
@@ -75,18 +89,31 @@ class Plane {
       this.gunAcc += dt;
       while (c.fireMs > 0 && this.gunAcc >= c.fireMs) { this.gunAcc -= c.fireMs; this.gunCur = (this.gunCur + 1) % c.GUN_FRAMES; }
     } else { this.gunCur = 0; this.gunAcc = 0; }
+
+    // Stop-motion sampling: refresh what's drawn only every steppedMs (else the
+    // logic runs smooth but nothing visually hops). Off → sample every frame.
+    this._clock += dt / 1000;
+    if (c.stepped) {
+      this._stepAcc += dt;
+      if (this._stepAcc >= c.steppedMs) {
+        this._stepAcc %= c.steppedMs;   // keep phase, tolerate long frames
+        this._snapshot();
+      }
+    } else {
+      this._snapshot();
+    }
   }
 
   // Current draw metrics (frame, scaled size, bob offset) — shared by render()
-  // and muzzle() so the shot line always leaves the nose it's drawn at.
+  // and muzzle() so the shot line always leaves the nose it's drawn at. All read
+  // the STEPPED display state (disp), so everything visual hops in lockstep.
   _metrics(H) {
     const c = this.cfg;
-    const f = this.assets.getDrawable(`plane_${this.characterName}_${this.pose % c.CH_FRAMES}`);
+    const f = this.assets.getDrawable(`plane_${this.characterName}_${this.disp.pose % c.CH_FRAMES}`);
     if (!f) return null;
     const s = (H * c.planeScale) / f.height;
     const dh = f.height * s;
-    const t = performance.now() / 1000;
-    return { f, dw: f.width * s, dh, bob: Math.sin(t * c.bobFreq) * Math.max(c.bobMin, dh * c.bobRel) };
+    return { f, dw: f.width * s, dh, bob: Math.sin(this.disp.t * c.bobFreq) * Math.max(c.bobMin, dh * c.bobRel) };
   }
 
   // Screen-space point the machine gun fires from: the nose (the plane always
@@ -96,8 +123,8 @@ class Plane {
     if (!m) return null;
     const c = this.cfg;
     const k = c.planeScale / c.gunOffRefScale;
-    const offY = ((this.pose === c.CH_REST) ? c.gunOffY : 0) * k;
-    return { x: this.x * W + m.dw / 2, y: this.y * H + m.bob - offY + c.rayOffsetY };
+    const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
+    return { x: this.disp.x * W + m.dw / 2, y: this.disp.y * H + m.bob - offY + c.rayOffsetY };
   }
 
   render(ctx, W, H) {
@@ -107,7 +134,7 @@ class Plane {
     const f = m.f, dw = m.dw, dh = m.dh, bob = m.bob;
 
     ctx.save();
-    ctx.translate(this.x * W, this.y * H + bob);
+    ctx.translate(this.disp.x * W, this.disp.y * H + bob);
     if (this.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true;
 
@@ -119,7 +146,7 @@ class Plane {
       const g = this.assets.getDrawable(`gun_${this.gunCur % c.GUN_FRAMES}`);
       const k = c.planeScale / c.gunOffRefScale;
       const offX = c.gunOffX * k;
-      const offY = ((this.pose === c.CH_REST) ? c.gunOffY : 0) * k;
+      const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
       if (g) ctx.drawImage(g, -dw / 2 - offX, -dh / 2 - offY, dw, dh);
     }
     ctx.drawImage(f, -dw / 2, -dh / 2, dw, dh);
