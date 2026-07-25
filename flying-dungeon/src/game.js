@@ -103,7 +103,7 @@
   const COIN_KEYS = Object.keys(CONFIG.COIN_SHEETS);
   const TOTAL = CONFIG.FRAMES * 2
     + CONFIG.CHARACTERS.length * CONFIG.CH_FRAMES
-    + CONFIG.GUN_FRAMES + 2    // +2: the fly sheet and the dead-fly sprite
+    + CONFIG.GUN_FRAMES + 3    // +3: the fly sheet, the dead fly, the boom sheet
     + COIN_KEYS.length;        // + one grid sheet per coin variant
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
@@ -317,6 +317,9 @@
 
       for (const e of enemies) e.update(dt, worldW, worldH);
       for (const c of coins) c.update(dt, worldW);
+      // A coin that has finished exploding is gone for good — same as the
+      // flies, killed coins do not come back.
+      for (let i = coins.length - 1; i >= 0; i--) if (coins[i].isDead()) coins.splice(i, 1);
       // Drop flies that are gone for good. Landed corpses are NOT dead — they
       // stay in the list so the pile on the floor keeps being drawn.
       for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
@@ -332,6 +335,15 @@
             if (!e.isAlive()) continue;
             for (const b of e.boxes(camX, camY, bg.worldWidth())) {
               if (rayHitsBox(ray, CONFIG.rayThickness, b)) { e.hit(CONFIG.rayDamage); break; }
+            }
+          }
+          // Coins take the same beam. It PIERCES — no early exit above, so one
+          // shot can hit a fly and a coin on the same line, which is the
+          // behaviour the fly loop already had between flies.
+          for (const cn of coins) {
+            if (!cn.isShootable()) continue;
+            for (const b of cn.boxes(camX, camY, worldW)) {
+              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { cn.hit(CONFIG.rayDamage); break; }
             }
           }
         }
@@ -351,6 +363,10 @@
       for (const c of coins) c.render(ctx, camX, camY, worldW);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
       plane.render(ctx, W, H);
+      // Coin explosions LAST, over everything in the world: a blast that a
+      // passing fly could stand in front of would read as a glitch. No-op for
+      // every coin that isn't currently exploding.
+      for (const c of coins) c.renderBurst(ctx, camX, camY, worldW);
 
       // Hold C: show the fly collision boxes, and the shot line while firing.
       if (input.debug) {
@@ -370,6 +386,13 @@
         for (const e of enemies)
           if (e.isAlive())
             for (const b of e.boxes(camX, camY, bg.worldWidth()))
+              ctx.strokeRect(b.x, b.y, b.w, b.h);
+        // Coin boxes in the coin's own colour, and only while it still has
+        // health — so "why isn't this one reacting?" is visible, not guesswork.
+        ctx.strokeStyle = '#FAFA24';
+        for (const cn of coins)
+          if (cn.isShootable())
+            for (const b of cn.boxes(camX, camY, worldW))
               ctx.strokeRect(b.x, b.y, b.w, b.h);
         if (ray) {
           ctx.strokeStyle = '#e94560';
@@ -432,6 +455,8 @@
     assets.loadImage('flyDead', encodeURI(CONFIG.ASSET_BASE + CONFIG.FLY_DEAD_SHEET)).then(tick),
     ...COIN_KEYS.map(k =>
       assets.loadImage('coin_' + k, CONFIG.ASSET_BASE + CONFIG.COIN_SHEETS[k]).then(tick)),
+    // The main game's explosion sheet — 9KB, so it loads up front with the rest.
+    assets.loadImage('boom', CONFIG.ASSET_BASE + CONFIG.BOOM_SHEET).then(tick),
   ]).then(() => {
     spawnWorld();
     gameReady = true;

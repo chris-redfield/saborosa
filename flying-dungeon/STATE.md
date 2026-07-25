@@ -288,8 +288,67 @@ the plane so nothing you are aiming at can hide behind one, and they spawn in a
 band of 0.10–0.80 of world height, the lower bound chosen to clear the corpse
 floor plane at 0.899 so they aren't buried in the tablecloth.
 
-**Not built:** coins do nothing yet. No pickup, no effect on the clock or
-score, and no respawn — the 12 just circle the world forever.
+### Shooting a coin
+
+Coins take the same hitscan beam the flies do — it **pierces**, so one shot can
+hit a fly and a coin on the same line. `coinHealth: 12`, and each connected hit
+throws the coin into reverse for `coinHurtMs`: it travels **backwards at the
+speed it was drifting** (its own `vx` negated, not a separate knockback value,
+so a push always exactly undoes its drift), its **spin runs backwards** with
+it, and it **jolts**. Holding fire walks a coin back up the screen against
+itself — ~1.9s of held fire and ~230 world px before it's spent.
+
+⚠️ **The rate limit is not optional.** The beam is re-tested every frame while
+fire is held, so without `coinHurtMs` all six points drain in six frames
+(~100ms) and read exactly like a one-shot. It doubles as the reverse window and
+the jolt window, so the i-frames are always exactly as long as the feedback
+showing them — the same bargain `flyHurtMs` makes.
+
+**The jolt is a damped oscillation, not random jitter** — noise reads as a
+rendering fault, a decaying shake reads as a flinch. `coinSpasmFreq` is radians
+across the whole jolt, and **it has to respect the frame rate**: 140ms is only
+~8 frames at 60fps, so 13 (≈2 cycles, ~4 frames per cycle) is near the ceiling.
+Higher values alias into exactly the noise the damped shake exists to avoid.
+
+The **hitbox is fixed** at `coinHitScale` of the drawn size, not the frame's own
+silhouette: face-on the coin is 76px but edge-on only ~15px, and a box that
+collapsed with it would flicker in and out of being shootable twice per
+rotation. The jolt is left out of the box too — a hitbox that shook with the art
+would be dodging the shot hitting it. Hold **C** to see them, in coin yellow.
+
+### Death
+
+At 0 HP the coin **vanishes on the spot** and the main game's explosion plays
+where it was, for ~940ms, after which the coin is spliced out for good (no
+respawn, same as the flies).
+
+The sheet is the main game's `saborosa-boom.png`, converted to webp for this
+build (41KB → 9KB; flat art, so lossless) and kept at its native 1228×845 so
+the frame coords carry over unchanged. It sits at the root of the
+flying-dungeon assets, which `package.sh` already globs — no new copy line.
+
+**It plays ALL TWELVE frames**, grow → peak → fade. The main game's hole-fall
+uses a 7-frame *tail-only* subset (`saborosa-boom.json`) that starts at the peak
+and only fades — half the explosion. This uses the full set
+(`saborosa-boom-full.json`).
+
+⚠️ **Don't re-cut this sheet by island detection.** Its alpha yields 14
+islands, not 12: two frames have **detached debris flecks** sitting beside the
+main blob (at x 808 and x 920), and the rects deliberately span both. 12 is
+confirmed to be everything on the sheet.
+
+Position and bob are **frozen at the moment of death**, so the blast stays put
+instead of drifting and bobbing along the path a coin that no longer exists
+would have taken. One scale is derived for all frames from the **widest** one,
+so `coinBoomSize` means "how big the peak is" (1.7 → a 129px peak on a 76px
+coin) and the frames keep their relative sizes. With the full set the first
+frame is the *smallest*, so anchoring the scale on it would blow the blast up.
+
+Explosions draw in their **own pass, after the flies and the plane** — a blast
+something could fly in front of would read as a glitch.
+
+**Still not built:** coins have no pickup; killing one is currently all that can
+happen to it.
 
 `package.sh` copies `coin/*.webp` as a glob, so it currently ships 02's 241KB
 unused. That's deliberate: swapping variants stays a pure config change with no

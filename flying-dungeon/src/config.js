@@ -505,6 +505,69 @@ const CONFIG = {
   // sit buried in the tablecloth.
   coinBandTop: 0.10,
   coinBandBottom: 0.80,
+  // --- Shooting a coin -----------------------------------------------------
+  // Each connected hit throws the coin into reverse for coinHurtMs: it travels
+  // backwards at the speed it was drifting, its spin runs backwards with it,
+  // and it jolts. Holding fire therefore walks a coin back up the screen
+  // against its own drift.
+  coinHealth: 12,
+  // The rate limit, and it is NOT optional: the beam is re-tested every frame
+  // while fire is held, so without it the whole health bar drains in as many
+  // frames (~200ms) and reads exactly like a one-shot kill. It doubles as the
+  // reverse window and the jolt window, so the i-frames are always exactly as
+  // long as the feedback showing them — the same bargain flyHurtMs makes.
+  // 12 × 160ms ≈ 1.9s of held fire to empty a coin, pushing it ~230 world px
+  // backwards on the way.
+  coinHurtMs: 160,
+  // Collision box as a fraction of the drawn size. Fixed, not the frame's own
+  // silhouette: face-on the coin is 76px but edge-on only ~15px, and a box that
+  // collapsed with it would flicker in and out of being shootable twice per
+  // rotation.
+  coinHitScale: 0.72,
+  // The jolt. A DAMPED OSCILLATION, not random jitter — noise reads as a
+  // rendering fault, a decaying shake reads as a flinch. Slightly shorter than
+  // coinHurtMs so each hit's jolt finishes before the next shot can land.
+  coinSpasmMs: 140,
+  coinSpasmAmp: 5,       // px of shake, mostly sideways (it was hit from the side)
+  // Radians across the whole jolt, so this is "how many shakes it packs in":
+  // 13 ≈ 2 cycles. MIND THE FRAME RATE — 140ms is only ~8 frames at 60fps, so
+  // anything much above this samples at under 4 frames per cycle and aliases
+  // into the random-looking jitter the damped shake exists to avoid.
+  coinSpasmFreq: 13,
+  coinSpasmScale: 0.12,  // size pop at the moment of impact, decaying to 0
+  // --- Death: the coin explodes and is gone --------------------------------
+  // The main game's explosion sheet, converted to webp for this build (41KB ->
+  // 9KB; it is flat art, so lossless). Frame coords are unchanged because the
+  // conversion kept the sheet at its native 1228x845.
+  BOOM_SHEET: 'saborosa-boom.webp',
+  // ALL TWELVE frames — grow → peak → fade. The main game's hole-fall plays a
+  // 7-frame TAIL-ONLY subset (assets-v2/saborosa-boom.json) that starts at the
+  // peak and only fades; this is the full set (saborosa-boom-full.json), which
+  // is the whole explosion. Verified against the sheet's alpha: 12 sprites is
+  // everything on it. Two of them have DETACHED DEBRIS sitting beside the main
+  // blob — the rects below deliberately span both, so don't re-cut this sheet
+  // by island detection or you will get 14 frames, two of them stray sparks.
+  BOOM_RECTS: [
+    [243, 234,  93,  86],
+    [438, 179, 134, 134],
+    [638, 143, 162, 156],
+    [844, 128, 173, 158],
+    [210, 380, 190, 162],   // widest — the peak, and what coinBoomSize measures
+    [431, 363, 182, 164],
+    [642, 347, 179, 155],   // spans a detached debris fleck at x 808
+    [851, 335, 160, 151],
+    [233, 619, 129, 120],
+    [448, 610,  97, 112],
+    [663, 616,  99,  84],
+    [901, 615,  56,  67],   // spans a second fleck at x 920
+  ],
+  coinBoomMs: 78,        // ms per frame — 12 × 78 ≈ 940ms for the whole blast
+  // Size of the blast AT ITS PEAK, as a multiple of the coin's drawn size. One
+  // scale is derived from this and applied to every frame, so the frames keep
+  // their relative sizes and the animation still grows and shrinks. Measured
+  // against the WIDEST frame, not the first — with the full set the first frame
+  // is the smallest, so anchoring on it would make the blast enormous.
+  coinBoomSize: 1.7,
 
   // --- Shooting -----------------------------------------------------------
   // Firing projects a thin hitscan line forward from the nose. Anything whose
