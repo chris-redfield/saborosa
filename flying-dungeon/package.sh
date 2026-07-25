@@ -41,8 +41,14 @@ cp "$src_assets/select/"*.webp "$dist/assets/flying-dungeon/select/"
 cp "$src_assets/coin/"*.webp "$dist/assets/flying-dungeon/coin/"
 cp "$src_assets/game-over/"*.webp "$dist/assets/flying-dungeon/game-over/"
 
+# --- the controller mapping (the MAIN GAME's file, shared not copied) ---
+# Optional: a build without it still plays, on standard-layout pad defaults.
+cp "$here/../assets/gamepad-mapping.json" "$dist/assets/" 2>/dev/null \
+  || echo "note: no gamepad-mapping.json — pads will use standard defaults"
+
 # --- point the build at its local assets (single-line rewrite) ---
 sed -i "s#ASSET_BASE: '../assets-v2/flying-dungeon/'#ASSET_BASE: './assets/flying-dungeon/'#" "$dist/src/config.js"
+sed -i "s#GAMEPAD_MAPPING: '../assets/gamepad-mapping.json'#GAMEPAD_MAPPING: './assets/gamepad-mapping.json'#" "$dist/src/config.js"
 
 # --- zip for upload ---
 if command -v zip >/dev/null 2>&1; then

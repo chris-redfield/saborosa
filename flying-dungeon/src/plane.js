@@ -10,6 +10,23 @@
  * Screen position: X is pinned (horizontal input only turns/mirrors the plane
  * and drives the background); up/down slide Y.
  *
+ * HEALTH IS THE CHARACTER'S FACE. There is no bar anywhere and there is not
+ * going to be one: the player has planeHealth points and each one lost
+ * DETERIORATES him a stage — he ages. The readout is the sprite, which is why
+ * this lives in plane.js rather than in the HUD (and it had to: the HUD is
+ * hidden in no-time mode, which is exactly when the boss fight happens).
+ *
+ * `wear` is a CONTINUOUS number rather than an integer counter, on purpose. A
+ * hit adds exactly 1.0, which always crosses a stage boundary — so every hit is
+ * guaranteed to change what the player looks like, which is the only feedback
+ * there is — while leaving room for anything that ages him GRADUALLY to add a
+ * fraction to the same number without a second resource to keep in step.
+ *
+ * ⚠️ The deteriorated sprite packs do not exist yet. planeWearSheets is the
+ * switch: off, one pack is loaded and the stage shows through a ctx.filter
+ * (planeWearFilter) as a stopgap; on, each stage loads its own pack and the
+ * filter list should be emptied.
+ *
  * Dependencies injected (assets store + config). No DOM, no globals.
  */
 class Plane {
@@ -41,12 +58,91 @@ class Plane {
     this.entryT = 0;
     this.locked = !!cfg.planeEntry;
 
+    // Ageing. See the header: 0 = as he started, planeHealth = dead, and the
+    // integer part is which deteriorated pack he is drawn from.
+    this.wear = 0;
+    this.hurtT = 0;          // ms left of the i-frames, and of the blink
+    // The death fall. <0 = not falling. `fallY` is a DRAW offset in px, like
+    // every other offset on this sprite, so nothing downstream has to know the
+    // plane is on its way out of the frame.
+    this.fallT = -1;
+    this.fallY = 0;
+    this.fallVy = 0;
+    this.fallRot = 0;
+
     this.disp = { x: this.x, y: this.y, pose: this.pose, t: 0, entryOff: this._entryOff() };
   }
 
-  // True while the entrance is playing — the shell uses it to hold off firing
-  // and character-cycling too, not just movement.
-  get controlLocked() { return this.locked; }
+  // True while the entrance is playing OR the plane is falling out of the sky —
+  // the shell uses it to hold off firing and character-cycling too, not just
+  // movement. Both are moments the player is not flying this thing, and putting
+  // them behind one getter means every caller gets the second one for free.
+  get controlLocked() { return this.locked || this.falling; }
+  get falling() { return this.fallT >= 0; }
+
+  // How deteriorated he is, as a sprite-pack / filter index: 0 while untouched,
+  // then one per point lost. Clamped one short of planeHealth because the last
+  // point is death, not another stage to be drawn in.
+  stage() {
+    return Math.max(0, Math.min(this.cfg.planeHealth - 1, Math.floor(this.wear)));
+  }
+  hp() { return Math.max(0, this.cfg.planeHealth - Math.floor(this.wear)); }
+  isDead() { return this.wear >= this.cfg.planeHealth; }
+  isHurt() { return this.hurtT > 0; }
+
+  /* Took a hit. Returns false inside the i-frame window — the same rate limit
+     everything damageable in this game needs, and it matters more here than
+     anywhere: an orb resting on the plane for three frames would otherwise be
+     the whole run.
+
+     Nothing here is gated on the entrance: the shell does not let anything
+     shoot at a plane that is still flying in. */
+  hurt(amount) {
+    if (this.hurtT > 0 || this.isDead()) return false;
+    this.wear = Math.min(this.cfg.planeHealth, this.wear + (amount === undefined ? 1 : amount));
+    this.hurtT = this.cfg.planeHurtMs;
+    // The last one starts the fall. The i-frames and the blink are left running
+    // on top of it on purpose: the player should see the hit land and THEN see
+    // the plane go down, rather than the two being one indistinguishable event.
+    if (this.isDead() && !this.falling) {
+      this.fallT = 0;
+      this.fallVy = this.cfg.planeFallVy0;
+      this.fallY = 0;
+      this.fallRot = 0;
+    }
+    return true;
+  }
+
+  /* Falls exactly the way a dead fly does — same `flyGravity`, reused rather
+     than copied so the two cannot drift apart — after a small upward lurch that
+     reads as losing lift.
+
+     Runs on REAL time and outside the stop-motion sampler: the fall is a
+     physical event, not part of the hopping animation, and quantising it to
+     ~12fps would make it stutter down the screen. */
+  _fall(dt) {
+    const c = this.cfg, s = dt / 1000;
+    this.fallT += dt;
+    this.fallVy += c.flyGravity * s;
+    this.fallY += this.fallVy * s;
+    this.fallRot += c.planeFallSpin * s;
+  }
+
+  /* Has the wreck left the frame? The shell waits for this before starting the
+     ending, so the panel never cuts in over a plane still on screen.
+
+     Tested on the sprite's TOP edge clearing the bottom of the canvas, so it is
+     the whole plane that has gone and not just its centre. planeFallMaxMs is a
+     safety net for a mistuned gravity, not part of the timing. */
+  fallDone(H) {
+    if (!this.falling) return false;
+    if (this.fallT >= this.cfg.planeFallMaxMs) return true;
+    const m = this._metrics(H);
+    if (!m) return true;
+    const c = this.cfg;
+    const top = (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob + this.fallY - m.dh / 2;
+    return top > H;
+  }
 
   // Draw offset in screen fractions: starts at planeEntryFromX, eases to 0.
   // easeOutCubic so it arrives fast and decelerates into place rather than
@@ -67,13 +163,35 @@ class Plane {
   displayX() { return this.disp.x; }   // camera reads these so world hops in sync
   displayY() { return this.disp.y; }
 
+  // How many images load() will pull, so the shell's progress bar doesn't have
+  // to know the naming scheme — or how many deterioration packs are switched on.
+  static assetCount(cfg) {
+    const packs = cfg.planeWearSheets ? cfg.planeHealth - 1 : 1;
+    return cfg.CHARACTERS.length * cfg.CH_FRAMES * packs + cfg.GUN_FRAMES;
+  }
+
+  // Asset key for a pose at a deterioration stage. Stage 0 keeps the ORIGINAL
+  // key exactly, so turning the wear packs on adds keys rather than renaming
+  // any, and nothing that already reads `plane_x_0` has to change.
+  _key(stage, pose) {
+    const nm = this.characterName;
+    return stage > 0 ? `plane_${nm}_w${stage}_${pose}` : `plane_${nm}_${pose}`;
+  }
+
   async load(onProgress) {
     const c = this.cfg, base = c.ASSET_BASE + 'character-sheets/', jobs = [];
-    for (const nm of c.CHARACTERS)
-      for (let i = 0; i < c.CH_FRAMES; i++) {
-        const n = String(i + 1).padStart(2, '0');
-        jobs.push(this.assets.loadImage(`plane_${nm}_${i}`, `${base}saborosa-plane-${nm}-${n}.png`).then(() => onProgress && onProgress()));
-      }
+    // One pack per deterioration stage once the art exists; just the pristine
+    // one until then (see planeWearSheets).
+    const packs = c.planeWearSheets ? c.planeHealth - 1 : 1;
+    for (let st = 0; st < packs; st++)
+      for (const nm of c.CHARACTERS)
+        for (let i = 0; i < c.CH_FRAMES; i++) {
+          const n = String(i + 1).padStart(2, '0');
+          const key = st > 0 ? `plane_${nm}_w${st}_${i}` : `plane_${nm}_${i}`;
+          const file = st > 0 ? `saborosa-plane-${nm}-wear${st}-${n}.png`
+                              : `saborosa-plane-${nm}-${n}.png`;
+          jobs.push(this.assets.loadImage(key, base + file).then(() => onProgress && onProgress()));
+        }
     for (let i = 0; i < c.GUN_FRAMES; i++) {
       const n = String(i + 1).padStart(2, '0');
       jobs.push(this.assets.loadImage(`gun_${i}`, `${base}saborosa-plane-fire-${n}.png`).then(() => onProgress && onProgress()));
@@ -91,6 +209,12 @@ class Plane {
 
   update(dt, input) {
     const c = this.cfg;
+
+    // The i-frames run on REAL time and are never stepped by the stop-motion
+    // sampler: how long the player is invulnerable for should not depend on
+    // what framerate the art happens to be hopping at.
+    if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    if (this.falling) this._fall(dt);
 
     // Flying in: swallow the controls entirely (a key held from the intro must
     // not steer or fire), but keep the rest of update running so the bob and the
@@ -149,7 +273,12 @@ class Plane {
   // the STEPPED display state (disp), so everything visual hops in lockstep.
   _metrics(H) {
     const c = this.cfg;
-    const f = this.assets.getDrawable(`plane_${this.characterName}_${this.disp.pose % c.CH_FRAMES}`);
+    const pose = this.disp.pose % c.CH_FRAMES;
+    // Falls back to the pristine pack whenever a deterioration pack is missing,
+    // so a half-delivered set of art degrades to "he doesn't look older" rather
+    // than to an invisible player.
+    const f = this.assets.getDrawable(this._key(this.stage(), pose))
+           || this.assets.getDrawable(this._key(0, pose));
     if (!f) return null;
     const s = (H * c.planeScale) / f.height;
     const dh = f.height * s;
@@ -168,6 +297,27 @@ class Plane {
     // leaves the nose where the nose actually is.
     return { x: (this.disp.x + this.disp.entryOff) * W + m.dw / 2,
              y: (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob - offY + c.rayOffsetY * k };
+  }
+
+  /* The plane's own collision box, in SCREEN space — which is where the plane
+     lives (its x/y are canvas fractions and the camera pans off them), so
+     anything in world space converts to here rather than the other way round.
+
+     A fraction of the drawn sprite, because the art is a character sitting in an
+     aircraft with a good deal of air around them; the full frame would have the
+     player clipped by things that visibly missed. Centred exactly where render()
+     puts the sprite, entrance offset and bob included, so it cannot come unstuck
+     from what is on screen. */
+  hitBox(W, H) {
+    const c = this.cfg;
+    const m = this._metrics(H);
+    if (!m) return null;
+    const w = m.dw * c.planeHitWRel, h = m.dh * c.planeHitHRel;
+    return {
+      x: (this.disp.x + this.disp.entryOff) * W - w / 2,
+      y: (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob + this.fallY - h / 2,
+      w, h,
+    };
   }
 
   /* How grey the plane is, 0..1, at a given GAME time. Mirrors the background's
@@ -198,13 +348,33 @@ class Plane {
     // Set on the state INSIDE this save, so it covers the flash and the plane
     // together — they are one object — and is undone by the restore below
     // without touching anything else on the canvas.
+    //
+    // The deterioration stage rides in the SAME filter string as the drain
+    // rather than in a second pass: ctx.filter takes a list, so ageing and
+    // greying compose for free and the plane is still only filtered once.
+    // (When the deteriorated art lands, planeWearFilter empties and this term
+    // simply becomes '' — nothing else here changes.)
     const d = Math.min(1, Math.max(0, drain || 0));
-    if (d > 0) ctx.filter = 'saturate(' + (1 - d).toFixed(3) + ')';
+    const wear = (c.planeWearFilter && c.planeWearFilter[this.stage()]) || '';
+    const fx = (d > 0 ? 'saturate(' + (1 - d).toFixed(3) + ') ' : '') + wear;
+    if (fx.trim()) ctx.filter = fx.trim();
+
+    // The i-frames, made visible. Blinks to a low alpha rather than to nothing:
+    // the player must never lose track of their own plane, least of all in the
+    // half-second after being hit. Runs off hurtT, so the blink lasts exactly as
+    // long as the invulnerability it is reporting.
+    if (this.hurtT > 0 && c.planeBlinkMs > 0
+        && Math.floor(this.hurtT / c.planeBlinkMs) % 2 === 1) {
+      ctx.globalAlpha *= 0.3;
+    }
     // Both offsets are DRAW-only (entryOff slides it in from the left,
     // planeOffsetY lifts it in frame); neither touches displayX/displayY, so the
     // camera keeps its own framing.
     ctx.translate((this.disp.x + this.disp.entryOff) * W,
-                  (this.disp.y + (c.planeOffsetY || 0)) * H + bob);
+                  (this.disp.y + (c.planeOffsetY || 0)) * H + bob + this.fallY);
+    // The tumble, about the sprite's own centre — which is where the translate
+    // above already is, so it costs one call and nothing has to be re-anchored.
+    if (this.fallRot) ctx.rotate(this.fallRot);
     if (this.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true;
 

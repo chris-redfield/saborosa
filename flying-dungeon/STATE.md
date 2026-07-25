@@ -16,29 +16,148 @@ boot (black)
   └─ intro panels load first (~1MB) and start playing immediately,
      while the 32 heavy tray frames stream in behind them
         └─ storyboard roll  →  FRUIT SELECT (waits on the player)
-             →  countdown + plane takeoff  →  fade  →  game
+             →  countdown + plane takeoff  →  fade  →  GAME
 ```
 
 The intro doubles as the loading screen. If it finishes before the tray frames
 land, it holds on black with the progress bar rather than starting half-loaded.
 
+Once in the game, everything hangs off ONE number — the game clock, which runs
+15% fast and is the clock the HUD shows:
+
+```
+        shoot flies                        shoot COINS to wind the clock BACK
+             │                                          │
+     kill all 3 → the MOSCA BOSS                        │
+     charges, loops round, and                          │
+     settles at the map's centre                        │
+   0:00 ─────┼──────────── 2:00              0:00 ──────┼───────── -2:00
+        colour drains to                         colour bleaches to
+        black & white, dims                      PURE WHITE, and the
+             │                                   world runs backwards
+        TIME OVER panel                                 │
+        → any key → intro                        NO TIME MODE:
+                                                 HUD, flies, coins gone.
+                                                 The boss arrives.
+                                                        │
+                                                 he ages you — 3 hits
+                                                 and it all goes WHITE:
+                                                 THE END appears.
+                                                 KILL HIM: time comes
+                                                 back, and the flies,
+                                                 but never the coins —
+                                                 so from there the
+                                                 clock only runs on.
+```
+
+The two directions are the same machinery with the sign flipped — one signed
+`{desat, lift}` wash on the background, one clock, one set of thresholds. The
+player decides which way the run goes by choosing what to shoot.
+
 ---
 
-## Files added this session
+## The files
 
 | file | role |
 |---|---|
+| `src/game.js` | the disposable SHELL — canvas, loop, phases, wiring. Thrown away when this lifts into the main engine |
+| `src/config.js` | every tunable, plain data, no logic |
+| `src/plane.js` | the player: pitch poses, bob, muzzle flash, entrance, colour drain |
+| `src/tray-background.js` | the orbiting tray, and the colour drain / bleach wash |
+| `src/fly.js` | the enemy, its leg history, and death snapshots for rewinding |
+| `src/coin.js` | the spinning time-coin: shootable, reversible, explodes |
+| `src/boss.js` | the Time Boss: facing sweep, stalking, arrival blast, health, the throw |
+| `src/orb.js` | what he throws — the root game's FX sphere, flying straight |
+| `src/fly-boss.js` | the Mosca Boss: three-beat entrance, then a fight |
+| `src/boss-bar.js` | his health bar, top-centre. Stateless. **Not** part of the HUD |
+| `src/game-clock.js` | the run's own time base — scrubbable, and now actually scrubbed |
+| `src/hud.js` | canvas HUD (flies counter + run timer) with the rewind jolt |
+| `src/game-over.js` | both end panels — TIME OVER on black, THE END on white. Stateless |
 | `src/intro.js` | storyboard roll, board ordering, select + liftoff scheduling |
 | `src/fruit-select.js` | the SELECT FRUIT board, ported from the main game |
 | `src/liftoff.js` | the plane's takeoff over the countdown |
-| `src/hud.js` | canvas HUD (flies counter + run timer) |
-| `src/game-clock.js` | the run's own time base — see "Planned: rewind" |
+| `src/film.js` | grain / vignette / frame line / gate weave |
+| `src/assets.js` | tiny asset store; goes when this lifts into the engine |
+| `src/input.js` | keyboard + gamepad; goes when this lifts into the engine |
 | `tools/build-intro-frames.py` | intro masters → webp (64MB → 1MB) |
-| `tools/build-select-frames.py` | main game's select art → webp, into the dungeon asset set |
+| `tools/build-select-frames.py` | main game's select art → webp |
+| `tools/build-coin-frames.py` | coin masters → uniform 160px grid sheets |
+| `tools/build-orb-frames.py` | the root game's FX sphere → a 5-cell grid |
+| `tools/build-hustlebar.py` | the 22 hand-drawn health bars → 23 rotated frames |
+| `tools/coin-anim.html` | times the coin spin, A/Bs the two variants |
 | `tools/intro-align.py` | measures how far the camera should roll between boards |
 
-`package.sh` also gained the `enemy-sheets/` and `select/` copies — the former
-was a pre-existing bug, every packaged build shipped without fly sprites.
+⚠️ **`index.html` writes its own script tags** with a `?v=<timestamp>`, rather
+than listing them statically. Twice a change landed in source *and* dist and
+still threw "x is not a function" in the browser, because it was running a
+cached copy of a file whose URL had not changed — which looks exactly like a
+bug in the new code and burns a debugging session proving it isn't. All of
+`src/` is 184KB against ~30MB of art, so never caching it costs nothing.
+`async = false` is what preserves execution order; without it the globals load
+out of order. **A new `src/*.js` file must be added to that list.**
+
+`package.sh` has needed a copy line added for `enemy-sheets/`, `select/`,
+`coin/` and `game-over/`. The first was a real shipped bug — every packaged
+build went out without fly sprites. **Adding an asset folder means adding a
+`cp` line**, or dev works and the build 404s.
+
+---
+
+## Controller support
+
+Playable end to end on a pad: skip the intro, pick a fruit, fly, shoot, cycle
+character, restart. It uses **the main game's own mapping file**
+(`assets/gamepad-mapping.json`, authored in its `tools/gamepad-mapper.html`) —
+not a copy, so a pad set up once works in both and there is no second file to
+drift. That is why `GAMEPAD_MAPPING` sits outside `ASSET_BASE` and gets its own
+`package.sh` rewrite line.
+
+Actions are the main game's, so the file needs no translation:
+
+| action | here |
+|---|---|
+| `up`/`down`/`left`/`right` | d-pad, plus the left stick through a deadzone |
+| `lift` | FIRE — the same action Space is bound to over there |
+| `cycleCharacter` | swap fruit |
+
+Anything else in the mapping is simply not read.
+
+**It needed no changes anywhere but `input.js`.** The portable classes all read
+the plain `{left,right,up,down,firing,engaged}` shape, so the fruit select, the
+plane and the shell neither know nor care which device set those fields. That
+shape was already the point of the file; this is the first thing to prove it.
+
+⚠️ **Keyboard and pad are tracked separately and OR'd together.** They cannot
+share the public fields: the keyboard writes them on key *events* while the pad
+rewrites them every frame from a *poll*, so one set of flags would have the pad's
+"nothing held" clear a key the player is still holding — the stick would cancel
+the keyboard several times a second.
+
+⚠️ **`poll()` must be called once per frame, and is, from the top of the loop.**
+The Gamepad API fires no button events; reading a fresh snapshot is the only way
+to see a press, so that call IS the controller.
+
+⚠️ **A gamepad fires no DOM events, so the two "press anything" screens needed
+their own path.** `takeAnyPress()` is that: any button, mapped or not — a player
+hunting for the button to skip a screen should not have to find the right one.
+The intro skip routes through `onSkip` so it inherits both existing guards (the
+arm-time window after a restart, and "not while the fruit select is up, where
+buttons are the player choosing"), and the restart is behind the same
+`restartArmed` gate the listeners are, so the beat to read the screen applies to
+a pad too. `skipBound` exists because the pad cannot ask whether a DOM listener
+is attached.
+
+⚠️ **`applyMapping` REPLACES the button map and does not check `cfg.id`** — so a
+mapping authored for one controller is applied to whatever is plugged in. That
+is deliberate: it is exactly what the main game does, and matching it was the
+request. But it means a different pad wants its own mapping re-authored rather
+than expecting the shipped one to fit. The shipped file is an 8BitDo Ultimate 2C,
+which puts FIRE on button 2 rather than the standard 0.
+
+Loading is **not awaited and not part of the progress total**: a few hundred
+bytes, optional, and the game must never sit on a loading bar waiting for a
+controller profile. Missing file, bad JSON or no network all leave the
+standard-layout defaults in place, which is a working pad.
 
 ---
 
@@ -159,7 +278,10 @@ sheets and identical across all three characters (the packs are registered).
 
 ## Flies
 
-- `flyCount: 30`, `flyHealth: 3`, `rayDamage: 1`. Coins: `coinCount: 22`.
+- `flyCount: 3`, `flyHealth: 3`, `rayDamage: 1`. Coins: `coinCount: 22`.
+- **Three is a PACING number now, not a scenery one.** Killing all of them is
+  what summons the Mosca Boss, so `flyCount` sets how long the swarm lasts
+  before the first fight starts. It was 30.
 - **The shot is a hitscan beam re-tested every frame**, so damage must be rate
   limited or 3 HP drains in 3 frames (~50ms) and it dies instantly anyway.
   `flyHurtMs: 180` is that limit and doubles as the blink + knockback window,
@@ -291,15 +413,15 @@ floor plane at 0.899 so they aren't buried in the tablecloth.
 ### Shooting a coin
 
 Coins take the same hitscan beam the flies do — it **pierces**, so one shot can
-hit a fly and a coin on the same line. `coinHealth: 12`, and each connected hit
+hit a fly and a coin on the same line. `coinHealth: 8`, and each connected hit
 throws the coin into reverse for `coinHurtMs`: it travels **backwards at the
 speed it was drifting** (its own `vx` negated, not a separate knockback value,
 so a push always exactly undoes its drift), its **spin runs backwards** with
 it, and it **jolts**. Holding fire walks a coin back up the screen against
-itself — ~1.9s of held fire and ~230 world px before it's spent.
+itself — ~1.3s of held fire and ~150 world px before it's spent.
 
 ⚠️ **The rate limit is not optional.** The beam is re-tested every frame while
-fire is held, so without `coinHurtMs` all six points drain in six frames
+fire is held, so without `coinHurtMs` all eight points drain in eight frames
 (~100ms) and read exactly like a one-shot. It doubles as the reverse window and
 the jolt window, so the i-frames are always exactly as long as the feedback
 showing them — the same bargain `flyHurtMs` makes.
@@ -348,8 +470,8 @@ would never end.
 |---|---|
 | one hit | **5s**, every 160ms of held fire |
 | held fire on one coin | ~31s of clock per real second |
-| a full coin | 60s, for ~1.9s of firing |
-| all 22 coins | **1320s (22 min)** — against a 120s run |
+| a full coin | 40s, for ~1.3s of firing |
+| all 22 coins | **880s (14.7 min)** — against a 120s run |
 
 Deliberately enormous: two fully drained coins take you from 0:00 to the boss
 at -2:00. **`coinRewindMs` is live-editable** from the controls under the canvas
@@ -631,9 +753,24 @@ the boss arrives:
 - time-over can never fire, because that test requires `clock.running`;
 - and the value is still sitting there for when time comes back.
 
-**Nothing is deleted, only stopped.** Beating the boss should be
-`clock.resume()` plus `noTime = false`; every system — drain, bleach, HUD,
-time-over — is untouched and waiting to pick up from the frozen reading.
+**Nothing is deleted, only stopped** — and that is exactly how winning works.
+
+### Beating him
+
+`clock.resume()` + `noTime = false`, and every system picks up from the frozen
+reading with no special case anywhere: the bleach unwinds as the number climbs
+back toward zero, the HUD returns, time-over is live again. The sky refills with
+flies.
+
+**The coins do NOT come back.** Which is the whole shape of the endgame: the
+player is holding two minutes of credit and no way to buy any more, so from here
+the clock can only run forwards and the run is finite. `spawnFlies()` exists as
+its own function for exactly this — victory refills the sky and nothing else.
+
+⚠️ **`bossBeaten` is load-bearing.** Victory resumes the clock at ≤ `bossAtMs`,
+which is *still below the threshold that summons him*, so without that latch the
+very next frame re-enters no-time mode and spawns a second boss on top of the
+win. Cleared only by `restart()`.
 
 ⚠️ This is what forced `GameClock.started`. The loop used to start the clock
 whenever it wasn't running, which would have undone the pause on the very next
@@ -712,10 +849,420 @@ front of it.
 belongs to the explosion, not to whatever exploded, so the two can never drift
 apart. Only the SIZE is per-user (`coinBoomSize` / `bossBoomSize`).
 
-⚠️ **The boss does nothing yet.** It cannot be shot, does no harm, and has no
-health — the brief that asked for it was cut off mid-sentence ("the boss should
-have ."). Everything above is the entity and its presence; the fight is
-undesigned.
+### The fight
+
+⚠️ **Being shot ALERTS him, and leaving that out made the fight a joke.**
+`bossSeeRange` is 420 world px; the hitscan beam runs from the nose to the edge
+of the screen, over a thousand. So a player standing off could empty the whole
+bar into a boss that had never noticed them — and because **facing is velocity**,
+an unalerted boss stands front-on and therefore perfectly still. A stationary
+target that never breaks your line and never throws anything is 100% beam uptime
+and no fight at all. `hit()` now wakes him, arming the first throw with the same
+grace beat proximity does so he doesn't answer the opening shot instantly.
+
+He takes **88 hits** (`bossHealth`), each gated by `bossHurtMs` i-frames — not
+optional, for the reason every other health bar here says: the beam is re-tested
+every frame, so an ungated bar drains in as many frames as it has points. A
+connected hit **jolts** him (the coin's damped oscillation, at a much smaller
+relative amplitude — a thing this size should barely move) and puts **the fly's
+impact puff** at the point of contact.
+
+**The puff sits at the HEIGHT the beam crossed him at** — the shell hands that Y
+to `hit()`, because only the shell knows where the shot was. He is 213px of
+hitbox tall, and a puff pinned to his centre showed the impact in one fixed place
+however high or low the player was aiming, which read as decoration rather than
+as a hit.
+
+⚠️ **Y only. X stays on his centre.** Anchoring X to where the beam enters his
+box was tried and is not wanted: the puff belongs on him, not on his leading
+edge. `hit()` takes a bare Y rather than a point so it cannot quietly come back.
+
+It is pinned where it landed and does not track him afterwards, for the reason
+the coin's does not: he is about to flinch, and a puff dragged along with him
+would read as part of the boss instead of as the moment of impact.
+
+`bossHitFxSize` is **0.4**, well under 1, where the coin's equivalent is 1.3.
+That is deliberate: the puff is about the BULLET, not the target. 0.4 of a 260px
+boss is ~104px, near enough the 99px the coin gets. Scaling it *with* the boss
+would fire a 338px cloud out of a rifle.
+
+The hitbox is **fixed**, like the coin's but for a different reason: the turn
+takes him from 120px in profile to 269px face-on, so a box that breathed with
+the animation would make him a *harder* target exactly as he set off after you.
+
+At 0 HP he is **erased into the same explosion he arrived in** — `boomT` is
+simply re-armed, so the entrance and the death are one piece of code and one
+rate, re-anchored to where he is now.
+
+### Two stages
+
+`stage()` is **derived from health, not latched** — no flag to fall out of step
+with the bar it is read from, and nothing here heals so it cannot flap.
+
+Under `bossStage2At` he **turns and travels `bossStage2Speed` faster**. That is
+now the whole of stage 2.
+
+⚠️ **The throw used to change here too and it was REMOVED.** Orbs that missed
+curved back like a boomerang; it did not play well. What the shape was, in case
+it is ever wanted again: two constant accelerations applied from the moment it
+left, one back along the throw and one across it — constant acceleration in a
+fixed frame IS a parabola, so it needed no waypoints and no curve fitting, only
+two numbers. `orb.js` records this too.
+
+So the speed-up is now the *only* thing marking the stage, which makes it carry
+more than it used to: a boss that visibly winds up says "that did something"
+without a word of UI. `_rush()` is the single place it applies, so the turn and
+the travel can never be wound up by different amounts — remember `bossTurnMs`
+*sets* the speed ramp, so those two have to move together.
+
+**`bossStage2At: 0.5` is also exactly where the health bar runs out of red.**
+That is not a coincidence and shouldn't be broken: the stage change has a tell
+the player can read.
+
+### The orb
+
+`src/orb.js`. The art is the **root game's ambient FX sphere** — the spiky ink
+ball from the assets-003 pack, the `animation` block in
+`saborosa-assets-003-fx-small.json`. `tools/build-orb-frames.py` cuts those five
+frames onto a uniform grid, so frame k is `(k*ORB_CELL, 0, CELL, CELL)` and there
+is no per-frame table. 33KB, and it lands at the flying-dungeon asset root, which
+`package.sh` already globs — **no new `cp` line**.
+
+**The animation is the throw.** The five frames GROW (132→216px) and are centred
+in their cells, so an orb starting on frame 0 *inflates out of nothing* at the
+point it was released — which is why it spawns close to the boss
+(`orbSpawnRel`) rather than on top of the player. You see him produce it.
+
+Once at full size it drops into a **two-frame breath** rather than ping-ponging
+all the way back down as the root game does: shrinking to frame 0 mid-flight
+reads as the orb vanishing, not pulsing. The hitbox is fixed through all of it —
+the coin's lesson again, a box that pulsed with the art would be dodging the
+player twice a second.
+
+**Aimed once, at release, and never corrected.** No homing: it is dodgeable by
+moving, which is the whole fight. The throw direction is wrap-aware for the same
+reason the stalk is.
+
+**The boss does not construct orbs.** `takeThrow()` hands the shell a
+description and the shell builds it, the same way it builds the flies and the
+coins — so `boss.js` never has to know `orb.js` exists.
+
+### The health bar
+
+`src/boss-bar.js` + `tools/build-hustlebar.py`, from
+`assets-v2/saborosa-hustlebar-1-low.png`.
+
+The master is a contact sheet of hand-drawn **vertical** bars, 11 squares each.
+Read as a ladder they are one bar in every state it can be in, and the level of
+a bar is `(11 − whites) + reds`:
+
+```
+  0   WWWWWWWWWWW   empty — he is dead
+ 1-10 yellow rises from the BOTTOM
+ 11   YYYYYYYYYYY   ← NOT ON THE MASTER. Generated.
+12-21 red then descends from the TOP
+ 22   RRRRRRRRRRR   full health
+```
+
+**23 states, and the master has 22.** The missing one is the changeover — the
+instant the bar is all yellow and no red is left — missing because it is the only
+state that is neither "some white" nor "some red".
+
+⚠️ **It is generated by MULTIPLYING, not filling.** The squares are ink
+drawings; a flat fill would eat the black outline and the pencil texture inside
+it. Multiplying the white square by the yellow sampled from the square below maps
+white→yellow, black→black, and every antialiased grey between them to a darker
+yellow — which is what the artist actually drew in the other ten. Checked against
+its neighbours on a contact sheet; it is seamless.
+
+The bars come out **horizontal** (rotated 90° anticlockwise) and laid out as a
+**column**, not a row — the frames are 333px wide, so a row would be a 7659×50
+texture. Each is centred in a uniform cell: the bars are hand-drawn and differ by
+a pixel or two, and the common cell is what stops the bar twitching sideways
+every time the frame changes.
+
+**Keep `bossHealth` a multiple of 22** (= `BAR_FRAMES − 1`). Then the bar steps
+down one square every `bossHealth/22` connected hits with nothing left over;
+anything else and it skips squares unevenly. At 88 that is four hits a square.
+
+Time to kill is `bossHealth × bossHurtMs` of *connected* fire — 13.2s — and
+those are the only two knobs.
+
+⚠️ **The two phases are mirrored so they drain the same way.** In the master
+they fill from opposite ends (yellow rises from the bottom, red descends from the
+top), so once rotated the red drained right-to-left but the white ate in from the
+left — the same bar emptying in two contradictory directions. Every frame
+containing white is flipped horizontally in the build, so remaining health is
+always anchored at the LEFT end and the bar empties one way throughout. The ink
+wobble flips with it, but each bar was drawn separately and already differs frame
+to frame, so there is no seam.
+
+⚠️ **The bar cannot live in `hud.js`.** The whole HUD is hidden in no-time mode,
+which is precisely when the fight happens. That is the entire reason it is its
+own file. It is stateless like `game-over.js` — handed a fraction, derives the
+frame — and drawn after the film pass for the same reasons the HUD is.
+
+Frame 0 only shows when he is actually dead (`frameFor` clamps to ≥1 while
+alive): an empty bar means dead, and showing it a hit early would call the fight
+before it was over. It IS drawn through the death blast, because an empty bar is
+the news.
+
+---
+
+## The Mosca Boss
+
+`src/fly-boss.js`, `enemy-sheets/saborosa-boss-mosca-01/02/03.png`, sliced by
+`tools/mosca-boss-anim.html`. It turns up when the **last fly is dead** — where
+the Time Boss is what abusing the rewind earns you, this one is what clearing
+the room earns you.
+
+**The sheet is a TURN**, the same shape the Time Boss's is and read the same way:
+7 poses sweeping profile-left (0) → head-on (3) → profile-right (6), the widths
+giving it away (253px in profile, 176px face-on, symmetric about the middle). So
+`facing` is a continuous 0..1 and the pose is that value quantised. Every pose
+shares the y band 38–302, so they are drawn from a common centre with no
+per-pose offset.
+
+⚠️ **But facing is NOT velocity here.** That coupling is the Time Boss's whole
+character — he can only move as fast as he is turned — and it would be wrong for
+a fly, which goes where it likes at whatever angle it likes. Here facing is only
+where it is looking, and the entrance drives it explicitly.
+
+**The rects are baked into config**, computed offline with the tool's own
+algorithm (union alpha of the sheets, gap 6, alpha 16, minW 12) rather than
+detected at boot.
+
+⚠️ **Three sheets on disk, two loaded.** 01 and 03 are byte-identical (verified
+by hash), so the delivered 1·2·3 flap is really A-B-A. `MOSCA_CYCLE: [0,1,0]`
+reproduces it exactly against two images and saves 279KB of duplicate PNG — and
+note it is *not* A-B: looping [0,1,0] holds A for two frames at the seam, which
+is what the artist's three-file cycle does. The flap runs ACROSS FILES: a pose
+holds its column while the sheet underneath it cycles.
+
+They are PNGs in `enemy-sheets/`, a folder `package.sh` already copies — **no new
+`cp` line**.
+
+### The entrance
+
+A cutscene in three beats, and it cannot be interrupted:
+
+| | |
+|---|---|
+| **CHARGE** | in from off the RIGHT at the player's own height, straight across at `flyBossChargeSpeed`, and out the far side. Aimed at where they were when it appeared and never corrected — a fly-past, not an attack |
+| **DESCEND** | reappears at the TOP of the map, above the world entirely, and comes down the middle, turning to face the camera as it falls |
+| **STALK** | reaches the centre of the map and comes straight for the player, with **no pause**. Arriving IS the start of the fight |
+
+`arrived()` is the whole switch for that last line, and **everything** hangs off
+that one test — the health bar goes up, it becomes shootable, and it starts
+hurting on contact, all at the same instant and none of them before. Shooting a
+boss whose bar is not up is damage the player cannot see land, and being killed
+by a cutscene is worse.
+
+⚠️ **The charge is timed by DISTANCE TRAVELLED, not by testing its position
+against the edge of the screen.** The world wraps on X, so a position test would
+have to be wrap-aware — and would still be wrong the moment the player moved the
+camera mid-charge. Distance is neither.
+
+The jump from off-left to above-the-centre is a **cut, not a move**: it is
+off-screen either way, so there is nothing to see and nothing to animate.
+
+**"Centre of the map" is the world's centre, not the screen's** (`flyBossHomeXRel`
+/ `YRel`, both 0.5) — the same call the Time Boss's spawn makes, a fixed landmark
+the player can go to rather than something that follows the camera.
+
+### The fight
+
+Everything damageable in this game has the same shape and this is no exception:
+`flyBossHealth` 66 (a multiple of 22, so the bar steps one square every three
+connected hits), gated by `flyBossHurtMs` i-frames, a damped jolt, the fly's own
+burst frames as an impact puff — doubly apt here — at the height the beam crossed
+it, and the shared 12-frame explosion on death.
+
+The hitbox is **fixed**, the same call the coin and the Time Boss make: the turn
+takes it from 253px in profile to 176px head-on, and a box that breathed with the
+animation would make it a harder target for no reason the player could see.
+
+### The stalk IS the attack
+
+It has no projectile and no special move: it simply closes on the player at
+`flyBossStalkSpeed` on both axes, and **touching it costs a third of their life**.
+The collision boxes are the weapon. No extra gate is needed for that — `boxes()`
+is empty until it has arrived and again once it is dying, so a cutscene and a
+corpse are both harmless for free.
+
+⚠️ **`flyBossStalkSpeed` MUST stay well under the player's own speed, and that
+ratio is the entire difficulty of the fight.** The plane travels 0.30 of the
+camera-plus-screen span per second, which is ~851 world px/s across and ~1117
+down. At 420 the boss manages about half that, so it can always be outrun —
+which is the point, because contact has to be a mistake the player made rather
+than something that happens to them. Past ~800 the fight stops being winnable in
+the other direction: unavoidable.
+
+`plane.hurt()` is rejected inside the plane's i-frames, which is what stops a
+boss parked on the player draining all three points in three frames. At
+`planeHurtMs` 1100 a player who just sits inside it lasts 3.3 seconds.
+
+⚠️ **The stalk step is CLAMPED to the distance remaining, and that is what
+replaces the Time Boss's stand-off.** Without it the boss overshoots by a
+fraction of a frame, `dx` flips sign underneath it, and it shudders on the spot
+instead of looming. A stand-off would fix that too — but a stand-off also holds
+the boss just *clear* of the player, and touching the player is this boss's whole
+attack. Clamping settles it ON them instead, and the i-frames rate-limit the
+cost. `_dx` is wrap-aware for the same reason the Time Boss's is.
+
+Facing is only where it is LOOKING, so it turns toward the side the player is on
+while travelling whatever way it likes, and keeps closing through the turn.
+
+**No-time mode clears it**, along with the flies and the coins. It belongs to the
+part of the run that was about time, and leaving it in a white void fighting
+alongside a boss it has nothing to do with would be a mess. That is also what
+guarantees only one health bar is ever up, so one renderer serves both bosses.
+
+`flyBossDone` latches for the same reason `bossBeaten` does: beating the Time
+Boss refills the sky with flies, and killing that second swarm must not summon
+the Mosca Boss all over again.
+
+---
+
+## The player's health — he AGES
+
+`planeHealth: 3`, and **there is no bar and there is not going to be one**: the
+character himself is the readout. Each point lost deteriorates him one stage
+(3 = as he starts, 2 = worn, 1 = badly gone) and the third kills him. That is
+why this lives in `plane.js` rather than the HUD — and it *had* to, for the same
+reason the boss bar did.
+
+`wear` is a **continuous** number, not an integer counter. A hit adds exactly
+1.0, which always crosses a stage boundary — so every hit is guaranteed to
+change what the player looks like, which is the only feedback there is — while
+leaving room for anything that ages him *gradually* to add a fraction to the same
+number, with no second resource to keep in step. **The boss's aging attack goes
+here and needs nothing else built.**
+
+⚠️ **The deteriorated sprite packs do not exist yet.** `planeWearSheets` is the
+switch: off (today) one pack is loaded and the stage shows through a `ctx.filter`
+from `planeWearFilter`, which is a **stopgap and only a stopgap**. On, each stage
+loads `saborosa-plane-{name}-wearN-NN.png` and the filter list should be emptied.
+Stage 0 keeps the ORIGINAL asset key exactly, so turning the packs on adds keys
+rather than renaming any. `_metrics()` falls back to the pristine pack per frame,
+so a half-delivered set of art degrades to "he doesn't look older" rather than to
+an invisible player.
+
+The wear filter rides in the **same filter string** as the colour drain rather
+than a second pass — `ctx.filter` takes a list, so ageing and greying compose for
+free and the plane is still only filtered once. When the art lands that term
+becomes `''` and nothing else changes.
+
+`planeHurtMs: 1100` of i-frames, long by this game's standards because a hit here
+costs a THIRD of the run rather than 1/44th. The **blink goes to alpha 0.3, not
+to zero**: the player must never lose track of their own plane, least of all in
+the half-second after being hit. It runs off `hurtT`, so the blink lasts exactly
+as long as the invulnerability it reports. The i-frames run on **real** time and
+are never touched by the stop-motion sampler — how long you are invulnerable
+should not depend on what framerate the art happens to be hopping at.
+
+**Only a landed hit consumes an orb.** Inside the i-frames `hurt()` returns false
+and the orb flies on through, rather than being silently eaten — otherwise a
+second orb arriving during the blink would punish the player later for a hit they
+never saw.
+
+Dying gives the fight a fail state at all, which no-time mode otherwise cannot
+provide — the clock is paused in there, so time-over can never fire on its own.
+
+### The death fall
+
+The last hit does not cut to a panel. The plane **drops out of the sky exactly
+the way a dead fly does** — same `flyGravity`, reused rather than copied so the
+two cannot drift apart — after a small upward LURCH (`planeFallVy0`) that reads
+as losing lift rather than as a sprite starting to slide down the screen, plus a
+tumble, because a plane that fell flat reads as a bug. Only once the wreck has
+left the frame does the ending begin.
+
+- **The i-frames and the blink keep running over it**, on purpose: the player
+  should see the hit land and THEN see the plane go down, rather than the two
+  being one indistinguishable event.
+- The fall runs on **real time and outside the stop-motion sampler** — it is a
+  physical event, not part of the hopping animation, and quantising it to ~12fps
+  would stutter it down the screen.
+- `controlLocked` now covers falling as well as the entrance, so firing, moving
+  and character-cycling all stop in one place. Both are moments the player is
+  not flying this thing.
+- `fallDone()` tests the sprite's **top edge** clearing the bottom of the canvas,
+  so it is the whole plane that has gone, not just its centre. `planeFallMaxMs`
+  is a safety net against a mistuned gravity, not part of the timing.
+- The clock is paused **at the moment of death**, not when the fall ends, so the
+  drain freezes on the frame it happened.
+
+⚠️ **`plane.fallDone(canvas.height)`, not `H`.** That test runs earlier in the
+loop than the frame's `const W, H`, so naming those there is a temporal
+dead-zone crash on the one frame the player dies. Same number either way — the
+canvas is a fixed internal resolution.
+
+### Which ending you get
+
+The two bosses kill you differently and the screen says so. `killedBy` is set at
+the moment a hit actually lands, so the last thing to connect gets the credit.
+
+| ending | backdrop | words |
+|---|---|---|
+| the clock runs out | coloured worm panel | **TIME OVER** |
+| **Mosca Boss** knocks you down | coloured worm panel | **YOU FAILED** |
+| **Time Boss** ages you out | white-out | **THE END** |
+
+The fall is the plane's death animation and happens on both deaths — it belongs
+to dying, not to whichever boss did it.
+
+The coloured panel therefore serves **two** endings, and the only difference
+between them is what it says: running out of time and being killed are not the
+same thing to tell the player. `ending.title` carries the config key of the
+override, `null` meaning plain TIME OVER.
+
+`_titleFor()` memoises `overTitle` with one override merged on top, so all three
+endings share the font, the size, the spacing and the 1500/1000ms reveal delays
+and cannot drift apart. Only `words` (and, for the white one, the colour and
+weight) ever differ.
+
+⚠️ "YOU FAILED" is one glyph longer than "TIME OVER" — roughly 1020px against
+910px at `sizePct` 20.4, so it still clears the 1280 frame with ~130px a side.
+That is the number to drop if a longer phrase is ever wanted.
+
+### Dying to the boss: THE END
+
+The **inverse of the other ending.** The run running out of time dips to BLACK
+and says TIME OVER; being killed by the Time Boss goes **WHITE** and says
+**THE END**. Which is the picture finishing what it was already doing rather than
+cutting to something new — the bleach has the world at pure white by the time the
+fight starts, so what actually dissolves in the white-out is the plane, the boss
+and the orbs, leaving the void they were standing in.
+
+`ending.white` is the whole switch; it picks the dip colour and which render the
+panel branch calls, and it is set from `killedBy` — see Which ending you get.
+Dying to the Mosca Boss is deliberately NOT this screen: it knocks you out of the
+sky in a world that still has its colour, so it gets the black TIME OVER panel.
+
+**The letters arrive identically, and structurally so.** `_title()` now takes the
+title config as an argument and both endings go through it, and `noTimeTitle` is
+an **override merged over `overTitle`** rather than a second block — font, size,
+spacing, the 1500/1000ms delays, all shared, so retiming one ending retimes both.
+Three things differ:
+
+- **the words** — and `noTimeTitle` / `renderNoTime()` are named for the MODE the
+  death happens in, not for what it says. The words are config and have already
+  changed once (NO TIME → THE END).
+- **the weight** — `fauxBold` 4.5 against the shared 1.5. Futura's real Extra
+  Bold cut only exists on machines that happen to have Futura at all, so weight
+  is bought by stroking the glyphs in their own colour. Much past this and the
+  counters in E and D start closing. Scoped to this ending on purpose: TIME OVER
+  was not asked to change, and moving the value up one block would share it.
+
+- **the colour** — **black**. The yellow it inherits from `overTitle` is what
+  TIME OVER wears on a dark photograph; on this screen's white field it barely
+  showed.
+
+There is no picture to fade up, so the panel's `alpha` only ever gates the
+letters — and they are 1500ms behind it, by which point it is 1. They pop exactly
+as they do on the black screen, which is the point. `settledMs()` reads the
+shared timings, so the restart arms at the same moment either way.
 
 ---
 
@@ -791,24 +1338,26 @@ stack a second swarm on the leftovers of the last run.
 
 ## Game clock
 
-`src/game-clock.js`. Deliberately not the wall clock, for two reasons:
+`src/game-clock.js`. Deliberately not the wall clock:
 
 1. It ticks at `gameClockRate: 1.15` — a minute of real play reads **01:09**.
-2. It's meant to be **scrubbable**. `rewind()` / `seek()` exist and are tested
-   (both clamp at 0) but nothing calls them yet.
+2. It is **scrubbable**, and now actually scrubbed: coins call `rewind()`, and
+   the clamp at 0 is gone (see Below zero).
+3. `started` is separate from `running` — "has this run begun", never cleared
+   by a pause. Two pauses depend on it (time over, no-time mode) and a caller
+   testing `running` would undo them on the next frame.
 
-### Planned: rewind
+⚠️ **The rate scales the CLOCK ONLY.** The simulation still steps on the real
+delta, so the world and the clock disagree about *when* things happened: 60s of
+fly movement is stamped 69s of game time.
 
-The stated next feature is going back in time. `advance()` already returns the
-game delta so callers can drive systems off it.
-
-⚠️ **The rate currently scales the CLOCK ONLY** — the simulation still steps on
-the real delta, so game feel is unchanged. That means the world and the clock
-disagree about *when* things happened: 60s of fly movement is stamped 69s of
-game time. For a rewind that reconstructs state by game time those must agree,
-so the sim systems need to switch to consuming `advance()`'s return value.
-Worth deciding at that point whether the world should also run 15% faster, or
-whether the rate should drop to 1.0 and the urgency come from elsewhere.
+That is fine for what was built, because the rewind here is **event-based, not
+reconstructive** — coins move the clock, and flies come back from a stamped
+snapshot rather than by replaying the world to a game time. A rewind that
+genuinely reconstructed state by game time would need the sim on `advance()`'s
+return value first. Worth deciding at that point whether the world should also
+run 15% faster, or whether the rate drops to 1.0 and the urgency comes from
+elsewhere.
 
 ---
 
@@ -825,17 +1374,65 @@ frames to check registration. That is inspecting art, not testing code.
 
 ---
 
+## NEXT SESSION: the aging attack, and the art
+
+The fight is BUILT and playable end to end: he is shot, he throws, he has two
+stages, he can be killed, and the player can die. What is left:
+
+**1. The aging attack — designed but not built, and it needs a shape.** The
+brief: "a special attack where he makes you older, like time passes faster for
+the character". The machinery is already there for it — `plane.wear` is
+continuous precisely so something can add a *fraction* per frame rather than a
+whole point — so this is a boss behaviour to author, not a health system to
+build. What it is not decided is:
+
+- is it a **field** the player has to fly out of (aging while inside it), an
+  **instant** hit that costs a stage outright, or a **lingering curse** that
+  ages you for a while after it lands?
+- what telegraphs it? The obvious one is free: **facing IS velocity**, so
+  forcing him front-on stops him dead and already reads as a wind-up. A special
+  attack that begins with him squaring up to the camera costs nothing and is the
+  most legible tell in the entity.
+
+**2. The deteriorated character art.** Three stages, two of them missing. See
+The player's health — the hook, the naming and the fallback are all in place;
+flip `planeWearSheets` and empty `planeWearFilter`.
+
+**3. The Mosca Boss fight is one idea.** Stalk and contact damage, and that is
+all it does — no projectile, no special, no second stage. Whether that is enough
+is a play-it call; the Time Boss's stage split (`stage()` derived from health)
+is the pattern if it wants one.
+
+**4. Nothing follows victory.** The run just carries on with four minutes of
+game time and no coins. That may be enough, or beating the boss may want to be
+worth something the player can see.
+
+**Numbers that have never been played, only reasoned about** — all of the
+fight's timing is a first guess: `bossHealth 88` (13.2s of connected fire),
+`orbEveryMs 1500`, `orbSpeed 330`, `planeHurtMs 1100`, and every `flyBoss*`
+number. Expect to move them.
+
+---
+
 ## Open items
 
-1. **Liftoff speed** — set to `liftSpeed: 1.0` (3565ms). Unwatched; confirm it
-   reads better than the old 2971ms.
-2. **HUD font** — bundle a webfont or accept the fallback stack.
-3. **Rewind** — migrate sim systems onto the game clock's delta.
-4. **Empty sky at GO!** — ~600ms of it at `liftSpeed: 1.2`, because the takeoff
-   finished a whole 594ms before the board did. At 1.0 the plane reaches
-   `liftExitX` exactly as GO! ends and only the last ~2% of the path is
-   off-frame, so the dead air should now be ~150ms. Re-check by eye before
-   touching `introBeats[11]`.
-5. **Plane clips the frame edges** — at full stick up/down the sprite is half
+1. **HUD font** — Futura is not bundled and isn't on most non-Mac machines.
+   Ship a webfont (licensed Futura, or a free geometric lookalike like Jost)
+   with an `@font-face` + `package.sh` copy, or accept the fallback stack.
+   Affects the HUD *and* the TIME OVER title.
+2. **The rewind economy is enormous.** At `coinRewindMs` 5s and `coinHealth` 8,
+   22 coins hold **880s** against a 120s run, and three drained coins take you
+   from 0:00 to the boss. Live-editable from the controls, so tune it in play.
+3. **Sim on game time** — see Game clock. Only needed if a *reconstructive*
+   rewind is ever wanted; the event-based one does not need it.
+4. **Plane clips the frame edges** — at full stick up/down the sprite is half
    off-screen (pre-existing). A clamp on the drawn position would fix it at the
    cost of a slightly smaller reachable band.
+5. **Coins have no pickup** — shooting one is still the only thing that can
+   happen to it.
+6. **Empty sky at GO!** — was ~600ms at `liftSpeed: 1.2`; at 1.0 it should be
+   ~150ms. Re-check by eye before touching `introBeats[11]`.
+7. **Nothing follows TIME OVER but a restart.** No score, no summary.
+8. **The plane's wear filter is a stopgap** for art that doesn't exist yet, and
+   it is the ONLY thing telling the player they have been hit apart from the
+   blink. Worth checking it is legible before the real packs land.

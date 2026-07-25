@@ -75,8 +75,12 @@ class GameOver {
   /**
    * @param t     ms since the panel appeared (drives the loop and the reveal)
    * @param alpha 0..1 fade-in of the whole panel, title included
+   * @param titleKey  config key of a title OVERRIDE, or null for plain TIME OVER.
+   *                  The coloured panel serves two endings — the clock running
+   *                  out, and being knocked out of the sky by the Mosca Boss —
+   *                  and the only difference between them is what it says.
    */
-  render(ctx, W, H, t, alpha) {
+  render(ctx, W, H, t, alpha, titleKey) {
     const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
     if (a <= 0) return;
     const img = this.assets.getDrawable('gameover_' + this.frameAt(t));
@@ -89,19 +93,64 @@ class GameOver {
       // The band IS the picture and it is already 16:9 — fill the canvas.
       ctx.drawImage(img, 0, 0, W, H);
     }
-    this._title(ctx, W, H, t, a);
+    this._title(ctx, W, H, t, a, this._titleFor(titleKey));
     ctx.restore();
   }
 
-  /* "TIME OVER" — both words on ONE line, but revealed in order: TIME first,
-     OVER after it. The full string is measured up front and each word keeps its
-     final x, so nothing re-centres when OVER pops in.
+  /* The OTHER ending: killed by the Time Boss. No photograph, no worms — the
+     screen is WHITE and the words read THE END.
+
+     Named for the MODE it belongs to (a death that can only happen inside
+     no-time mode), not for what it says — the words live in config and have
+     already changed once.
+
+     This is not a new screen so much as the old one with the picture taken away.
+     The reveal goes through the SAME _title() with the same delays, and
+     noTimeTitle is merged over overTitle so only the words, the colour and the
+     weight differ — the font and every delay fall through, and retiming one
+     ending retimes both.
+
+     It fills the white itself rather than trusting the shell to have done it, so
+     this is as self-contained as render() is. And white is the only right answer
+     here: no-time mode has already bleached the world to pure white, so this is
+     the picture finishing what it was doing rather than cutting to a new one. */
+  renderNoTime(ctx, W, H, t, alpha) {
+    const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
+    ctx.save();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, W, H);
+    this._title(ctx, W, H, t, a, this._titleFor('noTimeTitle'));
+    ctx.restore();
+  }
+
+  /* overTitle with one of the ending overrides laid on top. Memoised — it is
+     read every frame an ending is on screen — and it is a MERGE rather than a
+     set of parallel blocks so the endings cannot drift apart: the font, the
+     size, the spacing and the reveal delays all live in overTitle and every
+     ending gets whatever that says.
+
+     A null key is TIME OVER itself, which is the base rather than an override. */
+  _titleFor(key) {
+    if (!key) return this.cfg.overTitle;
+    if (!this._merged) this._merged = {};
+    if (!this._merged[key]) {
+      this._merged[key] = Object.assign({}, this.cfg.overTitle, this.cfg[key] || {});
+    }
+    return this._merged[key];
+  }
+
+  /* Both words on ONE line, revealed in order — TIME then OVER, or NO then TIME.
+     The full string is measured up front and each word keeps its final x, so
+     nothing re-centres when the second word pops in.
+
+     `T` is passed in rather than read from config so both endings run through
+     exactly this code: whatever else the white ending is, the letters arrive
+     the same way.
 
      Everything is sized off the canvas height, so the layout holds at any
      resolution. Same open question as the HUD: Futura is not bundled, so most
      machines fall through the stack to a geometric stand-in. */
-  _title(ctx, W, H, t, a) {
-    const c = this.cfg, T = c.overTitle;
+  _title(ctx, W, H, t, a, T) {
     if (!T || T.on === false) return;
     const size = H * T.sizePct / 100;
     if (size < 1) return;

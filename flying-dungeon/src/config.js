@@ -10,6 +10,13 @@ const CONFIG = {
   // this one line to './assets/flying-dungeon/' for the self-contained itch build.
   ASSET_BASE: '../assets-v2/flying-dungeon/',
 
+  /* Controller mapping. THE MAIN GAME'S OWN FILE, not a copy — a pad set up
+     once in tools/gamepad-mapper.html works in both, and there is no second
+     copy to drift. Which is why it sits outside ASSET_BASE and gets its own
+     line for package.sh to rewrite.
+     Optional: if it is missing, input.js keeps its standard-layout defaults. */
+  GAMEPAD_MAPPING: '../assets/gamepad-mapping.json',
+
   // --- Canvas: fixed internal resolution (matches the main game) ----------
   GAME_W: 1280,
   GAME_H: 720,           // CSS-scaled to the window with letterboxing
@@ -481,6 +488,49 @@ const CONFIG = {
     outlineColor: '#000000',
   },
 
+  /* The OTHER ending: dying to the Time Boss. Everything goes WHITE instead of
+     black, and the words read THE END.
+
+     Named for the MODE it belongs to (the death that can only happen inside
+     no-time mode), not for what it says — the words are just config and have
+     already changed once.
+
+     ⚠️ This is an OVERRIDE, not a second title block. It is merged over
+     overTitle, so the font, the size, the spacing, the reveal delays — every
+     number that decides HOW the letters appear — are shared with TIME OVER and
+     retuning one retunes both. Only what must differ is listed. */
+  /* And the THIRD ending: knocked out of the sky by the Mosca Boss. Same
+     coloured worm panel the clock running out gives — it is a death in a world
+     that still has its colour — but the words are different, because running out
+     of time and being killed are not the same thing to say.
+
+     An override merged over overTitle, exactly like noTimeTitle. It inherits the
+     yellow, which is what that panel is designed for.
+
+     "YOU FAILED" is one glyph longer than "TIME OVER"; at sizePct 20.4 it still
+     fits the 1280 frame with room, but that is the number to drop if a longer
+     phrase is ever wanted. */
+  failedTitle: {
+    words: ['YOU', 'FAILED'],
+  },
+
+  noTimeTitle: {
+    words: ['THE', 'END'],
+    // BLACK. The yellow this inherits from overTitle is what TIME OVER wears on
+    // a dark photograph; on this screen's white field it barely showed.
+    color: '#000000',
+    // EXTRA BOLD. Futura's real Extra Bold cut only exists on machines that
+    // happen to have Futura at all (see `family` above), so weight here is
+    // bought by stroking the glyphs in their own colour — 4.5% of the font size
+    // against the shared 1.5%, which is ~3× the added thickness. Pushing much
+    // past this starts closing the counters in E and D.
+    //
+    // Deliberately scoped to THIS ending rather than raised in overTitle: TIME
+    // OVER was not asked to change. It is the one thing about the letters the
+    // two screens do not share, and moving it up one block would share it.
+    fauxBold: 4.5,
+  },
+
   // --- Enemies ------------------------------------------------------------
   // Enemies live in the tray's WORLD space (the same larger plane the camera
   // pans), so they stay put in the dungeon while the player/camera moves — not
@@ -524,7 +574,11 @@ const CONFIG = {
   // toward the far edge. Only its ANGLE varies: one uniform sample in
   // ±corpseTiltDeg, drawn once when it lands and never touched again.
   corpseTiltDeg: 25,
-  flyCount: 30,          // how many spawn (killed for good — no respawn, for testing)
+  // How many spawn (killed for good — no respawn). THREE, and that is now a
+  // pacing number rather than a scenery one: clearing all of them is what
+  // summons the Mosca Boss, so this is how long the swarm lasts before the
+  // fight starts.
+  flyCount: 3,
   flyScale: 0.13 * 0.5 * 1.4, // fly height as a fraction of the canvas height (50% of prior, then +40%)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
   flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
@@ -608,13 +662,13 @@ const CONFIG = {
   // surplus also buys a short flourish after the last hit instead of the world
   // snapping round the instant you stop firing.
   rewindSpinMs: 240,
-  coinHealth: 12,
+  coinHealth: 8,
   // The rate limit, and it is NOT optional: the beam is re-tested every frame
   // while fire is held, so without it the whole health bar drains in as many
   // frames (~200ms) and reads exactly like a one-shot kill. It doubles as the
   // reverse window and the jolt window, so the i-frames are always exactly as
   // long as the feedback showing them — the same bargain flyHurtMs makes.
-  // 12 × 160ms ≈ 1.9s of held fire to empty a coin, pushing it ~230 world px
+  // 8 × 160ms ≈ 1.3s of held fire to empty a coin, pushing it ~150 world px
   // backwards on the way.
   coinHurtMs: 160,
   // Collision box as a fraction of the drawn size. Fixed, not the frame's own
@@ -739,6 +793,232 @@ const CONFIG = {
   bossBobFreq: 1.9,      // rad/sec — slower and heavier than the coin's
   bossBobRel: 0.03,
   bossBobMin: 5,
+
+  // --- The fight ----------------------------------------------------------
+  // The boss can be shot, and shoots back.
+  //
+  // KEEP THIS A MULTIPLE OF 22 (= BAR_FRAMES − 1). Then the health bar steps
+  // down one square every bossHealth/22 connected hits with nothing left over;
+  // anything else and it skips squares unevenly. 88 is four hits per square.
+  //
+  // Time to kill is bossHealth × bossHurtMs of CONNECTED fire — 13.2s here —
+  // and those are the only two knobs. It was 44 (6.6s), which played far too
+  // short, though most of that was really the boss not fighting back at all:
+  // see the alert-on-hit note in boss.js hit().
+  bossHealth: 88,
+  // ⚠️ The same bargain flyHurtMs and coinHurtMs make, and just as compulsory:
+  // the beam is re-tested EVERY FRAME while fire is held, so without a rate
+  // limit all 45 points come off in 45 consecutive frames (~0.75s) and the boss
+  // dies before he has finished arriving. It doubles as the jolt window, so the
+  // i-frames last exactly as long as the feedback showing them.
+  bossHurtMs: 150,
+  // A FIXED box, not the frame's own silhouette — the coin's lesson, for a
+  // different reason. The turn takes the boss from 120px in profile to 269px
+  // face-on, so a box that breathed with it would make him a HARDER target
+  // exactly when he sets off after you: the player punished for the boss's own
+  // animation. Multiples of bossSizePx, centred on him.
+  bossHitWRel: 0.62,
+  bossHitHRel: 0.82,
+  // The jolt, same damped oscillation the coin and the HUD timer use. Smaller
+  // relative amplitude: 6px on a 260px boss is a flinch, where the coin's 5px on
+  // 76px is a real shove. A thing this size should barely move.
+  bossSpasmMs: 140,
+  bossSpasmFreq: 13,     // radians across the whole jolt — see coinSpasmFreq
+  bossSpasmAmp: 6,
+  bossSpasmScale: 0.02,
+  // The fly's impact puff, reused. As with the coin this is the puff's WIDTH as
+  // a multiple of the thing it hit — but unlike the coin it is well under 1,
+  // because the puff is really about the BULLET, not the target: 0.4 of a 260px
+  // boss is ~104px, near as makes no difference the 99px the coin gets. A puff
+  // that scaled with the boss would be a 338px cloud from a rifle round.
+  bossHitFxSize: 0.4,
+
+  // STAGE 2. Below this fraction of health he winds up: he turns and travels
+  // bossStage2Speed faster. A threshold rather than a stage counter — there are
+  // only the two, and one number can't fall out of step with itself.
+  //
+  // His THROW used to change here as well — orbs that missed curved back like a
+  // boomerang — and that was removed for not playing well. Speed is what is left.
+  //
+  // 0.5 is also exactly where the health bar runs out of red and goes solid
+  // yellow (frame 11 of 22 — the one build-hustlebar.py had to draw). So the
+  // stage change has a tell the player can read, without a word of UI: the bar
+  // stops being red at the moment he speeds up.
+  bossStage2At: 0.5,
+  // A boss that visibly speeds up says "that did something" without needing a
+  // health bar to say it — and now that the throw no longer changes, this is the
+  // only thing that marks the stage at all.
+  bossStage2Speed: 1.3,
+
+  // --- The orb: what the boss throws --------------------------------------
+  // The spiky ink sphere from the ROOT game's ambient FX pack (assets-003, the
+  // `animation` block in saborosa-assets-003-fx-small.json — the ping-pong
+  // "ball"). tools/build-orb-frames.py cuts those 5 frames onto a uniform grid
+  // so this needs no per-frame table: frame k is (k*ORB_CELL, 0, CELL, CELL).
+  //
+  // The frames are CENTRED in their cells and grow 132px→216px inside them, so
+  // drawing the whole cell at a fixed size gets the inflation for free — the
+  // draw code never resizes anything.
+  ORB_SHEET: 'saborosa-orb.webp',
+  ORB_CELL: 216,
+  ORB_FRAMES: 5,
+  orbSizePx: 88,         // drawn CELL size, i.e. how big the largest ring is
+  orbHoldMs: 100,        // = the root game's ball at fps 10
+  // Fixed, like the coin's: the art pulses and a hitbox that pulsed with it
+  // would be dodging the player twice a second.
+  orbHitScale: 0.5,
+  orbSpeed: 330,         // world px/sec on the way out
+  // Released CLOSE TO HIM — this far out from his centre, along the throw, as a
+  // multiple of bossSizePx. It inflates out of nothing there (frame 0 is the
+  // smallest), so the throw reads as him producing it rather than it appearing.
+  orbSpawnRel: 0.3,
+  orbEveryMs: 1500,      // gap between throws, once he has noticed you
+  orbFirstMs: 800,       // grace after noticing before the first one
+  orbLifeMs: 3200,       // stage 1: long enough to leave the screen, then gone
+
+
+  // --- The Mosca Boss -----------------------------------------------------
+  // Turns up when the last fly is dead. Sliced from tools/mosca-boss-anim.html
+  // — same algorithm (union alpha of the sheets, gap 6, alpha 16, minW 12), run
+  // offline so the game needs no detection at boot.
+  //
+  // ⚠️ THERE ARE THREE SHEETS ON DISK AND ONLY TWO ARE LOADED. 01 and 03 are
+  // byte-identical (verified by hash), so the delivered 1·2·3 flap is really
+  // A-B-A. MOSCA_CYCLE reproduces it exactly against two images and saves 279KB
+  // of duplicate PNG. Note the cycle is NOT A-B: looping [0,1,0] holds A for two
+  // frames at the seam, which is what the artist's three-file cycle does.
+  MOSCA_SHEETS: [
+    'enemy-sheets/saborosa-boss-mosca-01.png',
+    'enemy-sheets/saborosa-boss-mosca-02.png',
+  ],
+  MOSCA_CYCLE: [0, 1, 0],
+  moscaFlapMs: 90,       // the tool's frameMs
+  // The 7 poses are a TURN, exactly like the time boss's: profile-left (0),
+  // head-on (3), profile-right (6). The widths say so — 253px in profile down to
+  // 176px face-on, symmetric about the middle. So `facing` is again a continuous
+  // 0..1 and the pose is just that value quantised.
+  //
+  // Every pose shares the y band 38..302, which is why they can be drawn from a
+  // common top with no per-pose offset: the fly cannot bob or resize as it turns.
+  MOSCA_RECTS: [
+    [  57, 38, 253, 265],   // profile, facing LEFT
+    [ 323, 38, 212, 265],
+    [ 570, 38, 176, 265],
+    [ 823, 38, 188, 265],   // head-on
+    [1068, 38, 176, 265],
+    [1278, 38, 212, 265],
+    [1504, 38, 252, 265],   // profile, facing RIGHT
+  ],
+  MOSCA_REF_H: 265,
+  flyBossSizePx: 300,    // drawn height in the fixed 1280x720 canvas
+
+  /* THE ENTRANCE, in three beats. It is a cutscene the player cannot interrupt
+     and cannot be hurt by (see fly-boss.js) — nothing about it is a fight yet.
+
+       1 CHARGE  — in from off the RIGHT at the player's own height, straight
+                   across at full speed, and out the other side.
+       2 DESCEND — reappears at the TOP of the map, above the world, and comes
+                   down the middle.
+       3 SETTLE  — stops at the centre of the map. The health bar appears.
+
+     The charge is timed by DISTANCE TRAVELLED, not by testing its position
+     against the screen edge: the world wraps on X, so a position test would have
+     to be wrap-aware and would still be wrong if the player moved the camera
+     mid-charge. Distance is neither. */
+  flyBossChargeSpeed: 950,   // world px/sec — "full speed", and it should read as it
+  flyBossDescendSpeed: 430,  // slower: this beat is the arrival, not the threat
+  flyBossEnterMargin: 300,   // px beyond the view edge it enters from / exits to
+  flyBossHomeXRel: 0.5,      // where it stops, as a fraction of the world
+  flyBossHomeYRel: 0.5,
+  /* STALKING, which begins the instant the entrance ends — there is no pause at
+     the map's centre, it arrives there and comes straight for you.
+
+     ⚠️ THIS MUST STAY WELL UNDER THE PLAYER'S OWN SPEED. The plane travels
+     0.30 of the camera-plus-screen span per second, which works out at ~851
+     world px/s across and ~1117 down. At 420 the boss manages about half that,
+     so it can always be outrun — which is the whole point, because touching it
+     HURTS. Contact has to be a mistake the player made, not something that
+     happens to them. Raise this past ~800 and the fight becomes unloseable in
+     the other direction: unavoidable. */
+  flyBossStalkSpeed: 420,    // world px/sec
+  flyBossTurnMs: 380,        // profile-to-profile sweep, as bossTurnMs
+  flyBossBobFreq: 2.6,       // rad/sec — quicker and lighter than the clock's
+  flyBossBobRel: 0.02,
+  flyBossBobMin: 4,
+
+  // Health. A multiple of 22 (= BAR_FRAMES − 1) for the same reason the time
+  // boss's is: 66 steps the bar down one square every three connected hits.
+  flyBossHealth: 66,
+  flyBossHurtMs: 150,        // the i-frame rate limit — never optional, see boss.js
+  flyBossHitWRel: 0.7,       // fixed box, as multiples of flyBossSizePx
+  flyBossHitHRel: 0.72,
+  flyBossSpasmMs: 140,
+  flyBossSpasmFreq: 13,
+  flyBossSpasmAmp: 7,
+  flyBossSpasmScale: 0.025,
+  flyBossHitFxSize: 0.36,    // the fly's puff again — about the BULLET, see bossHitFxSize
+  flyBossBoomSize: 1.4,      // death blast, × flyBossSizePx at its peak
+
+  // --- The boss's health bar ----------------------------------------------
+  // 23 hand-drawn states of one 11-square bar, cut and rotated by
+  // tools/build-hustlebar.py: frame 22 solid RED (full), frame 11 solid YELLOW
+  // (the changeover — and the frame that had to be generated, the master was
+  // missing it), frame 0 empty WHITE, which means dead.
+  //
+  // Laid out as a COLUMN, not a row: the frames are 333px wide, so a row would
+  // be a 7659×50 texture. Frame k is (0, k*BAR_CELL_H, BAR_CELL_W, BAR_CELL_H).
+  BAR_SHEET: 'saborosa-hustlebar.webp',
+  BAR_CELL_W: 333,
+  BAR_CELL_H: 50,
+  BAR_FRAMES: 23,
+  // Top-centre. As a fraction of canvas WIDTH so it holds its proportion of the
+  // frame; the height follows from the cell's aspect, never stretched — those
+  // squares are drawn square.
+  bossBarWRel: 0.252,
+  bossBarTop: 34,        // px below the top of the frame
+
+  // --- The player's health: he AGES ---------------------------------------
+  // Three points, and NO BAR anywhere — the character himself is the readout.
+  // Each point lost deteriorates him one stage (3 = as he starts, 2 = worn,
+  // 1 = badly gone), and the third kills him. That is also why `wear` is
+  // continuous rather than an integer counter: a hit adds exactly 1.0, which
+  // always crosses a stage boundary, and anything that ages him GRADUALLY later
+  // (the boss's aging attack) just adds to the same number.
+  planeHealth: 3,
+  // i-frames, and the blink that shows them. Long by this game's standards
+  // because a hit here costs a THIRD of the run, not 1/45th.
+  planeHurtMs: 1100,
+  planeBlinkMs: 100,     // half-period of the blink through those i-frames
+  planeHitWRel: 0.55,    // collision box vs the drawn sprite
+  planeHitHRel: 0.5,
+
+  /* THE DEATH FALL. The last hit does not cut straight to a panel — the plane
+     drops out of the sky exactly the way a dead fly does, and only once it is
+     gone from the frame does the ending begin.
+
+     It falls under `flyGravity`, the flies' own constant, deliberately reused
+     rather than copied: "like the flies" should stay literally true if that
+     number is ever retuned. What differs is the start — a fly's corpse inherits
+     the fly's heading, while the plane gets a small upward LURCH first, which is
+     what makes it read as losing lift rather than as a sprite beginning to slide
+     down the screen. */
+  planeFallVy0: -150,    // px/sec, upward: the stall before the drop
+  planeFallSpin: 2.4,    // rad/sec — the tumble; a plane that fell flat reads as a bug
+  planeFallMaxMs: 3000,  // safety net only. The geometry ends the fall long before
+                         // this; it exists so a mistuned gravity cannot hang the run
+  // ⚠️ The deteriorated sprite packs DO NOT EXIST YET. Turn this on when they
+  // land and the plane looks for `saborosa-plane-{name}-wearN-NN.png`; until
+  // then it keeps the one pack and the stage shows through planeWearFilter.
+  planeWearSheets: false,
+  // The stopgap, and it is only a stopgap: a ctx.filter per stage, so the
+  // character visibly sickens even with one set of art. Index = stage, so [0]
+  // is empty by definition. Composed with the drain's own saturate() in the
+  // same filter string, which is why these are strings and not numbers.
+  planeWearFilter: [
+    '',
+    'sepia(0.55) contrast(0.9) brightness(0.94)',
+    'sepia(0.9) contrast(0.72) brightness(0.8)',
+  ],
 
   // --- Shooting -----------------------------------------------------------
   // Firing projects a thin hitscan line forward from the nose. Anything whose

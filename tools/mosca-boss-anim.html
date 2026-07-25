@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Mosca Boss Anim</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #status { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #stage { flex:1; position:relative; overflow:hidden; background:#0c1020; min-width:0; }
+  #stage.check { background-image:
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+      background-size:32px 32px; background-position:0 0,16px 16px; }
+  #stage.black { background:#000; }
+  #stage.white { background:#d8d8d8; }
+  #stage.sky { background:linear-gradient(#5aa9d6,#bfe3f2); }
+  #stage.dungeon { background:#2a1c2e; }
+  canvas { display:block; position:absolute; inset:0; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; z-index:5; }
+  #side { width:340px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:24px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; color:var(--accent); font-size:11px; letter-spacing:1px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  label.cb { display:flex; align-items:center; gap:7px; margin:7px 0; color:#cfe; cursor:pointer; }
+
+  /* numeric field: type it, arrow it, or hit the steppers. No sliders anywhere. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf .stepper { display:flex; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:74px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:26px; }
+  #readout { white-space:pre; color:var(--ok); font-size:11px; }
+  #dump { width:100%; height:130px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+  .note { color:#7a8aa8; font-size:11px; margin:5px 0 0; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>MOSCA BOSS</b>
+  <span class="hint">Space play · ←/→ pose · V single/strip · S sheet view · B bg · G ground line</span>
+  <span id="status">loading…</span>
+</div>
+<div id="main">
+  <div id="stage" class="check"><div id="loadmsg">loading…</div><canvas id="cv"></canvas></div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   THE MOSCA BOSS — three sheets, saborosa-boss-mosca-01/02/03.png, each
+   1851×381 and each holding the SAME 7 poses (facings) in the same columns.
+   The animation runs across files, not across the sheet: pose N flaps by
+   cycling sheet 01 → 02 → 03 while its column stays put.
+
+   Sheets 01 and 03 are pixel-identical, so the delivered cycle is really a
+   two-pose flap with a repeat on the way back (A B A). The "sequence" buttons
+   let you hear that: 1·2·3 and 1·2·3·2 look the same, 1·2 runs it twice as fast.
+
+   Slicing is derived from the union alpha of all three sheets, so every frame
+   of a pose gets the exact same rect — the boss can't bob or resize between
+   files. The y band is shared by every pose for the same reason.
+--------------------------------------------------------------------------- */
+const DIR   = '../assets-v2/flying-dungeon/enemy-sheets/';
+const FILES = ['saborosa-boss-mosca-01.png','saborosa-boss-mosca-02.png','saborosa-boss-mosca-03.png'];
+
+const SEQUENCES = {
+  '1·2·3'   : [0,1,2],
+  '1·2'     : [0,1],
+  '1·2·3·2' : [0,1,2,1],
+};
+
+const P = {
+  // Poses 0 and 1 are separated by only 13 transparent px (every other gap is
+  // 34–94), and no fly has a transparent column inside it — so this has to stay
+  // comfortably under 13 or those two merge into one frame.
+  gap: 6,           // min transparent run (px) that separates two poses
+  alpha: 16,        // alpha threshold for an "occupied" pixel
+  minW: 12,         // drop slivers narrower than this (sheet 02 has a 1px edge column)
+  frameMs: 90,      // ms per flap frame
+  scale: 0.7,       // draw scale in single view
+  stripScale: 0.28, // draw scale in strip view
+  pose: 0,          // which pose in single view
+  seq: '1·2·3',
+  view: 'single',   // 'single' | 'strip'
+  sheetView: false, // overlay the slice boxes on one sheet
+  sheetIdx: 0,      // which sheet the sheet view shows
+  offsetSkew: 0,    // ms of phase offset per pose in strip view (0 = all in sync)
+  playing: true,
+  ground: true,
+  bg: 'check',
+};
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let imgs = [], poses = [], band = { y0:0, y1:0 };
+let cur = 0, acc = 0, last = 0;
+
+function loadImg(src){ return new Promise((res,rej)=>{ const i=new Image();
+  i.onload=()=>res(i); i.onerror=()=>rej(new Error('missing '+src)); i.src=src; }); }
+
+async function boot(){
+  try { imgs = await Promise.all(FILES.map(f=>loadImg(DIR+f))); }
+  catch (e) { document.getElementById('loadmsg').textContent = e.message; return; }
+  document.getElementById('loadmsg').style.display = 'none';
+  buildMask();
+  reslice();
+  buildPanel();
+  resize();
+  last = performance.now();
+  requestAnimationFrame(loop);
+}
+function status(s){ document.getElementById('status').textContent = s; }
+function resize(){ cv.width = stage.clientWidth; cv.height = stage.clientHeight; }
+window.addEventListener('resize', resize);
+
+/* --- slicing --------------------------------------------------------------
+   One mask = max alpha over all three sheets. Slicing that, rather than any
+   single file, guarantees identical rects across the flap.                  */
+let mask = null;                       // Uint8Array of max alpha, w×h
+function buildMask(){
+  const w = imgs[0].width, h = imgs[0].height;
+  mask = new Uint8Array(w*h);
+  for (const im of imgs){
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const cc = c.getContext('2d', { willReadFrequently:true });
+    cc.drawImage(im, 0, 0);
+    const d = cc.getImageData(0,0,w,h).data;
+    for (let i=0,p=3;i<mask.length;i++,p+=4) if (d[p] > mask[i]) mask[i] = d[p];
+  }
+  mask.w = w; mask.h = h;
+}
+function bands1D(len, occ, gap){
+  const out=[]; let s=-1, lastOn=-1;
+  for (let i=0;i<len;i++){
+    if (occ(i)){ if (s<0) s=i; else if (i-lastOn>gap){ out.push([s,lastOn]); s=i; } lastOn=i; }
+  }
+  if (s>=0) out.push([s,lastOn]);
+  return out;
+}
+function reslice(){
+  const { w, h } = mask;
+  const rowOcc = y => { for (let x=0;x<w;x++) if (mask[y*w+x] > P.alpha) return true; return false; };
+  const colOcc = x => { for (let y=0;y<h;y++) if (mask[y*w+x] > P.alpha) return true; return false; };
+  const rows = bands1D(h, rowOcc, 1e9);           // one band: the whole content height
+  band = rows.length ? { y0:rows[0][0], y1:rows[0][1] } : { y0:0, y1:h-1 };
+  poses = bands1D(w, colOcc, P.gap)
+    .filter(([a,b]) => b-a+1 >= P.minW)
+    .map(([a,b]) => ({ x:a, y:band.y0, w:b-a+1, h:band.y1-band.y0+1 }));
+  if (P.pose >= poses.length) P.pose = 0;
+  status(`${poses.length} poses · ${FILES.length} sheets · band y ${band.y0}–${band.y1}`);
+}
+
+/* --- draw ----------------------------------------------------------------- */
+function seqFrames(){ return SEQUENCES[P.seq]; }
+function sheetAt(step){ const s = seqFrames(); return s[((step % s.length) + s.length) % s.length]; }
+
+function drawPose(poseIdx, step, cx, cy, scale){
+  const f = poses[poseIdx]; if (!f) return;
+  const im = imgs[sheetAt(step)];
+  const dw = f.w*scale, dh = f.h*scale;
+  ctx.drawImage(im, f.x, f.y, f.w, f.h, Math.round(cx-dw/2), Math.round(cy-dh), dw, dh);
+}
+function draw(){
+  ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.imageSmoothingEnabled = true;
+  if (P.sheetView){ drawSheetView(); updateReadout(); return; }
+
+  if (P.view === 'single'){
+    const f = poses[P.pose];
+    const gy = cv.height/2 + (f ? f.h*P.scale/2 : 0);      // feet line, art centred
+    if (P.ground) groundLine(gy);
+    drawPose(P.pose, cur, cv.width/2, gy, P.scale);
+  } else {
+    const n = poses.length || 1;
+    const cellW = cv.width / n;
+    const gy = cv.height/2 + (poses[0] ? poses[0].h*P.stripScale/2 : 0);
+    if (P.ground) groundLine(gy);
+    for (let i=0;i<n;i++){
+      // offsetSkew staggers the flap along the strip — 0 keeps them locked.
+      const step = cur + (P.offsetSkew ? Math.floor(i*P.offsetSkew/Math.max(1,P.frameMs)) : 0);
+      drawPose(i, step, cellW*(i+0.5), gy, P.stripScale);
+      ctx.fillStyle = '#4d6796'; ctx.font = '11px monospace'; ctx.textAlign = 'center';
+      ctx.fillText(i, cellW*(i+0.5), gy + 16);
+    }
+    ctx.textAlign = 'left';
+  }
+  updateReadout();
+}
+function groundLine(y){
+  ctx.strokeStyle = 'rgba(83,216,251,0.25)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, Math.round(y)+0.5); ctx.lineTo(cv.width, Math.round(y)+0.5); ctx.stroke();
+}
+function sheetTransform(){
+  const im = imgs[P.sheetIdx];
+  const s = Math.min(cv.width/im.width, cv.height/im.height) * 0.95;
+  return { s, ox:(cv.width-im.width*s)/2, oy:(cv.height-im.height*s)/2 };
+}
+function drawSheetView(){
+  const im = imgs[P.sheetIdx], { s, ox, oy } = sheetTransform();
+  ctx.drawImage(im, ox, oy, im.width*s, im.height*s);
+  ctx.lineWidth = 1.5; ctx.font = '13px monospace'; ctx.textBaseline = 'top';
+  poses.forEach((f,i)=>{
+    ctx.strokeStyle = i===P.pose ? 'rgba(83,216,251,0.95)' : 'rgba(233,69,96,0.8)';
+    ctx.strokeRect(ox+f.x*s, oy+f.y*s, f.w*s, f.h*s);
+    ctx.fillStyle = i===P.pose ? '#53d8fb' : '#e9a0ad';
+    ctx.fillText(i, ox+f.x*s+3, oy+f.y*s+2);
+  });
+  ctx.fillStyle = '#7a8aa8';
+  ctx.fillText(FILES[P.sheetIdx], ox, oy - 16);
+}
+
+/* --- panel ---------------------------------------------------------------- */
+const side = document.getElementById('side');
+const fields = [];
+function group(title){
+  const g=document.createElement('div'); g.className='group';
+  if (title){ const h=document.createElement('h3'); h.textContent=title; g.appendChild(h); }
+  side.appendChild(g); return g;
+}
+function note(parent, text){
+  const d=document.createElement('div'); d.className='note'; d.textContent=text; parent.appendChild(d);
+}
+function numField(parent, label, unit, key, step, min, max, decimals=0, after){
+  const wrap=document.createElement('div'); wrap.className='nf';
+  const lbl=document.createElement('span'); lbl.className='lbl'; lbl.textContent=label;
+  const stepper=document.createElement('div'); stepper.className='stepper';
+  const minus=document.createElement('button'); minus.className='st'; minus.textContent='−';
+  const inp=document.createElement('input'); inp.type='text'; inp.inputMode='decimal';
+  const plus=document.createElement('button'); plus.className='st'; plus.textContent='+';
+  const u=document.createElement('span'); u.className='unit'; u.textContent=unit||'';
+  const show=()=>{ inp.value = Number(P[key]).toFixed(decimals); };
+  const apply=v=>{ if (!isFinite(v)) return show();
+    P[key]=Math.min(max,Math.max(min,v)); show(); if (after) after(); };
+  const bump=m=>apply(Number(P[key]) + step*m);
+  minus.onclick=e=>bump(e.shiftKey?-10:-1);
+  plus.onclick =e=>bump(e.shiftKey? 10: 1);
+  inp.onchange=()=>apply(parseFloat(inp.value.replace(',','.')));
+  inp.onkeydown=e=>{
+    if (e.key==='ArrowUp'){ e.preventDefault(); bump(e.shiftKey?10:1); }
+    if (e.key==='ArrowDown'){ e.preventDefault(); bump(e.shiftKey?-10:-1); }
+    if (e.key==='Enter') inp.blur();
+    e.stopPropagation();                                    // no hotkeys while typing
+  };
+  inp.onfocus=()=>inp.select();
+  stepper.append(minus, inp, plus);
+  wrap.append(lbl, stepper, u);
+  parent.appendChild(wrap); show(); fields.push(show);
+  return { show };
+}
+function buttonRow(parent, labels, isOn, onPick){
+  const r=document.createElement('div'); r.className='row';
+  labels.forEach(l=>{
+    const b=document.createElement('button'); b.textContent=l;
+    b.className = isOn(l) ? 'on' : '';
+    b.onclick=()=>{ onPick(l); [...r.children].forEach((x,i)=>x.className=isOn(labels[i])?'on':''); };
+    r.appendChild(b);
+  });
+  parent.appendChild(r); return r;
+}
+function checkbox(parent, label, key, after){
+  const l=document.createElement('label'); l.className='cb';
+  const c=document.createElement('input'); c.type='checkbox'; c.checked=!!P[key];
+  c.onchange=()=>{ P[key]=c.checked; if (after) after(); };
+  l.append(c, document.createTextNode(label));
+  parent.appendChild(l); return { show:()=>{ c.checked=!!P[key]; } };
+}
+let playBtn=null, poseField=null;
+function buildPanel(){
+  const g1=group('View');
+  buttonRow(g1, ['single','strip'], l=>P.view===l, l=>{ P.view=l; });
+  poseField = numField(g1,'pose','', 'pose', 1, 0, 99, 0, ()=>{ if (P.pose>=poses.length) P.pose=poses.length-1; });
+  numField(g1,'scale (single)','×','scale',0.05,0.05,4,2);
+  numField(g1,'scale (strip)','×','stripScale',0.02,0.02,2,2);
+  numField(g1,'strip phase skew','ms','offsetSkew',10,0,400);
+  checkbox(g1,'ground line','ground');
+  buttonRow(g1, ['check','black','white','sky','dungeon'], l=>P.bg===l, l=>{ P.bg=l; stage.className=l; });
+
+  const g2=group('Flap');
+  playBtn=document.createElement('button');
+  playBtn.textContent = P.playing?'⏸ pause':'▶ play'; playBtn.className = P.playing?'on':'';
+  playBtn.onclick = togglePlay; g2.appendChild(playBtn);
+  const r=document.createElement('div'); r.className='row';
+  const prev=document.createElement('button'); prev.textContent='◀ step'; prev.onclick=()=>step(-1);
+  const next=document.createElement('button'); next.textContent='step ▶'; next.onclick=()=>step(1);
+  r.append(prev,next); g2.appendChild(r);
+  numField(g2,'frame time','ms','frameMs',5,8,600);
+  buttonRow(g2, Object.keys(SEQUENCES), l=>P.seq===l, l=>{ P.seq=l; cur=0; acc=0; });
+  note(g2, 'sheets 01 and 03 are pixel-identical — 1·2·3 and 1·2·3·2 read the same, 1·2 is the same flap at double rate.');
+
+  const g3=group('Slicing');
+  numField(g3,'pose gap','px','gap',1,2,120,0,reslice);
+  numField(g3,'alpha threshold','','alpha',1,1,200,0,reslice);
+  numField(g3,'min pose width','px','minW',1,1,200,0,reslice);
+  note(g3, 'poses 0/1 sit 13px apart — raise the gap past 12 and they merge.');
+  checkbox(g3,'sheet view (slice boxes)','sheetView');
+  buttonRow(g3, ['01','02','03'], l=>FILES[P.sheetIdx].includes('-'+l+'.'), l=>{ P.sheetIdx=+l-1; P.sheetView=true; refresh(); });
+
+  const g4=group('Readout');
+  const ro=document.createElement('div'); ro.id='readout'; g4.appendChild(ro);
+
+  const g5=group('Export');
+  const b=document.createElement('button'); b.textContent='Copy defs JSON'; g5.appendChild(b);
+  const ta=document.createElement('textarea'); ta.id='dump'; ta.readOnly=true;
+  ta.style.marginTop='6px'; g5.appendChild(ta);
+  b.onclick=()=>{ const j=defsJSON(); ta.value=j;
+    navigator.clipboard && navigator.clipboard.writeText(j); status('defs copied'); };
+}
+function refresh(){ fields.forEach(f=>f()); }
+function updateReadout(){
+  const ro=document.getElementById('readout'); if (!ro) return;
+  const f=poses[P.pose], n=seqFrames().length;
+  ro.textContent =
+    `poses     ${poses.length}\n`+
+    `sheets    ${FILES.length}  (seq ${P.seq})\n`+
+    `pose ${String(P.pose).padEnd(2)}   ${f?`${f.w}×${f.h} @ x${f.x} y${f.y}`:'-'}\n`+
+    `on sheet  ${FILES[sheetAt(cur)].slice(-6,-4)}\n`+
+    `frame ms  ${P.frameMs|0}   (${(1000/P.frameMs).toFixed(1)} fps)\n`+
+    `flap loop ${(n*P.frameMs)|0} ms\n`+
+    `drawn     ${f?`${Math.round(f.w*(P.view==='single'?P.scale:P.stripScale))}×${Math.round(f.h*(P.view==='single'?P.scale:P.stripScale))} px`:'-'}\n`+
+    `state     ${P.playing?'playing':'paused'}`;
+}
+function defsJSON(){
+  return JSON.stringify({
+    sheets: FILES.map(f=>'assets-v2/flying-dungeon/enemy-sheets/'+f),
+    sequence: seqFrames(),
+    frameMs: Math.round(P.frameMs),
+    scale: +P.scale.toFixed(3),
+    band: { y: band.y0, h: band.y1-band.y0+1 },
+    poses: poses.map(f=>[f.x,f.y,f.w,f.h]),
+  }, null, 2);
+}
+
+/* --- controls ------------------------------------------------------------- */
+function togglePlay(){ P.playing=!P.playing;
+  if (playBtn){ playBtn.textContent=P.playing?'⏸ pause':'▶ play'; playBtn.className=P.playing?'on':''; } }
+function step(d){ P.playing=false;
+  if (playBtn){ playBtn.textContent='▶ play'; playBtn.className=''; }
+  cur = cur + d; }
+function pickPose(d){ if (!poses.length) return;
+  P.pose = ((P.pose+d)%poses.length + poses.length)%poses.length; refresh(); }
+
+window.addEventListener('keydown', e=>{
+  if (e.code==='Space'){ e.preventDefault(); togglePlay(); }
+  else if (e.code==='ArrowRight'){ e.preventDefault(); pickPose(1); }
+  else if (e.code==='ArrowLeft'){ e.preventDefault(); pickPose(-1); }
+  else if (e.code==='ArrowUp'){ e.preventDefault(); step(1); }
+  else if (e.code==='ArrowDown'){ e.preventDefault(); step(-1); }
+  else if (e.key==='v'||e.key==='V'){ P.view = P.view==='single'?'strip':'single'; rebuildButtons(); }
+  else if (e.key==='s'||e.key==='S'){ P.sheetView=!P.sheetView; rebuildButtons(); }
+  else if (e.key==='g'||e.key==='G'){ P.ground=!P.ground; rebuildButtons(); }
+  else if (e.key==='b'||e.key==='B'){
+    const list=['check','black','white','sky','dungeon'];
+    P.bg = list[(list.indexOf(P.bg)+1)%list.length]; stage.className=P.bg; rebuildButtons(); }
+});
+// Hotkeys mutate state the panel mirrors; cheapest honest sync is a rebuild.
+function rebuildButtons(){ side.innerHTML=''; fields.length=0; buildPanel(); }
+
+function loop(now){
+  const dt = now-last; last = now;
+  if (P.playing && !P.sheetView){
+    acc += dt;
+    while (P.frameMs>0 && acc >= P.frameMs){ acc -= P.frameMs; cur++; }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+boot();
+</script>
+</body>
+</html>
