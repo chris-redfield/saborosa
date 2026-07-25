@@ -83,13 +83,15 @@ class Intro {
     await Promise.all(jobs);
   }
 
-  // Length of the takeoff window: every beat from the board the plane appears
-  // on through to the end. Derived rather than configured, so changing the
-  // countdown timing can't leave the plane airborne early or still rolling at GO!.
+  // Length of the takeoff window: the head start, plus every beat from the board
+  // the plane appears on through to the end. Derived rather than configured, so
+  // changing the countdown timing can't leave the plane airborne early or still
+  // rolling at GO!. The lead is included so starting sooner makes the takeoff
+  // LONGER rather than making it finish early.
   _liftoffMs() {
     const k0 = this.order.indexOf(this.cfg.introLiftoffFrom);
     if (k0 < 0) return 0;
-    let ms = 0;
+    let ms = this.cfg.introLiftoffLeadMs || 0;
     for (let k = k0; k < this.n; k++) {
       const b = this._beat(k);
       ms += b.hold;
@@ -144,6 +146,52 @@ class Intro {
   _maybeStartLiftoff() {
     if (!this.liftoff || this.liftoff.running) return;
     if (this.order[this.i] !== this.cfg.introLiftoffFrom) return;
+    this._startLiftoff();
+  }
+
+  // How long until the board at position k0 arrives: what's left of the current
+  // beat, then every whole beat in between. Infinity while the select is up —
+  // that ends when the player decides, not on a clock, so nothing can be
+  // scheduled against it.
+  _msUntilBoard(k0) {
+    if (k0 < 0 || this.i >= k0) return Infinity;
+    // An UNRESOLVED select anywhere between here and there stops the clock. It
+    // ends when the player decides, so nothing past it has a knowable time — and
+    // scheduling against it would fly the plane across the select board while
+    // they're still choosing. Checked for the whole span, not just while the
+    // board is up: the hold that precedes it is equally unschedulable.
+    if (this.pickedCharacter === null) {
+      for (let k = this.i; k < k0; k++) if (this._isSelectAt(k)) return Infinity;
+    }
+    let ms;
+    if (this.mode === 'hold') {
+      ms = Math.max(0, this._beat(this.i).hold - this.t);
+      if (this._isRoll(this.i + 1)) ms += this._beat(this.i).roll;
+    } else if (this.mode === 'roll') {
+      ms = Math.max(0, this._beat(this.i).roll - this.t);
+    } else {
+      return Infinity;
+    }
+    for (let k = this.i + 1; k < k0; k++) {
+      ms += this._beat(k).hold;
+      if (this._isRoll(k + 1)) ms += this._beat(k).roll;
+    }
+    return ms;
+  }
+
+  // Head start: begin the takeoff introLiftoffLeadMs BEFORE its board arrives,
+  // so the plane is already rolling in by the time it cuts. The lead is measured
+  // against real remaining time, so it can reach back past the previous board's
+  // hold and into the camera roll before it — the plane spends the first stretch
+  // off the left edge anyway, so nothing is visible during the move.
+  _maybeLeadLiftoff() {
+    const lead = this.cfg.introLiftoffLeadMs || 0;
+    if (!this.liftoff || this.liftoff.running || lead <= 0) return;
+    const k0 = this.order.indexOf(this.cfg.introLiftoffFrom);
+    if (this._msUntilBoard(k0) <= lead) this._startLiftoff();
+  }
+
+  _startLiftoff() {
     this.liftoff.prepare(this.pickedCharacter !== null ? this.pickedCharacter : 0);
     this.liftoff.start(this._liftoffMs());
   }
@@ -153,6 +201,8 @@ class Intro {
     this.elapsed += dt;
     this.t += dt;
     if (this.liftoff) this.liftoff.update(dt);
+
+    this._maybeLeadLiftoff();   // can fire mid-hold OR mid-roll
 
     if (this.mode === 'hold') {
       const b = this._beat(this.i);

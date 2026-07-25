@@ -71,6 +71,7 @@
   const enemies = [];
   const film = new Film(CONFIG);
   const hud = new Hud(CONFIG);
+  const clock = new GameClock(CONFIG);
   const fruitSelect = new FruitSelect(assets, CONFIG);
   const liftoff = new Liftoff(assets, CONFIG);
   const intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
@@ -103,9 +104,6 @@
   let last = performance.now();
   let phase = 'boot';       // 'boot' (black) → 'intro' → 'game'
   let gameReady = false;
-  // Run clock. Starts when the player actually gets control, not when the game
-  // screen appears — the plane's fly-in shouldn't burn seconds nobody can play.
-  let runMs = 0;
 
   // Skip the title sequence on any key or click. Bound only while it plays.
   function onSkip(e) {
@@ -159,7 +157,13 @@
       // Nothing the player presses counts until the plane has flown in — the key
       // that confirmed the fruit select is very likely still held down.
       if (input.takeCycle() && !plane.controlLocked) plane.cycleCharacter();
-      if (!plane.controlLocked) runMs += dt;
+
+      // The run clock starts when the player actually gets control, not when the
+      // game screen appears — the plane's fly-in shouldn't burn time nobody can
+      // play. advance() also hands back the GAME delta; the sim below still
+      // steps on the real `dt`, so the rate change is clock-only for now.
+      if (!clock.running && !plane.controlLocked) clock.start();
+      clock.advance(dt);
       bg.update(dt, input);
       plane.update(dt, input);
       if (CONFIG.film) film.update(dt);
@@ -247,7 +251,7 @@
       hud.render(ctx, W, H, {
         fliesLeft: liveFlies,
         fliesKilled: CONFIG.flyCount - liveFlies,
-        timeMs: runMs,
+        timeMs: clock.now(),
       });
     }
     requestAnimationFrame(loop);

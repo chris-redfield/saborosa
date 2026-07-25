@@ -61,8 +61,13 @@ class Liftoff {
     return Promise.all(jobs);
   }
 
+  // totalMs is the countdown window the Intro derives from its beats. liftSpeed
+  // compresses the TAKEOFF inside that window without touching the countdown:
+  // at 1.1 the plane plays 10% quicker and is simply gone for the last stretch,
+  // rather than the 3-2-1 being sped up to match.
   start(totalMs) {
-    this.totalMs = Math.max(1, totalMs);
+    const rate = this.cfg.liftSpeed || 1;
+    this.totalMs = Math.max(1, totalMs / rate);
     this.t = 0;
     this.running = true;
     this._stepAcc = 0;

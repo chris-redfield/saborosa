@@ -54,10 +54,12 @@ const CONFIG = {
   // Per-panel overrides, by 0-based index. Panels 8-10 are the 3-2-1 countdown
   // and 11 is GO! — these cut, so the hold IS the whole beat.
   introBeats: {
-    8:  { hold: 1000 },  // "3" — one full second each, it's a countdown
-    9:  { hold: 1000 },  // "2"
-    10: { hold: 1000 },  // "1"
-    11: { hold: 900 },   // "GO!" — long enough for the plane to clear the frame
+    7:  { hold: 1040 },  // "STOP DECAY" — doubled from the 520 default; it also
+                         // lengthens the liftoff window, which is derived below
+    8:  { hold: 1000 * 0.85 }, // "3" — a second each, then accelerated 15%
+    9:  { hold: 1000 * 0.85 }, // "2"
+    10: { hold: 1000 * 0.85 }, // "1"
+    11: { hold: 900 * 0.85 },  // "GO!" — same 15%
   },
   introFadeInMs: 550,    // black -> first panel
   introFadeOutMs: 420,   // last panel -> black -> game
@@ -75,9 +77,21 @@ const CONFIG = {
   //
   // The phase fractions below are of the WHOLE countdown window, whose length
   // the intro derives from introBeats — so retiming the countdown retimes the
-  // takeoff to match. At the current beats that window is ~4.4s:
-  //   0.00-0.12 STOP DECAY   0.12-0.80 "3" "2" "1"   0.80-1.00 GO!
-  introLiftoffFrom: 7,   // board 8 (STOP DECAY) — where the plane appears
+  // takeoff to match. At the current beats that window is ~3.6s:
+  //   0.00-0.07 lead   0.07-0.31 "3"   0.31-0.55 "2"   0.55-0.79 "1"   0.79-1.00 GO!
+  introLiftoffFrom: 8,   // board 9 ("3") — the board the takeoff is timed to
+  // Head start: begin the takeoff this long BEFORE that board arrives, so the
+  // plane is already rolling as "3" cuts in. It sits inside board 8's 1040ms
+  // hold, so it never reaches back into the camera roll or the fruit select
+  // (which has no clock at all — see _msUntilBoard). The lead is added to the
+  // window above, so starting sooner lengthens the takeoff rather than ending
+  // it early.
+  introLiftoffLeadMs: 250,
+  // Playback rate of the takeoff itself. The window above comes from the intro
+  // beats; this compresses the ANIMATION inside it without retiming the
+  // countdown. 1.2 = 20% quicker, so the plane clears frame a little earlier and
+  // the last of GO! plays with an empty sky.
+  liftSpeed: 1.2,
   liftScale: 0.32 * 0.6 * 1.6,        // same size as the in-game plane
   liftStartX: -0.18,     // OFF the left edge: it enters already rolling, rather
                          // than being parked on screen waiting for the count
@@ -134,6 +148,19 @@ const CONFIG = {
   selectStampMs: 400,    // pop settle time on the chosen fruit
   selectShakeMs: 180,    // board shake decay
   selectShakeAmp: 9,     // px
+
+  // --- Game clock ---------------------------------------------------------
+  // The run's own time, kept separate from the wall clock (see game-clock.js).
+  // It exists as its own meter because the planned rewind feature needs a time
+  // base that can be wound BACKWARDS — not a counter that only goes up.
+  //
+  // Game ms per real ms. 1.1 = the run clock gains 10% on the wall, so a minute
+  // of real play reads 01:09 on the HUD. Note this currently scales the CLOCK
+  // only — the simulation still steps on the real delta, so game feel is
+  // unchanged. When rewind lands, the sim should switch to the game delta that
+  // GameClock.advance() returns, or the world and the clock will disagree about
+  // when things happened.
+  gameClockRate: 1.15,
 
   // --- HUD ----------------------------------------------------------------
   // Drawn on the CANVAS, in screen space, so it scales and letterboxes with the
@@ -212,10 +239,10 @@ const CONFIG = {
   // puts it at 648px — the bottom tenth — so the offset has to be big to bring
   // it up the frame. The spawn position you get is (startY + this) × GAME_H:
   //   -100/720 -> 548px (76% down — still the lower quarter)
-  //   -250/720 -> 398px (55% down — just below centre)   <- current
-  //   -350/720 -> 298px (41% down — just above centre)
+  //   -250/720 -> 398px (55% down — just below centre)
+  //   -350/720 -> 298px (41% down — just above centre)   <- current
   // Written over GAME_H rather than as raw px so it survives a resolution change.
-  planeOffsetY: -250 / 720,
+  planeOffsetY: -350 / 720,
 
   // --- Entrance -----------------------------------------------------------
   // The plane used to just BE there the instant the game screen appeared. Now

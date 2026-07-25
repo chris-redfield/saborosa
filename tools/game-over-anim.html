@@ -69,6 +69,13 @@
   .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
   .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
   .nf .unit { color:#6d7e9e; font-size:10px; width:22px; }
+  .nf input.sw { width:30px; height:24px; padding:0 1px; background:#0f1730;
+                 border:1px solid #3a4a6a; cursor:pointer; }
+  .nf input.hex { width:78px; text-align:center; padding:3px 4px; font:12px monospace;
+                  background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  input.wide { width:100%; padding:4px 6px; margin:3px 0 2px; font:11px monospace;
+               background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  input.wide:focus, .nf input.hex:focus { outline:none; border-color:var(--accent); }
   #dump { width:100%; height:132px; background:#0f1730; color:var(--ok);
           border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
 </style>
@@ -76,7 +83,7 @@
 <body>
 <div id="top">
   <b>GAME OVER ANIM</b>
-  <span class="hint">flying-dungeon · Space/P play · ←/→ step · 1-3 jump · M loop/bounce · B bg · R reset</span>
+  <span class="hint">flying-dungeon · Space/P play · ←/→ step · 1-3 jump · M loop/bounce · T text · Y replay text · B bg · R reset</span>
   <span id="fpsread"></span>
 </div>
 <div id="main">
@@ -104,23 +111,29 @@
    the intro storyboard uses), so cropping keeps the frames aligned.
 
    tools/build-game-over-frames.py bakes that crop into webp at native
-   resolution (15.7MB → 1.6MB). This tool loads the webp by default and can
+   resolution (15.8MB → 1.5MB). This tool loads the webp by default and can
    swap to the PNG masters for an A/B — for the webp the whole image IS the
    band, for the PNG we blit BAND out of the big canvas.
+
+   The masters live in originals/ and carry a revision suffix (-V2, …). Bump
+   MASTER_SUFFIX when a new revision lands; the webp names never change.
 --------------------------------------------------------------------------- */
 const DIR   = '../assets-v2/flying-dungeon/game-over/';
+const MASTER_DIR    = '../assets-v2/flying-dungeon/originals/';
+const MASTER_SUFFIX = '-V2';
 const NAMES = ['saborosa-natureza-vermes-001',
                'saborosa-natureza-vermes-002',
                'saborosa-natureza-vermes-003'];
 const BAND  = { x:337, y:1510, w:3002, h:1687 };   // shared alpha bbox of all 3 masters
 const GAME_W = 1280, GAME_H = 720;                 // CONFIG.GAME_W/GAME_H
+const DEFAULT_HOLD_MS = 105;                       // standard hold per frame (≈9.5 fps)
 
 const params = {
   // Per-frame hold in ms. This is the thing you're actually tuning: `fps` just
   // stamps 1000/fps into all three at once, then you can pull one frame longer
   // (the classic 2-2-4 hold) without losing the base rate.
-  holds: [120, 120, 120],
-  fps: 8.33,
+  holds: [DEFAULT_HOLD_MS, DEFAULT_HOLD_MS, DEFAULT_HOLD_MS],
+  fps: 1000 / DEFAULT_HOLD_MS,
   endPause: 0,        // extra ms of dead air at the end of a cycle, before it restarts
   // 'loop'   = 1,2,3 · 1,2,3 …   (snaps back to f1, one direction)
   // 'bounce' = 1,2,3,2 · 1,2,3,2 … (walks out to f3 and back down to f1)
@@ -136,6 +149,32 @@ const params = {
   showFull: false,    // PNG source only: draw the whole master instead of the band
   stretch: true,      // stretch the band to exactly 16:9 (the game canvas)
   source: 'webp',     // 'webp' (built, 1.6MB total) | 'png' (masters, 15.7MB)
+
+  // "TIME OVER" title — see drawTitle(). Sizes are % of the PANEL height, so
+  // they survive a window resize or a different draw scale.
+  text: {
+    on: true,
+    // Heaviest Futura cuts first, then plain Futura, then the usual geometric-
+    // sans stand-ins (URW Gothic is what this Linux box actually resolves).
+    family: '"Futura Extra Bold","Futura ExtraBold","Futura Std Extra Bold","Futura PT Extra Bold","Futura Bold","Futura","Futura PT","Futura Std","Century Gothic","URW Gothic","Jost",sans-serif',
+    weight: 900,            // EXTRA BOLD — the browser synthesises it if no heavy cut exists
+    color: '#FAFA30',       // CMYK 2/2/81/0
+    sizePct: 20.4,          // font size as % of panel height (17 × 1.2)
+    lsPct: 3,               // letter spacing, % of font size
+    gapPct: 20,             // space between TIME and OVER, % of font size — tight
+    yPct: 50,               // vertical middle of the text, down the panel
+    offX: 0, offY: 0,
+    d1: 1500,               // ms before TIME appears (1.5s / 2.0s presets in the UI)
+    d2: 1000,               // ms after TIME before OVER appears
+    revealMs: 0,            // 0 = hard pop; >0 fades each word up
+    // Fatten the glyphs by stroking them in their own colour. Futura's real
+    // Extra Bold cut only exists if the machine has it; this makes the fallback
+    // read heavy too, and lets you push past Extra Bold when it does.
+    fauxBold: 1.5,          // % of font size
+    outline: 0,             // stroke width, % of font size (0 = none)
+    outlineColor: '#000000',
+    retrigger: false,       // replay the reveal every animation cycle (strobes at 8fps — off)
+  },
 };
 
 // ---- image loading --------------------------------------------------------
@@ -150,14 +189,15 @@ function loadSet(ext) {
   loadmsg.style.display = ''; loadmsg.textContent = 'loading 3 × ' + ext + '…';
   loadbar.style.opacity = 1; loadbar.style.width = 0;
   NAMES.forEach((n, i) => {
+    const src = ext === 'png' ? MASTER_DIR + n + MASTER_SUFFIX + '.png' : DIR + n + '.webp';
     const im = new Image();
     im.onload = () => {
       set.done++;
       loadbar.style.width = (100 * set.done / NAMES.length) + '%';
       if (set.done === NAMES.length) { loadbar.style.opacity = 0; loadmsg.style.display = 'none'; }
     };
-    im.onerror = () => { loadmsg.style.display = ''; loadmsg.textContent = 'FAILED to load ' + n + '.' + ext; };
-    im.src = DIR + n + '.' + ext;
+    im.onerror = () => { loadmsg.style.display = ''; loadmsg.textContent = 'FAILED to load ' + src; };
+    im.src = src;
     set.ims[i] = im;
   });
   return set;
@@ -210,15 +250,34 @@ function tick(now) {
     while (acc >= seq[seqIdx].ms && guard++ < 64) {
       acc -= seq[seqIdx].ms;
       seqIdx = (seqIdx + 1) % seq.length;
-      if (seqIdx === 0) fadeAcc = params.fadeMs > 0 ? 0 : 1e9;   // fade replays each loop
+      if (seqIdx === 0) {
+        fadeAcc = params.fadeMs > 0 ? 0 : 1e9;                   // fade replays each loop
+        if (params.text.retrigger) textAcc = 0;
+      }
       markCur();
     }
   }
   fadeAcc += dt;
+  textAcc += dt;
   draw();
   document.getElementById('fpsread').textContent =
     'render ' + fpsSmooth.toFixed(0) + 'fps · step ' + (seqIdx + 1) + '/' + seq.length;
   requestAnimationFrame(tick);
+}
+
+// Where the panel lands on the stage, in CSS px. The title is positioned
+// against THIS box (not the raw stage), so scale/offset move art and text
+// together — the same relationship they'll have in the game.
+function panelBox(w, h, im) {
+  const showingFullMaster = params.source === 'png' && params.showFull;
+  const src = (params.source === 'webp' || params.showFull) && im
+    ? { x:0, y:0, w:im.naturalWidth, h:im.naturalHeight }
+    : BAND;
+  const aspect = params.stretch && !showingFullMaster ? GAME_W / GAME_H : src.w / src.h;
+  let dw = w, dh = w / aspect;
+  if (dh > h) { dh = h; dw = h * aspect; }
+  dw *= params.scale; dh *= params.scale;
+  return { src, x:(w - dw) / 2 + params.offX, y:(h - dh) / 2 + params.offY, w:dw, h:dh };
 }
 
 function draw() {
@@ -226,31 +285,75 @@ function draw() {
   const w = parseFloat(cv.style.width), h = parseFloat(cv.style.height);
   ctx.clearRect(0, 0, w, h);
   const step = seq[seqIdx];
-  if (!step || step.frame < 0) return;                      // end pause = empty stage
-  const im = frameImg(step.frame);
-  if (!im || !im.complete || !im.naturalWidth) return;
+  if (!step) return;
 
   // The webp is already cropped to the band; the PNG master needs BAND cut out
   // of its 3784×3800 canvas (unless you asked to see the whole thing).
-  const src = (params.source === 'webp' || params.showFull)
-    ? { x:0, y:0, w:im.naturalWidth, h:im.naturalHeight }
-    : BAND;
+  const im = step.frame >= 0 ? frameImg(step.frame) : null;   // end pause = no art
+  const box = panelBox(w, h, im);
 
-  // Fit the source into the stage (contain), then apply the scale multiplier
-  // and the px nudges. `stretch` forces the band to 16:9 exactly, which is what
-  // the game canvas is (the intro panels are baked the same way).
-  const showingFullMaster = params.source === 'png' && params.showFull;
-  const aspect = params.stretch && !showingFullMaster ? GAME_W / GAME_H : src.w / src.h;
-  let dw = w, dh = w / aspect;
-  if (dh > h) { dh = h; dw = h * aspect; }
-  dw *= params.scale; dh *= params.scale;
-  const dx = (w - dw) / 2 + params.offX, dy = (h - dh) / 2 + params.offY;
+  if (im && im.complete && im.naturalWidth) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = params.smooth;
+    ctx.imageSmoothingQuality = 'high';
+    if (params.fadeMs > 0) ctx.globalAlpha = Math.min(1, fadeAcc / params.fadeMs);
+    ctx.drawImage(im, box.src.x, box.src.y, box.src.w, box.src.h, box.x, box.y, box.w, box.h);
+    ctx.restore();
+  }
+  drawTitle(box);
+}
+
+/* ---------------------------------------------------------------------------
+   TITLE — "TIME OVER" in Futura Bold, both words on ONE line, but revealed in
+   order: TIME first, OVER after it. The full string is measured up front and
+   each word keeps its final x, so nothing re-centres when OVER pops in.
+
+   Colour is CMYK(2,2,81,0) → #FAFA30 (naive conversion, which is what a screen
+   wants anyway). Everything is sized off the panel height, so the layout holds
+   at any window size / draw scale.
+--------------------------------------------------------------------------- */
+const WORDS = ['TIME', 'OVER'];
+let textAcc = 0;            // ms since the title reveal started
+
+function drawTitle(box) {
+  const t = params.text;
+  if (!t.on) return;
+  const size = box.h * t.sizePct / 100;
+  if (size < 1) return;
 
   ctx.save();
-  ctx.imageSmoothingEnabled = params.smooth;
-  ctx.imageSmoothingQuality = 'high';
-  if (params.fadeMs > 0) ctx.globalAlpha = Math.min(1, fadeAcc / params.fadeMs);
-  ctx.drawImage(im, src.x, src.y, src.w, src.h, dx, dy, dw, dh);
+  ctx.font = t.weight + ' ' + size.toFixed(1) + 'px ' + t.family;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  if ('letterSpacing' in ctx) ctx.letterSpacing = (size * t.lsPct / 100).toFixed(2) + 'px';
+
+  const widths = WORDS.map(word => ctx.measureText(word).width);
+  const gap = size * t.gapPct / 100;
+  const total = widths.reduce((a, b) => a + b, 0) + gap * (WORDS.length - 1);
+  let x = box.x + box.w / 2 - total / 2 + t.offX;
+  const y = box.y + box.h * t.yPct / 100 + t.offY;
+
+  WORDS.forEach((word, i) => {
+    const delay = i === 0 ? t.d1 : t.d1 + t.d2;
+    const since = textAcc - delay;
+    if (since >= 0) {
+      ctx.globalAlpha = t.revealMs > 0 ? Math.min(1, since / t.revealMs) : 1;
+      ctx.lineJoin = 'round';
+      if (t.outline > 0) {                                  // outside, behind the fill
+        ctx.lineWidth = size * (t.outline + t.fauxBold) / 100;
+        ctx.strokeStyle = t.outlineColor;
+        ctx.strokeText(word, x, y);
+      }
+      ctx.fillStyle = t.color;
+      if (t.fauxBold > 0) {                                 // extra weight, same colour
+        ctx.lineWidth = size * t.fauxBold / 100;
+        ctx.strokeStyle = t.color;
+        ctx.strokeText(word, x, y);
+      }
+      ctx.fillText(word, x, y);
+    }
+    x += widths[i] + gap;
+  });
   ctx.restore();
 }
 
@@ -357,6 +460,40 @@ function checkbox(parent, label, get, set) {
   return { show: () => { c.checked = !!get(); } };
 }
 
+// Colour: the swatch and a typed hex, kept in sync — the hex is the value you
+// paste into the game, so it stays visible.
+function colorField(parent, label, get, set) {
+  const wrap = document.createElement('div'); wrap.className = 'nf';
+  const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
+  const sw = document.createElement('input'); sw.type = 'color'; sw.className = 'sw';
+  const hex = document.createElement('input'); hex.type = 'text'; hex.className = 'hex';
+  const show = () => { sw.value = get(); hex.value = get().toUpperCase(); };
+  sw.oninput = () => { set(sw.value); show(); rebuild(); };
+  hex.onchange = () => {
+    const v = hex.value.trim().replace(/^#?/, '#');
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) set(v);
+    show(); rebuild();
+  };
+  hex.onkeydown = e => { if (e.key === 'Enter') hex.blur(); e.stopPropagation(); };
+  wrap.append(lbl, sw, hex);
+  parent.appendChild(wrap);
+  show();
+  return { show };
+}
+
+function textField(parent, label, get, set) {
+  const wrap = document.createElement('div');
+  const lbl = document.createElement('div'); lbl.className = 'hint'; lbl.textContent = label;
+  const inp = document.createElement('input'); inp.type = 'text'; inp.className = 'wide';
+  const show = () => { inp.value = get(); };
+  inp.onchange = () => { set(inp.value); rebuild(); };
+  inp.onkeydown = e => { if (e.key === 'Enter') inp.blur(); e.stopPropagation(); };
+  wrap.append(lbl, inp);
+  parent.appendChild(wrap);
+  show();
+  return { show };
+}
+
 function buttonRow(parent, defs) {
   const r = document.createElement('div'); r.className = 'row';
   const btns = defs.map(([txt, fn, isOn]) => {
@@ -372,17 +509,23 @@ function buttonRow(parent, defs) {
 params.uniform = true;
 const gT = group('TIMING');
 fieldRefs.fps = numField(gT, 'frame rate (all frames)', 'fps',
-  () => params.fps,
-  v => { params.fps = v; const ms = Math.round(1000 / v);
-         params.holds = [ms, ms, ms]; params.uniform = true; syncHoldFields(); },
-  0.5, 0.5, 60, 2);
+  () => params.fps, v => setFps(v), 0.5, 0.5, 60, 2);
 buttonRow(gT, [
   ['4 fps',  () => setFps(4)],  ['6 fps',  () => setFps(6)],
-  ['8 fps',  () => setFps(8)],  ['12 fps', () => setFps(12)],
+  ['105ms',  () => setHoldMs(DEFAULT_HOLD_MS), () => params.uniform && params.holds[0] === DEFAULT_HOLD_MS],
+  ['12 fps', () => setFps(12)],
   ['15 fps', () => setFps(15)], ['24 fps', () => setFps(24)],
 ]);
-function setFps(f) { params.fps = f; const ms = Math.round(1000 / f);
-                     params.holds = [ms, ms, ms]; params.uniform = true; syncHoldFields(); }
+function setFps(f) { setHoldMs(Math.round(1000 / f), f); }
+// Stamp one hold onto all three frames. `fps` is just the readout of that hold,
+// so the field and the per-frame values never disagree.
+function setHoldMs(ms, fps) {
+  params.holds = [ms, ms, ms];
+  params.fps = fps !== undefined ? fps : 1000 / ms;
+  params.uniform = true;
+  syncHoldFields();
+  if (fieldRefs.fps) fieldRefs.fps.show();
+}
 
 const gH = group('PER-FRAME HOLD');
 fieldRefs.holds = [0, 1, 2].map(i => numField(gH, 'frame ' + (i + 1), 'ms',
@@ -421,6 +564,65 @@ buttonRow(gP, [
 fieldRefs.fade = numField(gP, 'fade up on loop', 'ms',
   () => params.fadeMs, v => params.fadeMs = Math.round(v), 50, 0, 3000);
 
+// --- title ----------------------------------------------------------------
+const gX = group('TITLE — "TIME OVER"');
+buttonRow(gX, [
+  ['show text', () => params.text.on = !params.text.on, () => params.text.on],
+  ['▶ replay reveal  (Y, or click the stage)', () => replayText()],
+]);
+fieldRefs.txColor = colorField(gX, 'colour (CMYK 2/2/81/0)',
+  () => params.text.color, v => params.text.color = v);
+fieldRefs.txSize = numField(gX, 'size (% panel h)', '%', () => params.text.sizePct,
+  v => params.text.sizePct = v, 0.5, 1, 60, 1);
+fieldRefs.txWeight = numField(gX, 'font weight (900 = extra bold)', '', () => params.text.weight,
+  v => params.text.weight = Math.round(v / 100) * 100, 100, 100, 900);
+fieldRefs.txFaux = numField(gX, 'extra weight (stroke)', '%', () => params.text.fauxBold,
+  v => params.text.fauxBold = v, 0.25, 0, 10, 2);
+fieldRefs.txLs = numField(gX, 'letter spacing', '%', () => params.text.lsPct,
+  v => params.text.lsPct = v, 0.5, -10, 40, 1);
+fieldRefs.txGap = numField(gX, 'gap TIME↔OVER', '%', () => params.text.gapPct,
+  v => params.text.gapPct = v, 5, 0, 300, 0);
+fieldRefs.txY = numField(gX, 'y down panel', '%', () => params.text.yPct,
+  v => params.text.yPct = v, 1, 0, 100, 0);
+fieldRefs.txOffX = numField(gX, 'nudge x', 'px', () => params.text.offX,
+  v => params.text.offX = Math.round(v), 1, -2000, 2000);
+fieldRefs.txOffY = numField(gX, 'nudge y', 'px', () => params.text.offY,
+  v => params.text.offY = Math.round(v), 1, -2000, 2000);
+// The wait before TIME shows up: two presets to flip between, and the field
+// underneath for anything else. Changing it always replays the reveal, so you
+// see the new timing immediately instead of waiting for the next replay.
+fieldRefs.txPreset = buttonRow(gX, [
+  ['TIME at 1.5s', () => setD1(1500), () => params.text.d1 === 1500],
+  ['2.0s',         () => setD1(2000), () => params.text.d1 === 2000],
+]);
+fieldRefs.txD1 = numField(gX, 'TIME appears at', 'ms', () => params.text.d1,
+  v => setD1(Math.round(v)), 50, 0, 6000);
+function setD1(ms) { params.text.d1 = ms; replayText(); }
+fieldRefs.txD2 = numField(gX, 'OVER, after TIME', 'ms', () => params.text.d2,
+  v => params.text.d2 = Math.round(v), 50, 0, 6000);
+fieldRefs.txReveal = numField(gX, 'per-word fade', 'ms', () => params.text.revealMs,
+  v => params.text.revealMs = Math.round(v), 20, 0, 2000);
+fieldRefs.txOutline = numField(gX, 'outline', '%', () => params.text.outline,
+  v => params.text.outline = v, 0.5, 0, 20, 1);
+fieldRefs.txRetrig = checkbox(gX, 'replay reveal every cycle', () => params.text.retrigger,
+  v => { params.text.retrigger = v; replayText(); });
+fieldRefs.txFamily = textField(gX, 'font stack (Futura first)',
+  () => params.text.family, v => params.text.family = v);
+const fontNote = document.createElement('div');
+fontNote.className = 'hint';
+gX.appendChild(fontNote);
+// Say out loud which family the browser actually resolved — this machine has no
+// Futura, so it silently falls back and you'd be tuning against the wrong face.
+function checkFont() {
+  const want = params.text.family.split(',').map(s => s.trim().replace(/^["']|["']$/g, ''));
+  const have = want.find(f => { try { return document.fonts.check(params.text.weight + ' 40px "' + f + '"'); }
+                               catch (e) { return false; } });
+  fontNote.textContent = have
+    ? (/futura/i.test(have) ? 'using ' + have : 'NO Futura on this machine — falling back to ' + have)
+    : 'none of the listed families resolved';
+  fontNote.style.color = have && /futura/i.test(have) ? '#8fce8f' : '#d8a657';
+}
+
 // --- framing --------------------------------------------------------------
 const gF = group('FRAMING');
 fieldRefs.scale = numField(gF, 'draw scale', '×', () => params.scale,
@@ -437,8 +639,8 @@ fieldRefs.full = checkbox(gF, 'show full master (png source only)', () => params
 
 const gS = group('SOURCE');
 buttonRow(gS, [
-  ['webp (1.6MB)',    () => params.source = 'webp', () => params.source === 'webp'],
-  ['png masters (16MB)', () => params.source = 'png', () => params.source === 'png'],
+  ['webp (1.5MB)',                        () => params.source = 'webp', () => params.source === 'webp'],
+  ['png masters ' + MASTER_SUFFIX + ' (16MB)', () => params.source = 'png',  () => params.source === 'png'],
 ]);
 const srcNote = document.createElement('div');
 srcNote.className = 'hint';
@@ -473,8 +675,18 @@ GAME_OVER: {
   scale: ${params.scale.toFixed(2)},
   offset: [${params.offX}, ${params.offY}],
   smooth: ${params.smooth},
+  title: {                          // "TIME OVER", one line, TIME then OVER
+    font: '${params.text.weight} <${params.text.sizePct}% of panel h>px ${params.text.family.split(',')[0]}',
+    color: '${params.text.color.toUpperCase()}',      // CMYK 2/2/81/0
+    weight: ${params.text.weight}, fauxBoldPct: ${params.text.fauxBold},
+    sizePct: ${params.text.sizePct}, letterSpacingPct: ${params.text.lsPct}, gapPct: ${params.text.gapPct},
+    yPct: ${params.text.yPct}, offset: [${params.text.offX}, ${params.text.offY}],
+    timeAtMs: ${params.text.d1}, overAfterMs: ${params.text.d2}, wordFadeMs: ${params.text.revealMs},
+    outlinePct: ${params.text.outline},${params.text.outline > 0 ? " outlineColor: '" + params.text.outlineColor + "'," : ''}
+  },
 },
-// loop = ${total}ms`;
+// loop = ${total}ms · TIME at ${params.text.d1}ms, OVER at ${params.text.d1 + params.text.d2}ms`;
+  checkFont();
 }
 
 function syncHoldFields() { fieldRefs.holds.forEach(f => f.show()); }
@@ -489,7 +701,16 @@ function step(dir) {
   params.playing = false;
   seqIdx = (seqIdx + dir + seq.length) % seq.length; acc = 0; markCur();
 }
-function restart() { seqIdx = 0; acc = 0; fadeAcc = params.fadeMs > 0 ? 0 : 1e9; params.playing = true; markCur(); }
+// Replay just the TIME/OVER reveal, leaving the frame animation where it is.
+// Y, the button, or a click on the stage.
+function replayText() { textAcc = 0; }
+stage.addEventListener('pointerdown', replayText);
+
+function restart() {
+  seqIdx = 0; acc = 0; textAcc = 0;
+  fadeAcc = params.fadeMs > 0 ? 0 : 1e9;
+  params.playing = true; markCur();
+}
 
 // ---- hotkeys -------------------------------------------------------------
 window.addEventListener('keydown', e => {
@@ -500,6 +721,8 @@ window.addEventListener('keydown', e => {
   else if (e.key === 'ArrowRight') step(1);
   else if (k === 'r') restart();
   else if (k === 'm') { setMode(params.mode === 'loop' ? 'bounce' : 'loop'); rebuild(); }
+  else if (k === 't') { params.text.on = !params.text.on; }
+  else if (k === 'y') { replayText(); }                     // replay the TIME/OVER reveal
   else if (k === 'b') { const o = ['black','check','white','magenta'];
                         setBg(o[(o.indexOf(params.bg) + 1) % o.length]); }
   else if (k >= '1' && k <= '3') { params.playing = false;
@@ -510,7 +733,7 @@ window.addEventListener('keydown', e => {
 });
 
 setBg(params.bg);
-setFps(8);
+setHoldMs(DEFAULT_HOLD_MS);
 resize(); rebuild(); refreshAll();
 requestAnimationFrame(tick);
 </script>
