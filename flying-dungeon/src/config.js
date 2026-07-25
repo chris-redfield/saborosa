@@ -182,11 +182,13 @@ const CONFIG = {
   // frame, and pan the camera off that same stepped value so plane + world hop
   // together. Toggled + tuned live by the controls under the canvas.
   stepped: true,
-  steppedMs: 60,         // hold per visual step (~16 fps). NOTE: this used to be
-                         // frameMs, so plane and background hopped in lockstep;
-                         // the background is faster now, so they no longer match.
-                         // Set it to 32 to re-lock them, or keep the plane slower
-                         // than the world on purpose. Live slider under the canvas.
+  steppedMs: 1000 / 23,  // hold per visual step — 23 fps. Written as a division
+                         // so the framerate stays readable; the live slider
+                         // under the canvas overrides it the same way.
+                         // Independent of the background's frameMs (32ms, ~31
+                         // fps): the plane deliberately hops slower than the
+                         // world. The intro's takeoff reads this too, so it
+                         // steps in the same style.
 
   // --- Old-film style (post effect) ---------------------------------------
   // The headline is the FRAME LINE: the dark gap between film frames, rolling
@@ -198,8 +200,13 @@ const CONFIG = {
   filmBarHeight: 0,      // px thickness of the dark frame gap (0 = no frame line)
   filmBarDark: 0.78,     // how dark the gap gets (0-1)
   filmGrain: 0.11,       // grain opacity
-  filmFlicker: 0.12,     // max brightness dip (black overlay alpha)
-  filmVignette: 0.275,   // corner darkening strength (half the original 0.55)
+  filmFlicker: 0.06,     // max brightness dip (black overlay alpha) — half of 0.12
+  // How long ONE brightness value is held before a new one is rolled. This used
+  // to re-roll every frame (~60Hz at 60fps), which strobed; 24ms holds it for
+  // ~1.4 frames, i.e. 30% fewer changes per second. Raise it to slow the
+  // flicker further, 0 = back to every frame.
+  filmFlickerMs: 24,
+  filmVignette: 0.22,    // corner darkening strength (0.55 -> 0.275 -> -20%)
   filmWeave: 1.4,        // px vertical gate jitter of the whole picture
   filmScratchChance: 0.04, // per-frame chance a vertical scratch flickers in
   // Optional CSS grade for the canvas (kept EMPTY = full colour). You could put
@@ -233,7 +240,23 @@ const CONFIG = {
   // Clamped to the moment of the hit (the burst itself is only ~280ms), so
   // anything >= that makes the body fall the instant the fly is shot.
   flyCorpseLead: 500,    // ms
-  flyCount: 15,          // how many spawn (killed for good — no respawn, for testing)
+  // --- The pile (a fake floor plane) --------------------------------------
+  // Corpses don't fall out of the world any more: they come to rest on a flat
+  // plane laid across the BOTTOM of the dungeon map — the tablecloth in front of
+  // the tray — the same idea as the projected floor in the main game's
+  // DungeonScreen. It lives in WORLD space, so the pile scrolls with the tray
+  // instead of being stuck to the viewport.
+  //
+  // Bounds measured off the annotated screenshot: template-matching that shot
+  // back to the tray frames puts its camera at camY 1680 — the very bottom of
+  // the pan range — so the marked band's canvas y 478..720 is world y 2158..2400.
+  corpsePlaneTop: 0.899,    // far edge, as a fraction of world height
+  corpsePlaneBottom: 1.0,   // near edge
+  // A body keeps its SIZE wherever it lands on the plane — no perspective shrink
+  // toward the far edge. Only its ANGLE varies: one uniform sample in
+  // ±corpseTiltDeg, drawn once when it lands and never touched again.
+  corpseTiltDeg: 15,
+  flyCount: 30,          // how many spawn (killed for good — no respawn, for testing)
   flyScale: 0.13 * 0.5 * 1.4, // fly height as a fraction of the canvas height (50% of prior, then +40%)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
   flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
@@ -255,6 +278,33 @@ const CONFIG = {
   rayOffsetY: 15,
   flyHitScale: 0.8,      // fly collision box vs its drawn size
   flyBurstMs: 70,        // ms per burst (death) frame
+
+  // --- Fly health ---------------------------------------------------------
+  // Three hits to kill, one damage per shot. The catch: the shot is a hitscan
+  // beam re-tested EVERY FRAME while fire is held, so without a rate limit all
+  // three points would come off in three consecutive frames (~50ms) and it
+  // would still die instantly. flyHurtMs is that limit — and doubles as the
+  // blink and knockback window, so the i-frames are always exactly as long as
+  // the feedback that shows them.
+  flyHealth: 3,          // hits to kill
+  rayDamage: 1,          // damage per connected shot
+  flyHurtMs: 180,        // immune + blinking + knocked back for this long
+                         // (3 hits => ~360ms of held fire to kill)
+  flyHurtBlinkMs: 45,    // half-period of the blink
+  flyHurtAlpha: 0.35,    // how faint it goes on the blink's off beat
+  flyKnockback: 260,     // px/sec shoved away from the gun, decaying to 0
+  // Impact puff on a NON-lethal hit. Identical to the death burst — same frames
+  // (FLY_RECTS 1..4), same size, same rate — the only difference being that it's
+  // pinned to where the shot connected instead of following the fly apart.
+  // Keep these in step with FLY_RECTS / flyBurstMs above if those change.
+  flyHitBurstFrames: 4,  // = FLY_RECTS.length - 1, the whole burst
+  flyHitBurstMs: 70,     // = flyBurstMs
+  flyHitBurstScale: 1,   // = the death burst's size
+                         // NOTE: 4 x 70 = 280ms is LONGER than flyHurtMs (180),
+                         // so holding fire re-triggers the puff before it ends.
+                         // That's fine — there's only ever one per fly, so a new
+                         // hit restarts it at the new impact point rather than
+                         // stacking a second one.
 
   // --- Machine gun --------------------------------------------------------
   GUN_FRAMES: 6,

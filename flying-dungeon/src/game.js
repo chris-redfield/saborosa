@@ -156,10 +156,6 @@
       bg.update(dt, input);
       plane.update(dt, input);
       if (CONFIG.film) film.update(dt);
-      for (const e of enemies) e.update(dt, bg.worldWidth(), bg.worldHeight());
-      // Drop flies that finished bursting — they don't come back.
-      for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
-
       const W = canvas.width, H = canvas.height;
       // The tray world is larger than the canvas; the camera shows a cropped
       // window and pans it with the plane's position (both axes). The pan range
@@ -173,6 +169,11 @@
       const camX = minX + plane.displayX() * Math.max(0, maxX - minX);
       const camY = minY + plane.displayY() * Math.max(0, maxY - minY);
 
+      for (const e of enemies) e.update(dt, worldW, worldH);
+      // Drop flies that are gone for good. Landed corpses are NOT dead — they
+      // stay in the list so the pile on the floor keeps being drawn.
+      for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
+
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
       let ray = null;
@@ -183,7 +184,7 @@
           for (const e of enemies) {
             if (!e.isAlive()) continue;
             for (const b of e.boxes(camX, camY, bg.worldWidth())) {
-              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { e.hit(); break; }
+              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { e.hit(CONFIG.rayDamage); break; }
             }
           }
         }
@@ -202,11 +203,22 @@
       // Hold C: show the fly collision boxes, and the shot line while firing.
       if (input.debug) {
         ctx.save();
+        // The fake floor plane the corpses settle on (world space, so it
+        // scrolls) — same red as the annotated screenshot it was measured from.
+        const pTop = CONFIG.corpsePlaneTop * worldH - camY;
+        const pBot = CONFIG.corpsePlaneBottom * worldH - camY;
+        ctx.fillStyle = 'rgba(233,69,96,0.16)';
+        ctx.fillRect(0, pTop, W, pBot - pTop);
+        ctx.strokeStyle = 'rgba(233,69,96,0.9)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, pTop, W, pBot - pTop);
+
         ctx.strokeStyle = '#53d8fb';
         ctx.lineWidth = 1;
         for (const e of enemies)
-          for (const b of e.boxes(camX, camY, bg.worldWidth()))
-            ctx.strokeRect(b.x, b.y, b.w, b.h);
+          if (e.isAlive())
+            for (const b of e.boxes(camX, camY, bg.worldWidth()))
+              ctx.strokeRect(b.x, b.y, b.w, b.h);
         if (ray) {
           ctx.strokeStyle = '#e94560';
           ctx.lineWidth = CONFIG.rayThickness;

@@ -15,6 +15,7 @@ class Film {
     this.cfg = cfg;
     this.barY = 0;
     this.flick = 0;
+    this.flickT = 0;
     this.weaveY = 0;
     this.scratchX = -1;
     this.grainTiles = [];
@@ -48,7 +49,18 @@ class Film {
     this.barY += c.filmBarSpeed * s;
     this.grainT += dt;
     if (this.grainT >= 45) { this.grainT = 0; this.grainIdx = (this.grainIdx + 1) % this.grainTiles.length; }
-    this.flick = Math.random() * c.filmFlicker;                       // brightness dip
+    // Brightness dip. HELD for filmFlickerMs rather than re-rolled every frame:
+    // at 60fps a fresh value each frame strobes far too fast to read as a
+    // projector. 0 (or unset) = the old every-frame behaviour.
+    if (c.filmFlickerMs > 0) {
+      this.flickT += dt;
+      if (this.flickT >= c.filmFlickerMs) {
+        this.flickT %= c.filmFlickerMs;                               // keep phase
+        this.flick = Math.random() * c.filmFlicker;
+      }
+    } else {
+      this.flick = Math.random() * c.filmFlicker;
+    }
     this.weaveY = (Math.random() * 2 - 1) * c.filmWeave;              // gate jitter
     this.scratchX = Math.random() < c.filmScratchChance ? Math.random() : -1;
   }
