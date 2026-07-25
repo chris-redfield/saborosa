@@ -43,8 +43,19 @@ class GameClock {
     return gameDt;
   }
 
-  // --- For the rewind feature ---------------------------------------------
-  // Time can't go below the start of the run, so both clamp at 0.
-  rewind(gameMs) { this.ms = Math.max(0, this.ms - gameMs); return this.ms; }
-  seek(gameMs)   { this.ms = Math.max(0, gameMs); return this.ms; }
+  /* --- Rewind -------------------------------------------------------------
+     TIME IS ALLOWED TO GO NEGATIVE. These used to clamp at 0 on the assumption
+     that a run cannot start before it started — but shooting coins winds the
+     clock back, and winding it back past zero is the point rather than an error
+     to guard against. Below zero the HUD reads -HH:MM:SS and the world runs
+     backwards.
+
+     Everything downstream already copes: the colour drains clamp their
+     progress at 0, so negative time simply means full colour, and the time-over
+     test is a `>=` that negative time is nowhere near. */
+  rewind(gameMs) { this.ms -= gameMs; return this.ms; }
+  seek(gameMs)   { this.ms = gameMs; return this.ms; }
+
+  // Below zero: the run is running backwards.
+  isReversed() { return this.ms < 0; }
 }

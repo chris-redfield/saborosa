@@ -85,6 +85,10 @@
   // Set the moment the clock runs out: {t} = ms since then, driving fade-out →
   // hold on black → fade-in of the TIME OVER panel. Null while the run is live.
   let ending = null;
+  // ms left of the tray orbiting backwards. Topped up by every coin hit, so it
+  // tracks the ACT of rewinding rather than the clock's sign — the world runs
+  // backwards while you are pulling time back, whatever the clock reads.
+  let rewindSpinT = 0;
   let fruitSelect = new FruitSelect(assets, CONFIG);
   let liftoff = new Liftoff(assets, CONFIG);
   let intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
@@ -193,6 +197,7 @@
   function restart() {
     bindRestart(false);
     ending = null;
+    rewindSpinT = 0;
     clock.reset();
     plane = new Plane(assets, CONFIG);
     fruitSelect = new FruitSelect(assets, CONFIG);
@@ -299,7 +304,12 @@
         requestAnimationFrame(loop);
         return;
       }
-      bg.update(dt, input);
+      // The tray orbits backwards while the player is actively winding time
+      // back — topped up by each coin hit below, not driven by the clock's
+      // sign. So the world reacts AS you pull time back, at any point on the
+      // clock, instead of only once the number happens to have gone negative.
+      if (rewindSpinT > 0) rewindSpinT = Math.max(0, rewindSpinT - dt);
+      bg.update(dt, input, rewindSpinT > 0);
       plane.update(dt, input);
       hud.update(dt);            // advances the timer's rewind jolt
       if (CONFIG.film) film.update(dt);
@@ -358,6 +368,10 @@
               if (cn.hit(CONFIG.rayDamage)) {
                 clock.rewind(CONFIG.coinRewindMs);
                 hud.jolt();
+                // Re-armed rather than accumulated: holding fire keeps topping
+                // it up so the tray runs backwards continuously, and it lapses
+                // shortly after the last hit however many landed.
+                rewindSpinT = CONFIG.rewindSpinMs;
               }
               break;
             }

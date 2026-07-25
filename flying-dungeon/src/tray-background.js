@@ -54,14 +54,20 @@ class TrayBackground {
   // For now the dungeon runs nonstop in the default order, independent of the
   // player (the flying-right/left → reverse/regular coupling is parked; restore
   // it here when we want the world to react to the plane again).
-  _step(input) {
-    return this.cfg.defaultReverse ? -1 : 1;
+  //
+  // `reversed` flips it, and the shell drives it from the ACT of rewinding —
+  // topped up by each coin hit — not from the clock's sign. So the world runs
+  // backwards while the player is pulling time back, at any point on the clock,
+  // rather than only once the number happens to have gone negative.
+  _step(input, reversed) {
+    const base = this.cfg.defaultReverse ? -1 : 1;
+    return reversed ? -base : base;
   }
 
-  update(dt, input) {
+  update(dt, input, reversed) {
     const seq = this._sequence(), n = seq.length;
     if (!n) return;
-    const dir = this._step(input);
+    const dir = this._step(input, reversed);
     if (dir !== 0) {
       this.lastDir = dir;
       this.acc += dt;

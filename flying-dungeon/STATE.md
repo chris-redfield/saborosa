@@ -363,6 +363,53 @@ close and was **kept on purpose**: the futile final volley is the better
 moment, and a gun that goes dead the instant the fade begins reads as the game
 having stopped listening. Don't "fix" it.
 
+### Below zero
+
+**Time is allowed to go negative.** `GameClock.rewind()`/`seek()` used to clamp
+at 0 on the reasoning that a run cannot start before it started — but winding
+past zero is the point of the coins, not an error to guard against. The clamp
+is gone.
+
+Below zero:
+
+- the HUD reads **-HH:MM:SS**
+- both colour drains sit at 0, so the world is at **full colour**. That falls
+  out of the existing `Math.max(0, …)` on their progress rather than needing a
+  case — and it is the right answer anyway: you have out-run the decay.
+
+The tray's direction is **not** tied to the clock's sign — see below.
+`GameClock.isReversed()` survives as a predicate but nothing drives the picture
+from it.
+
+### The tray runs backwards while you rewind
+
+The world orbits the other way while the player is **actively pulling time
+back** — `rewindSpinT` is re-armed by every coin hit — rather than whenever the
+clock happens to be negative. So it reacts as you shoot, at any point on the
+clock.
+
+⚠️ **`rewindSpinMs` (240) MUST be longer than `coinHurtMs` (160)**, and that is
+why it isn't simply set to it. Hits land every ~166ms once frame quantisation is
+in, so a 160ms window lapses for a single frame between them: simulated over 3s
+of held fire, matching the two gives **35 direction flips** — the tray snapping
+back and forth once per hit — where 240 gives **1**, flipping into reverse and
+staying there. The surplus also buys a short flourish after the last hit rather
+than the world snapping round the instant you stop firing.
+
+Two formatting details that are easy to get wrong:
+
+1. Negative time **rounds away from zero** (ceil of the magnitude) where
+   positive time truncates toward it. Both mean "the second you are currently
+   in". Flooring the magnitude instead would print `-00:00:00` for a whole
+   second — a minus sign on a zero, which reads as a glitch.
+2. The timer centres its **digits**, not its string. A leading `-` on centred
+   text shoves every digit half a minus-width sideways, so the clock would
+   visibly jump the moment it crossed zero — the one moment it wants reading,
+   not watching twitch.
+
+The time-over test needs no guard: it is a `>=` that negative time is nowhere
+near.
+
 **The timer's jolt is the coin's spasm**, deliberately: same damped
 oscillation, same `140ms`, same `freq 13`, so the coin's flinch and the clock's
 flinch read as one event at both ends of the screen. Only the amplitude

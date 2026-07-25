@@ -52,12 +52,21 @@ class Hud {
 
   _font(size) { return `${this.cfg.hudWeight} ${size}px ${this.cfg.hudFont}`; }
 
-  // Elapsed time as HH:MM:SS. Hours are NOT capped at two digits — a run that
-  // somehow passes 99h shows 100:00:00 rather than silently wrapping to 00.
+  /* Elapsed time as HH:MM:SS, or -HH:MM:SS once coins have wound the clock back
+     past zero. Hours are NOT capped at two digits — a run that somehow passes
+     99h shows 100:00:00 rather than silently wrapping to 00.
+
+     Negative time ROUNDS AWAY FROM ZERO (ceil of the magnitude) where positive
+     time truncates toward it. Both are "the second you are currently in": at
+     +0.4s you have not finished the first second, so 00:00:00; at −0.4s you are
+     already inside the first second below zero, so −00:00:01. Flooring the
+     magnitude instead would print "-00:00:00" for a whole second — a minus sign
+     on a zero, which reads as a glitch. */
   _clock(ms) {
-    const t = Math.max(0, Math.floor(ms / 1000));
+    const neg = ms < 0;
+    const t = neg ? Math.ceil(-ms / 1000) : Math.floor(ms / 1000);
     const p = n => String(n).padStart(2, '0');
-    return `${p(Math.floor(t / 3600))}:${p(Math.floor(t / 60) % 60)}:${p(t % 60)}`;
+    return `${neg ? '-' : ''}${p(Math.floor(t / 3600))}:${p(Math.floor(t / 60) % 60)}:${p(t % 60)}`;
   }
 
   // One label, with a cheap 1px drop shadow so it survives over pale fruit.
@@ -96,8 +105,16 @@ class Hud {
     // pulses in place instead of walking off its margin.
     const j = this._jolt();
     ctx.font = this._font(c.hudTimerSize * (j ? j.k : 1));
-    this._text(ctx, this._clock(state.timeMs || 0),
-               W / 2 + (j ? j.dx : 0), H - m + (j ? j.dy : 0), 'center', 'bottom');
+    const clock = this._clock(state.timeMs || 0);
+    // Centre the DIGITS, not the string. A leading '-' on centred text would
+    // shove every digit half a minus-width sideways, so the clock would visibly
+    // jump the moment it crossed zero — which is the one moment it should be
+    // read, not watched twitch. Nudging by half the sign's width parks the
+    // digits in exactly the place they sit when time is positive.
+    const signShift = clock.charAt(0) === '-' ? ctx.measureText('-').width / 2 : 0;
+    this._text(ctx, clock,
+               W / 2 + signShift + (j ? j.dx : 0), H - m + (j ? j.dy : 0),
+               'center', 'bottom');
 
     ctx.restore();
   }

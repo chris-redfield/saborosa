@@ -553,6 +553,17 @@ const CONFIG = {
   // GameClock.rewind() clamps at 0, so the clock can never go negative however
   // many coins are cashed in.
   coinRewindMs: 1000,    // GAME ms — one second on the HUD per hit
+  // How long the tray keeps orbiting BACKWARDS after each rewind tick, so the
+  // world reacts while you are actually pulling time back rather than only once
+  // the clock happens to be negative.
+  //
+  // MUST be longer than coinHurtMs (160), and that is the whole reason it isn't
+  // just set to it: hits land every ~166ms once the frame quantisation is in,
+  // so a 160ms window would lapse for a single frame between them and the tray
+  // would flip direction and back once per hit — a stutter, not a reversal. The
+  // surplus also buys a short flourish after the last hit instead of the world
+  // snapping round the instant you stop firing.
+  rewindSpinMs: 240,
   coinHealth: 12,
   // The rate limit, and it is NOT optional: the beam is re-tested every frame
   // while fire is held, so without it the whole health bar drains in as many
