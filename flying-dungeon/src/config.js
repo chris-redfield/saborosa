@@ -168,8 +168,43 @@ const CONFIG = {
   planeScale: 0.32 * 0.6 * 1.6, // plane height as a fraction of the stage height (60% of prior, then +60%)
   tiltMs: 110,           // ms per pitch-pose step
   moveSpeed: 0.30,       // vertical speed, stage-fraction / sec
-  startX: 0.49,          // pinned horizontal position
+  startX: 0.35,          // where it settles after flying in
+  // startY drives TWO things: where the sprite sits AND the vertical camera pan
+  // (camY is a function of plane.displayY()). So it is NOT the knob for "put the
+  // plane higher in frame" — changing it re-frames the background by the same
+  // move and the plane stays put relative to the shot. Left at the original 0.90
+  // so the opening framing of the tray is unchanged; use planeOffsetY below to
+  // move the plane WITHIN the frame.
   startY: 0.90,
+  // Purely a DRAW offset, in fractions of canvas height: it lifts the plane on
+  // screen (and its muzzle with it) without touching displayY(), so the camera
+  // and the background framing are untouched. Negative = up.
+  //
+  // THIS is the knob for "where the plane sits in the camera". startY (0.90)
+  // puts it at 648px — the bottom tenth — so the offset has to be big to bring
+  // it up the frame. The spawn position you get is (startY + this) × GAME_H:
+  //   -100/720 -> 548px (76% down — still the lower quarter)
+  //   -250/720 -> 398px (55% down — just below centre)   <- current
+  //   -350/720 -> 298px (41% down — just above centre)
+  // Written over GAME_H rather than as raw px so it survives a resolution change.
+  planeOffsetY: -250 / 720,
+
+  // --- Entrance -----------------------------------------------------------
+  // The plane used to just BE there the instant the game screen appeared. Now
+  // it flies in from off the left edge, settles at startX, holds a beat, and
+  // only then answers the controls.
+  //
+  // The fly-in is a DRAW-ONLY offset — see plane.js. Routing it through the
+  // plane's x would drag the camera with it (the camera pans off displayX())
+  // and swing it past its left inset into the blank studio margin.
+  planeEntry: true,
+  planeEntryFromX: -0.55, // screen fractions LEFT of startX to begin at. The
+                          // sprite is ~0.225 of the canvas wide, so -0.55 puts
+                          // it comfortably off-screen before it starts.
+  planeEntryMs: 900 * 1.3 * 1.1, // fly-in, eased out so it decelerates into
+                           // place. Chained so the history reads: 900 base,
+                           // then 30% slower, then another 10%.
+  planeEntryHoldMs: 500,  // the beat at rest before control is handed over
 
   // --- Float bob (same sine as the loading letters, +20% freq) ------------
   bobFreq: 2.52,         // rad/sec
@@ -255,7 +290,7 @@ const CONFIG = {
   // A body keeps its SIZE wherever it lands on the plane — no perspective shrink
   // toward the far edge. Only its ANGLE varies: one uniform sample in
   // ±corpseTiltDeg, drawn once when it lands and never touched again.
-  corpseTiltDeg: 15,
+  corpseTiltDeg: 25,
   flyCount: 30,          // how many spawn (killed for good — no respawn, for testing)
   flyScale: 0.13 * 0.5 * 1.4, // fly height as a fraction of the canvas height (50% of prior, then +40%)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left

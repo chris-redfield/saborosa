@@ -152,7 +152,9 @@
         else { phase = 'boot'; bar.style.display = ''; ctx.clearRect(0, 0, W, H); }
       }
     } else if (phase === 'game') {
-      if (input.takeCycle()) plane.cycleCharacter();
+      // Nothing the player presses counts until the plane has flown in — the key
+      // that confirmed the fruit select is very likely still held down.
+      if (input.takeCycle() && !plane.controlLocked) plane.cycleCharacter();
       bg.update(dt, input);
       plane.update(dt, input);
       if (CONFIG.film) film.update(dt);
@@ -177,7 +179,7 @@
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
       let ray = null;
-      if (input.firing) {
+      if (input.firing && !plane.controlLocked) {
         const m = plane.muzzle(W, H);
         if (m) {
           ray = { x: m.x, y: m.y, end: W };

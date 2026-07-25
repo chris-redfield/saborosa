@@ -31,12 +31,38 @@ class Plane {
     // animation time so the bob steps too.
     this._clock = 0;
     this._stepAcc = 0;
-    this.disp = { x: this.x, y: this.y, pose: this.pose, t: 0 };
+
+    // Entrance: the plane flies in from off the left edge, settles at startX,
+    // holds a beat, and only then answers the controls. It is applied as a
+    // DRAW-ONLY offset, not by moving this.x — the camera pans off displayX(),
+    // so flying the entrance through x would drag the camera past its left
+    // inset and expose the blank studio margin. The world stays framed; only
+    // the sprite moves.
+    this.entryT = 0;
+    this.locked = !!cfg.planeEntry;
+
+    this.disp = { x: this.x, y: this.y, pose: this.pose, t: 0, entryOff: this._entryOff() };
+  }
+
+  // True while the entrance is playing — the shell uses it to hold off firing
+  // and character-cycling too, not just movement.
+  get controlLocked() { return this.locked; }
+
+  // Draw offset in screen fractions: starts at planeEntryFromX, eases to 0.
+  // easeOutCubic so it arrives fast and decelerates into place rather than
+  // sliding in at a constant crawl.
+  _entryOff() {
+    const c = this.cfg;
+    if (!this.locked) return 0;
+    const p = c.planeEntryMs > 0 ? Math.min(1, this.entryT / c.planeEntryMs) : 1;
+    const ease = 1 - Math.pow(1 - p, 3);
+    return c.planeEntryFromX * (1 - ease);
   }
 
   _snapshot() {
     const d = this.disp;
     d.x = this.x; d.y = this.y; d.pose = this.pose; d.t = this._clock;
+    d.entryOff = this._entryOff();
   }
   displayX() { return this.disp.x; }   // camera reads these so world hops in sync
   displayY() { return this.disp.y; }
@@ -65,6 +91,15 @@ class Plane {
 
   update(dt, input) {
     const c = this.cfg;
+
+    // Flying in: swallow the controls entirely (a key held from the intro must
+    // not steer or fire), but keep the rest of update running so the bob and the
+    // stop-motion sampling carry on as normal.
+    if (this.locked) {
+      this.entryT += dt;
+      if (this.entryT >= c.planeEntryMs + c.planeEntryHoldMs) this.locked = false;
+      input = Plane.NO_INPUT;
+    }
 
     // Pitch pose ramps toward the held vertical direction's extreme, back to rest.
     const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
@@ -129,7 +164,10 @@ class Plane {
     const c = this.cfg;
     const k = c.planeScale / c.gunOffRefScale;
     const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
-    return { x: this.disp.x * W + m.dw / 2, y: this.disp.y * H + m.bob - offY + c.rayOffsetY * k };
+    // Same screen offsets the sprite is drawn with, so the shot line always
+    // leaves the nose where the nose actually is.
+    return { x: (this.disp.x + this.disp.entryOff) * W + m.dw / 2,
+             y: (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob - offY + c.rayOffsetY * k };
   }
 
   render(ctx, W, H) {
@@ -139,7 +177,11 @@ class Plane {
     const f = m.f, dw = m.dw, dh = m.dh, bob = m.bob;
 
     ctx.save();
-    ctx.translate(this.disp.x * W, this.disp.y * H + bob);
+    // Both offsets are DRAW-only (entryOff slides it in from the left,
+    // planeOffsetY lifts it in frame); neither touches displayX/displayY, so the
+    // camera keeps its own framing.
+    ctx.translate((this.disp.x + this.disp.entryOff) * W,
+                  (this.disp.y + (c.planeOffsetY || 0)) * H + bob);
     if (this.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true;
 
@@ -158,3 +200,8 @@ class Plane {
     ctx.restore();
   }
 }
+
+// Frozen no-input, fed to update() while the entrance plays.
+Plane.NO_INPUT = Object.freeze({
+  left: false, right: false, up: false, down: false, firing: false,
+});
