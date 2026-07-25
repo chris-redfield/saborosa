@@ -54,10 +54,10 @@ const CONFIG = {
   // Per-panel overrides, by 0-based index. Panels 8-10 are the 3-2-1 countdown
   // and 11 is GO! — these cut, so the hold IS the whole beat.
   introBeats: {
-    8:  { hold: 420 },
-    9:  { hold: 420 },
-    10: { hold: 420 },
-    11: { hold: 560 },
+    8:  { hold: 1000 },  // "3" — one full second each, it's a countdown
+    9:  { hold: 1000 },  // "2"
+    10: { hold: 1000 },  // "1"
+    11: { hold: 900 },   // "GO!" — long enough for the plane to clear the frame
   },
   introFadeInMs: 550,    // black -> first panel
   introFadeOutMs: 420,   // last panel -> black -> game
@@ -65,6 +65,37 @@ const CONFIG = {
   introHintText: 'press any key to skip',
   introHintInMs: 1600,   // when the hint fades in
   introHintHoldMs: 3200, // how long it stays before fading out
+
+  // --- Liftoff (the takeoff played over the countdown) --------------------
+  // The gridded cloth at the bottom of boards 8-12 is the runway: the chosen
+  // plane sits on it, rolls, rotates and climbs out — timed to STOP DECAY,
+  // 3, 2, 1, GO!. Positions are fractions of the canvas and describe the ART's
+  // centre-x / belly-y, not the sprite frame's corner (the art floats inside a
+  // 660x507 frame; liftoff.js FOOT holds where it actually sits).
+  //
+  // The phase fractions below are of the WHOLE countdown window, whose length
+  // the intro derives from introBeats — so retiming the countdown retimes the
+  // takeoff to match. At the current beats that window is ~4.4s:
+  //   0.00-0.12 STOP DECAY   0.12-0.80 "3" "2" "1"   0.80-1.00 GO!
+  introLiftoffFrom: 7,   // board 8 (STOP DECAY) — where the plane appears
+  liftScale: 0.32 * 0.6 * 1.6,        // same size as the in-game plane
+  liftStartX: -0.18,     // OFF the left edge: it enters already rolling, rather
+                         // than being parked on screen waiting for the count
+  liftGroundY: 0.88,     // where the belly rests on the runway
+  liftExitX: 1.15,       // off the right edge — tuned so it clears frame
+                         // AS the window ends, not a beat early
+  liftExitY: -0.30,      // and above the top
+  // Shape of the ground roll. 0 = pure acceleration from a standstill, 1 = flat
+  // constant speed. It starts off-screen, so pure acceleration would waste the
+  // slow part out of sight and the plane wouldn't appear until halfway through
+  // the count; the blend has it already moving as it comes into frame (~"3")
+  // and still gaining speed by the time it rotates.
+  liftRollBlend: 0.45,
+  liftRevUntil: 0,       // parked-with-the-brakes-on phase; 0 = none, it arrives
+                         // mid-roll (the shake knobs below only apply if > 0)
+  liftRotateAt: 0.70,    // nose up + wheels leave (late in "1", into GO!)
+  liftRevAmp: 3,         // px of engine shake while parked
+  liftRevFreq: 42,       // rad/sec
 
   // --- Fruit select (the interactive board inside the intro) --------------
   // Same art and same trick as the main game's src/screens/select.js: a 3-frame

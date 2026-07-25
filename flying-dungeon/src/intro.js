@@ -26,10 +26,11 @@
  * Plane / TrayBackground, so this drops into the main engine unchanged.
  */
 class Intro {
-  constructor(assets, cfg, select) {
+  constructor(assets, cfg, select, liftoff) {
     this.assets = assets;
     this.cfg = cfg;
     this.select = select || null;
+    this.liftoff = liftoff || null;
 
     // Played sequence of RAW board indices. Everything in config (introRollPx,
     // introBeats, introSelectAt…) is keyed by raw index, so omitting a board
@@ -57,6 +58,10 @@ class Intro {
     this.done = false;
     this.skipped = false;
     this.pickedCharacter = null;
+
+    // Covers the case where the takeoff board IS the first one; normally it's
+    // _advance() that trips this.
+    this._maybeStartLiftoff();
   }
 
   panel(k) { return this.order[k]; }             // position -> raw board index
@@ -76,6 +81,21 @@ class Intro {
     }
     if (this.select) jobs.push(this.select.load(onProgress));
     await Promise.all(jobs);
+  }
+
+  // Length of the takeoff window: every beat from the board the plane appears
+  // on through to the end. Derived rather than configured, so changing the
+  // countdown timing can't leave the plane airborne early or still rolling at GO!.
+  _liftoffMs() {
+    const k0 = this.order.indexOf(this.cfg.introLiftoffFrom);
+    if (k0 < 0) return 0;
+    let ms = 0;
+    for (let k = k0; k < this.n; k++) {
+      const b = this._beat(k);
+      ms += b.hold;
+      if (k < this.n - 1 && this._isRoll(k + 1)) ms += b.roll;
+    }
+    return ms;
   }
 
   // How far the camera drops to reach raw board i (only meaningful for a roll).
@@ -117,12 +137,22 @@ class Intro {
     const b = this._beat(this.i);
     if (this._isRoll(this.i + 1) && b.roll > 0) this.mode = 'roll';
     else this.i++;                             // CUT: the next board is just there
+    this._maybeStartLiftoff();
+  }
+
+  // Roll the plane onto the runway the moment its board comes up.
+  _maybeStartLiftoff() {
+    if (!this.liftoff || this.liftoff.running) return;
+    if (this.order[this.i] !== this.cfg.introLiftoffFrom) return;
+    this.liftoff.prepare(this.pickedCharacter !== null ? this.pickedCharacter : 0);
+    this.liftoff.start(this._liftoffMs());
   }
 
   update(dt, input) {
     if (this.done) return;
     this.elapsed += dt;
     this.t += dt;
+    if (this.liftoff) this.liftoff.update(dt);
 
     if (this.mode === 'hold') {
       const b = this._beat(this.i);
@@ -172,6 +202,9 @@ class Intro {
     // already replaced, and they sit at exactly the same Y.
     this._draw(ctx, this.i, camY, W, H);
     if (this.mode === 'roll' && this.i < this.n - 1) this._draw(ctx, this.i + 1, camY, W, H);
+
+    // The plane takes off over the board — it's the foreground of the shot.
+    if (this.liftoff) this.liftoff.render(ctx, W, H);
 
     // The select board opens in front of the panel that's already on screen.
     if (this.mode === 'select') this.select.render(ctx, W, H);

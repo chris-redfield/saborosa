@@ -72,7 +72,8 @@
   const enemies = [];
   const film = new Film(CONFIG);
   const fruitSelect = new FruitSelect(assets, CONFIG);
-  const intro = new Intro(assets, CONFIG, fruitSelect);
+  const liftoff = new Liftoff(assets, CONFIG);
+  const intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
 
   // The HUD / help / toggles belong to the game, not the title sequence.
   const chrome = ['hud', 'help', 'controls'].map(id => document.getElementById(id));
