@@ -11,7 +11,6 @@
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
   const bar = document.getElementById('bar');
-  const hud = document.getElementById('hud');
 
   // Fixed internal resolution (like the main game); CSS-scale to fit the window
   // with letterboxing so the aspect never distorts.
@@ -71,12 +70,14 @@
   const plane = new Plane(assets, CONFIG);
   const enemies = [];
   const film = new Film(CONFIG);
+  const hud = new Hud(CONFIG);
   const fruitSelect = new FruitSelect(assets, CONFIG);
   const liftoff = new Liftoff(assets, CONFIG);
   const intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
 
-  // The HUD / help / toggles belong to the game, not the title sequence.
-  const chrome = ['hud', 'help', 'controls'].map(id => document.getElementById(id));
+  // The help / toggles belong to the game, not the title sequence. (The HUD
+  // itself is canvas-drawn now and simply isn't rendered during the intro.)
+  const chrome = ['help', 'controls'].map(id => document.getElementById(id));
   const showChrome = on => chrome.forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
   showChrome(false);
 
@@ -102,6 +103,9 @@
   let last = performance.now();
   let phase = 'boot';       // 'boot' (black) → 'intro' → 'game'
   let gameReady = false;
+  // Run clock. Starts when the player actually gets control, not when the game
+  // screen appears — the plane's fly-in shouldn't burn seconds nobody can play.
+  let runMs = 0;
 
   // Skip the title sequence on any key or click. Bound only while it plays.
   function onSkip(e) {
@@ -155,6 +159,7 @@
       // Nothing the player presses counts until the plane has flown in — the key
       // that confirmed the fruit select is very likely still held down.
       if (input.takeCycle() && !plane.controlLocked) plane.cycleCharacter();
+      if (!plane.controlLocked) runMs += dt;
       bg.update(dt, input);
       plane.update(dt, input);
       if (CONFIG.film) film.update(dt);
@@ -235,8 +240,15 @@
 
       if (CONFIG.film) film.render(ctx, W, H);
 
+      // HUD last: it must sit OUTSIDE the film pass. The vignette darkens the
+      // very corners it lives in and the weave shakes the scene — fixed to the
+      // camera means it does neither.
       const liveFlies = enemies.reduce((n, e) => n + (e.isAlive() ? 1 : 0), 0);
-      hud.textContent = `${plane.characterName.toUpperCase()}   FLIES ${liveFlies}`;
+      hud.render(ctx, W, H, {
+        fliesLeft: liveFlies,
+        fliesKilled: CONFIG.flyCount - liveFlies,
+        timeMs: runMs,
+      });
     }
     requestAnimationFrame(loop);
   }

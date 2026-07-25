@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Flying Dungeon Game Over Anim</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #fpsread { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #stagewrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#000; }
+  #stage.check { background-image:
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+      background-size:32px 32px; background-position:0 0,16px 16px; }
+  #stage.white { background:#d8d8d8; }
+  #stage.magenta { background:#ff00ff; }
+  canvas#cv { display:block; position:absolute; inset:0; }
+  #loadbar { position:absolute; left:0; top:0; height:3px; width:0;
+             background:var(--accent); transition:width .12s; z-index:5; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; font-size:12px; z-index:5; }
+
+  /* ---- timeline: click a block to jump, drag its right edge to retime ---- */
+  #timeline { height:74px; background:var(--panel); border-top:1px solid #0c1226;
+              padding:8px 12px; display:flex; flex-direction:column; gap:5px; }
+  #tlbar { flex:1; display:flex; gap:2px; }
+  .blk { position:relative; background:#22304f; border:1px solid #3a4a6a; border-radius:3px;
+         color:#9ab; display:flex; align-items:center; justify-content:center;
+         cursor:pointer; user-select:none; font-size:11px; overflow:hidden; }
+  .blk:hover { background:#2c3e63; }
+  /* The current-frame marker flashes at the playback rate, so it stays a hair
+     lighter than the idle block instead of a hot colour — at 8+ fps a red
+     block strobes. */
+  .blk.cur { background:#2c3f68; border-color:#4d6796; color:#dceaff; }
+  .blk .grip { position:absolute; right:0; top:0; bottom:0; width:7px; cursor:ew-resize;
+               background:linear-gradient(90deg,transparent,#53d8fb55); }
+  .blk.pauseblk { background:#1b2440; border-style:dashed; color:#6d7e9e; }
+  #tlfoot { display:flex; gap:14px; color:#7a8aa8; font-size:11px; }
+  #tlfoot b { color:var(--ok); font-weight:normal; }
+
+  /* ---- side panel ---- */
+  #side { width:326px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:24px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; color:var(--accent); font-size:11px; letter-spacing:1px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  label.cb { display:flex; align-items:center; gap:7px; margin:7px 0; color:#cfe; cursor:pointer; }
+
+  /* numeric field: type it, arrow it, or hit the steppers. No sliders anywhere. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf .stepper { display:flex; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:74px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:22px; }
+  #dump { width:100%; height:132px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>GAME OVER ANIM</b>
+  <span class="hint">flying-dungeon · Space/P play · ←/→ step · 1-3 jump · M loop/bounce · B bg · R reset</span>
+  <span id="fpsread"></span>
+</div>
+<div id="main">
+  <div id="stagewrap">
+    <div id="stage" class="black">
+      <div id="loadbar"></div><div id="loadmsg">loading 3 × ~5MB masters…</div>
+      <canvas id="cv"></canvas>
+    </div>
+    <div id="timeline">
+      <div id="tlbar"></div>
+      <div id="tlfoot">
+        <span>loop <b id="tlTotal">—</b></span>
+        <span>= <b id="tlFps">—</b></span>
+        <span class="hint">click block = jump · drag right edge = retime that frame</span>
+      </div>
+    </div>
+  </div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   The masters are three 3784×3800 RGBA PNGs (~5MB each), but the PICTURE is a
+   tight band floating in transparency — and all three share the EXACT same
+   alpha bbox (verified: 337,1510 → 3339,3197 = 3002×1687, the same 16:9 box
+   the intro storyboard uses), so cropping keeps the frames aligned.
+
+   tools/build-game-over-frames.py bakes that crop into webp at native
+   resolution (15.7MB → 1.6MB). This tool loads the webp by default and can
+   swap to the PNG masters for an A/B — for the webp the whole image IS the
+   band, for the PNG we blit BAND out of the big canvas.
+--------------------------------------------------------------------------- */
+const DIR   = '../assets-v2/flying-dungeon/game-over/';
+const NAMES = ['saborosa-natureza-vermes-001',
+               'saborosa-natureza-vermes-002',
+               'saborosa-natureza-vermes-003'];
+const BAND  = { x:337, y:1510, w:3002, h:1687 };   // shared alpha bbox of all 3 masters
+const GAME_W = 1280, GAME_H = 720;                 // CONFIG.GAME_W/GAME_H
+
+const params = {
+  // Per-frame hold in ms. This is the thing you're actually tuning: `fps` just
+  // stamps 1000/fps into all three at once, then you can pull one frame longer
+  // (the classic 2-2-4 hold) without losing the base rate.
+  holds: [120, 120, 120],
+  fps: 8.33,
+  endPause: 0,        // extra ms of dead air at the end of a cycle, before it restarts
+  // 'loop'   = 1,2,3 · 1,2,3 …   (snaps back to f1, one direction)
+  // 'bounce' = 1,2,3,2 · 1,2,3,2 … (walks out to f3 and back down to f1)
+  mode: 'loop',
+  turnMs: 0,          // bounce only: extra hold ON f3, the turnaround frame
+  reverse: false,
+  playing: true,
+  fadeMs: 0,          // panel fades up over this on (re)start — R replays it
+  scale: 1.00,        // × the fitted size
+  offX: 0, offY: 0,   // px nudge, in stage pixels
+  bg: 'black',        // black | check | white | magenta
+  smooth: true,       // false = image-rendering: pixelated look
+  showFull: false,    // PNG source only: draw the whole master instead of the band
+  stretch: true,      // stretch the band to exactly 16:9 (the game canvas)
+  source: 'webp',     // 'webp' (built, 1.6MB total) | 'png' (masters, 15.7MB)
+};
+
+// ---- image loading --------------------------------------------------------
+// Each source loads once, on first use — flipping to the PNG masters pulls
+// 15.7MB, so we don't pay for it unless you ask for the A/B.
+const sets = { webp:null, png:null };
+const loadbar = document.getElementById('loadbar');
+const loadmsg = document.getElementById('loadmsg');
+function loadSet(ext) {
+  const set = { ims:[], done:0 };
+  sets[ext] = set;
+  loadmsg.style.display = ''; loadmsg.textContent = 'loading 3 × ' + ext + '…';
+  loadbar.style.opacity = 1; loadbar.style.width = 0;
+  NAMES.forEach((n, i) => {
+    const im = new Image();
+    im.onload = () => {
+      set.done++;
+      loadbar.style.width = (100 * set.done / NAMES.length) + '%';
+      if (set.done === NAMES.length) { loadbar.style.opacity = 0; loadmsg.style.display = 'none'; }
+    };
+    im.onerror = () => { loadmsg.style.display = ''; loadmsg.textContent = 'FAILED to load ' + n + '.' + ext; };
+    im.src = DIR + n + '.' + ext;
+    set.ims[i] = im;
+  });
+  return set;
+}
+const frameImg = i => (sets[params.source] || loadSet(params.source)).ims[i];
+
+// ---- playback state ------------------------------------------------------
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let seqIdx = 0;       // index into the built sequence
+let acc = 0;          // ms accumulated in the current step
+let fadeAcc = 1e9;    // ms since the fade started (huge = fade already done)
+let last = performance.now();
+let fpsSmooth = 0;
+
+// The sequence is a list of steps: {frame: 0..2 | -1 for the end pause, ms}.
+// In 'bounce' the middle frame is visited twice per cycle and shares one hold
+// value (retiming f2 anywhere retimes both passes); only the far end, f3, gets
+// its own extra `turnMs` so the bounce can hang at the top.
+function sequence() {
+  const turn = params.mode === 'bounce';
+  let order = turn ? [0, 1, 2, 1] : [0, 1, 2];
+  if (params.reverse) order = order.slice().reverse();
+  const steps = order.map((f, i) => ({
+    frame: f,
+    ms: Math.max(1, params.holds[f] + (turn && f === 2 ? params.turnMs : 0)),
+  }));
+  if (params.endPause > 0) steps.push({ frame:-1, ms:params.endPause });
+  return steps;
+}
+let seq = sequence();
+function rebuild() { seq = sequence(); if (seqIdx >= seq.length) seqIdx = 0; drawTimeline(); dump(); }
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+function tick(now) {
+  const dt = Math.min(200, now - last); last = now;
+  fpsSmooth = fpsSmooth ? fpsSmooth * 0.9 + (1000 / Math.max(1, dt)) * 0.1 : 1000 / Math.max(1, dt);
+
+  if (params.playing && seq.length) {
+    acc += dt;
+    let guard = 0;
+    while (acc >= seq[seqIdx].ms && guard++ < 64) {
+      acc -= seq[seqIdx].ms;
+      seqIdx = (seqIdx + 1) % seq.length;
+      if (seqIdx === 0) fadeAcc = params.fadeMs > 0 ? 0 : 1e9;   // fade replays each loop
+      markCur();
+    }
+  }
+  fadeAcc += dt;
+  draw();
+  document.getElementById('fpsread').textContent =
+    'render ' + fpsSmooth.toFixed(0) + 'fps · step ' + (seqIdx + 1) + '/' + seq.length;
+  requestAnimationFrame(tick);
+}
+
+function draw() {
+  // ctx is dpr-scaled, so we lay out in CSS pixels.
+  const w = parseFloat(cv.style.width), h = parseFloat(cv.style.height);
+  ctx.clearRect(0, 0, w, h);
+  const step = seq[seqIdx];
+  if (!step || step.frame < 0) return;                      // end pause = empty stage
+  const im = frameImg(step.frame);
+  if (!im || !im.complete || !im.naturalWidth) return;
+
+  // The webp is already cropped to the band; the PNG master needs BAND cut out
+  // of its 3784×3800 canvas (unless you asked to see the whole thing).
+  const src = (params.source === 'webp' || params.showFull)
+    ? { x:0, y:0, w:im.naturalWidth, h:im.naturalHeight }
+    : BAND;
+
+  // Fit the source into the stage (contain), then apply the scale multiplier
+  // and the px nudges. `stretch` forces the band to 16:9 exactly, which is what
+  // the game canvas is (the intro panels are baked the same way).
+  const showingFullMaster = params.source === 'png' && params.showFull;
+  const aspect = params.stretch && !showingFullMaster ? GAME_W / GAME_H : src.w / src.h;
+  let dw = w, dh = w / aspect;
+  if (dh > h) { dh = h; dw = h * aspect; }
+  dw *= params.scale; dh *= params.scale;
+  const dx = (w - dw) / 2 + params.offX, dy = (h - dh) / 2 + params.offY;
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = params.smooth;
+  ctx.imageSmoothingQuality = 'high';
+  if (params.fadeMs > 0) ctx.globalAlpha = Math.min(1, fadeAcc / params.fadeMs);
+  ctx.drawImage(im, src.x, src.y, src.w, src.h, dx, dy, dw, dh);
+  ctx.restore();
+}
+
+// ---- timeline ------------------------------------------------------------
+const tlbar = document.getElementById('tlbar');
+function drawTimeline() {
+  const total = seq.reduce((s, st) => s + st.ms, 0) || 1;
+  tlbar.innerHTML = '';
+  seq.forEach((st, i) => {
+    const el = document.createElement('div');
+    el.className = 'blk' + (st.frame < 0 ? ' pauseblk' : '') + (i === seqIdx ? ' cur' : '');
+    el.style.flex = st.ms + ' 0 0';
+    el.textContent = (st.frame < 0 ? 'pause' : 'f' + (st.frame + 1)) + ' · ' + st.ms + 'ms';
+    if (st.frame >= 0) {
+      const grip = document.createElement('div');
+      grip.className = 'grip';
+      grip.title = 'drag to retime frame ' + (st.frame + 1);
+      grip.addEventListener('pointerdown', e => startDrag(e, st.frame, total));
+      el.appendChild(grip);
+    }
+    el.addEventListener('pointerdown', e => {
+      if (e.target.classList.contains('grip')) return;
+      seqIdx = i; acc = 0; markCur();
+    });
+    tlbar.appendChild(el);
+  });
+  document.getElementById('tlTotal').textContent = total + 'ms';
+  document.getElementById('tlFps').textContent =
+    (1000 / (total / seq.filter(s => s.frame >= 0).length)).toFixed(2) + ' fps avg';
+  modeNote.textContent = modeText();
+}
+function markCur() {
+  [...tlbar.children].forEach((c, i) => c.classList.toggle('cur', i === seqIdx));
+}
+function startDrag(e, frame, total) {
+  e.preventDefault(); e.stopPropagation();
+  const startX = e.clientX, startMs = params.holds[frame];
+  const pxPerMs = tlbar.getBoundingClientRect().width / total;
+  const move = ev => {
+    const ms = Math.max(8, Math.round((startMs + (ev.clientX - startX) / pxPerMs) / 4) * 4);
+    params.holds[frame] = ms; params.uniform = false;
+    syncHoldFields(); rebuild();
+  };
+  const up = () => { window.removeEventListener('pointermove', move);
+                     window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+
+/* ---------------------------------------------------------------------------
+   UI: number fields, not sliders. Each is [−][ typed value ][+] — click the
+   steppers, type an exact number, or focus it and use ↑/↓ (shift = ×10).
+--------------------------------------------------------------------------- */
+const side = document.getElementById('side');
+const fieldRefs = {};
+
+function group(title) {
+  const g = document.createElement('div'); g.className = 'group';
+  if (title) { const h = document.createElement('h3'); h.textContent = title; g.appendChild(h); }
+  side.appendChild(g); return g;
+}
+
+function numField(parent, label, unit, get, set, step, min, max, decimals = 0) {
+  const wrap = document.createElement('div'); wrap.className = 'nf';
+  const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
+  const stepper = document.createElement('div'); stepper.className = 'stepper';
+  const minus = document.createElement('button'); minus.className = 'st'; minus.textContent = '−';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal';
+  const plus = document.createElement('button'); plus.className = 'st'; plus.textContent = '+';
+  const u = document.createElement('span'); u.className = 'unit'; u.textContent = unit || '';
+
+  const show = () => { inp.value = Number(get()).toFixed(decimals); };
+  const apply = v => {
+    if (!isFinite(v)) return show();
+    set(Math.min(max, Math.max(min, v)));
+    show(); rebuild();
+  };
+  const bump = mult => apply(Number(get()) + step * mult);
+
+  minus.onclick = e => bump(e.shiftKey ? -10 : -1);
+  plus.onclick  = e => bump(e.shiftKey ?  10 :  1);
+  inp.onchange = () => apply(parseFloat(inp.value.replace(',', '.')));
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowUp')   { e.preventDefault(); bump(e.shiftKey ?  10 :  1); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); bump(e.shiftKey ? -10 : -1); }
+    if (e.key === 'Enter')     { inp.blur(); }
+    e.stopPropagation();                                  // don't trigger hotkeys while typing
+  };
+  inp.onfocus = () => inp.select();
+
+  stepper.append(minus, inp, plus);
+  wrap.append(lbl, stepper, u);
+  parent.appendChild(wrap);
+  show();
+  return { show };
+}
+
+function checkbox(parent, label, get, set) {
+  const l = document.createElement('label'); l.className = 'cb';
+  const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!get();
+  c.onchange = () => { set(c.checked); rebuild(); };
+  l.append(c, document.createTextNode(label));
+  parent.appendChild(l);
+  return { show: () => { c.checked = !!get(); } };
+}
+
+function buttonRow(parent, defs) {
+  const r = document.createElement('div'); r.className = 'row';
+  const btns = defs.map(([txt, fn, isOn]) => {
+    const b = document.createElement('button'); b.textContent = txt;
+    b.onclick = () => { fn(); refreshAll(); rebuild(); };
+    b._isOn = isOn; r.appendChild(b); return b;
+  });
+  parent.appendChild(r);
+  return { show: () => btns.forEach(b => b.classList.toggle('on', b._isOn ? !!b._isOn() : false)) };
+}
+
+// --- timing ---------------------------------------------------------------
+params.uniform = true;
+const gT = group('TIMING');
+fieldRefs.fps = numField(gT, 'frame rate (all frames)', 'fps',
+  () => params.fps,
+  v => { params.fps = v; const ms = Math.round(1000 / v);
+         params.holds = [ms, ms, ms]; params.uniform = true; syncHoldFields(); },
+  0.5, 0.5, 60, 2);
+buttonRow(gT, [
+  ['4 fps',  () => setFps(4)],  ['6 fps',  () => setFps(6)],
+  ['8 fps',  () => setFps(8)],  ['12 fps', () => setFps(12)],
+  ['15 fps', () => setFps(15)], ['24 fps', () => setFps(24)],
+]);
+function setFps(f) { params.fps = f; const ms = Math.round(1000 / f);
+                     params.holds = [ms, ms, ms]; params.uniform = true; syncHoldFields(); }
+
+const gH = group('PER-FRAME HOLD');
+fieldRefs.holds = [0, 1, 2].map(i => numField(gH, 'frame ' + (i + 1), 'ms',
+  () => params.holds[i],
+  v => { params.holds[i] = Math.round(v); params.uniform = false; },
+  10, 8, 4000));
+fieldRefs.endPause = numField(gH, 'pause at cycle end', 'ms',
+  () => params.endPause, v => params.endPause = Math.round(v), 50, 0, 5000);
+
+const gM = group('CYCLE');
+buttonRow(gM, [
+  ['loop  1·2·3',           () => setMode('loop'),   () => params.mode === 'loop'],
+  ['bounce  1·2·3·2',       () => setMode('bounce'), () => params.mode === 'bounce'],
+]);
+const modeNote = document.createElement('div');
+modeNote.className = 'hint';
+gM.appendChild(modeNote);
+fieldRefs.turnMs = numField(gM, 'extra hold on f3 (bounce)', 'ms',
+  () => params.turnMs, v => params.turnMs = Math.round(v), 20, 0, 3000);
+buttonRow(gM, [['reverse', () => params.reverse = !params.reverse, () => params.reverse]]);
+function setMode(m) { params.mode = m; }
+function modeText() {
+  const f = params.reverse ? [3, 2, 1] : [1, 2, 3];
+  const s = params.mode === 'bounce' ? [f[0], f[1], f[2], f[1]] : f;
+  return s.join(' → ') + ' → ' + s[0] + ' → …';
+}
+
+// --- playback -------------------------------------------------------------
+const gP = group('PLAYBACK');
+buttonRow(gP, [
+  ['play/pause', () => params.playing = !params.playing, () => params.playing],
+  ['◀ step',     () => step(-1)],
+  ['step ▶',     () => step(1)],
+  ['restart',    () => restart()],
+]);
+fieldRefs.fade = numField(gP, 'fade up on loop', 'ms',
+  () => params.fadeMs, v => params.fadeMs = Math.round(v), 50, 0, 3000);
+
+// --- framing --------------------------------------------------------------
+const gF = group('FRAMING');
+fieldRefs.scale = numField(gF, 'draw scale', '×', () => params.scale,
+  v => params.scale = v, 0.01, 0.1, 3, 2);
+fieldRefs.offX = numField(gF, 'offset x', 'px', () => params.offX,
+  v => params.offX = Math.round(v), 1, -2000, 2000);
+fieldRefs.offY = numField(gF, 'offset y', 'px', () => params.offY,
+  v => params.offY = Math.round(v), 1, -2000, 2000);
+fieldRefs.stretch = checkbox(gF, 'stretch band to exact 16:9', () => params.stretch,
+  v => params.stretch = v);
+fieldRefs.smooth = checkbox(gF, 'smooth scaling', () => params.smooth, v => params.smooth = v);
+fieldRefs.full = checkbox(gF, 'show full master (png source only)', () => params.showFull,
+  v => params.showFull = v);
+
+const gS = group('SOURCE');
+buttonRow(gS, [
+  ['webp (1.6MB)',    () => params.source = 'webp', () => params.source === 'webp'],
+  ['png masters (16MB)', () => params.source = 'png', () => params.source === 'png'],
+]);
+const srcNote = document.createElement('div');
+srcNote.className = 'hint';
+srcNote.textContent = 'A/B the compression. Rebuild with: python3 tools/build-game-over-frames.py --quality 82';
+gS.appendChild(srcNote);
+const gB = group('BACKGROUND');
+buttonRow(gB, [
+  ['black',   () => setBg('black'),   () => params.bg === 'black'],
+  ['checker', () => setBg('check'),   () => params.bg === 'check'],
+  ['white',   () => setBg('white'),   () => params.bg === 'white'],
+  ['magenta', () => setBg('magenta'), () => params.bg === 'magenta'],
+]);
+function setBg(b) { params.bg = b; stage.className = b; }
+
+// --- export ---------------------------------------------------------------
+const gD = group('CONFIG');
+const ta = document.createElement('textarea'); ta.id = 'dump'; ta.readOnly = true;
+gD.appendChild(ta);
+buttonRow(gD, [['copy', () => navigator.clipboard.writeText(ta.value)]]);
+function dump() {
+  const total = seq.reduce((s, st) => s + st.ms, 0);
+  ta.value =
+`// flying-dungeon game over panel
+GAME_OVER: {
+  frames: ${JSON.stringify(NAMES.map(n => n + '.webp'))},   // 3002×1687, pre-cropped
+  holdsMs: [${params.holds.join(', ')}],${params.uniform ? '   // = ' + params.fps.toFixed(2) + ' fps' : '   // hand-tuned'}
+  mode: '${params.mode}',${params.mode === 'bounce' ? "        // 1,2,3,2 — out to f3 and back down" : "          // 1,2,3 — snaps back to f1"}
+  turnHoldMs: ${params.turnMs},${params.mode === 'bounce' ? '' : '     // bounce only'}
+  endPauseMs: ${params.endPause},
+  reverse: ${params.reverse},
+  fadeMs: ${params.fadeMs},
+  scale: ${params.scale.toFixed(2)},
+  offset: [${params.offX}, ${params.offY}],
+  smooth: ${params.smooth},
+},
+// loop = ${total}ms`;
+}
+
+function syncHoldFields() { fieldRefs.holds.forEach(f => f.show()); }
+function refreshAll() {
+  Object.values(fieldRefs).forEach(f => {
+    if (Array.isArray(f)) f.forEach(x => x.show()); else if (f && f.show) f.show();
+  });
+  side.querySelectorAll('button').forEach(b => { if (b._isOn) b.classList.toggle('on', !!b._isOn()); });
+}
+
+function step(dir) {
+  params.playing = false;
+  seqIdx = (seqIdx + dir + seq.length) % seq.length; acc = 0; markCur();
+}
+function restart() { seqIdx = 0; acc = 0; fadeAcc = params.fadeMs > 0 ? 0 : 1e9; params.playing = true; markCur(); }
+
+// ---- hotkeys -------------------------------------------------------------
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ' || k === 'p') { e.preventDefault(); params.playing = !params.playing; }
+  else if (e.key === 'ArrowLeft')  step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (k === 'r') restart();
+  else if (k === 'm') { setMode(params.mode === 'loop' ? 'bounce' : 'loop'); rebuild(); }
+  else if (k === 'b') { const o = ['black','check','white','magenta'];
+                        setBg(o[(o.indexOf(params.bg) + 1) % o.length]); }
+  else if (k >= '1' && k <= '3') { params.playing = false;
+                                   const i = seq.findIndex(s => s.frame === +k - 1);
+                                   if (i >= 0) { seqIdx = i; acc = 0; markCur(); } }
+  else return;
+  refreshAll();
+});
+
+setBg(params.bg);
+setFps(8);
+resize(); rebuild(); refreshAll();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

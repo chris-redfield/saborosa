@@ -135,6 +135,34 @@ const CONFIG = {
   selectShakeMs: 180,    // board shake decay
   selectShakeAmp: 9,     // px
 
+  // --- HUD ----------------------------------------------------------------
+  // Drawn on the CANVAS, in screen space, so it scales and letterboxes with the
+  // picture and stays pinned in the camera's frame at any window size.
+  //
+  // The colour is the intro's yellow, given as CMYK 2/2/86/0 ->
+  //   R = 255(1-0.02) = 250, G = 255(1-0.02) = 250, B = 255(1-0.86) = 36.
+  // (Sampling the intro art directly gives #FFEC4E, slightly different — the
+  // spec wins.)
+  hudColor: '#FAFA24',
+  // Futura is NOT bundled and is absent from most Linux and Windows machines,
+  // so this falls through geometric sans-serifs of the same family of shapes
+  // before conceding to a generic sans. URW Gothic is the usual Linux hit,
+  // Century Gothic the usual Windows one; macOS has real Futura.
+  hudFont: 'Futura, "Futura PT", "Futura Std", "Century Gothic", "URW Gothic", "Avant Garde", "Trebuchet MS", sans-serif',
+  hudWeight: 'bold',
+  hudSize: 26 * 1.25,    // px, in the canvas's fixed 1280x720 space
+  hudMargin: 22,         // px in from the canvas edge — governs BOTH the top
+                         // labels' gap from the top and the timer's from the
+                         // bottom, so the block stays symmetric when retuned
+  hudLetterSpacing: '2px',
+  hudFliesOffsetX: -64,  // extra px in from the right edge, on top of hudMargin
+  // Drop shadow behind the text. Empty = none. It was there to keep the yellow
+  // legible over pale fruit; bold weight now carries that on its own.
+  hudShadow: '',
+  // Run timer, HH:MM:SS, centred on X and sat hudMargin up from the bottom edge
+  // (mirroring the corner labels). Placeholder size — one number.
+  hudTimerSize: 40 * 1.25, // px
+
   // --- Background: the orbiting fruit tray --------------------------------
   // The frame is drawn 1:1 at its (reduced) resolution — LARGER than the
   // 1280×720 canvas — so the canvas shows a cropped WINDOW into it. The camera

@@ -10,9 +10,6 @@
           transform: translate(-50%, -50%); background: #000; }
   #bar  { position: absolute; left: 0; top: 0; height: 4px; width: 0;
           background: #f2d94c; transition: width .1s; z-index: 2; }
-  #hud  { position: absolute; left: 14px; top: 12px; z-index: 2;
-          color: #fff; font: 15px/1.2 monospace; letter-spacing: 2px;
-          text-shadow: 0 1px 3px #000; }
   #help { position: absolute; left: 14px; bottom: 12px; z-index: 2;
           color: #cfe; opacity: .7; font: 12px/1.4 monospace;
           text-shadow: 0 1px 3px #000; }
@@ -25,7 +22,6 @@
 <body>
   <canvas id="game"></canvas>
   <div id="bar"></div>
-  <div id="hud"></div>
   <div id="help">arrows / WASD to fly &middot; hold SPACE to fire &middot; 1 to switch pilot &middot; hold C for hitboxes</div>
   <div id="controls">
     <label><input type="checkbox" id="ballistic" checked> ballistic corpse (arc)</label>
@@ -45,6 +41,7 @@
   <script src="src/plane.js"></script>
   <script src="src/fly.js"></script>
   <script src="src/film.js"></script>
+  <script src="src/hud.js"></script>
   <script src="src/game.js"></script>
 </body>
 </html>
