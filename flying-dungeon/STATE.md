@@ -300,6 +300,117 @@ after shipping a build without it — which is how `enemy-sheets/` went missing)
 
 ---
 
+## Colour drain — time passing
+
+The background loses its colour as the run goes on, on **game** time (rate
+1.15), so the drain and the HUD timer always agree about how long you've been
+there. Nothing for the first 20s, then eased in (`drainCurve` 1.6) to fully
+grey exactly as the clock runs out. Lightness goes with it, 12% of black at
+full drain.
+
+`drainFullMs: 0` means "end with the run" — `drainAt()` falls back to
+`timeOverMs`, so the picture hits full black & white on the very frame time
+expires. One number, rather than two that have to be kept in step by hand.
+
+**Background only.** The plane, coins, flies and HUD keep their colour and lift
+off an increasingly dead world. That is why it lives in
+`TrayBackground.render()` and not in `film.js`.
+
+Three ways NOT to do it, all rejected for a reason:
+
+- **A CSS filter on the canvas** — what `CONFIG.film` uses for its own B&W. It
+  hits the whole canvas, HUD included.
+- **A pre-greyed copy of each frame** — there are 32 at `FRAME_CAP`, and
+  doubling that is exactly the VRAM thrash that cost us the frame rate once
+  already. See PERFORMANCE.md.
+- **`ctx.filter` per draw** — a full-texture filter pass every frame.
+
+What it actually does is one `fillRect` over the drawn frame in the
+**`saturation` blend mode**: that keeps the backdrop's hue and luminosity and
+takes the *source's* saturation, and a grey source has none — so the picture
+goes greyscale with its brightness intact, and `globalAlpha` is the drain. No
+new textures, no per-pixel JS.
+
+⚠️ **The blend mode is feature-detected, and that detection is not optional.**
+An unsupported `globalCompositeOperation` silently falls back to `source-over`,
+which would paint a flat grey slab over the picture rather than desaturating
+it. `_canDesaturate()` sets it and reads it back once; if it fails, the drain
+falls back to the dimming alone and the world stays in colour, which is a much
+better failure. The fill is laid over the FRAME's rect rather than the canvas,
+so it can't miss a sliver while the film pass has the scene weaving.
+
+---
+
+## Time over
+
+The run ends at **2:00 on the HUD** — game time, so ~1m44s of wall clock. The
+clock the player is watching is the one that ends them.
+
+```
+2:00  clock.pause()  →  900ms dip to black  →  350ms black  →  900ms fade in
+                                                    TIME at +1.5s, OVER at +2.5s
+```
+
+- **The clock is paused, not left running.** That stops the drain at exactly
+  full grey and freezes the HUD's last reading on 2:00.
+- **The handover runs on REAL time**, not the 1.15 clock — a fade has no
+  business being rate-scaled.
+- **The hold on black is deliberate.** Cross-fading the dungeon straight into
+  the worms reads as a glitch; a moment of black reads as a cut.
+- The dip is drawn **after the HUD**, so the timer goes down with the scene
+  instead of floating over a fading world.
+- Once the dip completes the scene stops being drawn at all — it is behind an
+  opaque rect, so rendering it is a whole frame nobody sees.
+- The film grain/vignette **stays on** over the panel: the whole game carries
+  it and dropping it at the last screen would read as a bug. No weave, though —
+  the panel fills the frame, so shaking it would show black at the edges.
+
+`src/game-over.js` is **stateless**: `render()` is handed the ms since the
+panel appeared and derives the frame and the word reveals from it. No
+start/update pair to keep in step with the fade, no clock to drift, and
+replaying it is passing 0 again.
+
+The 1.5MB of panel frames load **lazily**, kicked off at `startGame()` and not
+awaited — they aren't needed for two minutes, so they have no business delaying
+the game appearing.
+
+⚠️ `package.sh` did not copy `game-over/` until now, so every packaged build
+would have 404'd the panel. Same class of bug as the missing `enemy-sheets/`.
+Fixed.
+
+### Starting over
+
+Once the panel has settled, **any key or click** goes back to the title
+sequence for a fresh run. Armed 3000ms into the panel — `gameOver.settledMs()`,
+derived from the reveal timings rather than being its own constant, so
+retiming the words moves the arming with it.
+
+**Two held-key traps here, both already paid for elsewhere in this codebase:**
+
+1. Arming on the panel's first frame would let a key pressed during the fade —
+   or still held from the dying seconds of the run — blow straight past the
+   screen the player is meant to read. Hence the wait for OVER plus
+   `overRestartArmMs`.
+2. The restarting key is then very probably still down, and the OS repeats
+   `keydown` while it is — which lands on the intro's skip handler and blows
+   past the title sequence too. `restartSkipGuardMs` (400ms) ignores skips for
+   a beat afterwards.
+
+**The restart rebuilds rather than resets.** `plane`, `fruitSelect`, `liftoff`
+and `intro` are `let`, and restarting constructs new ones. All of their per-run
+state is set in their constructors and none of them own their images — those
+live in the shared `assets` store — so construction *is* the reset, with no
+`reset()` method to fall out of step with a constructor.
+
+**And no reload.** `location.reload()` would re-decode ~30MB of tray frames,
+which is the one thing this game cannot afford (see PERFORMANCE.md). Restarting
+in place is instant.
+
+`spawnWorld()` clears both lists before refilling them, so a restart doesn't
+stack a second swarm on the leftovers of the last run.
+
+---
+
 ## Game clock
 
 `src/game-clock.js`. Deliberately not the wall clock, for two reasons:

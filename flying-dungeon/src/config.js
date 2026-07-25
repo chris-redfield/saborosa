@@ -219,6 +219,39 @@ const CONFIG = {
   blurMs: 8,             // ms per blurred (-B) transition frame
   withBlur: true,        // interleave the -B frames
   dupFrames: true,       // each frame twice → smoother cadence
+
+  // --- Colour drain: time passing, read as the world going black & white ----
+  // Driven by the GAME clock (gameClockRate 1.15 — 15% faster than the wall),
+  // so the picture drains on the same time the HUD counts, not on real seconds.
+  //
+  // It is applied ONLY to the background, inside TrayBackground.render(), which
+  // is why it is a background knob and not a film one: the plane, the coins, the
+  // flies and the HUD keep their colour and lift off an increasingly dead world.
+  //
+  // HOW, and why not the obvious ways:
+  //   * NOT a CSS filter on the canvas (what CONFIG.film uses for its B&W) —
+  //     that hits the whole canvas, HUD included.
+  //   * NOT a second, pre-greyed copy of each frame — there are 32 of them at
+  //     FRAME_CAP, and doubling that is precisely the VRAM thrash that cost us
+  //     the frame rate once already (see PERFORMANCE.md).
+  //   * NOT ctx.filter per draw — a full-texture filter pass every frame.
+  //   It is one fillRect over the drawn frame in the 'saturation' blend mode:
+  //   no new textures, no per-pixel JS, and the strength is just globalAlpha.
+  drainOn: true,
+  drainStartMs: 20000,   // GAME ms of grace before any colour is lost
+  // GAME ms at which it reaches drainMax. 0 = "finish exactly when the run
+  // does", i.e. track timeOverMs — which is what we want, so that the picture
+  // hits full black & white on the same frame the clock runs out rather than
+  // needing two numbers kept in sync by hand.
+  drainFullMs: 0,
+  drainMax: 1.0,         // 1 = fully grey at the end; 0.85 keeps a last tint
+  // Ease-in: colour holds for a good while, then goes noticeably. 1 = linear,
+  // higher = more of the drain crammed into the late game.
+  drainCurve: 1.6,
+  // Lightness, drained alongside the colour — the world dims as well as greys.
+  // Fraction of black laid over the background at full drain; 0 = greyscale
+  // only, no dimming.
+  drainDarken: 0.12,
   defaultReverse: true,  // free-run order before the player takes control
 
   // --- Player plane -------------------------------------------------------
@@ -317,6 +350,67 @@ const CONFIG = {
   // Optional CSS grade for the canvas (kept EMPTY = full colour). You could put
   // a gentle 'contrast(1.08)' here for a filmic punch, but no desaturation.
   filmCss: '',
+
+  // --- Time over: the end of a run ----------------------------------------
+  // The run is over at 2:00 on the HUD. That is GAME time (rate 1.15), so it
+  // arrives after ~1m44s of wall clock — the clock the player is watching is
+  // the one that ends them.
+  //
+  // The colour drain above is tied to this same number (drainFullMs 0), so the
+  // world finishes going black & white on the very frame time runs out, and the
+  // fade begins from an already-dead picture.
+  timeOverMs: 120000,
+  // The handover: dip the played scene to black, hold there a beat, then bring
+  // the panel up. The hold matters — cross-fading straight from the dungeon to
+  // the worms reads as a glitch, whereas a moment of black reads as a cut.
+  overFadeOutMs: 900,
+  overHoldMs: 350,
+  overFadeInMs: 900,
+  // Then ANY key or click starts a fresh run from the title sequence. The
+  // listener is armed only once the panel has finished arriving and OVER is on
+  // screen — plus this beat to read it — so a key pressed during the fade, or
+  // still held from the last seconds of the run, can't blow straight past the
+  // screen the player is meant to see. Arming works out at ~3s into the panel.
+  overRestartArmMs: 500,
+  // And after the restart the key is very probably STILL DOWN, with the OS
+  // repeating keydown — which would land on the intro's skip handler and blow
+  // past the title sequence too. Skips are ignored for this long afterwards.
+  restartSkipGuardMs: 400,
+  // The panel: 3 frames, pre-cropped to their shared band (3002x1687 ≈ 16:9) by
+  // tools/build-game-over-frames.py, so they stretch to fill the canvas and stay
+  // aligned with each other. Tuned in tools/game-over-anim.html.
+  GAME_OVER_DIR: 'game-over/',
+  GAME_OVER_FRAMES: [
+    'saborosa-natureza-vermes-001.webp',
+    'saborosa-natureza-vermes-002.webp',
+    'saborosa-natureza-vermes-003.webp',
+  ],
+  overHoldsMs: [105, 105, 105],   // ≈9.5fps, looping 1·2·3
+  // "TIME OVER", one line, TIME then OVER. Sizes are % of the CANVAS height so
+  // the layout holds at any resolution.
+  overTitle: {
+    on: true,
+    words: ['TIME', 'OVER'],
+    // Heaviest Futura cuts first, then the usual geometric stand-ins. Same open
+    // problem as hudFont: Futura is NOT bundled, so most machines land on
+    // Century Gothic / URW Gothic / Jost.
+    family: '"Futura Extra Bold","Futura ExtraBold","Futura Std Extra Bold",' +
+            '"Futura PT Extra Bold","Futura Bold","Futura","Futura PT","Futura Std",' +
+            '"Century Gothic","URW Gothic","Jost",sans-serif',
+    weight: 900,
+    color: '#FAFA30',    // CMYK 2/2/81/0
+    sizePct: 20.4,       // % of canvas height
+    lsPct: 3,            // letter spacing, % of font size
+    gapPct: 20,          // space between TIME and OVER, % of font size
+    yPct: 50,            // vertical middle of the text, down the canvas
+    offX: 0, offY: 0,
+    d1: 1500,            // ms after the panel appears before TIME shows
+    d2: 1000,            // ms after TIME before OVER shows
+    revealMs: 0,         // 0 = hard pop; >0 fades each word up
+    fauxBold: 1.5,       // extra weight as a stroke, % of font size
+    outline: 0,          // % of font size (0 = none)
+    outlineColor: '#000000',
+  },
 
   // --- Enemies ------------------------------------------------------------
   // Enemies live in the tray's WORLD space (the same larger plane the camera

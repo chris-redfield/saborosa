@@ -82,13 +82,80 @@ class TrayBackground {
   worldWidth()  { return this.iw; }
   worldHeight() { return this.ih; }
 
+  /* --- Colour drain -------------------------------------------------------
+     How grey the world is, 0..1, for a given GAME time (see gameClockRate —
+     the picture drains on the clock the HUD counts, not on wall seconds).
+
+     Held flat through drainStartMs, then eased in to drainMax by drainFullMs.
+     Ease-in rather than linear so the early run stays colourful and the loss
+     becomes obvious only once it matters; drainCurve 1 gives back linear. */
+  drainAt(gameMs) {
+    const c = this.cfg;
+    if (!c.drainOn) return 0;
+    // drainFullMs 0 means "end with the run", so the picture reaches full black
+    // & white on the same frame the clock does — one number, not two to keep in
+    // step.
+    const end = c.drainFullMs || c.timeOverMs;
+    const span = end - c.drainStartMs;
+    if (span <= 0) return gameMs >= end ? c.drainMax : 0;
+    const p = Math.min(1, Math.max(0, (gameMs - c.drainStartMs) / span));
+    return c.drainMax * Math.pow(p, c.drainCurve);
+  }
+
+  // Is the 'saturation' blend mode available? Tested by setting it and reading
+  // it back, ONCE. This matters: an unsupported mode silently falls back to
+  // 'source-over', which would paint a flat grey slab over the picture instead
+  // of desaturating it — a much worse failure than staying in colour.
+  _canDesaturate(ctx) {
+    if (this._blendOk === undefined) {
+      const prev = ctx.globalCompositeOperation;
+      ctx.globalCompositeOperation = 'saturation';
+      this._blendOk = ctx.globalCompositeOperation === 'saturation';
+      ctx.globalCompositeOperation = prev;
+    }
+    return this._blendOk;
+  }
+
+  // Grey (and dim) the frame just drawn. Filled over the FRAME's own rect, not
+  // the canvas: the frame is larger than the canvas and the fill is clipped to
+  // it anyway, so this covers the picture exactly and can't miss a sliver when
+  // the film pass has the scene weaving.
+  _drain(ctx, x, y, w, h, d) {
+    const c = this.cfg;
+    // 'saturation' keeps the backdrop's hue and luminosity and takes the
+    // SOURCE's saturation — and a grey source has none, so the backdrop goes
+    // greyscale with its brightness intact. globalAlpha then mixes that against
+    // the original, which is the drain.
+    if (this._canDesaturate(ctx)) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.globalAlpha = d;
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+    // Lightness goes with it. Plain source-over, so it still works (and still
+    // reads as time passing) on a browser with no blend-mode support.
+    const dark = (c.drainDarken || 0) * d;
+    if (dark > 0) {
+      ctx.save();
+      ctx.globalAlpha = dark;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+  }
+
   // Draw the frame 1:1 at (−camX, −camY): the canvas is a cropped window into
   // it, and the shell pans camX/camY with the plane to reveal the rest of the tray.
-  render(ctx, camX, camY) {
+  // `drain` (0..1) greys it out — pass drainAt(clock.now()).
+  render(ctx, camX, camY, drain) {
     const seq = this._sequence(), n = seq.length;
     const img = this.assets.getDrawable(seq[((this.cur % n) + n) % n].key);
     if (!img) return;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(img, -camX, -camY);
+    const d = Math.min(1, Math.max(0, drain || 0));
+    if (d > 0) this._drain(ctx, -camX, -camY, img.width, img.height, d);
   }
 }

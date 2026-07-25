@@ -67,7 +67,13 @@
   const assets = new Assets();
   const input = new Input();
   const bg = new TrayBackground(assets, CONFIG);
-  const plane = new Plane(assets, CONFIG);
+  // Everything a RUN owns is `let`, not `const`: restarting rebuilds these
+  // rather than reaching into each one to undo its state. All of their
+  // per-run state is set in their constructors and none of them own their
+  // images — those live in the shared `assets` store — so construction IS the
+  // reset, and it needs no reload. That matters: a page reload would re-decode
+  // ~30MB of tray frames, which is the one thing this game cannot afford.
+  let plane = new Plane(assets, CONFIG);
   const enemies = [];
   // Coins are their own list, not enemies: the hitscan beam iterates `enemies`,
   // and a coin is not something you shoot.
@@ -75,9 +81,13 @@
   const film = new Film(CONFIG);
   const hud = new Hud(CONFIG);
   const clock = new GameClock(CONFIG);
-  const fruitSelect = new FruitSelect(assets, CONFIG);
-  const liftoff = new Liftoff(assets, CONFIG);
-  const intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
+  const gameOver = new GameOver(assets, CONFIG);
+  // Set the moment the clock runs out: {t} = ms since then, driving fade-out →
+  // hold on black → fade-in of the TIME OVER panel. Null while the run is live.
+  let ending = null;
+  let fruitSelect = new FruitSelect(assets, CONFIG);
+  let liftoff = new Liftoff(assets, CONFIG);
+  let intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
 
   // The help / toggles belong to the game, not the title sequence. (The HUD
   // itself is canvas-drawn now and simply isn't rendered during the intro.)
@@ -111,8 +121,11 @@
   let gameReady = false;
 
   // Skip the title sequence on any key or click. Bound only while it plays.
+  // Before this timestamp, skips are ignored — see restart().
+  let skipArmAt = 0;
   function onSkip(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    if (performance.now() < skipArmAt) return;
     // While the fruit select is up, keys are the player choosing — not skipping.
     if (intro.awaitingInput) return;
     intro.skip();
@@ -121,6 +134,82 @@
     const m = on ? 'addEventListener' : 'removeEventListener';
     window[m]('keydown', onSkip);
     window[m]('mousedown', onSkip);
+  }
+
+  // "Any button" on the TIME OVER panel starts over. Bound only once the panel
+  // has finished arriving (see the loop) so a key pressed during the fade — or
+  // still held from the dying moments of the run — can't skip past the screen
+  // the player is meant to read.
+  let restartArmed = false;
+  function onRestart(e) {
+    if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    restart();
+  }
+  function bindRestart(on) {
+    if (on === restartArmed) return;
+    const m = on ? 'addEventListener' : 'removeEventListener';
+    window[m]('keydown', onRestart);
+    window[m]('mousedown', onRestart);
+    restartArmed = on;
+  }
+
+  // Fill the world with flies and coins. Called once when the assets land, and
+  // again on every restart — it CLEARS first, so a restart doesn't stack a
+  // second swarm on top of the leftovers of the last run.
+  function spawnWorld() {
+    enemies.length = 0;
+    coins.length = 0;
+    const worldW = bg.worldWidth(), worldH = bg.worldHeight();
+    // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
+    // across the width is fair game). Killed flies are gone for good.
+    for (let i = 0; i < CONFIG.flyCount; i++) {
+      enemies.push(new Fly(assets, CONFIG,
+        Math.random() * worldW,
+        80 + Math.random() * Math.max(1, worldH - 160)));
+    }
+    // Coins: scattered the same way. Variants are dealt round-robin rather than
+    // rolled per coin, so that if more than one is ever configured again they
+    // are evenly represented instead of randomly lopsided. With the single
+    // upright spin configured today this just hands every coin that one.
+    const top = CONFIG.coinBandTop * worldH;
+    const span = Math.max(1, (CONFIG.coinBandBottom - CONFIG.coinBandTop) * worldH);
+    for (let i = 0; i < CONFIG.coinCount; i++) {
+      coins.push(new Coin(assets, CONFIG,
+        Math.random() * worldW,
+        top + Math.random() * span,
+        COIN_KEYS[i % COIN_KEYS.length]));
+    }
+  }
+
+  /* --- Restart -------------------------------------------------------------
+     Back to the title sequence for a fresh run. Rebuilds the run-owned objects
+     instead of resetting them field by field: there is no reset() to fall out
+     of step with a constructor, and no reload — every image is already in the
+     `assets` store, so this is instant.
+
+     `plane`/`intro`/… are read through their `let` bindings everywhere
+     (onSkip, startGame, the loop), so swapping them here swaps them for
+     everyone. */
+  function restart() {
+    bindRestart(false);
+    ending = null;
+    clock.reset();
+    plane = new Plane(assets, CONFIG);
+    fruitSelect = new FruitSelect(assets, CONFIG);
+    liftoff = new Liftoff(assets, CONFIG);
+    intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
+    spawnWorld();
+    showChrome(false);
+    input.engaged = false;
+    phase = 'intro';
+    bar.style.display = 'none';
+    // The key that restarted is very probably STILL DOWN, and the OS repeats
+    // keydown while it is — which would land straight on the intro's skip
+    // handler and blow past the title sequence the player just asked to see.
+    // Same trap the fruit select and the plane entrance each had to solve.
+    skipArmAt = performance.now() + CONFIG.restartSkipGuardMs;
+    bindSkip(true);
+    last = performance.now();   // don't hand the first frame the gap since the last
   }
 
   function startGame() {
@@ -134,6 +223,11 @@
     // un-latch, so the tray free-runs until they actually take control.
     input.engaged = false;
     last = performance.now();   // don't hand the first frame the load's dt
+    // Pull the TIME OVER panel in the background. 1.5MB that isn't needed for
+    // two minutes has no business delaying the game appearing, and it has the
+    // whole run to arrive. Not awaited, and it can't fail the game: if it
+    // somehow hasn't landed, the panel draws its title over black.
+    gameOver.load();
   }
 
   function loop(now) {
@@ -169,6 +263,42 @@
       // steps on the real `dt`, so the rate change is clock-only for now.
       if (!clock.running && !plane.controlLocked) clock.start();
       clock.advance(dt);
+
+      // Time up. Freeze the clock so the drain stops at exactly full grey and
+      // the HUD's last reading is the one the player ends on, then run the
+      // handover off real time — a fade shouldn't be on a rate-scaled clock.
+      if (!ending && clock.running && clock.now() >= CONFIG.timeOverMs) {
+        ending = { t: 0 };
+        clock.pause();
+      }
+      if (ending) ending.t += dt;
+
+      // Once the dip to black has finished, the played scene is behind an
+      // opaque panel and is never coming back — so stop SIMULATING it too, not
+      // just drawing it. 30 flies, 12 coins and the tray's frame stepping are
+      // all pure waste from here on.
+      if (ending && ending.t >= CONFIG.overFadeOutMs) {
+        if (CONFIG.film) film.update(dt);
+        const W = canvas.width, H = canvas.height;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        // Negative through the hold, so the panel is simply absent until the
+        // fade-in starts and its own reveal clock starts from 0 at that moment.
+        const panelT = ending.t - CONFIG.overFadeOutMs - CONFIG.overHoldMs;
+        const a = CONFIG.overFadeInMs > 0
+          ? Math.min(1, Math.max(0, panelT) / CONFIG.overFadeInMs) : 1;
+        gameOver.render(ctx, W, H, Math.max(0, panelT), a);
+        // Arm the restart only once the panel has fully arrived AND said its
+        // piece — the fade-in done and OVER on screen — plus a beat to read it.
+        if (panelT >= gameOver.settledMs()) bindRestart(true);
+        // Keep the projector running over the panel: the whole game carries the
+        // grain and vignette, and dropping them at the last screen would read as
+        // a bug. No weave, though — the panel fills the frame, so shaking it
+        // would show black at the edges.
+        if (CONFIG.film) film.render(ctx, W, H);
+        requestAnimationFrame(loop);
+        return;
+      }
       bg.update(dt, input);
       plane.update(dt, input);
       if (CONFIG.film) film.update(dt);
@@ -213,7 +343,9 @@
       // film overlay itself (grain/bar/vignette) stays fixed to the screen.
       ctx.save();
       if (CONFIG.film) ctx.translate(0, film.weaveOffset());
-      bg.render(ctx, camX, camY);
+      // The world loses its colour as the run goes on, on GAME time — so the
+      // drain and the HUD's timer always agree about how long you've been here.
+      bg.render(ctx, camX, camY, bg.drainAt(clock.now()));
       // Coins under the flies and the plane: they are scenery to fly through,
       // so nothing the player is aiming at should ever be hidden behind one.
       for (const c of coins) c.render(ctx, camX, camY, worldW);
@@ -262,6 +394,18 @@
         fliesKilled: CONFIG.flyCount - liveFlies,
         timeMs: clock.now(),
       });
+
+      // The dip to black. LAST, so it takes the HUD down with the scene — the
+      // timer reading 2:00 while everything else fades would look like the HUD
+      // had come unstuck from the game.
+      if (ending) {
+        ctx.save();
+        ctx.globalAlpha = CONFIG.overFadeOutMs > 0
+          ? Math.min(1, ending.t / CONFIG.overFadeOutMs) : 1;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      }
     }
     requestAnimationFrame(loop);
   }
@@ -289,26 +433,7 @@
     ...COIN_KEYS.map(k =>
       assets.loadImage('coin_' + k, CONFIG.ASSET_BASE + CONFIG.COIN_SHEETS[k]).then(tick)),
   ]).then(() => {
-    // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
-    // across the width is fair game). Killed flies are gone for good.
-    const worldW = bg.worldWidth(), worldH = bg.worldHeight();
-    for (let i = 0; i < CONFIG.flyCount; i++) {
-      enemies.push(new Fly(assets, CONFIG,
-        Math.random() * worldW,
-        80 + Math.random() * Math.max(1, worldH - 160)));
-    }
-    // Coins: scattered the same way. Variants are dealt round-robin rather than
-    // rolled per coin, so that if more than one is ever configured again they
-    // are evenly represented instead of randomly lopsided. With the single
-    // upright spin configured today this just hands every coin that one.
-    const top = CONFIG.coinBandTop * worldH;
-    const span = Math.max(1, (CONFIG.coinBandBottom - CONFIG.coinBandTop) * worldH);
-    for (let i = 0; i < CONFIG.coinCount; i++) {
-      coins.push(new Coin(assets, CONFIG,
-        Math.random() * worldW,
-        top + Math.random() * span,
-        COIN_KEYS[i % COIN_KEYS.length]));
-    }
+    spawnWorld();
     gameReady = true;
     // If the intro is still rolling, it gets to finish — startGame() runs when
     // it does. Otherwise (skipped, disabled, or slower art) go now.
