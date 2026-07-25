@@ -265,6 +265,42 @@ const CONFIG = {
   // only, no dimming.
   drainDarken: 0.12,
 
+  // --- Bleach: the SAME idea run the other way, below zero ------------------
+  // Forward time drains the world toward black & white and DIMS it. Going
+  // backwards past zero drains it just the same but LIFTS it instead — washed
+  // out and ultra-luminous by the time the clock reaches the boss at -2:00.
+  //
+  // The two can never both be on: the drain needs gameMs past drainStartMs
+  // (+20s), the bleach needs it below zero. So they are computed as one signed
+  // wash — same desaturation on both sides, opposite sign on the lightness.
+  bleachOn: true,
+  bleachStartMs: 0,      // GAME ms — begins the instant time goes negative
+  // GAME ms at which it is fully bleached. 0 = "end where the boss begins",
+  // i.e. track bossAtMs (-2:00) — the same one-number trick drainFullMs uses,
+  // so the world hits its brightest exactly as the boss is summoned.
+  bleachFullMs: 0,
+  bleachMax: 1.0,        // desaturation at the end; 1 = no colour left at all
+  // Linear, unlike the forward drain's ease-in: the player is actively pulling
+  // the clock back here, so the picture should answer in proportion to what
+  // they are doing rather than hold flat and then rush.
+  bleachCurve: 1.0,
+  // The lift — white laid over the picture at full bleach. 1.0 means the world
+  // ENDS PURE WHITE: by -2:00 the dungeon has not faded, it has been erased
+  // into light.
+  //
+  // The ramp is what carries it — desaturation and lift climb together across
+  // the whole two minutes, so the picture washes out progressively and only
+  // reaches solid white at the very bottom. Lowering this leaves a ghost of the
+  // tray behind at the end instead (0.80 keeps a luminance range of ~51 of 255,
+  // a bright fog; 0.45 is clearly still a photograph).
+  //
+  // No second "extra white layer" is possible or needed: another source-over
+  // pass of white at alpha a is arithmetically just a bigger a, and 1.0 is
+  // already the whole way. (It is also identical to SCREENING with the same
+  // grey — so there is no blend mode to feature-detect here, and nothing that
+  // can fail to a grey slab.)
+  bleachLift: 1.0,
+
   // --- Colour drain: the plane (and its muzzle flash) ----------------------
   // The player drains too, but on its OWN curve and only HALF WAY. The world
   // dies around a plane that is still holding some of its colour, so it stays
@@ -638,7 +674,12 @@ const CONFIG = {
   ],
   // ms per frame. 78 was the main game's rate; /1.1 runs it 10% faster, so the
   // whole blast is ~852ms instead of ~940ms.
-  coinBoomMs: 78 / 1.1,
+  //
+  // Named for the BOOM, not for the coin, because the rate belongs to the
+  // explosion rather than to whatever exploded — the boss's spawn blast reads
+  // from the same value, and they should never be able to drift apart. Only the
+  // SIZE is per-user (coinBoomSize / bossBoomSize).
+  boomMs: 78 / 1.1,
   // Size of the blast AT ITS PEAK, as a multiple of the coin's drawn size. One
   // scale is derived from this and applied to every frame, so the frames keep
   // their relative sizes and the animation still grows and shrinks. Measured
@@ -686,6 +727,11 @@ const CONFIG = {
   // looming. Vertically it uses half this.
   bossStopRange: 140,
   bossBandBottom: 0.85,  // keeps it out of the corpse floor plane at 0.899
+  // Arrival blast: the same explosion a coin dies in, at the same boomMs rate,
+  // scaled to the boss. As a multiple of bossSizePx at the blast's PEAK, so
+  // 1.5 => a 390px fireball around a 260px boss — it announces him rather than
+  // just puffing at his feet.
+  bossBoomSize: 1.5,
   // Time for the full profile-to-profile sweep. Because travel speed is derived
   // from the same value, this also sets how long it spends decelerating into
   // the turn and accelerating out — one number, not three.

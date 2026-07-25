@@ -518,6 +518,49 @@ full drain.
 `timeOverMs`, so the picture hits full black & white on the very frame time
 expires. One number, rather than two that have to be kept in step by hand.
 
+### And the same thing run backwards: the bleach
+
+Below zero the world drains **just the same, but LIFTS instead of dims** —
+washed out and ultra-luminous by the time the clock reaches the boss at -2:00,
+where `bleachFullMs: 0` puts it (the same one-number trick, tracking
+`bossAtMs`). Linear rather than the forward drain's ease-in: the player is
+actively pulling the clock back, so the picture should answer in proportion to
+what they are doing instead of holding flat and then rushing.
+
+| clock | desaturation | lightness |
+|---|---|---|
+| +2:00 | 100% | **dim** 12% |
+| +1:00 | 23% | dim 3% |
+| 0:00 | — | — |
+| −1:00 | 50% | **lift** 50% |
+| −2:00 | 100% | **lift 100% — pure white** |
+
+The two are **one signed wash**, not two effects: `washAt()` returns
+`{desat, lift}` with lift negative for black and positive for white. They can
+never overlap anyway — the drain needs the clock past `drainStartMs` (+20s) and
+the bleach needs it below zero — so making it one value removes any question of
+them fighting.
+
+The lift is plain source-over white, which is arithmetically identical to
+SCREENING with a grey of the same value. So there is no second blend mode to
+feature-detect, and the lightness half keeps working even on a browser that
+cannot desaturate at all.
+
+Background only, like the drain. `bleachLift` is **1.0**: the world does not
+fade at -2:00, it is **erased into light**. The ramp is what carries it —
+desaturation and lift climb together across the whole two minutes, so the
+picture washes out progressively and only reaches solid white at the very
+bottom.
+
+Lowering it leaves a ghost of the tray behind at the end instead; measured on a
+real frame, the luminance range surviving out of 255 is `0.45 → 141` (clearly
+still a photograph), `0.80 → 51` (a bright fog).
+
+There is no separate "extra white layer" and there cannot be one: another
+source-over pass of white at alpha *a* is arithmetically just a bigger *a*, and
+1.0 is already the whole way. Anything beyond it would need a different blend
+mode (`color-dodge` blows highlights while keeping darks), not more white.
+
 The **plane and its muzzle flash** drain too, but on their own curve and only
 half way — `Plane.drainAt()`, linear from **1:00 to 2:00, capping at 50%**. So
 the world dies around a player still holding some of its colour, and the plane
@@ -565,6 +608,39 @@ it. `_canDesaturate()` sets it and reads it back once; if it fails, the drain
 falls back to the dimming alone and the world stays in colour, which is a much
 better failure. The fill is laid over the FRAME's rect rather than the canvas,
 so it can't miss a sliver while the film pass has the scene weaving.
+
+---
+
+## No time mode
+
+At **-2:00** the run stops being about time. Latched, and it is the same moment
+the boss arrives:
+
+- the **HUD goes entirely** — timer *and* fly counter. With the flies gone the
+  count is as meaningless as the clock, and one number left floating over an
+  empty white world would read as a leftover.
+- the **flies vanish**, corpse pile and all
+- the **coins vanish**
+- the background **stays pure white** rather than fading back
+- what is left is the player, the boss, and the void
+
+**The clock is PAUSED, not reset**, and that single decision buys the rest:
+
+- frozen at ≤ `bossAtMs`, so `bleachAt()` keeps returning 1 and the white holds
+  with no special case anywhere;
+- time-over can never fire, because that test requires `clock.running`;
+- and the value is still sitting there for when time comes back.
+
+**Nothing is deleted, only stopped.** Beating the boss should be
+`clock.resume()` plus `noTime = false`; every system — drain, bleach, HUD,
+time-over — is untouched and waiting to pick up from the frozen reading.
+
+⚠️ This is what forced `GameClock.started`. The loop used to start the clock
+whenever it wasn't running, which would have undone the pause on the very next
+frame — no-time mode would have climbed straight back out of the white. It was
+already quietly wrong for the time-over fade, where the timer ticked past 2:00
+while the screen dipped to black. `started` means "has this run begun" and is
+never cleared by a pause, only by `reset()`.
 
 ---
 
@@ -624,6 +700,17 @@ than somewhere relative to the camera, so it is always in the same place and
 the player can go looking for it. Y is put near the middle of the current view,
 so it starts at a height they can reach. It draws over the flies (it dwarfs
 them) but under the plane.
+
+**It arrives in an explosion** — the same 12-frame blast a coin dies in, same
+`boomMs` rate, ~850ms, scaled up to `bossBoomSize` × `bossSizePx` (a 390px
+fireball around a 260px boss). Frozen at the spawn point rather than following
+him, so he walks out of his own entrance instead of dragging it about. Drawn in
+the same over-everything pass the coin explosions use, so nothing can be in
+front of it.
+
+`boomMs` is named for the boom rather than the coin on purpose: the frame rate
+belongs to the explosion, not to whatever exploded, so the two can never drift
+apart. Only the SIZE is per-user (`coinBoomSize` / `bossBoomSize`).
 
 ⚠️ **The boss does nothing yet.** It cannot be shot, does no harm, and has no
 health — the brief that asked for it was cut off mid-sentence ("the boss should

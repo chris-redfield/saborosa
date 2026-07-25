@@ -108,6 +108,38 @@ class TrayBackground {
     return c.drainMax * Math.pow(p, c.drainCurve);
   }
 
+  /* The same shape below zero: 0 at bleachStartMs, bleachMax by the time the
+     clock reaches the boss. Works out identically to drainAt even though the
+     numbers run negative, because the progress is a ratio of two spans that are
+     both negative and the signs cancel. */
+  bleachAt(gameMs) {
+    const c = this.cfg;
+    if (!c.bleachOn) return 0;
+    const end = c.bleachFullMs || c.bossAtMs;   // 0 = end where the boss begins
+    const span = end - c.bleachStartMs;
+    if (span === 0) return gameMs <= end ? c.bleachMax : 0;
+    const p = Math.min(1, Math.max(0, (gameMs - c.bleachStartMs) / span));
+    return c.bleachMax * Math.pow(p, c.bleachCurve);
+  }
+
+  /* The whole look in one value: how grey, and which way the lightness goes.
+
+     Forward time greys and DIMS; backward time greys and LIFTS. They can never
+     overlap — the drain needs the clock past drainStartMs (+20s) and the bleach
+     needs it below zero — so this is a single signed wash rather than two
+     effects that would have to be stopped from fighting each other.
+
+       desat  0..1  how much colour to remove
+       lift  -1..1  negative darkens toward black, positive toward white */
+  washAt(gameMs) {
+    const c = this.cfg;
+    const drain = this.drainAt(gameMs);
+    const bleach = this.bleachAt(gameMs);
+    return bleach > drain
+      ? { desat: bleach, lift:  (c.bleachLift || 0) * bleach }
+      : { desat: drain,  lift: -(c.drainDarken || 0) * drain };
+  }
+
   // Is the 'saturation' blend mode available? Tested by setting it and reading
   // it back, ONCE. This matters: an unsupported mode silently falls back to
   // 'source-over', which would paint a flat grey slab over the picture instead
@@ -122,31 +154,30 @@ class TrayBackground {
     return this._blendOk;
   }
 
-  // Grey (and dim) the frame just drawn. Filled over the FRAME's own rect, not
-  // the canvas: the frame is larger than the canvas and the fill is clipped to
-  // it anyway, so this covers the picture exactly and can't miss a sliver when
-  // the film pass has the scene weaving.
-  _drain(ctx, x, y, w, h, d) {
-    const c = this.cfg;
+  // Grey the frame just drawn, and push its lightness either way. Filled over
+  // the FRAME's own rect, not the canvas: the frame is larger than the canvas
+  // and the fill is clipped to it anyway, so this covers the picture exactly
+  // and can't miss a sliver when the film pass has the scene weaving.
+  _wash(ctx, x, y, w, h, desat, lift) {
     // 'saturation' keeps the backdrop's hue and luminosity and takes the
     // SOURCE's saturation — and a grey source has none, so the backdrop goes
     // greyscale with its brightness intact. globalAlpha then mixes that against
     // the original, which is the drain.
-    if (this._canDesaturate(ctx)) {
+    if (desat > 0 && this._canDesaturate(ctx)) {
       ctx.save();
       ctx.globalCompositeOperation = 'saturation';
-      ctx.globalAlpha = d;
+      ctx.globalAlpha = desat;
       ctx.fillStyle = '#808080';
       ctx.fillRect(x, y, w, h);
       ctx.restore();
     }
-    // Lightness goes with it. Plain source-over, so it still works (and still
-    // reads as time passing) on a browser with no blend-mode support.
-    const dark = (c.drainDarken || 0) * d;
-    if (dark > 0) {
+    // Lightness. Plain source-over both ways — black to dim as the run decays,
+    // white to blow it out below zero. No blend mode, so this half still works
+    // (and still reads) on a browser that can't desaturate at all.
+    if (lift !== 0) {
       ctx.save();
-      ctx.globalAlpha = dark;
-      ctx.fillStyle = '#000';
+      ctx.globalAlpha = Math.min(1, Math.abs(lift));
+      ctx.fillStyle = lift < 0 ? '#000' : '#fff';
       ctx.fillRect(x, y, w, h);
       ctx.restore();
     }
@@ -154,14 +185,17 @@ class TrayBackground {
 
   // Draw the frame 1:1 at (−camX, −camY): the canvas is a cropped window into
   // it, and the shell pans camX/camY with the plane to reveal the rest of the tray.
-  // `drain` (0..1) greys it out — pass drainAt(clock.now()).
-  render(ctx, camX, camY, drain) {
+  // `wash` is {desat, lift} — pass washAt(clock.now()).
+  render(ctx, camX, camY, wash) {
     const seq = this._sequence(), n = seq.length;
     const img = this.assets.getDrawable(seq[((this.cur % n) + n) % n].key);
     if (!img) return;
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(img, -camX, -camY);
-    const d = Math.min(1, Math.max(0, drain || 0));
-    if (d > 0) this._drain(ctx, -camX, -camY, img.width, img.height, d);
+    const desat = Math.min(1, Math.max(0, (wash && wash.desat) || 0));
+    const lift = Math.max(-1, Math.min(1, (wash && wash.lift) || 0));
+    if (desat > 0 || lift !== 0) {
+      this._wash(ctx, -camX, -camY, img.width, img.height, desat, lift);
+    }
   }
 }

@@ -100,7 +100,7 @@ class Coin {
     // Exploding: the coin itself is already gone, so nothing else is simulated.
     if (this.state === 'boom') {
       this.boomT += dt;
-      if (this.boomT >= c.BOOM_RECTS.length * c.coinBoomMs) this.state = 'dead';
+      if (this.boomT >= c.BOOM_RECTS.length * c.boomMs) this.state = 'dead';
       return;
     }
     if (this.state === 'dead') return;
@@ -267,7 +267,7 @@ class Coin {
   _blitBoom(ctx, camX, camY, worldW) {
     if (this.state !== 'boom') return;
     const c = this.cfg, rects = c.BOOM_RECTS;
-    const r = rects[Math.min(rects.length - 1, Math.floor(this.boomT / c.coinBoomMs))];
+    const r = rects[Math.min(rects.length - 1, Math.floor(this.boomT / c.boomMs))];
     if (!r) return;
     const sheet = this.assets.getDrawable('boom');
     if (!sheet) return;

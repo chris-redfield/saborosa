@@ -24,12 +24,18 @@ class GameClock {
     this.ms = 0;                       // game time elapsed
     this.rate = cfg.gameClockRate;     // game ms per real ms
     this.running = false;
+    // Has the run's clock EVER been started? Distinct from `running`, because
+    // a caller that starts the clock when it isn't running would silently undo
+    // every pause on the next frame — and both pauses here are deliberate and
+    // load-bearing (time over freezes the final reading; no-time mode freezes
+    // the world white). Ask `started` to mean "has this run begun".
+    this.started = false;
   }
 
-  start()  { this.running = true; }
+  start()  { this.running = true; this.started = true; }
   pause()  { this.running = false; }
   resume() { this.running = true; }
-  reset()  { this.ms = 0; this.running = false; }
+  reset()  { this.ms = 0; this.running = false; this.started = false; }
 
   now() { return this.ms; }
 

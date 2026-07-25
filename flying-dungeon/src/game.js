@@ -109,9 +109,12 @@
   // backwards while you are pulling time back, whatever the clock reads.
   let rewindSpinT = 0;
   // The Time Boss. Null until the run clock has been driven down to bossAtMs;
-  // once it arrives it stays for the rest of the run, even if the player lets
-  // the clock climb back above the threshold — it was summoned, not triggered.
+  // once it arrives it stays for the rest of the run.
   let boss = null;
+  // NO TIME MODE. Latched when the clock reaches bossAtMs: the timer goes away,
+  // the flies and coins go with it, and what is left is the player, the boss,
+  // and a white void. Time has stopped mattering.
+  let noTime = false;
   let fruitSelect = new FruitSelect(assets, CONFIG);
   let liftoff = new Liftoff(assets, CONFIG);
   let intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
@@ -222,6 +225,7 @@
     ending = null;
     rewindSpinT = 0;
     boss = null;             // has to be re-earned every run
+    noTime = false;
     clock.reset();
     plane = new Plane(assets, CONFIG);
     fruitSelect = new FruitSelect(assets, CONFIG);
@@ -290,7 +294,11 @@
       // game screen appears — the plane's fly-in shouldn't burn time nobody can
       // play. advance() also hands back the GAME delta; the sim below still
       // steps on the real `dt`, so the rate change is clock-only for now.
-      if (!clock.running && !plane.controlLocked) clock.start();
+      // `started`, NOT `running`: the clock is deliberately paused in two
+      // places (time over, and no-time mode) and testing `running` here would
+      // silently restart it on the very next frame — the fade-out would tick
+      // past 2:00, and no-time mode would climb straight back out of the white.
+      if (!clock.started && !plane.controlLocked) clock.start();
       clock.advance(dt);
 
       // Time up. Freeze the clock so the drain stops at exactly full grey and
@@ -355,12 +363,26 @@
       for (const e of enemies) e.update(dt, worldW, worldH, rewindSpinT > 0);
       for (const c of coins) c.update(dt, worldW);
 
-      // Time driven far enough back to summon the boss. It appears at the
-      // MIDDLE of the world's X range — a fixed landmark rather than somewhere
-      // relative to the camera, so it is always in the same place and the
-      // player can go looking for it. Y is still put near the middle of the
-      // current view, so it starts at a height they can actually reach.
-      if (!boss && clock.now() <= CONFIG.bossAtMs) {
+      /* NO TIME MODE. The clock has been dragged all the way to bossAtMs, and
+         everything the run was about stops applying: the flies and the coins
+         vanish, the HUD goes, and the boss arrives in a white void. It appears
+         at the MIDDLE of the world's X range — a fixed landmark rather than
+         somewhere relative to the camera, so the player can go looking for it.
+
+         THE CLOCK IS PAUSED, NOT RESET, and that one decision does the rest for
+         free:
+           · frozen at ≤ bossAtMs, so the bleach stays pinned at pure white
+             instead of fading back as time climbs — no special case needed;
+           · time-over can never fire, since that test requires clock.running;
+           · and the value is still sitting there for when time comes BACK.
+         Beating the boss should therefore be `clock.resume()` and
+         `noTime = false` — the rest of the machinery is untouched and waiting.
+         Nothing here has been deleted, only stopped. */
+      if (!noTime && clock.now() <= CONFIG.bossAtMs) {
+        noTime = true;
+        clock.pause();
+        enemies.length = 0;
+        coins.length = 0;
         boss = new Boss(assets, CONFIG,
           worldW / 2,
           Math.max(CONFIG.bossSizePx, camY + H * 0.45));
@@ -442,7 +464,7 @@
       if (CONFIG.film) ctx.translate(0, film.weaveOffset());
       // The world loses its colour as the run goes on, on GAME time — so the
       // drain and the HUD's timer always agree about how long you've been here.
-      bg.render(ctx, camX, camY, bg.drainAt(clock.now()));
+      bg.render(ctx, camX, camY, bg.washAt(clock.now()));
       // Coins under the flies and the plane: they are scenery to fly through,
       // so nothing the player is aiming at should ever be hidden behind one.
       for (const c of coins) c.render(ctx, camX, camY, worldW);
@@ -457,6 +479,7 @@
       // passing fly could stand in front of would read as a glitch. No-op for
       // every coin that isn't currently exploding.
       for (const c of coins) c.renderBurst(ctx, camX, camY, worldW);
+      if (boss) boss.renderBurst(ctx, camX, camY, worldW);
 
       // Hold C: show the fly collision boxes, and the shot line while firing.
       if (input.debug) {
@@ -501,12 +524,17 @@
       // HUD last: it must sit OUTSIDE the film pass. The vignette darkens the
       // very corners it lives in and the weave shakes the scene — fixed to the
       // camera means it does neither.
-      const liveFlies = enemies.reduce((n, e) => n + (e.isAlive() ? 1 : 0), 0);
-      hud.render(ctx, W, H, {
-        fliesLeft: liveFlies,
-        fliesKilled: CONFIG.flyCount - liveFlies,
-        timeMs: clock.now(),
-      });
+      // The whole HUD goes in no-time mode, not just the clock: with the flies
+      // gone the FLIES count is as meaningless as the timer, and leaving one
+      // number floating over an empty white world would read as a leftover.
+      if (!noTime) {
+        const liveFlies = enemies.reduce((n, e) => n + (e.isAlive() ? 1 : 0), 0);
+        hud.render(ctx, W, H, {
+          fliesLeft: liveFlies,
+          fliesKilled: CONFIG.flyCount - liveFlies,
+          timeMs: clock.now(),
+        });
+      }
 
       // The dip to black. LAST, so it takes the HUD down with the scene — the
       // timer reading 2:00 while everything else fades would look like the HUD

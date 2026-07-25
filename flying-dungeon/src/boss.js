@@ -47,6 +47,18 @@ class Boss {
     this.facing = 0.5;          // 0 = profile left · 0.5 = front · 1 = profile right
     this.alerted = false;       // has it seen the player? latches true
     this.phase = Math.random() * Math.PI * 2;
+    // Arrival blast — the same explosion a coin dies in, at the same rate
+    // (boomMs belongs to the boom, not to the coin), just scaled to the boss.
+    // Frozen at the SPAWN POINT rather than following: the boss walks out of
+    // its own entrance, it does not drag it around.
+    this.boomT = 0;
+    this.boomX = x;
+    this.boomY = y;
+  }
+
+  // Is the arrival blast still playing?
+  _booming() {
+    return this.boomT < this.cfg.BOOM_RECTS.length * this.cfg.boomMs;
   }
 
   // −1 at profile-left, 0 front-on, +1 at profile-right — the signed fraction
@@ -70,6 +82,7 @@ class Boss {
   update(dt, worldW, worldH, target) {
     const c = this.cfg, s = dt / 1000;
     this.phase += s;
+    if (this._booming()) this.boomT += dt;
 
     let dx = 0, dy = 0, dist = Infinity;
     if (target) {
@@ -149,6 +162,35 @@ class Boss {
       ctx.translate(wx - camX, sy);
       ctx.drawImage(sheet, r[0], r[1], r[2], r[3],
                     -dw / 2, -c.bossSizePx / 2, dw, dh);
+      ctx.restore();
+    }
+  }
+
+  /* The arrival blast, drawn in the same over-everything pass the coins' death
+     explosions use — the shell calls this after the plane, so nothing can be in
+     front of it. A no-op once it has played out.
+
+     Identical logic to Coin's: one scale across all twelve frames, derived from
+     the WIDEST so bossBoomSize means "how big the peak is", and the frames keep
+     their relative sizes. */
+  renderBurst(ctx, camX, camY, worldW) {
+    if (!this._booming()) return;
+    const c = this.cfg, rects = c.BOOM_RECTS;
+    const r = rects[Math.min(rects.length - 1, Math.floor(this.boomT / c.boomMs))];
+    if (!r) return;
+    const sheet = this.assets.getDrawable('boom');
+    if (!sheet) return;
+
+    let widest = 1;
+    for (const f of rects) if (f[2] > widest) widest = f[2];
+    const s = (c.bossSizePx * c.bossBoomSize) / widest;
+    const dw = r[2] * s, dh = r[3] * s;
+
+    ctx.imageSmoothingEnabled = true;
+    for (const wx of [this.boomX - worldW, this.boomX, this.boomX + worldW]) {
+      ctx.save();
+      ctx.translate(wx - camX, this.boomY - camY);
+      ctx.drawImage(sheet, r[0], r[1], r[2], r[3], -dw / 2, -dh / 2, dw, dh);
       ctx.restore();
     }
   }
