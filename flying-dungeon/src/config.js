@@ -496,6 +496,12 @@ const CONFIG = {
   flyRetargetMax: 0.90,  // s — longest hold
   flyWobbleAmp: 6,       // px — fast micro-buzz on top of the wander
   flyWobbleFreq: 13,     // rad/sec
+  // How many finished LEGS (straight stretches between heading changes) a fly
+  // remembers, so a rewind can unwind back through them and retrace its real
+  // path rather than reversing along its latest heading. Legs run 0.25-0.9s, so
+  // 12 covers roughly 3-11 seconds of flight — well past any single rewind, and
+  // it is 3 numbers per leg, so the cost is nothing.
+  flyLegMemory: 12,
   flyMaxTilt: 15,        // deg — frame rotation at full vertical speed
   flyTiltEase: 9,        // how fast the tilt eases toward the heading (1/sec)
 
@@ -516,7 +522,7 @@ const CONFIG = {
   // either of these only alongside a rebuild.
   COIN_CELL: 160,
   COIN_FRAMES: 22,       // one full rotation
-  coinCount: 12,         // how many drift the world at once
+  coinCount: 22,         // how many drift the world at once (12 + 10)
   // Drawn height in the fixed 1280x720 canvas, NOT a fraction of it — the coin
   // is a pickup sized against the plane and the HUD, both of which are also in
   // canvas px, rather than something that should grow with the window.
@@ -552,7 +558,9 @@ const CONFIG = {
   // RECOVERS its colour as you shoot, and time over is pushed further away.
   // GameClock.rewind() clamps at 0, so the clock can never go negative however
   // many coins are cashed in.
-  coinRewindMs: 1000,    // GAME ms — one second on the HUD per hit
+  // GAME ms per hit. Live-editable from the controls under the canvas (in
+  // SECONDS there), so this is the starting value rather than a fixed one.
+  coinRewindMs: 5000,
   // How long the tray keeps orbiting BACKWARDS after each rewind tick, so the
   // world reacts while you are actually pulling time back rather than only once
   // the clock happens to be negative.
@@ -637,6 +645,54 @@ const CONFIG = {
   // against the WIDEST frame, not the first — with the full set the first frame
   // is the smallest, so anchoring on it would make the blast enormous.
   coinBoomSize: 1.7,
+
+  // --- The Time Boss ------------------------------------------------------
+  // A furious alarm clock that only turns up once the player has driven the run
+  // clock down to bossAtMs by shooting coins — so it is what abusing the rewind
+  // earns you, not something the game hands out on a timer. Negative GAME ms.
+  bossAtMs: -120000,     // -2:00 on the HUD
+  BOSS_SHEET: 'enemy-sheets/saborosa-boss-time.png',
+  // The 7 frames are a TURN, not a walk cycle: profile-left → full-front →
+  // profile-right. The widths say so — 120px in profile, 269px face-on, and
+  // symmetric about the middle.
+  //
+  // Hand-placed at irregular pitch (centre-to-centre 170-275px) and differing
+  // sizes, so there is no grid; these are measured off the sheet's alpha. Every
+  // frame shares TOP y=79, which is why the draw hangs them from the top: it is
+  // exact, and the 4px the front-facing frames gain is the stance widening at
+  // the feet, which belongs downward rather than centred away.
+  BOSS_RECTS: [
+    [ 177, 79, 120, 219],   // profile, looking LEFT
+    [ 326, 79, 171, 219],
+    [ 530, 79, 228, 223],
+    [ 784, 79, 269, 223],   // full front
+    [1078, 79, 228, 223],
+    [1334, 79, 171, 219],
+    [1530, 79, 120, 219],   // profile, looking RIGHT
+  ],
+  BOSS_REF_H: 223,       // tallest frame — what bossSizePx is measured against
+  bossSizePx: 260,       // drawn height in the fixed 1280x720 canvas
+  // World px/sec. Horizontally this is the speed at full profile, tapering to 0
+  // face-on (see the facing coupling in boss.js); vertically it is used flat,
+  // so the boss keeps closing on the player's altitude even mid-turn. ONE knob
+  // for both axes on purpose — a second would only drift away from it.
+  bossSpeed: 90,
+  // How close the player has to get before it notices them. Once it has, that
+  // LATCHES — it never goes back to minding its own business, which is what
+  // makes it stalking rather than a proximity trigger.
+  bossSeeRange: 420,     // world px
+  // Stand-off. Without it the boss walks THROUGH the player, dx changes sign
+  // underneath it, and it shudders on the spot flipping sides instead of
+  // looming. Vertically it uses half this.
+  bossStopRange: 140,
+  bossBandBottom: 0.85,  // keeps it out of the corpse floor plane at 0.899
+  // Time for the full profile-to-profile sweep. Because travel speed is derived
+  // from the same value, this also sets how long it spends decelerating into
+  // the turn and accelerating out — one number, not three.
+  bossTurnMs: 420,
+  bossBobFreq: 1.9,      // rad/sec — slower and heavier than the coin's
+  bossBobRel: 0.03,
+  bossBobMin: 5,
 
   // --- Shooting -----------------------------------------------------------
   // Firing projects a thin hitscan line forward from the nose. Anything whose

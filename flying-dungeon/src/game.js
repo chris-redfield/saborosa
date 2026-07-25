@@ -51,6 +51,25 @@
     filmEl.addEventListener('change', () => { CONFIG.film = filmEl.checked; applyFilmCss(); filmEl.blur(); });
   }
 
+  // How much clock a single hit on a coin gives back. Shown in SECONDS because
+  // that is the unit on the HUD it moves; stored in ms like everything else.
+  // blur() after each edit so SPACE goes back to firing the gun instead of
+  // nudging the field that still has focus.
+  const rewindEl = document.getElementById('coinRewind');
+  if (rewindEl) {
+    rewindEl.value = CONFIG.coinRewindMs / 1000;
+    const applyRewind = () => {
+      const v = parseFloat(String(rewindEl.value).replace(',', '.'));
+      if (isFinite(v)) CONFIG.coinRewindMs = Math.max(0, v) * 1000;
+      rewindEl.value = CONFIG.coinRewindMs / 1000;
+    };
+    rewindEl.addEventListener('change', applyRewind);
+    rewindEl.addEventListener('keydown', e => {
+      e.stopPropagation();                       // don't fire hotkeys while typing
+      if (e.key === 'Enter') { applyRewind(); rewindEl.blur(); }
+    });
+  }
+
   const fpsEl = document.getElementById('steppedFps');
   const fpsVal = document.getElementById('steppedFpsVal');
   if (fpsEl) {
@@ -89,6 +108,10 @@
   // tracks the ACT of rewinding rather than the clock's sign — the world runs
   // backwards while you are pulling time back, whatever the clock reads.
   let rewindSpinT = 0;
+  // The Time Boss. Null until the run clock has been driven down to bossAtMs;
+  // once it arrives it stays for the rest of the run, even if the player lets
+  // the clock climb back above the threshold — it was summoned, not triggered.
+  let boss = null;
   let fruitSelect = new FruitSelect(assets, CONFIG);
   let liftoff = new Liftoff(assets, CONFIG);
   let intro = new Intro(assets, CONFIG, fruitSelect, liftoff);
@@ -107,7 +130,7 @@
   const COIN_KEYS = Object.keys(CONFIG.COIN_SHEETS);
   const TOTAL = CONFIG.FRAMES * 2
     + CONFIG.CHARACTERS.length * CONFIG.CH_FRAMES
-    + CONFIG.GUN_FRAMES + 3    // +3: the fly sheet, the dead fly, the boom sheet
+    + CONFIG.GUN_FRAMES + 4    // +4: fly, dead fly, boom sheet, boss sheet
     + COIN_KEYS.length;        // + one grid sheet per coin variant
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
@@ -198,6 +221,7 @@
     bindRestart(false);
     ending = null;
     rewindSpinT = 0;
+    boss = null;             // has to be re-earned every run
     clock.reset();
     plane = new Plane(assets, CONFIG);
     fruitSelect = new FruitSelect(assets, CONFIG);
@@ -326,8 +350,30 @@
       const camX = minX + plane.displayX() * Math.max(0, maxX - minX);
       const camY = minY + plane.displayY() * Math.max(0, maxY - minY);
 
-      for (const e of enemies) e.update(dt, worldW, worldH);
+      // While the player is winding time back the flies retrace their paths,
+      // same window that turns the tray around.
+      for (const e of enemies) e.update(dt, worldW, worldH, rewindSpinT > 0);
       for (const c of coins) c.update(dt, worldW);
+
+      // Time driven far enough back to summon the boss. It appears at the
+      // MIDDLE of the world's X range — a fixed landmark rather than somewhere
+      // relative to the camera, so it is always in the same place and the
+      // player can go looking for it. Y is still put near the middle of the
+      // current view, so it starts at a height they can actually reach.
+      if (!boss && clock.now() <= CONFIG.bossAtMs) {
+        boss = new Boss(assets, CONFIG,
+          worldW / 2,
+          Math.max(CONFIG.bossSizePx, camY + H * 0.45));
+      }
+      // The plane lives in SCREEN space (its x/y are canvas fractions and the
+      // camera pans off them), so its world point is the camera plus that —
+      // which is what the boss needs to know where to look.
+      if (boss) {
+        boss.update(dt, worldW, worldH, {
+          x: camX + plane.displayX() * W,
+          y: camY + plane.displayY() * H,
+        });
+      }
       // A coin that has finished exploding is gone for good — same as the
       // flies, killed coins do not come back.
       for (let i = coins.length - 1; i >= 0; i--) if (coins[i].isDead()) coins.splice(i, 1);
@@ -351,7 +397,12 @@
           for (const e of enemies) {
             if (!e.isAlive()) continue;
             for (const b of e.boxes(camX, camY, bg.worldWidth())) {
-              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { e.hit(CONFIG.rayDamage); break; }
+              // The game time is handed in so a killing shot can stamp WHEN it
+              // happened — that stamp is what a later rewind compares against.
+              if (rayHitsBox(ray, CONFIG.rayThickness, b)) {
+                e.hit(CONFIG.rayDamage, clock.now());
+                break;
+              }
             }
           }
           // Coins take the same beam. It PIERCES — no early exit above, so one
@@ -367,6 +418,10 @@
               // second per FRAME and the run would never end.
               if (cn.hit(CONFIG.rayDamage)) {
                 clock.rewind(CONFIG.coinRewindMs);
+                // Time just moved: any fly whose death is now in the future
+                // never died. Checked against the NEW clock, so it has to come
+                // after the rewind.
+                for (const e of enemies) e.resurrectAt(clock.now());
                 hud.jolt();
                 // Re-armed rather than accumulated: holding fire keeps topping
                 // it up so the tray runs backwards continuously, and it lapses
@@ -392,6 +447,9 @@
       // so nothing the player is aiming at should ever be hidden behind one.
       for (const c of coins) c.render(ctx, camX, camY, worldW);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
+      // Boss over the flies (it dwarfs them) but under the plane — the player
+      // must never be hidden behind it.
+      if (boss) boss.render(ctx, camX, camY, worldW);
       // The plane drains too, but on its own curve and only half way — see
       // Plane.drainAt(). Same game clock, deliberately different pace.
       plane.render(ctx, W, H, plane.drainAt(clock.now()));
@@ -489,6 +547,7 @@
       assets.loadImage('coin_' + k, CONFIG.ASSET_BASE + CONFIG.COIN_SHEETS[k]).then(tick)),
     // The main game's explosion sheet — 9KB, so it loads up front with the rest.
     assets.loadImage('boom', CONFIG.ASSET_BASE + CONFIG.BOOM_SHEET).then(tick),
+    assets.loadImage('boss', CONFIG.ASSET_BASE + CONFIG.BOSS_SHEET).then(tick),
   ]).then(() => {
     spawnWorld();
     gameReady = true;

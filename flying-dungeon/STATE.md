@@ -159,7 +159,7 @@ sheets and identical across all three characters (the packs are registered).
 
 ## Flies
 
-- `flyCount: 30`, `flyHealth: 3`, `rayDamage: 1`.
+- `flyCount: 30`, `flyHealth: 3`, `rayDamage: 1`. Coins: `coinCount: 22`.
 - **The shot is a hitscan beam re-tested every frame**, so damage must be rate
   limited or 3 HP drains in 3 frames (~50ms) and it dies instantly anyway.
   `flyHurtMs: 180` is that limit and doubles as the blink + knockback window,
@@ -346,14 +346,15 @@ would never end.
 
 | | |
 |---|---|
-| one hit | 1s, every 160ms of held fire |
-| held fire on one coin | **6.2s of clock per real second** (net 5.1s/s backwards, against the 1.15 rate) |
-| a full coin | 12s, for ~1.9s of firing |
-| all 12 coins | **144s** — against a 120s run |
+| one hit | **5s**, every 160ms of held fire |
+| held fire on one coin | ~31s of clock per real second |
+| a full coin | 60s, for ~1.9s of firing |
+| all 22 coins | **1320s (22 min)** — against a 120s run |
 
-So the coins on the map are worth more than the entire run length. That may be
-exactly right for a jam game about hoarding time, or `coinRewindMs` may want to
-come down; it is one number either way.
+Deliberately enormous: two fully drained coins take you from 0:00 to the boss
+at -2:00. **`coinRewindMs` is live-editable** from the controls under the canvas
+(in seconds), so it can be dialled while playing rather than rebuilt — it is the
+one number that sets how fast the whole rewind economy runs.
 
 **Shooting is deliberately NOT gated on `ending`.** The player keeps firing
 through the 900ms dip to black and can still hit coins and rewind there — it
@@ -380,6 +381,50 @@ Below zero:
 The tray's direction is **not** tied to the clock's sign — see below.
 `GameClock.isReversed()` survives as a predicate but nothing drives the picture
 from it.
+
+### The flies run backwards too, and the dead come back
+
+While the rewind window is open the flies **fly their own paths in reverse**,
+and dead ones **come back to life** if the clock has moved back past the moment
+they died.
+
+**The path is retraced exactly, not approximated.** A fly's path is a chain of
+straight LEGS — a heading held for 0.25–0.9s. Reversing along the *current*
+heading is right only while the rewind fits inside one leg; measured, that is
+~60% of the time at this game's window, and the other 40% sends the fly off down
+a path it never flew. So each fly banks the legs it has flown (`flyLegMemory`,
+12 of them ≈ 3–11s, three numbers each) and a rewind unwinds back *through*
+them. Retrace error at the 240ms window: **98% exact, mean 0.05px**.
+
+Three things had to be right for that, and each was worth a real bug:
+
+1. **A wall bounce closes a leg.** It flips `vy` mid-leg, so without a boundary
+   there the rewind unwinds the whole leg at the post-bounce heading and the fly
+   flies back out through the ceiling it just came off.
+2. **`legT` counts up AFTER the heading switch, not before.** This frame's
+   movement uses whatever heading the switch produces, so counting first banks
+   one frame too many onto the old leg and starts the new one a frame short.
+   Worth a fraction of a pixel per leg — and it was the whole difference between
+   61% and 98% exact.
+3. **The banked length is the time actually flown**, not the leg's nominal
+   duration: `retarget` overshoots zero by part of a frame, and banking the
+   nominal figure leaks that sliver into every leg.
+
+The residual 2% is the bounce's position SNAP (`y = m`), which is not
+reversible. Beyond `flyLegMemory` the retrace degrades gracefully — the fly
+keeps unwinding along its oldest remembered heading rather than stalling.
+
+**Resurrection is a snapshot, not a replay.** A fly about to die photographs
+itself one instant before the fatal shot — position, heading, bank, buzz phase,
+retarget, hp — stamped with the GAME time. Winding the clock back past that
+stamp restores it exactly, so it resumes the same trajectory it was flying. The
+snapshot is taken in `hit()` *before* hp is spent, because the point of it is
+the state the shot destroyed. Kept for the whole run, so depth is limited only
+by how many coins the player can cash.
+
+Flies are never spliced from the list (a landed corpse reports `isDead()`
+false), which is what makes resurrecting one possible at all — see the note
+under The corpse pile.
 
 ### The tray runs backwards while you rewind
 
@@ -520,6 +565,70 @@ it. `_canDesaturate()` sets it and reads it back once; if it fails, the drain
 falls back to the dimming alone and the world stays in colour, which is a much
 better failure. The fill is laid over the FRAME's rect rather than the canvas,
 so it can't miss a sliver while the film pass has the scene weaving.
+
+---
+
+## The Time Boss
+
+A furious alarm clock (`src/boss.js`,
+`enemy-sheets/saborosa-boss-time.png`). It appears **only** once the player has
+driven the run clock down to **-2:00** by shooting coins — it is what abusing
+the rewind earns you, not something the game hands out on a timer. Summoned
+once and it stays for the rest of the run even if the clock climbs back above
+the threshold; a restart makes it be earned again.
+
+**The sheet is a TURN, not a walk cycle.** Its 7 frames sweep profile-left →
+full-front → profile-right, and the widths prove it: 120px in profile, 269px
+face-on, symmetric about the middle. So `facing` is a continuous 0..1 (0.5 =
+front) and the frame is just that value quantised — the boss is never "playing
+an animation", it is pointed somewhere.
+
+**Behaviour comes almost entirely from one coupling:** velocity is
+`bossSpeed × (facing×2 − 1)`, so it moves at full speed in profile and is
+STATIONARY face-on. Which means:
+
+- **Idle** — faces the camera, and is therefore motionless. It stands there
+  front-on, watching.
+- **Alerted** — the player has come within `bossSeeRange`. It turns to face
+  whichever side they are on, and because facing *is* velocity, turning to look
+  at you **is** setting off after you.
+
+So it decelerates through front-on, hangs there square to the camera for an
+instant, and accelerates away the other way — with no acceleration code at all.
+Retiming `bossTurnMs` retimes the speed ramp with it.
+
+**Being alerted latches.** Once it has seen the player it never goes back to
+minding its own business however far they get — that is what makes it stalking
+rather than a proximity trigger.
+
+Two things it needs to not look broken: `bossStopRange`, a stand-off, without
+which it walks *through* the player, `dx` flips sign underneath it and it
+shudders on the spot instead of looming; and a **wrap-aware** `_dx`, without
+which a player just over the world seam reads as most of a world away and it
+stalks off in the wrong direction.
+
+Vertical pursuit shares the same `bossSpeed` — one knob for both axes, so a
+second can't drift away from it. It is **not** scaled by the facing coupling
+though: the turn is a horizontal affair, so the boss keeps closing on the
+player's altitude even while it is swinging through front-on and going nowhere
+sideways.
+
+Frames are hand-placed at irregular pitch (170–275px apart) and differing
+sizes, so they are drawn from measured rects. They are centred on X and **hung
+from a common top**: every frame shares y=79 on the sheet, so top-alignment is
+exact, and the 4px the front-facing frames gain is the stance widening at the
+feet, which belongs downward rather than centred away.
+
+It spawns at the **middle of the world's X range** — a fixed landmark rather
+than somewhere relative to the camera, so it is always in the same place and
+the player can go looking for it. Y is put near the middle of the current view,
+so it starts at a height they can reach. It draws over the flies (it dwarfs
+them) but under the plane.
+
+⚠️ **The boss does nothing yet.** It cannot be shot, does no harm, and has no
+health — the brief that asked for it was cut off mid-sentence ("the boss should
+have ."). Everything above is the entity and its presence; the fight is
+undesigned.
 
 ---
 

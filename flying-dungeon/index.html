@@ -17,6 +17,12 @@
               background: rgba(0,0,0,.5); padding: 7px 11px; border-radius: 4px;
               color: #cfe; font: 12px/1.4 monospace; }
   #controls label { display: flex; align-items: center; gap: 7px; cursor: pointer; }
+  /* Typed number, not a slider: these are values you want to set exactly and
+     read back, and a slider gives you neither. */
+  #controls input[type=number] { width: 52px; background: #0f1730; color: #e6f4ff;
+              border: 1px solid #3a4a6a; font: 12px monospace; padding: 1px 3px;
+              text-align: right; }
+  #controls hr { border: 0; border-top: 1px solid #ffffff22; margin: 5px 0; }
 </style>
 </head>
 <body>
@@ -28,6 +34,9 @@
     <label><input type="checkbox" id="stepped" checked> stepped plane (low fps)</label>
     <label>plane fps <input type="range" id="steppedFps" min="4" max="30" step="1"><span id="steppedFpsVal"></span></label>
     <label><input type="checkbox" id="film" checked> old-film style</label>
+    <hr>
+    <label>rewind per clock hit
+      <input type="number" id="coinRewind" min="0" max="60" step="0.5"> s</label>
   </div>
 
   <!--
@@ -50,7 +59,8 @@
   (function () {
     var files = [
       'config', 'assets', 'input', 'tray-background', 'fruit-select', 'liftoff',
-      'intro', 'plane', 'fly', 'coin', 'film', 'game-clock', 'hud', 'game-over',
+      'intro', 'plane', 'fly', 'coin', 'boss', 'film', 'game-clock', 'hud',
+      'game-over',
       'game',
     ];
     var v = Date.now();

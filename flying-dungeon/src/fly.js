@@ -33,6 +33,14 @@ class Fly {
     this.vx = -cfg.flySpeed;  // always leftward (net right-to-left)
     this.vy = 0;
     this.retarget = 0;        // countdown to the next heading change
+    // The fly's path is a chain of straight LEGS, each a heading held for a
+    // while. `legs` remembers the ones already flown so a rewind can unwind
+    // back THROUGH them instead of reversing along the current heading only —
+    // without it a rewind that spans a heading change sends the fly off down a
+    // path it never flew. Bounded ring: the oldest is dropped past flyLegMemory.
+    this.legs = [];
+    this.legT = 0;            // seconds flown on the current leg
+    this.legDur = 0;          // its full length; retarget === legDur - legT
     this.angle = 0;           // current frame tilt (rad), eases toward heading
     this.phase = Math.random() * Math.PI * 2;  // desync the buzz per fly
     this.state = 'alive';     // 'alive' | 'dying' | 'landed' | 'dead'
@@ -68,9 +76,16 @@ class Fly {
   // A shot connected. Returns true if it actually landed — false while the fly
   // is inside its hurt window, which is what stops the every-frame beam from
   // stripping all its health at once. The last point of damage bursts it.
-  hit(dmg) {
+  hit(dmg, gameMs) {
     if (this.state !== 'alive' || this.hurtT > 0) return false;
-    this.hp -= (dmg === undefined ? 1 : dmg);
+    const d = (dmg === undefined ? 1 : dmg);
+    // About to die: photograph the living fly BEFORE any of this mutates it, so
+    // a later rewind can put it back exactly as it was — same position, same
+    // heading, same bank, same buzz phase. Taken here rather than inside
+    // _burst() because hp has already been spent by then, and the point of the
+    // snapshot is the state the fatal shot destroyed.
+    if (this.hp - d <= 0) this._snapshotDeath(gameMs);
+    this.hp -= d;
     if (this.hp <= 0) { this._burst(); return true; }
     this.hurtT = this.cfg.flyHurtMs;
     // Same burst frames the death plays, but smaller and quicker, and LEFT AT
@@ -78,6 +93,78 @@ class Fly {
     // that's still flying reads as "it died and kept going".
     this.hitFx = { x: this.x, y: this.y, t: 0 };
     return true;
+  }
+
+  /* --- Rewinding a death -------------------------------------------------
+     The fly as it was one instant before the fatal shot, stamped with the GAME
+     time it happened at. Kept for the whole run: winding the clock back past
+     that stamp brings this fly back, however long ago it was, because the coins
+     are what pay for the depth.
+
+     Only the fields that make it FLY are stored. Nothing about the death — the
+     burst frames, the corpse arc, where it was going to land — because the
+     restore is precisely the undoing of all that. */
+  _snapshotDeath(gameMs) {
+    this.deathAt = {
+      t: gameMs === undefined ? 0 : gameMs,
+      x: this.x, y: this.y,
+      vx: this.vx, vy: this.vy,
+      angle: this.angle,
+      phase: this.phase,          // keeps the buzz continuous through the undo
+      retarget: this.retarget,    // ...and its next heading change on schedule
+      hp: this.hp,                // the health the fatal shot was about to take
+    };
+  }
+
+  /* Time has been wound back to `gameMs`. If this fly's death is now in the
+     future, it never happened: put it back exactly as it was flying.
+
+     Returns true if it actually came back, so the shell can react. */
+  resurrectAt(gameMs) {
+    const d = this.deathAt;
+    if (!d || this.state === 'alive' || gameMs >= d.t) return false;
+    this.x = d.x; this.y = d.y;
+    this.vx = d.vx; this.vy = d.vy;
+    this.angle = d.angle;
+    this.phase = d.phase;
+    this.retarget = d.retarget;
+    this.hp = d.hp;
+    // Start a fresh leg from here, holding the invariant retarget === legDur −
+    // legT. Without this the leg counters would still describe whatever the fly
+    // was doing when it died, and the NEXT rewind would unwind against them.
+    this.legT = 0;
+    this.legDur = d.retarget;
+    this.state = 'alive';
+    // Wipe every trace of the death, or it would finish playing over the top of
+    // a fly that is alive again.
+    this.frame = 0;
+    this.deathT = 0;
+    this.corpseActive = false;
+    this.hurtT = 0;
+    this.hitFx = null;
+    this.deathAt = null;
+    return true;
+  }
+
+  /* Close the current leg and file it, so a rewind can unwind back through it.
+     Called wherever the heading STOPS being what it was — a retarget, or a
+     bounce off the world's edge.
+
+     `dur` is the time actually flown, not the leg's nominal length: retarget
+     overshoots zero by part of a frame, and banking the nominal figure instead
+     leaks that sliver into the retrace on every single leg.
+
+     `rem` is what was left on the retarget countdown, so re-entering the leg
+     backwards also restores how much longer it had to run. A leg that ended
+     naturally has none; one cut short by a bounce does. */
+  _bankLeg() {
+    this.legs.push({
+      vx: this.vx, vy: this.vy,
+      dur: this.legT,
+      rem: Math.max(0, this.retarget),
+    });
+    if (this.legs.length > this.cfg.flyLegMemory) this.legs.shift();
+    this.legT = 0;
   }
 
   // Health ran out: play the burst frames and drop the corpse (they overlap).
@@ -101,7 +188,7 @@ class Fly {
     this.deathVy = this.vy;
   }
 
-  update(dt, worldW, worldH) {
+  update(dt, worldW, worldH, reversed) {
     const c = this.cfg, s = dt / 1000;
     // Landed corpses are inert — nothing left to simulate, they just get drawn.
     if (this.state === 'dead' || this.state === 'landed') return;
@@ -144,6 +231,55 @@ class Fly {
       return;
     }
 
+    /* TIME IS RUNNING BACKWARDS. The fly flies its own path in reverse, and
+       exactly: it unwinds the current leg, and when it runs off the start of
+       that one it POPS the previous heading off `legs` and keeps unwinding into
+       it. Reversing along the current heading alone would be right only while
+       the rewind fits inside one leg — measured, that is about 60% of the time
+       at the window this game uses, and the other 40% sends the fly off down a
+       path it never flew.
+
+       The buzz phase is unwound too, so the motion plays in reverse rather than
+       merely sliding backwards.
+
+       No wall bounce here: it is retracing a path it has already flown, so it
+       cannot legitimately reach an edge, and a bounce would corrupt the heading
+       it is handing back to forward time.
+
+       `retarget` is kept as legDur − legT throughout, so however far it winds
+       back, forward time resumes with the right amount left on the leg. */
+    if (reversed) {
+      this.phase -= s;
+      if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+      let rem = s;
+      while (rem > 0) {
+        const step = Math.min(rem, this.legT);
+        if (step > 0) {
+          this.x -= this.vx * step;
+          this.y -= this.vy * step;
+          this.legT -= step;
+          rem -= step;
+        }
+        if (rem <= 0) break;
+        const prev = this.legs.pop();
+        if (!prev) {
+          // Wound back past everything remembered: carry on along this heading
+          // rather than stalling. Only reachable by rewinding further than
+          // flyLegMemory legs, i.e. several seconds of continuous coin fire.
+          this.x -= this.vx * rem;
+          this.y -= this.vy * rem;
+          rem = 0;
+          break;
+        }
+        this.vx = prev.vx; this.vy = prev.vy;
+        this.legT = prev.dur;         // re-enter it at its END and unwind on
+        this.legDur = prev.dur + prev.rem;   // restores its remaining countdown
+      }
+      this.retarget = Math.max(0, this.legDur - this.legT);
+      if (worldW > 0) this.x = ((this.x % worldW) + worldW) % worldW;
+      return;
+    }
+
     this.phase += s;
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     if (this.hitFx) {
@@ -154,12 +290,20 @@ class Fly {
     // Erratic fly steering: every so often pick a new heading. X stays leftward
     // (varied speed) so it never backtracks; Y darts up or down.
     this.retarget -= s;
+    // legT is incremented AFTER the switch below, not before it. This frame's
+    // movement uses whatever heading comes out of that block, so counting it
+    // first would bank one frame too many onto the old leg and start the new
+    // one a frame short — which is a fraction of a pixel per leg, and it is
+    // exactly what stops the retrace being exact.
     if (this.retarget <= 0) {
-      this.retarget = c.flyRetargetMin + Math.random() * (c.flyRetargetMax - c.flyRetargetMin);
+      this._bankLeg();
+      this.legDur = c.flyRetargetMin + Math.random() * (c.flyRetargetMax - c.flyRetargetMin);
+      this.retarget = this.legDur;
       this.vx = -c.flySpeed * (0.45 + Math.random());          // -0.45x … -1.45x, always left
       const dir = Math.random() < 0.5 ? -1 : 1;
       this.vy = dir * c.flyVSpeed * (0.55 + 0.45 * Math.random());
     }
+    this.legT += s;
 
     // Knockback: a shove away from the gun (which fires rightward), decaying
     // linearly across the hurt window. Derived from hurtT rather than stored, so
@@ -173,10 +317,14 @@ class Fly {
 
     // Wrap X (circle the dungeon); bounce off the world's top/bottom.
     if (worldW > 0) this.x = ((this.x % worldW) + worldW) % worldW;
+    // A bounce off the top/bottom is a heading change like any other, so it has
+    // to CLOSE THE LEG — it flips vy mid-leg, and without a boundary here a
+    // rewind would unwind the whole leg at the post-bounce heading and send the
+    // fly off through the ceiling it just came off.
     const m = 40;
     if (worldH > 0) {
-      if (this.y < m) { this.y = m; this.vy = Math.abs(this.vy); }
-      else if (this.y > worldH - m) { this.y = worldH - m; this.vy = -Math.abs(this.vy); }
+      if (this.y < m) { this._bankLeg(); this.y = m; this.vy = Math.abs(this.vy); }
+      else if (this.y > worldH - m) { this._bankLeg(); this.y = worldH - m; this.vy = -Math.abs(this.vy); }
     }
 
     // Tilt with the vertical heading: moving up → clockwise, down → CCW (canvas
