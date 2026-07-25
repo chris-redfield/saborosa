@@ -262,10 +262,19 @@ const CONFIG = {
   planeEntryFromX: -0.55, // screen fractions LEFT of startX to begin at. The
                           // sprite is ~0.225 of the canvas wide, so -0.55 puts
                           // it comfortably off-screen before it starts.
-  planeEntryMs: 900 * 1.3 * 1.1, // fly-in, eased out so it decelerates into
-                           // place. Chained so the history reads: 900 base,
-                           // then 30% slower, then another 10%.
-  planeEntryHoldMs: 500,  // the beat at rest before control is handed over
+  // Fly-in, eased out (easeOutCubic) so it decelerates into place. The history
+  // reads left to right: 900 base, then 30% slower, then another 10% — and now
+  // pulled back in, because the whole entrance ran 1787ms before the player
+  // could touch anything.
+  //
+  // Cutting HERE is cheap: with an ease-out, most of the visible travel happens
+  // in the first third and the tail is the plane creeping the last few pixels.
+  // Trimming the duration removes mostly that creep, not the entrance.
+  planeEntryMs: 900 * 1.15,
+  // The beat at rest before control is handed over. This one is pure dead air —
+  // the plane has already arrived and nothing moves — so it takes the deeper
+  // cut. Not zero: landing and instantly being live reads as a jump cut.
+  planeEntryHoldMs: 150,
 
   // --- Float bob (same sine as the loading letters, +20% freq) ------------
   bobFreq: 2.52,         // rad/sec

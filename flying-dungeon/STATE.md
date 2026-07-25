@@ -223,14 +223,15 @@ you own, or a free geometric lookalike like Jost) and wire an `@font-face` +
 
 ## The time coin
 
-Art only so far — nothing in the game loads it yet. `tools/coin-anim.html` is
-where it gets timed; `tools/build-coin-frames.py` builds what that tool (and
-the game) reads.
+In the game as `src/coin.js`. `tools/coin-anim.html` is where it gets timed;
+`tools/build-coin-frames.py` builds what that tool (and the game) reads.
 
 **Two masters, and they are alternatives rather than a sequence** — the game
-picks one. Both are 4387×381 strips holding **22 frames of a full rotation**,
-and in both, 1–11 is the clock face turning away, 12–22 the fruit face coming
-back, and 11/22 are the edge-on frames.
+picks one, and **it picks 01, the upright spin**. 02 is still built and still
+previewable in the tool; it is simply not listed in `COIN_SHEETS`. Both are
+4387×381 strips holding **22 frames of a full rotation**, and in both, 1–11 is
+the clock face turning away, 12–22 the fruit face coming back, and 11/22 are
+the edge-on frames.
 
 | | | |
 |---|---|---|
@@ -267,6 +268,32 @@ the alpha threshold is set too low.
 
 In the tool, `V` swaps coins with timing, range and framing all held, which is
 the comparison it exists for.
+
+### In the game
+
+`Coin` borrows the fly's X — steady leftward drift in world space, wrapping at
+the world width, three wrap copies so one on the seam draws both sides — but
+**not** the fly's vertical darting. Instead it holds its world Y and rides the
+plane's sine bob (`coinBobFreq/Rel/Min`, the plane's own numbers), as a DRAW
+offset only, so `y` never moves and nothing downstream has to know. At the
+configured 76px the `bobMin` floor wins, so it bobs 6px — a float, not a
+flight.
+
+Frame phase, bob phase and speed are randomised per coin. Without that the
+whole field flashes its face on the same frame and pulses in unison.
+
+Coins are their own list, **not** `enemies` — the hitscan beam iterates
+`enemies`, and a coin is not something you shoot. They draw under the flies and
+the plane so nothing you are aiming at can hide behind one, and they spawn in a
+band of 0.10–0.80 of world height, the lower bound chosen to clear the corpse
+floor plane at 0.899 so they aren't buried in the tablecloth.
+
+**Not built:** coins do nothing yet. No pickup, no effect on the clock or
+score, and no respawn — the 12 just circle the world forever.
+
+`package.sh` copies `coin/*.webp` as a glob, so it currently ships 02's 241KB
+unused. That's deliberate: swapping variants stays a pure config change with no
+packaging edit.
 
 `package.sh` copies `coin/` (added when the folder was created, rather than
 after shipping a build without it — which is how `enemy-sheets/` went missing).
