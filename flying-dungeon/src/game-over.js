@@ -123,6 +123,22 @@ class GameOver {
     ctx.restore();
   }
 
+  /* The lettering ON ITS OWN — no panel, no backdrop, just the words at the
+     alpha you ask for. The finale uses this so its two cards are literally the
+     same code as the end panels: same font, same weight, same colour, and any
+     retune of overTitle reaches all of them.
+
+     Its title configs switch the per-word reveal off (d1/d2/revealMs 0) and the
+     caller drives the fade through `alpha` instead, which is why `t` can simply
+     be 0 — there is nothing left for the reveal clock to do. */
+  renderTitle(ctx, W, H, t, alpha, titleKey) {
+    const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
+    if (a <= 0) return;
+    ctx.save();
+    this._title(ctx, W, H, t || 0, a, this._titleFor(titleKey));
+    ctx.restore();
+  }
+
   /* overTitle with one of the ending overrides laid on top. Memoised — it is
      read every frame an ending is on screen — and it is a MERGE rather than a
      set of parallel blocks so the endings cannot drift apart: the font, the

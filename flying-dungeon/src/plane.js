@@ -69,6 +69,12 @@ class Plane {
     this.fallY = 0;
     this.fallVy = 0;
     this.fallRot = 0;
+    // The finale drives the plane instead of the player. `cineOffX` is a
+    // DRAW-only X offset in screen fractions — the same device the entrance
+    // uses, and for the same reason: the camera pans off displayX(), so flying
+    // the exit through `x` would drag the world past its inset.
+    this.cine = false;
+    this.cineOffX = 0;
 
     this.disp = { x: this.x, y: this.y, pose: this.pose, t: 0, entryOff: this._entryOff() };
   }
@@ -77,8 +83,11 @@ class Plane {
   // the shell uses it to hold off firing and character-cycling too, not just
   // movement. Both are moments the player is not flying this thing, and putting
   // them behind one getter means every caller gets the second one for free.
-  get controlLocked() { return this.locked || this.falling; }
+  get controlLocked() { return this.locked || this.falling || this.cine; }
   get falling() { return this.fallT >= 0; }
+  // Hand the plane to the finale. There is no way back: nothing after this
+  // returns control to the player.
+  setCinematic(on) { this.cine = !!on; }
 
   // How deteriorated he is, as a sprite-pack / filter index: 0 while untouched,
   // then one per point lost. Clamped one short of planeHealth because the last
@@ -158,7 +167,7 @@ class Plane {
   _snapshot() {
     const d = this.disp;
     d.x = this.x; d.y = this.y; d.pose = this.pose; d.t = this._clock;
-    d.entryOff = this._entryOff();
+    d.entryOff = this._entryOff() + this.cineOffX;
   }
   displayX() { return this.disp.x; }   // camera reads these so world hops in sync
   displayY() { return this.disp.y; }
@@ -216,14 +225,22 @@ class Plane {
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
     if (this.falling) this._fall(dt);
 
-    // Flying in: swallow the controls entirely (a key held from the intro must
-    // not steer or fire), but keep the rest of update running so the bob and the
-    // stop-motion sampling carry on as normal.
     if (this.locked) {
       this.entryT += dt;
       if (this.entryT >= c.planeEntryMs + c.planeEntryHoldMs) this.locked = false;
-      input = Plane.NO_INPUT;
     }
+
+    /* Swallow the controls entirely whenever the player is not flying this
+       thing — but keep the rest of update() running, so the bob and the
+       stop-motion sampling carry on as normal.
+
+       ⚠️ Keyed on controlLocked, NOT on `locked`. It used to test the entrance
+       flag alone, which was right when the entrance was the only such moment;
+       once dying and the finale joined it, that left a plane the player could
+       still STEER while it was falling out of the sky, or while the ending was
+       flying it. The shell was already gating firing on controlLocked, so the
+       two were disagreeing about what "not in control" meant. */
+    if (this.controlLocked) input = Plane.NO_INPUT;
 
     // Pitch pose ramps toward the held vertical direction's extreme, back to rest.
     const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);

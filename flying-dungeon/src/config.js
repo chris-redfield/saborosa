@@ -514,6 +514,26 @@ const CONFIG = {
     words: ['YOU', 'FAILED'],
   },
 
+  /* THE FINALE'S LETTERING. Same machinery, same font, same colour as the end
+     panels — merged over overTitle like every other title override — but with
+     the reveal timings switched OFF (d1/d2/revealMs all 0) because the finale
+     drives its own fades through the alpha it passes in. The words arrive
+     together and leave together; they are a card, not a countdown.
+
+     sizePct has to come down. "THANK YOU FOR PLAYING" is 18 glyphs against TIME
+     OVER's 8, and at the panel's 20.4 it would be some 2000px wide in a 1280
+     frame. At 9.5 it measures ~960px, so it sits with ~160px either side. */
+  finaleThanksTitle: {
+    words: ['THANK', 'YOU', 'FOR', 'PLAYING'],
+    sizePct: 9.5,
+    d1: 0, d2: 0, revealMs: 0,
+  },
+  finaleObrigadoTitle: {
+    words: ['OBRIGADO'],
+    sizePct: 15,
+    d1: 0, d2: 0, revealMs: 0,
+  },
+
   noTimeTitle: {
     words: ['THE', 'END'],
     // BLACK. The yellow this inherits from overTitle is what TIME OVER wears on
@@ -958,6 +978,48 @@ const CONFIG = {
   flyBossSpasmScale: 0.025,
   flyBossHitFxSize: 0.36,    // the fly's puff again — about the BULLET, see bossHitFxSize
   flyBossBoomSize: 1.4,      // death blast, × flyBossSizePx at its peak
+
+  /* --- THE FINALE: what beating the Time Boss actually gives you -----------
+     Not "the run carries on" — the run is OVER, and this is the ending. The
+     player stops flying the plane and watches.
+
+     THE WHOLE SEQUENCE IS DERIVED FROM THESE DURATIONS, never from hand-written
+     absolute timestamps: finale.js sums them into marks, so retiming any one
+     beat shifts everything after it instead of leaving a gap. Same trick the
+     intro's liftoff window uses.
+
+     TIME COMES BACK, FAST. The clock is scrubbed from bossAtMs (-2:00) to 0
+     over finaleClockMs — and because the background's bleach is read from the
+     clock, the world un-washes from pure white back to full colour on exactly
+     that curve for free. There is no separate background transition to keep in
+     step; there is only the clock. */
+  finaleClockMs: 5000,      // -2:00 → 0:00, and the world comes back with it
+  // The plane glides to the middle of the screen, low, and stays there bobbing.
+  // eased, so it arrives rather than stopping dead.
+  finalePlaneX: 0.5,
+  finalePlaneY: 0.80,
+  finalePlaneMoveMs: 2600,
+  finaleSettleMs: 900,      // a beat after BOTH the clock and the plane land
+  finaleFadeMs: 700,        // every word fade, in and out
+  finaleThanksHoldMs: 2200,
+  finaleGapMs: 500,         // black between the two cards
+  finaleObrigadoHoldMs: 2600,
+  // The plane accelerates out to the right. QUADRATIC, so it reads as building
+  // speed rather than sliding off at a constant crawl.
+  //
+  // ⚠️ A DRAW-ONLY offset, not a change to plane.x — the same trap the entrance
+  // documents. The camera pans off displayX(), so flying the exit through x
+  // would drag the world past its inset and expose the blank studio margin.
+  finaleExitMs: 1300,
+  finaleExitX: 0.9,         // screen fractions travelled by the end of it
+  // The logo runs the Mosca Boss's entrance MIRRORED: a fast pass across the
+  // screen (left→right, where the fly went right→left), then in again from
+  // off-frame and up to the middle (where the fly came down from the top).
+  LOGO_SHEET: 'saborosa-logo.webp',
+  finaleLogoWRel: 0.5,      // drawn width, as a fraction of the canvas
+  finaleLogoPassMs: 850,
+  finaleLogoRiseMs: 1100,
+  finaleLogoHoldMs: 1800,   // before "press anything" arms
 
   // --- The boss's health bar ----------------------------------------------
   // 23 hand-drawn states of one 11-square bar, cut and rotated by

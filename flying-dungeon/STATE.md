@@ -72,7 +72,8 @@ player decides which way the run goes by choosing what to shoot.
 | `src/boss-bar.js` | his health bar, top-centre. Stateless. **Not** part of the HUD |
 | `src/game-clock.js` | the run's own time base — scrubbable, and now actually scrubbed |
 | `src/hud.js` | canvas HUD (flies counter + run timer) with the rewind jolt |
-| `src/game-over.js` | both end panels — TIME OVER on black, THE END on white. Stateless |
+| `src/game-over.js` | the end panels, and the lettering all the endings share. Stateless |
+| `src/finale.js` | the ENDING: time comes back, the cards, the exit, the logo |
 | `src/intro.js` | storyboard roll, board ordering, select + liftoff scheduling |
 | `src/fruit-select.js` | the SELECT FRUIT board, ported from the main game |
 | `src/liftoff.js` | the plane's takeoff over the countdown |
@@ -464,6 +465,19 @@ fires when `hit()` returns true, which is false inside `coinHurtMs` — otherwis
 the every-frame beam would wind the clock back a second *per frame* and the run
 would never end.
 
+**Two live controls under the canvas**, typed number fields rather than sliders:
+`rewind per clock hit` (`coinRewindMs`, in seconds — the unit on the HUD it
+moves) and `shot damage` (`rayDamage`). Both are read fresh every frame by
+everything that uses them, so a change applies on the next frame and the fights
+can be dialled while playing instead of rebuilt.
+
+⚠️ **Raising `rayDamage` does not speed a fight up in proportion**, which
+surprises people. Every health bar in this game is gated by an i-frame window,
+so time to kill is `(health / damage) × hurtMs` — damage buys FEWER HITS, not
+faster ones. Past `health/1` a boss dies in one shot however high it goes. It is
+integer-only for the same reason: a fraction only moves where the rounding lands
+in that division.
+
 **The economy, worth a look before shipping:**
 
 | | |
@@ -757,20 +771,17 @@ the boss arrives:
 
 ### Beating him
 
-`clock.resume()` + `noTime = false`, and every system picks up from the frozen
-reading with no special case anywhere: the bleach unwinds as the number climbs
-back toward zero, the HUD returns, time-over is live again. The sky refills with
-flies.
+**The run does not carry on — the ENDING starts.** See The finale. The player
+stops flying and watches.
 
-**The coins do NOT come back.** Which is the whole shape of the endgame: the
-player is holding two minutes of credit and no way to buy any more, so from here
-the clock can only run forwards and the run is finite. `spawnFlies()` exists as
-its own function for exactly this — victory refills the sky and nothing else.
+⚠️ **`noTime` deliberately STAYS TRUE**, and the clock stays paused with it.
+That flag is already doing exactly what the ending needs — no HUD, no flies, no
+coins — and clearing it would put a fly counter and a run timer over the credits.
 
-⚠️ **`bossBeaten` is load-bearing.** Victory resumes the clock at ≤ `bossAtMs`,
-which is *still below the threshold that summons him*, so without that latch the
-very next frame re-enters no-time mode and spawns a second boss on top of the
-win. Cleared only by `restart()`.
+⚠️ **`bossBeaten` is still load-bearing** even though the clock no longer
+resumes: the finale scrubs it back up THROUGH `bossAtMs`, which is the threshold
+that summons him, so without that latch the ending would spawn a second boss
+partway through itself. Cleared only by `restart()`.
 
 ⚠️ This is what forced `GameClock.started`. The loop used to start the clock
 whenever it wasn't running, which would have undone the pause on the very next
@@ -1263,6 +1274,83 @@ There is no picture to fade up, so the panel's `alpha` only ever gates the
 letters — and they are 1500ms behind it, by which point it is 1. They pop exactly
 as they do on the black screen, which is the point. `settledMs()` reads the
 shared timings, so the restart arms at the same moment either way.
+
+---
+
+## The finale
+
+`src/finale.js`. The only ending in the game that is a reward rather than a
+failure, and the only one that is earned rather than arrived at.
+
+```
+he blows up
+  → TIME COMES BACK: the clock is scrubbed -2:00 → 0:00 over finaleClockMs,
+    and the world un-bleaches from pure white to full colour as it goes,
+    while the plane glides to the middle of the screen, low, and bobs
+  → "THANK YOU FOR PLAYING"   fade up · hold · fade out
+  → "OBRIGADO"                fade up · hold · fade out
+  → the plane accelerates out to the right
+  → the LOGO runs the Mosca Boss's entrance MIRRORED: a fast pass across the
+    screen left-to-right, then in again from below and up to the middle,
+    where it stays
+  → press anything → a new run
+```
+
+⚠️ **The background transition is NOT a second thing to keep in step.** The
+bleach is read from the clock, so scrubbing the clock IS the world washing back —
+on exactly that curve, for free. Accelerating one accelerates the other by
+construction; there is no second timeline that could drift.
+
+⚠️ **The clock is SCRUBBED, not resumed.** `seek()`, every frame, while it stays
+paused. 120 seconds of game time inside 5 seconds of real time is a *position*,
+not a rate — no `gameClockRate` could express it — and a resumed clock would also
+hand the ending back to a time-over test that no longer means anything.
+
+**Every beat is a duration, never an absolute timestamp.** `_marks()` sums them
+into cumulative marks, so retiming any one shifts everything after it instead of
+leaving a hole — the same trick the intro's liftoff window uses. The words wait
+on `max(finaleClockMs, finalePlaneMoveMs)`, whichever of the two is slower.
+
+**The glide is written into `plane.x/y`; the EXIT is not.** The glide *should*
+move the camera — the world drifts into its final framing along with him. The
+exit must not: ⚠️ the camera pans off `displayX()`, so flying it through `x`
+would drag the world past its inset and expose the blank studio margin. It is a
+DRAW-only offset (`cineOffX`), the same device the entrance uses at the other end
+of the run, folded into `disp.entryOff` so render, muzzle and hitbox all pick it
+up from one place. Quadratic, so it reads as building speed rather than sliding
+off at a crawl.
+
+### The lettering
+
+Literally the same code as the end panels: `GameOver.renderTitle()` draws the
+words with no panel behind them, through the same `_title()` and the same
+`_titleFor()` merge. Same font, same weight, same colour, and any retune of
+`overTitle` reaches all five titles in the game.
+
+The finale's two configs switch the per-word reveal OFF (`d1`/`d2`/`revealMs`
+all 0) and the fades are driven by the alpha the finale passes instead — they are
+cards, not countdowns — which is why `t` can simply be 0.
+
+⚠️ **`sizePct` had to come down.** "THANK YOU FOR PLAYING" is 18 glyphs against
+TIME OVER's 8; at the panel's 20.4 it would be some 2000px wide in a 1280 frame.
+At 9.5 it measures ~960px and sits with ~160px either side. OBRIGADO gets 15.
+
+Both are drawn **outside the gate weave but under the film pass**, so the grain
+and vignette sit over them exactly as they do over the TIME OVER panel, without
+the scene's shake.
+
+### The logo
+
+`saborosa-logo-V3-low.png`, converted to `saborosa-logo.webp` (52KB → 30KB) and
+dropped at the flying-dungeon asset root — the folder `package.sh` already globs,
+so **no new `cp` line**. Same call the boom sheet made.
+
+Screen space, not world space: nothing about an end card should scroll with a
+tray the player is no longer flying over.
+
+**Nothing follows it but a restart**, armed after `finaleLogoHoldMs` — the same
+"press anything" the TIME OVER panel uses, because the player must never be left
+on a screen with no way off it.
 
 ---
 

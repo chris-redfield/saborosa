@@ -70,6 +70,34 @@
     });
   }
 
+  /* How much a single connected shot takes off. Live, so the fights can be
+     dialled while playing rather than rebuilt — the same reason coinRewindMs is
+     up here, and the same shape.
+
+     It reaches everything shootable at once: flies, coins, both bosses. Nothing
+     caches it, so a change applies on the very next frame.
+
+     ⚠️ Raising it does NOT speed a fight up in proportion, and that surprises
+     people. Every health bar in the game is gated by an i-frame window, so time
+     to kill is (health / damage) × hurtMs — damage buys you FEWER hits, not
+     faster ones. Past health/1 the fight is one hit however high it goes.
+     Integer-only for the same reason: fractional damage just moves where the
+     rounding lands in that division. */
+  const dmgEl = document.getElementById('rayDamage');
+  if (dmgEl) {
+    dmgEl.value = CONFIG.rayDamage;
+    const applyDmg = () => {
+      const v = parseFloat(String(dmgEl.value).replace(',', '.'));
+      if (isFinite(v)) CONFIG.rayDamage = Math.max(1, Math.round(v));
+      dmgEl.value = CONFIG.rayDamage;
+    };
+    dmgEl.addEventListener('change', applyDmg);
+    dmgEl.addEventListener('keydown', e => {
+      e.stopPropagation();                       // don't fire hotkeys while typing
+      if (e.key === 'Enter') { applyDmg(); dmgEl.blur(); }
+    });
+  }
+
   const fpsEl = document.getElementById('steppedFps');
   const fpsVal = document.getElementById('steppedFpsVal');
   if (fpsEl) {
@@ -104,6 +132,8 @@
   const bossBar = new BossBar(assets, CONFIG);
   const clock = new GameClock(CONFIG);
   const gameOver = new GameOver(assets, CONFIG);
+  // What beating the Time Boss gives you. `let`, like everything a run owns.
+  let finale = new Finale(assets, CONFIG);
   // Set the moment the clock runs out: {t} = ms since then, driving fade-out →
   // hold on black → fade-in of the TIME OVER panel. Null while the run is live.
   let ending = null;
@@ -154,7 +184,7 @@
   const COIN_KEYS = Object.keys(CONFIG.COIN_SHEETS);
   const TOTAL = CONFIG.FRAMES * 2
     + Plane.assetCount(CONFIG)   // poses × characters × wear packs, + the flash
-    + 6 + CONFIG.MOSCA_SHEETS.length   // fly, dead fly, boom, boss, orb, bar, + mosca
+    + 7 + CONFIG.MOSCA_SHEETS.length   // fly, dead fly, boom, boss, orb, bar, logo, + mosca
     + COIN_KEYS.length;          // + one grid sheet per coin variant
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
@@ -221,9 +251,8 @@
   // again on every restart — it CLEARS first, so a restart doesn't stack a
   // second swarm on top of the leftovers of the last run.
   // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
-  // across the width is fair game). Killed flies are gone for good. Its own
-  // function because BEATING THE BOSS refills the sky and nothing else: time
-  // comes back, the flies come back, the coins do not.
+  // across the width is fair game). Killed flies are gone for good — and with
+  // flyCount at 3, killing all of them is what summons the Mosca Boss.
   function spawnFlies() {
     enemies.length = 0;
     const worldW = bg.worldWidth(), worldH = bg.worldHeight();
@@ -271,6 +300,7 @@
     flyBoss = null;
     flyBossDone = false;
     killedBy = null;
+    finale = new Finale(assets, CONFIG);
     noTime = false;
     clock.reset();
     plane = new Plane(assets, CONFIG);
@@ -443,6 +473,9 @@
       // clock, instead of only once the number happens to have gone negative.
       if (rewindSpinT > 0) rewindSpinT = Math.max(0, rewindSpinT - dt);
       bg.update(dt, input, rewindSpinT > 0);
+      // Before plane.update, so a position the finale writes lands in THIS
+      // frame's stop-motion snapshot — which is what the camera pans off.
+      finale.update(dt, plane, clock);
       plane.update(dt, input);
       hud.update(dt);            // advances the timer's rewind jolt
       if (CONFIG.film) film.update(dt);
@@ -528,22 +561,23 @@
         const t = boss.takeThrow(worldW, planePt);
         if (t) orbs.push(new Orb(assets, CONFIG, t.x, t.y, t.dx, t.dy));
 
-        /* WON. The blast he dies in has burnt out, so give the run its time
-           back: the clock picks up from the reading it was frozen on and every
-           system that was only ever PAUSED comes back with it — the bleach
-           unwinds as the number climbs, the HUD returns, time-over is live
-           again. The sky refills with flies.
+        /* WON — and the run does not carry on. The blast he dies in has burnt
+           out, so the ENDING starts: the player stops flying and watches while
+           time comes back, the world un-bleaches, and the game says thank you.
+           See finale.js.
 
-           THE COINS DO NOT COME BACK. Which means the clock can now only ever
-           run forwards: the player is holding two minutes of credit and no way
-           to buy any more, so the run is finite from here. */
+           ⚠️ `noTime` deliberately STAYS TRUE. It is doing exactly the job the
+           finale needs — no HUD, no flies, no coins — and clearing it would put
+           a fly counter and a run timer over the credits. The clock stays paused
+           with it and is SCRUBBED by the finale instead of resumed: 120 seconds
+           of game time inside 5 seconds of real time is a position, not a rate,
+           and a resumed clock would hand the ending back to a time-over test
+           that no longer means anything. */
         if (boss.isDead()) {
           boss = null;
           bossBeaten = true;
-          noTime = false;
           orbs.length = 0;
-          clock.resume();
-          spawnFlies();
+          finale.start(plane);
         }
       }
 
@@ -753,6 +787,12 @@
       }
       ctx.restore();
 
+      // The finale's cards and logo: outside the weave (they are titles, not
+      // scenery) but UNDER the film pass, so the grain and vignette sit over
+      // them exactly as they do over the TIME OVER panel.
+      finale.renderTitles(ctx, W, H, gameOver);
+      finale.renderLogo(ctx, W, H);
+
       if (CONFIG.film) film.render(ctx, W, H);
 
       // HUD last: it must sit OUTSIDE the film pass. The vignette darkens the
@@ -783,6 +823,15 @@
       // The dip to black. LAST, so it takes the HUD down with the scene — the
       // timer reading 2:00 while everything else fades would look like the HUD
       // had come unstuck from the game.
+      // Once the logo has sat there long enough, any key, click or pad button
+      // starts a new run — the same "press anything" the TIME OVER panel arms,
+      // and for the same reason: the player must never be left on a screen with
+      // no way off it.
+      if (finale.settled()) {
+        bindRestart(true);
+        if (input.takeAnyPress()) restart();
+      }
+
       if (ending) {
         ctx.save();
         ctx.globalAlpha = CONFIG.overFadeOutMs > 0
@@ -833,6 +882,8 @@
     // tools/build-orb-frames.py. 33KB, so it loads with the rest.
     assets.loadImage('orb', CONFIG.ASSET_BASE + CONFIG.ORB_SHEET).then(tick),
     assets.loadImage('bossBar', CONFIG.ASSET_BASE + CONFIG.BAR_SHEET).then(tick),
+    // The finale's logo. 30KB, at the asset root package.sh already globs.
+    assets.loadImage('logo', CONFIG.ASSET_BASE + CONFIG.LOGO_SHEET).then(tick),
     // The Mosca Boss. PNGs, in enemy-sheets/ — a folder package.sh already
     // copies, so no new cp line. Only two of the three delivered files: 01 and
     // 03 are byte-identical (see MOSCA_CYCLE).

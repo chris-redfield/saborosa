@@ -37,6 +37,8 @@
     <hr>
     <label>rewind per clock hit
       <input type="number" id="coinRewind" min="0" max="60" step="0.5"> s</label>
+    <label>shot damage
+      <input type="number" id="rayDamage" min="1" max="99" step="1"></label>
   </div>
 
   <!--
@@ -60,7 +62,7 @@
     var files = [
       'config', 'assets', 'input', 'tray-background', 'fruit-select', 'liftoff',
       'intro', 'plane', 'fly', 'coin', 'boss', 'orb', 'boss-bar', 'fly-boss',
-      'film', 'game-clock', 'hud', 'game-over',
+      'film', 'game-clock', 'hud', 'game-over', 'finale',
       'game',
     ];
     var v = Date.now();
