@@ -170,13 +170,36 @@ class Plane {
              y: (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob - offY + c.rayOffsetY * k };
   }
 
-  render(ctx, W, H) {
+  /* How grey the plane is, 0..1, at a given GAME time. Mirrors the background's
+     drainAt() but on its own curve and its own ceiling: the world goes all the
+     way, the player only half, so it stays the thing the eye tracks even once
+     everything around it has died.
+
+     planeDrainFullMs 0 means "end with the run", same trick the background
+     uses — one number rather than two kept in step by hand. */
+  drainAt(gameMs) {
+    const c = this.cfg;
+    if (!c.planeDrainOn) return 0;
+    const end = c.planeDrainFullMs || c.timeOverMs;
+    const span = end - c.planeDrainStartMs;
+    if (span <= 0) return gameMs >= end ? c.planeDrainMax : 0;
+    const p = Math.min(1, Math.max(0, (gameMs - c.planeDrainStartMs) / span));
+    return c.planeDrainMax * Math.pow(p, c.planeDrainCurve);
+  }
+
+  // `drain` (0..1) greys the plane AND its muzzle flash — pass drainAt(clock.now()).
+  render(ctx, W, H, drain) {
     const c = this.cfg;
     const m = this._metrics(H);
     if (!m) return;
     const f = m.f, dw = m.dw, dh = m.dh, bob = m.bob;
 
     ctx.save();
+    // Set on the state INSIDE this save, so it covers the flash and the plane
+    // together — they are one object — and is undone by the restore below
+    // without touching anything else on the canvas.
+    const d = Math.min(1, Math.max(0, drain || 0));
+    if (d > 0) ctx.filter = 'saturate(' + (1 - d).toFixed(3) + ')';
     // Both offsets are DRAW-only (entryOff slides it in from the left,
     // planeOffsetY lifts it in frame); neither touches displayX/displayY, so the
     // camera keeps its own framing.

@@ -304,6 +304,17 @@ fire is held, so without `coinHurtMs` all six points drain in six frames
 the jolt window, so the i-frames are always exactly as long as the feedback
 showing them — the same bargain `flyHurtMs` makes.
 
+A non-lethal hit also plays **the fly's impact puff** — literally the same
+effect, reaching into the `fly` sheet for `FLY_RECTS[1..4]` at the same 70ms
+rate, rather than owning a near-copy that could drift from it. Pinned to where
+the shot connected, not to the coin: the coin is about to be shoved backwards,
+and a puff dragged along with it would read as part of the coin instead of the
+moment of impact. `coinHitFxSize: 1.3` on a 76px coin works out to the same
+0.362 px-per-source-px the fly draws its own puff at, so it reads identically
+but follows if the coin is resized. At 280ms it outlives the 160ms hurt window,
+so held fire restarts it at each new impact point — one per coin, same as the
+fly.
+
 **The jolt is a damped oscillation, not random jitter** — noise reads as a
 rendering fault, a decaying shake reads as a flinch. `coinSpasmFreq` is radians
 across the whole jolt, and **it has to respect the frame rate**: 140ms is only
@@ -316,11 +327,55 @@ collapsed with it would flicker in and out of being shootable twice per
 rotation. The jolt is left out of the box too — a hitbox that shook with the art
 would be dodging the shot hitting it. Hold **C** to see them, in coin yellow.
 
+### Rewinding time — what a coin is FOR
+
+Every connected hit winds the run clock **back one second** (`coinRewindMs`),
+and jolts the HUD timer to show it.
+
+This is not just a number moving. The colour drain and the 2:00 deadline are
+both read from that same clock, so shooting a coin makes the world visibly
+**recover its colour** and pushes time over further away. `GameClock.rewind()`
+clamps at 0, so the clock can never go negative however many coins are cashed.
+
+⚠️ **The rewind is rate-limited by the coin's i-frames, and has to be.** It only
+fires when `hit()` returns true, which is false inside `coinHurtMs` — otherwise
+the every-frame beam would wind the clock back a second *per frame* and the run
+would never end.
+
+**The economy, worth a look before shipping:**
+
+| | |
+|---|---|
+| one hit | 1s, every 160ms of held fire |
+| held fire on one coin | **6.2s of clock per real second** (net 5.1s/s backwards, against the 1.15 rate) |
+| a full coin | 12s, for ~1.9s of firing |
+| all 12 coins | **144s** — against a 120s run |
+
+So the coins on the map are worth more than the entire run length. That may be
+exactly right for a jam game about hoarding time, or `coinRewindMs` may want to
+come down; it is one number either way.
+
+**Shooting is deliberately NOT gated on `ending`.** The player keeps firing
+through the 900ms dip to black and can still hit coins and rewind there — it
+just doesn't save them, because `ending` has already latched, so those last
+seconds are bought and immediately lost. This was flagged as an edge case to
+close and was **kept on purpose**: the futile final volley is the better
+moment, and a gun that goes dead the instant the fade begins reads as the game
+having stopped listening. Don't "fix" it.
+
+**The timer's jolt is the coin's spasm**, deliberately: same damped
+oscillation, same `140ms`, same `freq 13`, so the coin's flinch and the clock's
+flinch read as one event at both ends of the screen. Only the amplitude
+differs — 3px against the coin's 5, which is 6% of the glyph height: a visible
+nudge that still leaves the digits readable. It moves **only the timer**;
+shaking the fly counter too would read as the whole HUD glitching.
+
 ### Death
 
 At 0 HP the coin **vanishes on the spot** and the main game's explosion plays
-where it was, for ~940ms, after which the coin is spliced out for good (no
-respawn, same as the flies).
+where it was, for ~850ms (`78 / 1.1` per frame — the main game's rate run 10%
+faster), after which the coin is spliced out for good (no respawn, same as the
+flies).
 
 The sheet is the main game's `saborosa-boom.png`, converted to webp for this
 build (41KB → 9KB; flat art, so lossless) and kept at its native 1228×845 so
@@ -371,9 +426,30 @@ full drain.
 `timeOverMs`, so the picture hits full black & white on the very frame time
 expires. One number, rather than two that have to be kept in step by hand.
 
-**Background only.** The plane, coins, flies and HUD keep their colour and lift
-off an increasingly dead world. That is why it lives in
-`TrayBackground.render()` and not in `film.js`.
+The **plane and its muzzle flash** drain too, but on their own curve and only
+half way — `Plane.drainAt()`, linear from **1:00 to 2:00, capping at 50%**. So
+the world dies around a player still holding some of its colour, and the plane
+stays what the eye tracks at the end instead of dissolving into the greyscale
+with everything else. Starting a full minute in, when the background is already
+23% gone, keeps the two readable as separate events rather than one global fade.
+
+| game | wall | background | plane |
+|---|---|---|---|
+| 0:20 | 0:17 | — | — |
+| 1:00 | 0:52 | 23% | — |
+| 1:30 | 1:18 | 57% | 25% |
+| 2:00 | 1:44 | **100%** | **50%** |
+
+The plane uses `ctx.filter = saturate()`, **not** the background's blend-mode
+fill — a fill would have to be clipped to the plane, and clipping to its BOX
+would grey a rectangle of the background behind it. The plane is ~7% of the
+canvas so a filter pass over it is cheap, and it is set inside the plane's own
+`save()` so it covers the flash and the plane together and is undone by the
+matching `restore()`. Where `ctx.filter` is unsupported the assignment is
+simply ignored and the plane stays in colour — a safe failure, unlike the blend
+mode's.
+
+**Coins, flies and the HUD keep their colour** entirely.
 
 Three ways NOT to do it, all rejected for a reason:
 

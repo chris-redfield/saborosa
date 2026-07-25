@@ -301,6 +301,7 @@
       }
       bg.update(dt, input);
       plane.update(dt, input);
+      hud.update(dt);            // advances the timer's rewind jolt
       if (CONFIG.film) film.update(dt);
       const W = canvas.width, H = canvas.height;
       // The tray world is larger than the canvas; the camera shows a cropped
@@ -327,6 +328,12 @@
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
       let ray = null;
+      // Deliberately NOT gated on `ending`: the player keeps firing through the
+      // 900ms dip to black, and can still hit coins and wind the clock back
+      // there. It does not save them — `ending` has already latched — so those
+      // last seconds are bought and immediately lost. Kept because the futile
+      // final volley is the better moment; a gun that goes dead the instant the
+      // fade starts just feels like the game stopped listening.
       if (input.firing && !plane.controlLocked) {
         const m = plane.muzzle(W, H);
         if (m) {
@@ -343,7 +350,16 @@
           for (const cn of coins) {
             if (!cn.isShootable()) continue;
             for (const b of cn.boxes(camX, camY, worldW)) {
-              if (rayHitsBox(ray, CONFIG.rayThickness, b)) { cn.hit(CONFIG.rayDamage); break; }
+              if (!rayHitsBox(ray, CONFIG.rayThickness, b)) continue;
+              // hit() returns false inside the coin's i-frames, so the rewind
+              // is rate-limited by exactly the same window as the damage —
+              // otherwise the every-frame beam would wind the clock back a
+              // second per FRAME and the run would never end.
+              if (cn.hit(CONFIG.rayDamage)) {
+                clock.rewind(CONFIG.coinRewindMs);
+                hud.jolt();
+              }
+              break;
             }
           }
         }
@@ -362,7 +378,9 @@
       // so nothing the player is aiming at should ever be hidden behind one.
       for (const c of coins) c.render(ctx, camX, camY, worldW);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
-      plane.render(ctx, W, H);
+      // The plane drains too, but on its own curve and only half way — see
+      // Plane.drainAt(). Same game clock, deliberately different pace.
+      plane.render(ctx, W, H, plane.drainAt(clock.now()));
       // Coin explosions LAST, over everything in the world: a blast that a
       // passing fly could stand in front of would read as a glitch. No-op for
       // every coin that isn't currently exploding.

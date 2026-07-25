@@ -183,6 +183,18 @@ const CONFIG = {
   hudFont: 'Futura, "Futura PT", "Futura Std", "Century Gothic", "URW Gothic", "Avant Garde", "Trebuchet MS", sans-serif',
   hudWeight: 'bold',
   hudSize: 26 * 1.25,    // px, in the canvas's fixed 1280x720 space
+  // The timer's jolt when a coin hit rewinds the clock. Deliberately the SAME
+  // damped oscillation, at the same rate and length, that the coin itself does
+  // when shot (coinSpasm*) — the coin's flinch and the clock's flinch should
+  // read as one event happening at both ends of the screen.
+  //
+  // ONLY the amplitude differs, and it is the whole constraint here: the digits
+  // have to stay readable while they move. 3px on a 50px timer is a nudge you
+  // can see without losing the number; much past that and it smears.
+  hudJoltMs: 140,        // = coinSpasmMs
+  hudJoltFreq: 13,       // = coinSpasmFreq (≈2 cycles; see the aliasing note there)
+  hudJoltAmp: 3,         // px — the coin shakes 5, the text has to shake less
+  hudJoltScale: 0.06,    // size pop — half the coin's, for the same reason
   hudMargin: 22,         // px in from the canvas edge — governs BOTH the top
                          // labels' gap from the top and the timer's from the
                          // bottom, so the block stays symmetric when retuned
@@ -252,6 +264,27 @@ const CONFIG = {
   // Fraction of black laid over the background at full drain; 0 = greyscale
   // only, no dimming.
   drainDarken: 0.12,
+
+  // --- Colour drain: the plane (and its muzzle flash) ----------------------
+  // The player drains too, but on its OWN curve and only HALF WAY. The world
+  // dies around a plane that is still holding some of its colour, so it stays
+  // the thing your eye tracks even at the end — which it would not if it faded
+  // into the greyscale with everything else.
+  //
+  // Starts a full minute in, when the background is already well on its way, so
+  // the two are visibly separate events rather than one global fade.
+  //
+  // Done with ctx.filter = saturate(), NOT the background's blend-mode fill: a
+  // fill would have to be clipped to the plane, and clipping to its BOX would
+  // grey a rectangle of the background behind it. The plane is ~7% of the
+  // canvas, so a filter pass over it is cheap. Where ctx.filter is unsupported
+  // the assignment is simply ignored and the plane stays in colour — a safe
+  // failure, unlike the blend mode's.
+  planeDrainOn: true,
+  planeDrainStartMs: 60000,  // GAME ms — 1:00
+  planeDrainFullMs: 0,       // 0 = end with the run (timeOverMs), i.e. 2:00
+  planeDrainMax: 0.5,        // caps HALF grey and goes no further
+  planeDrainCurve: 1,        // linear: an even slide from 1:00 to 2:00
   defaultReverse: true,  // free-run order before the player takes control
 
   // --- Player plane -------------------------------------------------------
@@ -510,6 +543,16 @@ const CONFIG = {
   // backwards at the speed it was drifting, its spin runs backwards with it,
   // and it jolts. Holding fire therefore walks a coin back up the screen
   // against its own drift.
+  // THE POINT OF THE COIN: every connected hit winds the run clock BACK by this
+  // much game time. Shooting a coin buys you time — 12 hits, so a full coin is
+  // worth 12 seconds off the clock.
+  //
+  // It rewinds the game clock, which the colour drain and the 2:00 deadline are
+  // both read from, so this does not just move a number: the world visibly
+  // RECOVERS its colour as you shoot, and time over is pushed further away.
+  // GameClock.rewind() clamps at 0, so the clock can never go negative however
+  // many coins are cashed in.
+  coinRewindMs: 1000,    // GAME ms — one second on the HUD per hit
   coinHealth: 12,
   // The rate limit, and it is NOT optional: the beam is re-tested every frame
   // while fire is held, so without it the whole health bar drains in as many
@@ -535,6 +578,19 @@ const CONFIG = {
   // into the random-looking jitter the damped shake exists to avoid.
   coinSpasmFreq: 13,
   coinSpasmScale: 0.12,  // size pop at the moment of impact, decaying to 0
+  // The impact puff — the SAME one a non-lethal hit puts on a fly: the fly
+  // sheet's burst frames (FLY_RECTS 1..4), pinned to where the shot connected
+  // rather than following the coin, so it doesn't get dragged backwards with
+  // the knockback.
+  coinHitFxFrames: 4,    // = FLY_RECTS.length - 1, the whole burst
+  coinHitFxMs: 70,       // = flyHitBurstMs
+  // Size of the puff at its widest frame, as a multiple of the coin. 1.3 on a
+  // 76px coin works out to the same 0.362 px-per-source-px the fly draws its
+  // puff at, so it reads identically — but follows if the coin is resized.
+  coinHitFxSize: 1.3,
+  // NOTE: 4 × 70 = 280ms is LONGER than coinHurtMs (160), so held fire
+  // re-triggers the puff before it ends. Same as the fly: there is only ever
+  // one per coin, so a new hit just restarts it at the new impact point.
   // --- Death: the coin explodes and is gone --------------------------------
   // The main game's explosion sheet, converted to webp for this build (41KB ->
   // 9KB; it is flat art, so lossless). Frame coords are unchanged because the
@@ -561,7 +617,9 @@ const CONFIG = {
     [663, 616,  99,  84],
     [901, 615,  56,  67],   // spans a second fleck at x 920
   ],
-  coinBoomMs: 78,        // ms per frame — 12 × 78 ≈ 940ms for the whole blast
+  // ms per frame. 78 was the main game's rate; /1.1 runs it 10% faster, so the
+  // whole blast is ~852ms instead of ~940ms.
+  coinBoomMs: 78 / 1.1,
   // Size of the blast AT ITS PEAK, as a multiple of the coin's drawn size. One
   // scale is derived from this and applied to every frame, so the frames keep
   // their relative sizes and the animation still grows and shrinks. Measured

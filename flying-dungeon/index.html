@@ -30,21 +30,37 @@
     <label><input type="checkbox" id="film" checked> old-film style</label>
   </div>
 
-  <!-- Load order matters (plain globals, like the main Saborosa game). -->
-  <script src="src/config.js"></script>
-  <script src="src/assets.js"></script>
-  <script src="src/input.js"></script>
-  <script src="src/tray-background.js"></script>
-  <script src="src/fruit-select.js"></script>
-  <script src="src/liftoff.js"></script>
-  <script src="src/intro.js"></script>
-  <script src="src/plane.js"></script>
-  <script src="src/fly.js"></script>
-  <script src="src/coin.js"></script>
-  <script src="src/film.js"></script>
-  <script src="src/game-clock.js"></script>
-  <script src="src/hud.js"></script>
-  <script src="src/game-over.js"></script>
-  <script src="src/game.js"></script>
+  <!--
+    Load order matters (plain globals, like the main Saborosa game).
+
+    Written out by script rather than as plain tags so each file can carry a
+    cache-busting ?v=. Twice now a change has landed in the source and dist and
+    STILL thrown "x is not a function" in the browser, because it was running a
+    cached copy of a file whose URL had not changed — which looks exactly like a
+    bug in the new code and wastes a debugging session proving it isn't.
+
+    The whole of src/ is 184KB against ~30MB of art, so never caching it costs
+    nothing; the assets, which are the expensive part, cache exactly as before.
+
+    `async = false` is what preserves execution ORDER for scripts inserted this
+    way — without it these would run in whatever order they finish downloading,
+    and the globals would not be defined when game.js goes looking for them.
+  -->
+  <script>
+  (function () {
+    var files = [
+      'config', 'assets', 'input', 'tray-background', 'fruit-select', 'liftoff',
+      'intro', 'plane', 'fly', 'coin', 'film', 'game-clock', 'hud', 'game-over',
+      'game',
+    ];
+    var v = Date.now();
+    for (var i = 0; i < files.length; i++) {
+      var s = document.createElement('script');
+      s.src = 'src/' + files[i] + '.js?v=' + v;
+      s.async = false;             // keep load order — see above
+      document.head.appendChild(s);
+    }
+  })();
+  </script>
 </body>
 </html>

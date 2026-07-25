@@ -55,6 +55,7 @@ class Coin {
     this.boomT = 0;             // ms into the explosion
     this.boomX = 0;             // where it died, frozen — the blast doesn't
     this.boomY = 0;             // inherit the drift or keep bobbing
+    this.hitFx = null;          // {x, y, t} — impact puff from a non-lethal hit
   }
 
   isShootable() { return this.state === 'alive'; }
@@ -68,7 +69,14 @@ class Coin {
     if (this.state !== 'alive' || this.hurtT > 0) return false;
     this.hp -= (dmg === undefined ? 1 : dmg);
     if (this.hp <= 0) this._explode();
-    else { this.hurtT = this.cfg.coinHurtMs; this.spasmT = 0; }
+    else {
+      this.hurtT = this.cfg.coinHurtMs;
+      this.spasmT = 0;
+      // Pinned to where the shot connected, NOT to the coin — the coin is about
+      // to be shoved backwards, and a puff dragged along with it would read as
+      // part of the coin rather than as the moment of impact.
+      this.hitFx = { x: this.x, y: this.y + this._bob(), t: 0 };
+    }
     return true;
   }
 
@@ -83,6 +91,7 @@ class Coin {
     this.boomY = this.y + this._bob();
     this.hurtT = 0;
     this.spasmT = -1;
+    this.hitFx = null;          // the explosion supersedes the last hit's puff
   }
 
   update(dt, worldW) {
@@ -98,6 +107,10 @@ class Coin {
 
     this.phase += dt / 1000;
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    if (this.hitFx) {
+      this.hitFx.t += dt;
+      if (this.hitFx.t >= c.coinHitFxFrames * c.coinHitFxMs) this.hitFx = null;
+    }
     if (this.spasmT >= 0) {
       this.spasmT += dt;
       if (this.spasmT >= c.coinSpasmMs) this.spasmT = -1;
@@ -202,34 +215,63 @@ class Coin {
     }
   }
 
-  /* The death explosion, drawn in its OWN pass — the shell calls this after the
-     flies and the plane, so a blast is never occluded by something flying in
-     front of it. A no-op for every coin that isn't exploding.
-
-     One scale for all twelve frames, so they keep their relative sizes and the
-     animation still grows and fades; it is derived from the WIDEST frame so
-     coinBoomSize means "how big the peak is", which is the thing you actually
-     want to dial. */
+  /* Both hit effects, drawn in their OWN pass — the shell calls this after the
+     flies and the plane, so neither is ever occluded by something flying in
+     front of it. A no-op for a coin that is neither exploding nor freshly hit. */
   renderBurst(ctx, camX, camY, worldW) {
-    if (this.state !== 'boom') return;
-    const c = this.cfg, rects = c.BOOM_RECTS;
-    const i = Math.min(rects.length - 1, Math.floor(this.boomT / c.coinBoomMs));
-    const r = rects[i];
-    if (!r) return;
-    const sheet = this.assets.getDrawable('boom');
-    if (!sheet) return;
+    this._blitHitFx(ctx, camX, camY, worldW);
+    this._blitBoom(ctx, camX, camY, worldW);
+  }
 
-    let widest = 1;
-    for (const f of rects) if (f[2] > widest) widest = f[2];
-    const s = (c.coinSizePx * c.coinBoomSize) / widest;
+  // Blit one sprite at a frozen WORLD point, across all three wrap copies.
+  // `size` is the drawn width of the sheet's WIDEST frame in the set, which is
+  // what the two coin*Size knobs are expressed in.
+  _blit(ctx, sheet, r, wx0, wy, camX, camY, worldW, s) {
     const dw = r[2] * s, dh = r[3] * s;
-
     ctx.imageSmoothingEnabled = true;
-    for (const wx of [this.boomX - worldW, this.boomX, this.boomX + worldW]) {
+    for (const wx of [wx0 - worldW, wx0, wx0 + worldW]) {
       ctx.save();
-      ctx.translate(wx - camX, this.boomY - camY);
+      ctx.translate(wx - camX, wy - camY);
       ctx.drawImage(sheet, r[0], r[1], r[2], r[3], -dw / 2, -dh / 2, dw, dh);
       ctx.restore();
     }
+  }
+
+  static _widest(rects) {
+    let w = 1;
+    for (const f of rects) if (f[2] > w) w = f[2];
+    return w;
+  }
+
+  /* The impact puff: the fly's burst frames, played verbatim at the point the
+     shot connected. Reaching into the FLY sheet is deliberate — this is meant
+     to be the very same effect a non-lethal hit puts on a fly, so it shares its
+     art and its rate rather than owning a near-copy that could drift from it. */
+  _blitHitFx(ctx, camX, camY, worldW) {
+    const c = this.cfg, fx = this.hitFx;
+    if (!fx) return;
+    const sheet = this.assets.getDrawable('fly');
+    if (!sheet) return;
+    const i = Math.min(c.coinHitFxFrames - 1, Math.floor(fx.t / c.coinHitFxMs));
+    const r = c.FLY_RECTS[1 + i];               // 0 is the live fly; 1..4 burst
+    if (!r) return;
+    const s = (c.coinSizePx * c.coinHitFxSize) / Coin._widest(c.FLY_RECTS.slice(1));
+    this._blit(ctx, sheet, r, fx.x, fx.y, camX, camY, worldW, s);
+  }
+
+  /* The death explosion. One scale for all twelve frames, so they keep their
+     relative sizes and the animation still grows and fades; derived from the
+     WIDEST frame so coinBoomSize means "how big the peak is", which is the
+     thing you actually want to dial. With the full frame set the FIRST frame is
+     the smallest, so anchoring on it would blow the blast up. */
+  _blitBoom(ctx, camX, camY, worldW) {
+    if (this.state !== 'boom') return;
+    const c = this.cfg, rects = c.BOOM_RECTS;
+    const r = rects[Math.min(rects.length - 1, Math.floor(this.boomT / c.coinBoomMs))];
+    if (!r) return;
+    const sheet = this.assets.getDrawable('boom');
+    if (!sheet) return;
+    const s = (c.coinSizePx * c.coinBoomSize) / Coin._widest(rects);
+    this._blit(ctx, sheet, r, this.boomX, this.boomY, camX, camY, worldW, s);
   }
 }

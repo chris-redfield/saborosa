@@ -17,6 +17,37 @@
 class Hud {
   constructor(cfg) {
     this.cfg = cfg;
+    this.joltT = -1;        // ms into the timer's jolt; <0 = not jolting
+  }
+
+  /* Time just went BACKWARDS — shake the timer so the player sees the number
+     move rather than merely reading a smaller one.
+
+     Deliberately the SAME damped oscillation the coin does when it is shot
+     (Coin._spasm), at the same rate, so the coin's flinch and the clock's
+     flinch are visibly the same event at both ends of the screen. Only the
+     amplitude differs: this one has to stay small enough to read digits
+     through. */
+  jolt() { this.joltT = 0; }
+
+  update(dt) {
+    if (this.joltT < 0) return;
+    this.joltT += dt;
+    if (this.joltT >= this.cfg.hudJoltMs) this.joltT = -1;
+  }
+
+  // {dx, dy, k} — offset in px and a size multiplier, or null when at rest.
+  _jolt() {
+    const c = this.cfg;
+    if (this.joltT < 0 || !(c.hudJoltMs > 0)) return null;
+    const p = Math.min(1, this.joltT / c.hudJoltMs);
+    const decay = 1 - p;
+    const w = Math.sin(p * c.hudJoltFreq) * decay;
+    return {
+      dx: w * c.hudJoltAmp,
+      dy: w * c.hudJoltAmp * 0.4,
+      k: 1 + c.hudJoltScale * decay,
+    };
   }
 
   _font(size) { return `${this.cfg.hudWeight} ${size}px ${this.cfg.hudFont}`; }
@@ -58,8 +89,15 @@ class Hud {
     // SAME hudMargin the corner labels use at the top — 'bottom' baseline
     // against H - margin mirrors 'top' baseline against margin — so the block
     // stays symmetric on its own if the margin is ever retuned.
-    ctx.font = this._font(c.hudTimerSize);
-    this._text(ctx, this._clock(state.timeMs || 0), W / 2, H - m, 'center', 'bottom');
+    //
+    // The jolt moves ONLY the timer: it is the thing that changed, and shaking
+    // the fly counter alongside it would read as the whole HUD glitching.
+    // Scaled about the text's own anchor (centre / bottom baseline), so it
+    // pulses in place instead of walking off its margin.
+    const j = this._jolt();
+    ctx.font = this._font(c.hudTimerSize * (j ? j.k : 1));
+    this._text(ctx, this._clock(state.timeMs || 0),
+               W / 2 + (j ? j.dx : 0), H - m + (j ? j.dy : 0), 'center', 'bottom');
 
     ctx.restore();
   }
