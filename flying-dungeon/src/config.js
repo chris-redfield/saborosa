@@ -363,6 +363,46 @@ const CONFIG = {
   flyMaxTilt: 15,        // deg — frame rotation at full vertical speed
   flyTiltEase: 9,        // how fast the tilt eases toward the heading (1/sec)
 
+  // --- Coins ---------------------------------------------------------------
+  // The spinning time-coin. Built by tools/build-coin-frames.py and timed in
+  // tools/coin-anim.html — the numbers below are that tool's config dump.
+  //
+  // ONLY the upright spin (01) is in the game. The tilted/isometric one (02) is
+  // still built and still previewable in tools/coin-anim.html — it just isn't
+  // used here. Both share one cell size, so putting it back (or swapping to it)
+  // is purely a matter of this map: add the line, and coins are dealt the
+  // variants round-robin with no other change anywhere.
+  COIN_SHEETS: {
+    '01': 'coin/saborosa-coin-time-01.webp',
+  },
+  // A uniform grid: frame k is (k*COIN_CELL, 0, COIN_CELL, COIN_CELL). The
+  // masters are NOT laid out like this — the build script re-lays them. Change
+  // either of these only alongside a rebuild.
+  COIN_CELL: 160,
+  COIN_FRAMES: 22,       // one full rotation
+  coinCount: 12,         // how many drift the world at once
+  // Drawn height in the fixed 1280x720 canvas, NOT a fraction of it — the coin
+  // is a pickup sized against the plane and the HUD, both of which are also in
+  // canvas px, rather than something that should grow with the window.
+  coinSizePx: 76,
+  coinHoldMs: 60,        // per-frame hold: 22 frames ≈ 1.3s for a full turn
+  // X only, always leftward, wrapping at the world width — the fly's drift
+  // without the fly's darting. The spread stops the field moving as one block.
+  coinSpeed: 120,        // world px/sec
+  coinSpeedVar: 0.25,    // ± this fraction, per coin
+  // The bob, lifted from the plane (bobFreq/bobRel/bobMin) so a coin floats on
+  // the same air the plane rides. Kept as its own keys so retuning the coin
+  // can't move the plane. At 76px, bobRel gives 3.8px and the floor wins, so
+  // the coin bobs 6px — a little, which is the point.
+  coinBobFreq: 2.52,     // rad/sec
+  coinBobRel: 0.05,      // amplitude ÷ drawn size
+  coinBobMin: 6,         // px floor
+  // Where they spawn down the world, as fractions of its height. Kept clear of
+  // the corpse floor plane at the bottom (corpsePlaneTop 0.899) so coins don't
+  // sit buried in the tablecloth.
+  coinBandTop: 0.10,
+  coinBandBottom: 0.80,
+
   // --- Shooting -----------------------------------------------------------
   // Firing projects a thin hitscan line forward from the nose. Anything whose
   // collision box the line crosses is hit and plays its burst animation.
@@ -411,4 +451,23 @@ const CONFIG = {
   gunOffRefScale: 0.32,  // the planeScale the offsets below were dialled in at
   gunOffX: 12,           // px toward the plane (closes the nose gap)
   gunOffY: 5,            // px upward, level pose only (aligns with the muzzle)
+  // Size of the flash relative to the plane's own box. 1 = the original, where
+  // the flash sheet was drawn at exactly the plane's size.
+  //
+  // It grows about the MUZZLE, not the box centre — see gunAnchor* — so the
+  // flash stays welded to the nose at any value and gunOffX/gunOffY keep
+  // meaning what they always meant. Scaling about the centre instead would
+  // push the attach point right and down and force both offsets to be re-tuned
+  // every time this changed.
+  gunScale: 1.30,
+  // Where the flash meets the nose, as a fraction of the flash frame. MEASURED,
+  // not guessed: the fire frames are 1980x1521, exactly 3x the 660x507 plane
+  // frames, so the two share a registration and the flash's position inside its
+  // frame is meaningful. Across the 6 frames the flash's left edge sits at plane
+  // x 425-441 (mean 432, with the rest-pose nose tip at 422) and the centroid of
+  // its leftmost 30 columns at y 280-290 (mean 286).
+  //   432.3 / 660 = 0.655      285.7 / 507 = 0.564
+  // Re-measure if the fire art is redrawn.
+  gunAnchorX: 0.655,
+  gunAnchorY: 0.564,
 };

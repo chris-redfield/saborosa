@@ -185,16 +185,26 @@ class Plane {
     if (this.flip) ctx.scale(-1, 1);
     ctx.imageSmoothingEnabled = true;
 
-    // Flash first (behind the plane). Same box as the plane → inherits flip+bob.
-    // Offsets were tuned at gunOffRefScale, so rescale them with planeScale to
-    // stay glued to the nose at any size. The upward nudge only aligns on the
-    // level pose; drop it when pitched.
+    // Flash first (behind the plane). Drawn in the plane's own box → inherits
+    // flip+bob. Offsets were tuned at gunOffRefScale, so rescale them with
+    // planeScale to stay glued to the nose at any size. The upward nudge only
+    // aligns on the level pose; drop it when pitched.
     if (this.gunOn) {
       const g = this.assets.getDrawable(`gun_${this.gunCur % c.GUN_FRAMES}`);
       const k = c.planeScale / c.gunOffRefScale;
       const offX = c.gunOffX * k;
       const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
-      if (g) ctx.drawImage(g, -dw / 2 - offX, -dh / 2 - offY, dw, dh);
+      // gunScale grows the flash about its MUZZLE (gunAnchor*), not about the
+      // box centre. Solving "keep the anchor where it already was":
+      //   left + fx·(dw·gs) = (left₁ + fx·dw)   →   shift = fx·dw·(1 − gs)
+      // so at gs = 1 both terms vanish and this is the original draw exactly.
+      // The point of anchoring here is that the flash cannot come unstuck from
+      // the nose, and the shot line — which leaves that same muzzle — does not
+      // have to be re-derived every time the flash is resized.
+      const gs = c.gunScale || 1;
+      const gx = -dw / 2 - offX + c.gunAnchorX * dw * (1 - gs);
+      const gy = -dh / 2 - offY + c.gunAnchorY * dh * (1 - gs);
+      if (g) ctx.drawImage(g, gx, gy, dw * gs, dh * gs);
     }
     ctx.drawImage(f, -dw / 2, -dh / 2, dw, dh);
     ctx.restore();

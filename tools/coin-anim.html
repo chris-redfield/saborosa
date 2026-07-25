@@ -196,7 +196,7 @@ const params = {
   reverse: false,     // spin the other way
   playing: true,
   // --- framing ---
-  sizePx: 64,         // drawn height IN GAME PIXELS (of the 160px cell), then
+  sizePx: 76,         // drawn height IN GAME PIXELS (of the 160px cell), then
                       // scaled by the guide's fit — this is the number you set
                       // in config, not a preview zoom
   zoom: 3,            // preview magnification only; does NOT go in the config
@@ -597,13 +597,14 @@ const gF = group('FRAMING');
 fieldRefs.sizePx = numField(gF, 'coin size IN GAME px', 'px', () => params.sizePx,
   v => params.sizePx = Math.round(v), 2, 4, 720);
 buttonRow(gF, [
-  ['32', () => params.sizePx = 32, () => params.sizePx === 32],
   ['48', () => params.sizePx = 48, () => params.sizePx === 48],
   ['64', () => params.sizePx = 64, () => params.sizePx === 64],
+  ['76', () => params.sizePx = 76, () => params.sizePx === 76],
   ['96', () => params.sizePx = 96, () => params.sizePx === 96],
 ]);
 note(gF, 'The 160px cell scaled to this height, measured against the 1280×720 ' +
-         'game canvas — the cyan box. This is the number that goes in config.');
+         'game canvas — the cyan box. This is the number that goes in config, ' +
+         'and 76 is what the game is running.');
 fieldRefs.zoom = numField(gF, 'preview zoom (not in config)', '×', () => params.zoom,
   v => params.zoom = v, 0.25, 0.5, 12, 2);
 fieldRefs.offX = numField(gF, 'offset x', 'px', () => params.offX,

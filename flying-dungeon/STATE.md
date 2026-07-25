@@ -298,15 +298,14 @@ whether the rate should drop to 1.0 and the urgency come from elsewhere.
 
 ## How this work was verified
 
-No browser was available, so everything was checked with **fixed-dt headless
-harnesses** — `eval` the `src/*.js` classes under node, stub `assets`/`ctx`,
-step at 1000/60, and assert on the recorded draw calls. That caught the blank-
-frame and gap cases, the input lockout, the i-frame rate limit, and the uniform
-distributions. Visual checks were done by compositing the real webp assets
-offline with PIL and viewing the result.
+⚠️ **Don't write headless test harnesses.** Early work here was checked with
+fixed-dt node harnesses (eval the classes, stub `assets`/`ctx`, assert on draw
+calls). That is no longer wanted — the tests are the author's to run, by eye,
+in the browser. Write the change, say what is unverified, hand it over.
 
-Worth rebuilding a harness early in the next session; it's cheap and it caught
-several real bugs.
+Offline measurement of ASSETS is still the right tool and still wanted:
+compositing the real webp/png with PIL, alpha bboxes, contact sheets, stacked
+frames to check registration. That is inspecting art, not testing code.
 
 ---
 

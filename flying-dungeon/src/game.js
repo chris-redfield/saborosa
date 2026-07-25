@@ -69,6 +69,9 @@
   const bg = new TrayBackground(assets, CONFIG);
   const plane = new Plane(assets, CONFIG);
   const enemies = [];
+  // Coins are their own list, not enemies: the hitscan beam iterates `enemies`,
+  // and a coin is not something you shoot.
+  const coins = [];
   const film = new Film(CONFIG);
   const hud = new Hud(CONFIG);
   const clock = new GameClock(CONFIG);
@@ -87,9 +90,11 @@
   applyFilmCss();
 
   // Loading progress across every asset the subsystems pull in (+1 for the fly).
+  const COIN_KEYS = Object.keys(CONFIG.COIN_SHEETS);
   const TOTAL = CONFIG.FRAMES * 2
     + CONFIG.CHARACTERS.length * CONFIG.CH_FRAMES
-    + CONFIG.GUN_FRAMES + 2;   // +2: the fly sheet and the dead-fly sprite
+    + CONFIG.GUN_FRAMES + 2    // +2: the fly sheet and the dead-fly sprite
+    + COIN_KEYS.length;        // + one grid sheet per coin variant
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
 
@@ -181,6 +186,7 @@
       const camY = minY + plane.displayY() * Math.max(0, maxY - minY);
 
       for (const e of enemies) e.update(dt, worldW, worldH);
+      for (const c of coins) c.update(dt, worldW);
       // Drop flies that are gone for good. Landed corpses are NOT dead — they
       // stay in the list so the pile on the floor keeps being drawn.
       for (let i = enemies.length - 1; i >= 0; i--) if (enemies[i].isDead()) enemies.splice(i, 1);
@@ -208,6 +214,9 @@
       ctx.save();
       if (CONFIG.film) ctx.translate(0, film.weaveOffset());
       bg.render(ctx, camX, camY);
+      // Coins under the flies and the plane: they are scenery to fly through,
+      // so nothing the player is aiming at should ever be hidden behind one.
+      for (const c of coins) c.render(ctx, camX, camY, worldW);
       for (const e of enemies) e.render(ctx, camX, camY, bg.worldWidth());
       plane.render(ctx, W, H);
 
@@ -277,6 +286,8 @@
     assets.loadImage('fly', CONFIG.ASSET_BASE + CONFIG.FLY_SHEET).then(tick),
     // encodeURI: this filename contains a space.
     assets.loadImage('flyDead', encodeURI(CONFIG.ASSET_BASE + CONFIG.FLY_DEAD_SHEET)).then(tick),
+    ...COIN_KEYS.map(k =>
+      assets.loadImage('coin_' + k, CONFIG.ASSET_BASE + CONFIG.COIN_SHEETS[k]).then(tick)),
   ]).then(() => {
     // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
     // across the width is fair game). Killed flies are gone for good.
@@ -285,6 +296,18 @@
       enemies.push(new Fly(assets, CONFIG,
         Math.random() * worldW,
         80 + Math.random() * Math.max(1, worldH - 160)));
+    }
+    // Coins: scattered the same way. Variants are dealt round-robin rather than
+    // rolled per coin, so that if more than one is ever configured again they
+    // are evenly represented instead of randomly lopsided. With the single
+    // upright spin configured today this just hands every coin that one.
+    const top = CONFIG.coinBandTop * worldH;
+    const span = Math.max(1, (CONFIG.coinBandBottom - CONFIG.coinBandTop) * worldH);
+    for (let i = 0; i < CONFIG.coinCount; i++) {
+      coins.push(new Coin(assets, CONFIG,
+        Math.random() * worldW,
+        top + Math.random() * span,
+        COIN_KEYS[i % COIN_KEYS.length]));
     }
     gameReady = true;
     // If the intro is still rolling, it gets to finish — startGame() runs when
