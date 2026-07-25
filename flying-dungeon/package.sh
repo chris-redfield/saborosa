@@ -25,7 +25,8 @@ fi
 rm -rf "$dist"
 mkdir -p "$dist/src" "$dist/assets/flying-dungeon/character-sheets" \
          "$dist/assets/flying-dungeon/enemy-sheets" \
-         "$dist/assets/flying-dungeon/select"
+         "$dist/assets/flying-dungeon/select" \
+         "$dist/assets/flying-dungeon/coin"
 
 # --- code ---
 cp "$here/index.html" "$dist/"
@@ -36,6 +37,7 @@ cp "$src_assets/"*.webp "$dist/assets/flying-dungeon/"
 cp "$src_assets/character-sheets/"*.png "$dist/assets/flying-dungeon/character-sheets/"
 cp "$src_assets/enemy-sheets/"*.png "$dist/assets/flying-dungeon/enemy-sheets/"
 cp "$src_assets/select/"*.webp "$dist/assets/flying-dungeon/select/"
+cp "$src_assets/coin/"*.webp "$dist/assets/flying-dungeon/coin/"
 
 # --- point the build at its local assets (single-line rewrite) ---
 sed -i "s#ASSET_BASE: '../assets-v2/flying-dungeon/'#ASSET_BASE: './assets/flying-dungeon/'#" "$dist/src/config.js"

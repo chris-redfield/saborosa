@@ -89,9 +89,14 @@ const CONFIG = {
   introLiftoffLeadMs: 250,
   // Playback rate of the takeoff itself. The window above comes from the intro
   // beats; this compresses the ANIMATION inside it without retiming the
-  // countdown. 1.2 = 20% quicker, so the plane clears frame a little earlier and
-  // the last of GO! plays with an empty sky.
-  liftSpeed: 1.2,
+  // countdown. Above 1 the plane clears frame early and the last of GO! plays
+  // with an empty sky.
+  //
+  // Held at 1 so the takeoff fills the whole derived window (3565ms at the
+  // current beats). It ran at 1.2 while the window was the 4879ms one that came
+  // from timing to STOP DECAY; retargeting to "3" already cut the window to 61%,
+  // and stacking the 20% on top of that made the roll-out read as hurried.
+  liftSpeed: 1.0,
   liftScale: 0.32 * 0.6 * 1.6,        // same size as the in-game plane
   liftStartX: -0.18,     // OFF the left edge: it enters already rolling, rather
                          // than being parked on screen waiting for the count
@@ -224,25 +229,26 @@ const CONFIG = {
   tiltMs: 110,           // ms per pitch-pose step
   moveSpeed: 0.30,       // vertical speed, stage-fraction / sec
   startX: 0.35,          // where it settles after flying in
-  // startY drives TWO things: where the sprite sits AND the vertical camera pan
-  // (camY is a function of plane.displayY()). So it is NOT the knob for "put the
-  // plane higher in frame" — changing it re-frames the background by the same
-  // move and the plane stays put relative to the shot. Left at the original 0.90
-  // so the opening framing of the tray is unchanged; use planeOffsetY below to
-  // move the plane WITHIN the frame.
-  startY: 0.90,
-  // Purely a DRAW offset, in fractions of canvas height: it lifts the plane on
-  // screen (and its muzzle with it) without touching displayY(), so the camera
-  // and the background framing are untouched. Negative = up.
+  // Where the plane spawns in its 0..1 travel range. Kept as a FRACTION of the
+  // canvas, not a pixel count, so it survives a resolution change; 100/GAME_H is
+  // the "100px up" written out rather than pre-multiplied.
   //
-  // THIS is the knob for "where the plane sits in the camera". startY (0.90)
-  // puts it at 648px — the bottom tenth — so the offset has to be big to bring
-  // it up the frame. The spawn position you get is (startY + this) × GAME_H:
-  //   -100/720 -> 548px (76% down — still the lower quarter)
-  //   -250/720 -> 398px (55% down — just below centre)
-  //   -350/720 -> 298px (41% down — just above centre)   <- current
-  // Written over GAME_H rather than as raw px so it survives a resolution change.
-  planeOffsetY: -350 / 720,
+  // startY drives TWO things: the sprite's position AND the vertical camera pan
+  // (camY is a function of plane.displayY()). So lifting it also lifts the
+  // opening shot up the tray — that is the real spawn moving, not an overlay on
+  // top of a fixed shot. The full stick still reaches the bottom of the frame,
+  // so the corpse floor plane stays reachable.
+  startY: 0.90 - 100 / 720,
+  // Purely a DRAW offset, in fractions of canvas height: it lifts the plane on
+  // screen without touching displayY(), so the camera and background framing are
+  // untouched. Negative = up. 0 = off (the default).
+  //
+  // BEWARE what it actually does: it shifts the plane's ENTIRE travel range, not
+  // just where it starts. At -450/720 the plane spawned nicely high but could
+  // fly clean off the top edge and could no longer reach below mid-screen at
+  // all — which put the corpse floor plane out of reach. Left at 0 so the full
+  // 0..1 stick maps to the full height of the frame.
+  planeOffsetY: 0,
 
   // --- Entrance -----------------------------------------------------------
   // The plane used to just BE there the instant the game screen appeared. Now

@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Time Coin Anim</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #fpsread { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #stagewrap { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#000; }
+  #stage.check { background-image:
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%),
+      linear-gradient(45deg,#141a30 25%,transparent 25%,transparent 75%,#141a30 75%);
+      background-size:32px 32px; background-position:0 0,16px 16px; }
+  #stage.white { background:#d8d8d8; }
+  #stage.magenta { background:#ff00ff; }
+  #stage.sky { background:linear-gradient(#5aa9d6,#bfe3f2); }
+  canvas#cv { display:block; position:absolute; inset:0; }
+  #loadbar { position:absolute; left:0; top:0; height:3px; width:0;
+             background:var(--accent); transition:width .12s; z-index:5; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; font-size:12px; z-index:5; }
+
+  /* ---- timeline: click a block to jump, drag its right edge to retime ---- */
+  #timeline { height:76px; background:var(--panel); border-top:1px solid #0c1226;
+              padding:8px 12px; display:flex; flex-direction:column; gap:5px; }
+  #tlbar { flex:1; display:flex; gap:1px; }
+  .blk { position:relative; background:#22304f; border:1px solid #3a4a6a; border-radius:2px;
+         color:#9ab; display:flex; align-items:center; justify-content:center;
+         cursor:pointer; user-select:none; font-size:10px; overflow:hidden; min-width:0; }
+  .blk:hover { background:#2c3e63; }
+  /* The current-frame marker flashes at the playback rate, so it stays a hair
+     lighter than the idle block instead of a hot colour — at 12+ fps a red
+     block strobes. */
+  .blk.cur { background:#2c3f68; border-color:#4d6796; color:#dceaff; }
+  /* The two edge-on slivers: the seams of the spin, worth being able to see. */
+  .blk.seam { border-color:#6a5a3a; }
+  .blk .grip { position:absolute; right:0; top:0; bottom:0; width:5px; cursor:ew-resize;
+               background:linear-gradient(90deg,transparent,#53d8fb55); }
+  .blk.pauseblk { background:#1b2440; border-style:dashed; color:#6d7e9e; }
+  #tlfoot { display:flex; gap:14px; color:#7a8aa8; font-size:11px; }
+  #tlfoot b { color:var(--ok); font-weight:normal; }
+
+  /* ---- side panel ---- */
+  #side { width:330px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:24px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; color:var(--accent); font-size:11px; letter-spacing:1px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  label.cb { display:flex; align-items:center; gap:7px; margin:7px 0; color:#cfe; cursor:pointer; }
+
+  /* numeric field: type it, arrow it, or hit the steppers. No sliders anywhere. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf .stepper { display:flex; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:74px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:22px; }
+  #dump { width:100%; height:150px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+  .note { color:#7a8aa8; font-size:11px; margin:4px 0 0; }
+  .warn { color:#d8a657; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>TIME COIN</b>
+  <span class="hint">flying-dungeon · V swap coin · Space/P play · ←/→ step · [ ] range to here · M loop/bounce · B bg · G guide · O onion · S source · R reset</span>
+  <span id="fpsread"></span>
+</div>
+<div id="main">
+  <div id="stagewrap">
+    <div id="stage" class="black">
+      <div id="loadbar"></div><div id="loadmsg">loading…</div>
+      <canvas id="cv"></canvas>
+    </div>
+    <div id="timeline">
+      <div id="tlbar"></div>
+      <div id="tlfoot">
+        <span>loop <b id="tlTotal">—</b></span>
+        <span>= <b id="tlFps">—</b></span>
+        <span>frames <b id="tlCount">—</b></span>
+        <span class="hint">click block = jump · drag right edge = retime that frame</span>
+      </div>
+    </div>
+  </div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   THE TIME COIN — two alternative spins of the same coin, 22 frames each.
+   In both, 1-11 is the clock face turning away, 12-22 the fruit face coming
+   back round, and 11/22 are the edge-on frames where it is exactly side-on.
+
+     01  UPRIGHT spin, about a vertical axis. Height constant at 151px, width
+         swinging 32px edge-on to 156px face-on. Already perfectly registered
+         in the master — every frame centre is at y=101.0 exactly.
+     02  TILTED / isometric spin. Foreshortens both ways at once, so width and
+         height move together (120x120 to 154x155) and even edge-on it is a
+         diagonal bar rather than a thin sliver.
+
+   They are alternatives, not a sequence — pick one for the game. Both are
+   built on the SAME 160px cell, so swapping between them is a filename change
+   and nothing else.
+
+   And two sources per variant, which is the other axis of the A/B:
+
+     SHEET   the built file — 22 cells of a FIXED 160x160, one row. This is
+             what the game will draw, so it is the default. Frame k is just
+             (k*160, 0, 160, 160): no per-frame table anywhere in the game.
+
+     MASTER  the raw 4387x381 strip. Its frames are hand-drawn at irregular
+             pitch (84-217px apart) and every one is a different size, so there
+             is no grid that cuts it. The tool slices it with the boxes below.
+
+   Flip between them to check the recut is faithful. The one thing the recut
+   deliberately CHANGES is 02's wobble: its frame centres drift over a 13px
+   band vertically, which on a coin spinning in place is hand jitter, and at
+   12fps it shudders. The sheet re-centres every frame. "master + original
+   wobble" puts it back so you can see what was removed and overrule the call.
+   01 is clean already, so on 01 that toggle does nothing.
+
+   Rebuild both with:  python3 tools/build-coin-frames.py --cell 160
+--------------------------------------------------------------------------- */
+const DIR    = '../assets-v2/flying-dungeon/coin/';
+const MASTER_DIR = '../assets-v2/';
+const GAME_W = 1280, GAME_H = 720;      // CONFIG.GAME_W/GAME_H — the guide box
+const CELL = 160;                       // built cell, square, SHARED by both variants
+const N    = 22;                        // frames per variant
+const SEAMS = [11, 22];                 // the edge-on frames, 1-based
+
+// Frame boxes measured off each master's alpha (build-coin-frames.py writes
+// these to the .json too). Baked in rather than fetched so the tool works
+// straight off the filesystem, with no server.
+const VARIANTS = {
+  '01': {
+    label: '01 — upright spin',
+    kind: 'Vertical axis. Constant height, width 32px edge-on to 156px face-on.',
+    boxes: [[231,26,54,151],[366,26,79,151],[533,26,103,151],[704,26,128,151],
+      [901,26,155,151],[1117,26,156,151],[1341,26,129,151],[1537,26,103,151],
+      [1728,26,79,151],[1888,26,55,151],[1997,25,32,153],[2069,26,55,151],
+      [2205,26,79,151],[2372,26,103,151],[2542,26,129,151],[2739,26,156,151],
+      [2955,26,156,151],[3179,26,129,151],[3376,26,103,151],[3567,26,79,151],
+      [3727,26,54,151],[3821,25,33,153]],
+    // Already registered: nothing to remove.
+    wobble: new Array(22).fill(0),
+  },
+  '02': {
+    label: '02 — tilted spin',
+    kind: 'Isometric. Foreshortens both ways; edge-on is a diagonal bar.',
+    boxes: [[196,218,123,124],[344,220,126,126],[515,219,131,131],[700,207,142,141],
+      [901,204,154,154],[1116,206,154,154],[1329,207,141,142],[1518,216,132,131],
+      [1699,216,125,125],[1849,218,123,123],[2014,224,120,120],[2145,224,123,123],
+      [2295,219,125,125],[2466,212,132,131],[2646,213,142,141],[2850,203,154,154],
+      [3065,203,154,155],[3288,210,142,142],[3473,213,131,131],[3656,213,125,125],
+      [3807,227,123,123],[3959,220,121,120]],
+    // Each frame's centre minus the average centre, in master px. Only y moves.
+    wobble: [-1,2,3.5,-3.5,0,2,-3,0.5,-2.5,-1.5,3,4.5,0.5,-3.5,2.5,-1,-0.5,0,-2.5,-5.5,7.5,-1],
+  },
+};
+const VKEYS = Object.keys(VARIANTS);
+const sheetURL  = v => DIR + 'saborosa-coin-time-' + v + '.webp';
+const masterURL = v => MASTER_DIR + 'saborosa-coin-time-' + v + '.png';
+
+const DEFAULT_HOLD_MS = 60;             // ≈16.7 fps — a 22-frame spin in 1.3s
+
+const params = {
+  // Per-frame hold in ms, one per SOURCE frame (index 0..21), so a hold you
+  // tune stays attached to its frame when you change the range or the step.
+  holds: new Array(N).fill(DEFAULT_HOLD_MS),
+  fps: 1000 / DEFAULT_HOLD_MS,
+  uniform: true,
+  from: 1, to: N,     // 1-based, inclusive — the slice of the spin being played
+  step: 1,            // use every Nth frame: 2 halves the frame count (11 frames)
+  endPause: 0,        // extra ms of dead air at the end of a cycle, before it restarts
+  // 'loop'   = 1..22 · 1..22 …   the real spin: it keeps turning one way
+  // 'bounce' = out and back      the coin un-spins — almost never right, but
+  //                              it is how you spot a frame that is out of order
+  mode: 'loop',
+  reverse: false,     // spin the other way
+  playing: true,
+  // --- framing ---
+  sizePx: 64,         // drawn height IN GAME PIXELS (of the 160px cell), then
+                      // scaled by the guide's fit — this is the number you set
+                      // in config, not a preview zoom
+  zoom: 3,            // preview magnification only; does NOT go in the config
+  offX: 0, offY: 0,
+  bg: 'black',        // black | check | white | magenta | sky
+  smooth: true,
+  guide: true,        // draw the 1280x720 game frame + the cell box
+  onion: false,       // ghost the previous frame, to check the spin is smooth
+  variant: '02',      // which coin — key into VARIANTS
+  source: 'sheet',    // 'sheet' (built, uniform) | 'master' (raw strip)
+  wobble: false,      // master only: re-apply the original per-frame drift (02)
+};
+
+// ---- image loading --------------------------------------------------------
+// Keyed by variant AND source, each loading on first use — no point pulling a
+// 600KB master, or the other coin, unless you actually switch to it.
+const imgs = {};
+const loadbar = document.getElementById('loadbar');
+const loadmsg = document.getElementById('loadmsg');
+function loadImg(key) {
+  const [variant, which] = key.split(':');
+  const src = which === 'sheet' ? sheetURL(variant) : masterURL(variant);
+  const im = new Image();
+  imgs[key] = im;
+  loadmsg.style.display = ''; loadmsg.textContent = 'loading ' + variant + ' ' + which + '…';
+  loadbar.style.opacity = 1; loadbar.style.width = '30%';
+  im.onload = () => { loadbar.style.width = '100%'; loadbar.style.opacity = 0;
+                      loadmsg.style.display = 'none'; };
+  im.onerror = () => {
+    loadmsg.style.display = '';
+    loadmsg.innerHTML = 'FAILED to load ' + src +
+      (which === 'sheet' ? '<br>run: python3 tools/build-coin-frames.py --cell 160' : '');
+  };
+  im.src = src;
+  return im;
+}
+function sourceImg() {
+  const key = params.variant + ':' + params.source;
+  return imgs[key] || loadImg(key);
+}
+const vdef = () => VARIANTS[params.variant];
+
+// ---- playback state ------------------------------------------------------
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const stage = document.getElementById('stage');
+let seqIdx = 0;       // index into the built sequence
+let acc = 0;          // ms accumulated in the current step
+let last = performance.now();
+let fpsSmooth = 0;
+
+// The sequence is a list of steps: {frame: 0-based source frame | -1 for the
+// end pause, ms}. `step` decimates BEFORE the bounce is built, so a bounce of
+// every-2nd-frame still turns round on a frame that is actually in the cycle.
+function sequence() {
+  const lo = Math.min(params.from, params.to) - 1;
+  const hi = Math.max(params.from, params.to) - 1;
+  let order = [];
+  for (let f = lo; f <= hi; f += params.step) order.push(f);
+  if (!order.length) order = [lo];
+  if (params.reverse) order = order.slice().reverse();
+  // Bounce walks back down WITHOUT repeating either end, so the turnaround
+  // frames are not held for two steps.
+  if (params.mode === 'bounce' && order.length > 2)
+    order = order.concat(order.slice(1, -1).reverse());
+  const steps = order.map(f => ({ frame:f, ms:Math.max(1, params.holds[f]) }));
+  if (params.endPause > 0) steps.push({ frame:-1, ms:params.endPause });
+  return steps;
+}
+let seq = sequence();
+function rebuild() { seq = sequence(); if (seqIdx >= seq.length) seqIdx = 0; drawTimeline(); dump(); }
+
+function resize() {
+  const r = stage.getBoundingClientRect();
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+function tick(now) {
+  const dt = Math.min(200, now - last); last = now;
+  fpsSmooth = fpsSmooth ? fpsSmooth * 0.9 + (1000 / Math.max(1, dt)) * 0.1 : 1000 / Math.max(1, dt);
+
+  if (params.playing && seq.length) {
+    acc += dt;
+    let guard = 0;
+    while (acc >= seq[seqIdx].ms && guard++ < 128) {
+      acc -= seq[seqIdx].ms;
+      seqIdx = (seqIdx + 1) % seq.length;
+      markCur();
+    }
+  }
+  draw();
+  const st = seq[seqIdx];
+  document.getElementById('fpsread').textContent =
+    'render ' + fpsSmooth.toFixed(0) + 'fps · step ' + (seqIdx + 1) + '/' + seq.length +
+    (st && st.frame >= 0 ? ' · frame ' + (st.frame + 1) : ' · pause');
+  requestAnimationFrame(tick);
+}
+
+/* ---------------------------------------------------------------------------
+   Draw. Everything is laid out against the GUIDE BOX — the 1280x720 game
+   canvas fitted to the stage — so `sizePx` means the same thing here as it
+   will in the game, whatever the window size. `zoom` then magnifies the whole
+   preview, guide included, and is a preview knob only.
+--------------------------------------------------------------------------- */
+function guideBox(w, h) {
+  let dw = w * 0.86, dh = dw * GAME_H / GAME_W;
+  if (dh > h * 0.86) { dh = h * 0.86; dw = dh * GAME_W / GAME_H; }
+  dw *= params.zoom / 3; dh *= params.zoom / 3;
+  return { x:(w - dw) / 2, y:(h - dh) / 2, w:dw, h:dh, k:dw / GAME_W };
+}
+
+// Where frame f sits in the current source, and how the cell maps onto it.
+// Both sources are drawn into the SAME destination cell box, so flipping
+// source cannot move the coin — only the pixels inside it change.
+function srcRect(f) {
+  if (params.source === 'sheet') return { x:f * CELL, y:0, w:CELL, h:CELL, ox:0, oy:0 };
+  // Master: the frame's own tight box, centred in a nominal CELL. Its size is
+  // preserved 1:1 (the coin really is smaller when edge-on), so the offset is
+  // half the difference — plus the original wobble if it is being shown.
+  const v = vdef(), b = v.boxes[f];
+  return { x:b[0], y:b[1], w:b[2], h:b[3],
+           ox:(CELL - b[2]) / 2, oy:(CELL - b[3]) / 2 + (params.wobble ? v.wobble[f] : 0) };
+}
+
+function drawFrame(f, box, alpha) {
+  const im = sourceImg();
+  if (!im || !im.complete || !im.naturalWidth) return;
+  const s = srcRect(f);
+  const u = box.h / CELL;                        // cell px -> stage px
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.imageSmoothingEnabled = params.smooth;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(im, s.x, s.y, s.w, s.h,
+                box.x + s.ox * u, box.y + s.oy * u, s.w * u, s.h * u);
+  ctx.restore();
+}
+
+function draw() {
+  const w = parseFloat(cv.style.width), h = parseFloat(cv.style.height);
+  ctx.clearRect(0, 0, w, h);
+  const g = guideBox(w, h);
+  const step = seq[seqIdx];
+
+  // The coin's destination: sizePx tall in GAME pixels, centred in the guide
+  // box, then nudged. Square, because the cell is square.
+  const side = params.sizePx * g.k;
+  const box = { x:g.x + g.w / 2 - side / 2 + params.offX * g.k,
+                y:g.y + g.h / 2 - side / 2 + params.offY * g.k,
+                w:side, h:side };
+
+  if (params.guide) {
+    ctx.save();
+    ctx.strokeStyle = '#53d8fb55'; ctx.lineWidth = 1;
+    ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.w, g.h);          // the 1280x720 frame
+    ctx.strokeStyle = '#e9456055';
+    ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w, box.h);  // the coin's cell
+    ctx.strokeStyle = '#e9456033';
+    ctx.beginPath();                                          // the spin axis
+    ctx.moveTo(box.x, box.y + box.h / 2); ctx.lineTo(box.x + box.w, box.y + box.h / 2);
+    ctx.moveTo(box.x + box.w / 2, box.y); ctx.lineTo(box.x + box.w / 2, box.y + box.h);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (!step) return;
+  if (step.frame < 0) return;                                 // end pause: nothing drawn
+  // Onion skin: the step BEFORE this one, ghosted. A frame drawn out of order
+  // shows up as a jump between the ghost and the solid.
+  if (params.onion) {
+    const prev = seq[(seqIdx - 1 + seq.length) % seq.length];
+    if (prev && prev.frame >= 0) drawFrame(prev.frame, box, 0.28);
+  }
+  drawFrame(step.frame, box, 1);
+}
+
+// ---- timeline ------------------------------------------------------------
+const tlbar = document.getElementById('tlbar');
+function drawTimeline() {
+  const total = seq.reduce((s, st) => s + st.ms, 0) || 1;
+  const frameSteps = seq.filter(s => s.frame >= 0).length;
+  tlbar.innerHTML = '';
+  seq.forEach((st, i) => {
+    const el = document.createElement('div');
+    const isSeam = st.frame >= 0 && SEAMS.includes(st.frame + 1);
+    el.className = 'blk' + (st.frame < 0 ? ' pauseblk' : '') +
+                   (isSeam ? ' seam' : '') + (i === seqIdx ? ' cur' : '');
+    el.style.flex = st.ms + ' 1 0';
+    el.title = st.frame < 0 ? 'end pause ' + st.ms + 'ms'
+             : 'frame ' + (st.frame + 1) + ' — ' + st.ms + 'ms' + (isSeam ? ' (edge-on)' : '');
+    // At 22 blocks there is no room for "f12 · 60ms" — the number alone, and
+    // the ms in the tooltip and the selected-frame field.
+    el.textContent = st.frame < 0 ? '·' : (st.frame + 1);
+    if (st.frame >= 0) {
+      const grip = document.createElement('div');
+      grip.className = 'grip';
+      grip.title = 'drag to retime frame ' + (st.frame + 1);
+      grip.addEventListener('pointerdown', e => startDrag(e, st.frame, total));
+      el.appendChild(grip);
+    }
+    el.addEventListener('pointerdown', e => {
+      if (e.target.classList.contains('grip')) return;
+      seqIdx = i; acc = 0; params.playing = false; markCur(); refreshAll();
+    });
+    tlbar.appendChild(el);
+  });
+  document.getElementById('tlTotal').textContent = total + 'ms';
+  document.getElementById('tlFps').textContent =
+    (1000 / (total / Math.max(1, frameSteps))).toFixed(1) + ' fps avg';
+  document.getElementById('tlCount').textContent = frameSteps + ' of ' + N;
+  modeNote.textContent = modeText();
+}
+function markCur() {
+  [...tlbar.children].forEach((c, i) => c.classList.toggle('cur', i === seqIdx));
+  if (fieldRefs.selHold) fieldRefs.selHold.show();
+}
+function startDrag(e, frame, total) {
+  e.preventDefault(); e.stopPropagation();
+  const startX = e.clientX, startMs = params.holds[frame];
+  const pxPerMs = tlbar.getBoundingClientRect().width / total;
+  const move = ev => {
+    const ms = Math.max(8, Math.round((startMs + (ev.clientX - startX) / pxPerMs) / 2) * 2);
+    params.holds[frame] = ms; params.uniform = false;
+    refreshAll(); rebuild();
+  };
+  const up = () => { window.removeEventListener('pointermove', move);
+                     window.removeEventListener('pointerup', up); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', up);
+}
+// Which source frame the playhead is on (for the per-frame hold field).
+function curFrame() { const s = seq[seqIdx]; return s && s.frame >= 0 ? s.frame : 0; }
+
+/* ---------------------------------------------------------------------------
+   UI: number fields, not sliders. Each is [−][ typed value ][+] — click the
+   steppers, type an exact number, or focus it and use ↑/↓ (shift = ×10).
+--------------------------------------------------------------------------- */
+const side = document.getElementById('side');
+const fieldRefs = {};
+
+function group(title) {
+  const g = document.createElement('div'); g.className = 'group';
+  if (title) { const h = document.createElement('h3'); h.textContent = title; g.appendChild(h); }
+  side.appendChild(g); return g;
+}
+function note(parent, text, warn) {
+  const d = document.createElement('div');
+  d.className = 'note' + (warn ? ' warn' : ''); d.textContent = text;
+  parent.appendChild(d); return d;
+}
+
+function numField(parent, label, unit, get, set, step, min, max, decimals = 0) {
+  const wrap = document.createElement('div'); wrap.className = 'nf';
+  const lbl = document.createElement('span'); lbl.className = 'lbl'; lbl.textContent = label;
+  const stepper = document.createElement('div'); stepper.className = 'stepper';
+  const minus = document.createElement('button'); minus.className = 'st'; minus.textContent = '−';
+  const inp = document.createElement('input'); inp.type = 'text'; inp.inputMode = 'decimal';
+  const plus = document.createElement('button'); plus.className = 'st'; plus.textContent = '+';
+  const u = document.createElement('span'); u.className = 'unit'; u.textContent = unit || '';
+
+  const show = () => { inp.value = Number(get()).toFixed(decimals); };
+  const apply = v => {
+    if (!isFinite(v)) return show();
+    set(Math.min(max, Math.max(min, v)));
+    show(); rebuild();
+  };
+  const bump = mult => apply(Number(get()) + step * mult);
+
+  minus.onclick = e => bump(e.shiftKey ? -10 : -1);
+  plus.onclick  = e => bump(e.shiftKey ?  10 :  1);
+  inp.onchange = () => apply(parseFloat(inp.value.replace(',', '.')));
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowUp')   { e.preventDefault(); bump(e.shiftKey ?  10 :  1); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); bump(e.shiftKey ? -10 : -1); }
+    if (e.key === 'Enter')     { inp.blur(); }
+    e.stopPropagation();                                  // don't fire hotkeys while typing
+  };
+  inp.onfocus = () => inp.select();
+
+  stepper.append(minus, inp, plus);
+  wrap.append(lbl, stepper, u);
+  parent.appendChild(wrap);
+  show();
+  return { show };
+}
+
+function checkbox(parent, label, get, set) {
+  const l = document.createElement('label'); l.className = 'cb';
+  const c = document.createElement('input'); c.type = 'checkbox'; c.checked = !!get();
+  c.onchange = () => { set(c.checked); refreshAll(); rebuild(); };
+  l.append(c, document.createTextNode(label));
+  parent.appendChild(l);
+  return { show: () => { c.checked = !!get(); } };
+}
+
+function buttonRow(parent, defs) {
+  const r = document.createElement('div'); r.className = 'row';
+  const btns = defs.map(([txt, fn, isOn]) => {
+    const b = document.createElement('button'); b.textContent = txt;
+    b.onclick = () => { fn(); refreshAll(); rebuild(); };
+    b._isOn = isOn; r.appendChild(b); return b;
+  });
+  parent.appendChild(r);
+  return { show: () => btns.forEach(b => b.classList.toggle('on', b._isOn ? !!b._isOn() : false)) };
+}
+
+// --- which coin -----------------------------------------------------------
+// First panel, because it changes what everything below is describing. Timing,
+// range and framing are all kept across a swap on purpose — that is the whole
+// point of the shared cell: you tune a spin once and A/B the two coins under
+// identical settings.
+const gV = group('WHICH COIN');
+buttonRow(gV, VKEYS.map(k => [VARIANTS[k].label, () => setVariant(k),
+                              () => params.variant === k]));
+const varNote = note(gV, '');
+function setVariant(k) { params.variant = k; sourceImg(); }
+
+// --- timing ---------------------------------------------------------------
+const gT = group('TIMING');
+fieldRefs.fps = numField(gT, 'frame rate (all frames)', 'fps',
+  () => params.fps, v => setFps(v), 0.5, 0.5, 60, 2);
+buttonRow(gT, [
+  ['8 fps',  () => setFps(8)],   ['12 fps', () => setFps(12)],
+  ['60ms',   () => setHoldMs(DEFAULT_HOLD_MS), () => params.uniform && params.holds[0] === DEFAULT_HOLD_MS],
+  ['20 fps', () => setFps(20)],  ['24 fps', () => setFps(24)],  ['30 fps', () => setFps(30)],
+]);
+note(gT, 'A full 22-frame turn: 24fps ≈ 0.9s · 16.7fps ≈ 1.3s · 12fps ≈ 1.8s');
+function setFps(f) { setHoldMs(Math.round(1000 / f), f); }
+// Stamp one hold onto every frame. `fps` is just the readout of that hold, so
+// the field and the per-frame values never disagree.
+function setHoldMs(ms, fps) {
+  params.holds = new Array(N).fill(ms);
+  params.fps = fps !== undefined ? fps : 1000 / ms;
+  params.uniform = true;
+  if (fieldRefs.fps) fieldRefs.fps.show();
+}
+// One field for the frame the playhead is on, rather than 22 stacked fields —
+// click a block (or step to it) and retime it here. Same value the timeline
+// grip drags.
+fieldRefs.selHold = numField(gT, 'hold on the CURRENT frame', 'ms',
+  () => params.holds[curFrame()],
+  v => { params.holds[curFrame()] = Math.round(v); params.uniform = false; },
+  10, 8, 4000);
+buttonRow(gT, [['level all frames to this', () => setHoldMs(params.holds[curFrame()])]]);
+fieldRefs.endPause = numField(gT, 'pause at cycle end', 'ms',
+  () => params.endPause, v => params.endPause = Math.round(v), 50, 0, 5000);
+
+// --- range ----------------------------------------------------------------
+const gR = group('WHICH FRAMES');
+buttonRow(gR, [
+  ['full spin 1–22',   () => setRange(1, N),  () => params.from === 1 && params.to === N],
+  ['clock face 1–11',  () => setRange(1, 11), () => params.from === 1 && params.to === 11],
+  ['fruit face 12–22', () => setRange(12, N), () => params.from === 12 && params.to === N],
+]);
+fieldRefs.from = numField(gR, 'first frame', '', () => params.from,
+  v => params.from = Math.round(v), 1, 1, N);
+fieldRefs.to = numField(gR, 'last frame', '', () => params.to,
+  v => params.to = Math.round(v), 1, 1, N);
+fieldRefs.step = numField(gR, 'use every Nth frame', '', () => params.step,
+  v => params.step = Math.round(v), 1, 1, 8);
+note(gR, 'step 2 halves the sheet to 11 frames — check whether the spin still ' +
+         'reads before paying for all 22.');
+function setRange(a, b) { params.from = a; params.to = b; seqIdx = 0; acc = 0; }
+
+// --- cycle ----------------------------------------------------------------
+const gM = group('CYCLE');
+buttonRow(gM, [
+  ['loop (keeps turning)', () => params.mode = 'loop',   () => params.mode === 'loop'],
+  ['bounce (un-spins)',    () => params.mode = 'bounce', () => params.mode === 'bounce'],
+  ['reverse',              () => params.reverse = !params.reverse, () => params.reverse],
+]);
+const modeNote = document.createElement('div');
+modeNote.className = 'note';
+gM.appendChild(modeNote);
+function modeText() {
+  const f = seq.filter(s => s.frame >= 0).map(s => s.frame + 1);
+  if (!f.length) return '';
+  const head = f.slice(0, 5).join(' → ');
+  return head + (f.length > 5 ? ' → … → ' + f[f.length - 1] : '') + ' → ' + f[0] + ' → …';
+}
+
+// --- playback -------------------------------------------------------------
+const gP = group('PLAYBACK');
+buttonRow(gP, [
+  ['play/pause', () => params.playing = !params.playing, () => params.playing],
+  ['◀ step',     () => step(-1)],
+  ['step ▶',     () => step(1)],
+  ['restart',    () => restart()],
+]);
+fieldRefs.onion = checkbox(gP, 'onion skin (ghost the previous frame)',
+  () => params.onion, v => params.onion = v);
+
+// --- framing --------------------------------------------------------------
+const gF = group('FRAMING');
+fieldRefs.sizePx = numField(gF, 'coin size IN GAME px', 'px', () => params.sizePx,
+  v => params.sizePx = Math.round(v), 2, 4, 720);
+buttonRow(gF, [
+  ['32', () => params.sizePx = 32, () => params.sizePx === 32],
+  ['48', () => params.sizePx = 48, () => params.sizePx === 48],
+  ['64', () => params.sizePx = 64, () => params.sizePx === 64],
+  ['96', () => params.sizePx = 96, () => params.sizePx === 96],
+]);
+note(gF, 'The 160px cell scaled to this height, measured against the 1280×720 ' +
+         'game canvas — the cyan box. This is the number that goes in config.');
+fieldRefs.zoom = numField(gF, 'preview zoom (not in config)', '×', () => params.zoom,
+  v => params.zoom = v, 0.25, 0.5, 12, 2);
+fieldRefs.offX = numField(gF, 'offset x', 'px', () => params.offX,
+  v => params.offX = Math.round(v), 1, -1280, 1280);
+fieldRefs.offY = numField(gF, 'offset y', 'px', () => params.offY,
+  v => params.offY = Math.round(v), 1, -720, 720);
+fieldRefs.guide = checkbox(gF, 'guide boxes (game frame + cell + axis)',
+  () => params.guide, v => params.guide = v);
+fieldRefs.smooth = checkbox(gF, 'smooth scaling', () => params.smooth, v => params.smooth = v);
+
+// --- source ---------------------------------------------------------------
+const gS = group('SOURCE');
+buttonRow(gS, [
+  ['sheet — uniform ' + CELL + 'px cells', () => params.source = 'sheet',
+   () => params.source === 'sheet'],
+  ['master — raw strip', () => params.source = 'master', () => params.source === 'master'],
+]);
+fieldRefs.wobble = checkbox(gS, 'master: put the original wobble back',
+  () => params.wobble, v => params.wobble = v);
+const srcNote = note(gS, '');
+function srcText() {
+  const v = vdef();
+  const drift = Math.max(...v.wobble.map(Math.abs));
+  if (params.source === 'sheet')
+    return 'The built sheet — ' + N + ' × ' + CELL + 'px cells, every frame re-centred. ' +
+           'This is what the game draws.';
+  if (!params.wobble)
+    return 'Raw strip, frames re-centred live. Should be pixel-identical to the sheet.';
+  // On 01 the toggle is a no-op, and saying so beats leaving you wondering
+  // whether it is broken.
+  return drift > 0
+    ? 'Raw strip WITH the hand-drawn drift (±' + drift + 'px vertically) — this is the ' +
+      'shudder the recut removes.'
+    : 'This coin has no wobble to put back — it was already registered.';
+}
+note(gS, 'Rebuild: python3 tools/build-coin-frames.py --cell ' + CELL);
+
+const gB = group('BACKGROUND');
+buttonRow(gB, [
+  ['black',   () => setBg('black'),   () => params.bg === 'black'],
+  ['sky',     () => setBg('sky'),     () => params.bg === 'sky'],
+  ['checker', () => setBg('check'),   () => params.bg === 'check'],
+  ['white',   () => setBg('white'),   () => params.bg === 'white'],
+  ['magenta', () => setBg('magenta'), () => params.bg === 'magenta'],
+]);
+function setBg(b) { params.bg = b; stage.className = b; }
+
+// --- export ---------------------------------------------------------------
+const gD = group('CONFIG');
+const ta = document.createElement('textarea'); ta.id = 'dump'; ta.readOnly = true;
+gD.appendChild(ta);
+buttonRow(gD, [['copy', () => navigator.clipboard.writeText(ta.value)]]);
+function dump() {
+  const total = seq.reduce((s, st) => s + st.ms, 0);
+  const used = [];
+  for (let f = Math.min(params.from, params.to) - 1; f <= Math.max(params.from, params.to) - 1;
+       f += params.step) used.push(f);
+  const holds = used.map(f => params.holds[f]);
+  const same = holds.every(h => h === holds[0]);
+  ta.value =
+`// flying-dungeon time coin — tools/coin-anim.html
+COIN: {
+  // ${vdef().label.replace(/^\d+ — /, '')}. The other variant is a drop-in:
+  // same ${CELL}px cell, same ${N} frames, so only this filename changes.
+  sheet: 'coin/saborosa-coin-time-${params.variant}.webp',
+  cell: ${CELL},                             // frame k = (k*${CELL}, 0, ${CELL}, ${CELL})
+  frames: ${N},
+  from: ${Math.min(params.from, params.to)}, to: ${Math.max(params.from, params.to)},${params.step > 1 ? '   step: ' + params.step + ',' : ''}
+  holdMs: ${same ? holds[0] : '[' + holds.join(', ') + ']'},${same ? '   // = ' + (1000 / holds[0]).toFixed(1) + ' fps' : '   // hand-tuned'}
+  endPauseMs: ${params.endPause},
+  mode: '${params.mode}',${params.mode === 'bounce' ? '   // out and back' : '   // keeps turning one way'}
+  reverse: ${params.reverse},
+  sizePx: ${params.sizePx},                          // drawn height in the 1280x720 canvas
+  offset: [${params.offX}, ${params.offY}],
+  smooth: ${params.smooth},
+},
+// ${used.length} frames · one turn = ${total}ms${params.endPause ? ' (incl. ' + params.endPause + 'ms pause)' : ''} · ${(1000 * used.length / Math.max(1, total)).toFixed(1)} fps`;
+  srcNote.textContent = srcText();
+  varNote.textContent = vdef().kind;
+}
+
+function refreshAll() {
+  Object.values(fieldRefs).forEach(f => {
+    if (Array.isArray(f)) f.forEach(x => x.show()); else if (f && f.show) f.show();
+  });
+  side.querySelectorAll('button').forEach(b => { if (b._isOn) b.classList.toggle('on', !!b._isOn()); });
+}
+
+function step(dir) {
+  params.playing = false;
+  seqIdx = (seqIdx + dir + seq.length) % seq.length; acc = 0; markCur();
+}
+function restart() { seqIdx = 0; acc = 0; params.playing = true; markCur(); }
+
+// ---- hotkeys -------------------------------------------------------------
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ' || k === 'p') { e.preventDefault(); params.playing = !params.playing; }
+  else if (e.key === 'ArrowLeft')  step(-1);
+  else if (e.key === 'ArrowRight') step(1);
+  else if (k === 'r') restart();
+  else if (k === 'm') { params.mode = params.mode === 'loop' ? 'bounce' : 'loop'; }
+  else if (k === 'o') { params.onion = !params.onion; }
+  else if (k === 'g') { params.guide = !params.guide; }
+  else if (k === 's') { params.source = params.source === 'sheet' ? 'master' : 'sheet'; }
+  // V swaps coins with everything else held — the A/B this tool exists for.
+  else if (k === 'v') { setVariant(VKEYS[(VKEYS.indexOf(params.variant) + 1) % VKEYS.length]); }
+  // [ and ] pull the range in to the frame you are looking at, so you can trim
+  // a sub-loop by stepping to its ends rather than typing frame numbers.
+  else if (k === '[') { params.from = curFrame() + 1; }
+  else if (k === ']') { params.to = curFrame() + 1; }
+  else if (k === 'b') { const o = ['black','sky','check','white','magenta'];
+                        setBg(o[(o.indexOf(params.bg) + 1) % o.length]); }
+  else return;
+  e.preventDefault();
+  refreshAll(); rebuild();
+});
+
+setBg(params.bg);
+setHoldMs(DEFAULT_HOLD_MS);
+resize(); rebuild(); refreshAll();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
