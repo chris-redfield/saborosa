@@ -676,7 +676,7 @@ const CONFIG = {
   // face-on (see the facing coupling in boss.js); vertically it is used flat,
   // so the boss keeps closing on the player's altitude even mid-turn. ONE knob
   // for both axes on purpose — a second would only drift away from it.
-  bossSpeed: 90,
+  bossSpeed: 120,
   // How close the player has to get before it notices them. Once it has, that
   // LATCHES — it never goes back to minding its own business, which is what
   // makes it stalking rather than a proximity trigger.
