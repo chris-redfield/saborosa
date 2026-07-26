@@ -42,7 +42,13 @@ class Liftoff {
     // the same low framerate as everything else and doesn't glide out of style.
     this._stepAcc = 0;
     this.disp = { p: 0, pose: cfg.CH_REST, shake: 0 };
+    // True for one read after the wheels leave the runway. See _snapshot().
+    this._lifted = false;
   }
+
+  // True once, on the frame the plane unsticks. Consumed, so one takeoff
+  // cannot be handled twice.
+  takeLifted() { const l = this._lifted; this._lifted = false; return l; }
 
   // Make sure the picked character's frames are in the store. plane.load() is
   // usually done by now, but it's racing the 32 huge tray frames — this removes
@@ -77,6 +83,17 @@ class Liftoff {
   _snapshot() {
     const c = this.cfg, p = Math.min(1, this.t / this.totalMs);
     const d = this.disp;
+    /* ROTATION — the frame the wheels actually leave the runway, raised as a
+       consumed edge for the shell to hang the climb sound on.
+
+       ⚠️ Tested against the SNAPSHOT's p, not the true one, and this is the
+       only place in the game where that is the right choice. Everything else
+       that runs on real time does so because it must not depend on the art's
+       framerate; here the opposite applies. `liftRotateAt` is the moment the
+       plane VISIBLY unsticks, and what the player sees is the stepped
+       position — so firing on the true p would put the sound up to a whole
+       stop-motion frame (~83ms) ahead of the picture it belongs to. */
+    if (d.p < c.liftRotateAt && p >= c.liftRotateAt) this._lifted = true;
     d.p = p;
     // Nose comes up only once the climb starts; level for the whole roll.
     if (p < c.liftRotateAt) d.pose = c.CH_REST;

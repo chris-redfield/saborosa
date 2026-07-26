@@ -225,12 +225,30 @@ class Sound {
      constantly is a pile of overlapping whooshes). Different names never block
      each other, so reversing direction always speaks. */
   once(name) {
+    const ctx = this._audio();
+    if (!ctx) return;
+    /* ⚠️ PLAYS THROUGH THE RESUME rather than giving up on a suspended context.
+       Returning here would be fine for a sound triggered mid-game, where a
+       gesture happened long ago — but the select shine is very often the FIRST
+       sound of the session, and the key that triggers it is very often the
+       first gesture the page has ever seen. resume() is async, so on that one
+       frame the context is still suspended and the sound the player just asked
+       for would be the one they never hear. */
+    if (ctx.state === 'suspended') {
+      const p = ctx.resume();
+      if (p && p.then) p.then(() => this._playOnce(name)).catch(() => {});
+      return;
+    }
+    this._playOnce(name);
+  }
+
+  _playOnce(name) {
     const buf = this.sfx[name];
     if (!buf) return;                            // not loaded, or failed: silent
     const live = this.sfxPlaying[name];
     if (live && live.length) return;             // still going — see above
-    const ctx = this._audio();
-    if (!ctx || ctx.state !== 'running') return; // no gesture yet; not worth queueing
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
 
     const e = this.cfg.SFX[name];
     const clipVol = this.sfxVol[name] == null ? 1 : this.sfxVol[name];

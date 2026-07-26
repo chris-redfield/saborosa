@@ -133,6 +133,14 @@ class Intro {
   // keypresses as "skip the intro").
   get awaitingInput() { return this.mode === 'select'; }
 
+  // Forwarded from the select board so the shell has one thing to poll and does
+  // not have to know the intro owns a FruitSelect. Consumed, like takeCycle().
+  takeSelectConfirmed() { return !!(this.select && this.select.takeConfirmed()); }
+
+  // The frame the plane's wheels leave the runway in the takeoff. Forwarded
+  // for the same reason: one thing for the shell to poll.
+  takeLifted() { return !!(this.liftoff && this.liftoff.takeLifted()); }
+
   // Leave the current board: roll to the next, cut to it, or end the sequence.
   _advance() {
     if (this.i >= this.n - 1) { this.mode = 'out'; this.t = 0; return; }

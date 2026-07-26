@@ -53,6 +53,11 @@ class FruitSelect {
     this.confirming = false;
     this.confirmT = 0;
     this.picked = null;
+    // True for one read after the player locks a fruit in. An EDGE the shell
+    // consumes, not a state it inspects — this class is a portable core with no
+    // globals, so it reports the moment and lets the shell decide what to do
+    // with it. Same shape as Boss.takeThrow().
+    this._confirmed = false;
 
     this._held = {};
   }
@@ -85,6 +90,10 @@ class FruitSelect {
     return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
   }
 
+  // True once, on the frame the player locked a fruit in. Consumed, so one
+  // choice cannot be handled twice.
+  takeConfirmed() { const c = this._confirmed; this._confirmed = false; return c; }
+
   update(dt, input) {
     const c = this.cfg, s = dt / 1000;
     if (this.enterT < c.selectEnterMs) this.enterT += dt;
@@ -115,6 +124,12 @@ class FruitSelect {
       this.confirming = true;
       this.confirmT = 0;
       this.picked = this.panels[this.cursor].character;
+      // Raised HERE, on the lock-in — not when update() finally hands the pick
+      // back selectConfirmMs later. The stamp is the moment of choosing and is
+      // what anything reacting to it should land on; the delay after it exists
+      // so that beat can play, and a sound arriving at the end of it would be
+      // scoring the wait rather than the choice.
+      this._confirmed = true;
     }
     return null;
   }

@@ -192,6 +192,10 @@
   // What he throws. Their own list, like the coins: they are not `enemies` (the
   // beam must not be able to shoot them down) and not scenery either.
   const orbs = [];
+  // His SPECIAL's waves. Their own list for the same reasons the orbs have
+  // one: the beam must not be able to shoot them, and they are not scenery.
+  // Short-lived — a wave exists for exactly as long as it is drawn.
+  const strikes = [];
   // ⚠️ Latched by killing him, and it exists to stop him coming BACK. Victory
   // resumes the clock at ≤ bossAtMs — which is still below the threshold that
   // summons him — so without this the very next frame would re-enter no-time
@@ -232,6 +236,7 @@
   const TOTAL = CONFIG.FRAMES * 2
     + Plane.assetCount(CONFIG)   // poses × characters × wear packs, + the flash
     + 7 + CONFIG.MOSCA_SHEETS.length   // fly, dead fly, boom, boss, orb, bar, logo, + mosca
+    + 1 + CONFIG.BOSS_FIRE_SHEETS.length   // + the special: golpe pose, bolt frames
     + COIN_KEYS.length;          // + one grid sheet per coin variant
   let done = 0;
   const tick = () => { done++; bar.style.width = (done / TOTAL * 100) + '%'; };
@@ -372,6 +377,7 @@
     rewindSpinT = 0;
     boss = null;             // has to be re-earned every run
     orbs.length = 0;
+    strikes.length = 0;
     bossBeaten = false;
     flyBoss = null;
     flyBossDone = false;
@@ -437,6 +443,18 @@
 
     if (phase === 'intro') {
       intro.update(dt, input);
+      /* The shine, on the frame the player locks a fruit in.
+         ⚠️ THIS IS VERY OFTEN THE FIRST SOUND OF THE SESSION, and the key that
+         confirms is very often the first gesture — the intro auto-advances, so
+         a player can reach the select without having pressed anything. The
+         AudioContext is therefore still suspended on this frame; once() handles
+         that by playing through the resume rather than dropping it. */
+      if (intro.takeSelectConfirmed()) sound.once('select');
+      /* The takeoff gets the CLIMB sound — the same one the plane makes going
+         up in game, on the frame its wheels leave the runway. It is the same
+         action, so it should be the same noise: teaching the sound here means
+         the player has already heard what climbing costs before they fly. */
+      if (intro.takeLifted()) sound.once('up');
       if (CONFIG.film) film.update(dt);
 
       const W = canvas.width, H = canvas.height;
@@ -742,6 +760,11 @@
         const t = boss.takeThrow(worldW, planePt);
         if (t) orbs.push(new Orb(assets, CONFIG, t.x, t.y, t.dx, t.dy));
 
+        // ...and his special, described the same way and built the same way, so
+        // boss.js knows about neither orb.js nor strike.js.
+        const st = boss.takeStrike();
+        if (st) strikes.push(new Strike(assets, CONFIG, st.x, st.y, st.angles));
+
         /* WON — and the run does not carry on. The blast he dies in has burnt
            out, so the ENDING starts: the player stops flying and watches while
            time comes back, the world un-bleaches, and the game says thank you.
@@ -758,6 +781,9 @@
           boss = null;
           bossBeaten = true;
           orbs.length = 0;
+          // His lightning goes with him — a wave still burning after he is
+          // dead would hurt the player during the win.
+          strikes.length = 0;
           // The second victory, read at the same point as the Mosca Boss's —
           // the blast burnt out — so both kills are timed the same way. It runs
           // OVER the finale's opening rather than replacing anything: the bed
@@ -769,6 +795,7 @@
 
       // The orbs, and the one thing in this game that can hurt the player.
       for (const o of orbs) o.update(dt, worldW, worldH);
+      for (const s of strikes) s.update(dt);
       // Nothing may shoot at a plane that is still flying in, or at one already
       // going down with the run — the player has no controls in either case.
       if (!ending && !plane.controlLocked) {
@@ -817,6 +844,25 @@
               break swarm;
             }
           }
+          /* THE LIGHTNING. Standing in it costs a full point, like everything
+             else he does — the half-point is the swarm's, not his.
+
+             No i-frame handling of its own: plane.hurt() is rejected inside the
+             player's 1100ms window, which is longer than a wave lasts, so
+             being caught by the cross and then the X that follows it is ONE
+             hit. That is deliberate — the second wave is there to catch a
+             player who moved badly, not to double the first one's damage. */
+          for (const s of strikes) {
+            if (s.isDead()) continue;
+            let struck = false;
+            for (const b of s.boxes(camX, camY, worldW)) {
+              if (!boxesOverlap(pb, b)) continue;
+              if (plane.hurt(CONFIG.bossSpecialDamage)) killedBy = 'time';
+              struck = true;
+              break;
+            }
+            if (struck) break;
+          }
           for (const o of orbs) {
             if (o.isDead()) continue;
             for (const b of o.boxes(camX, camY, worldW)) {
@@ -832,6 +878,7 @@
         }
       }
       for (let i = orbs.length - 1; i >= 0; i--) if (orbs[i].isDead()) orbs.splice(i, 1);
+      for (let i = strikes.length - 1; i >= 0; i--) if (strikes[i].isDead()) strikes.splice(i, 1);
       // A coin that has finished exploding is gone for good — same as the
       // flies, killed coins do not come back.
       for (let i = coins.length - 1; i >= 0; i--) if (coins[i].isDead()) coins.splice(i, 1);
@@ -963,6 +1010,12 @@
       // Boss over the flies (it dwarfs them) but under the plane — the player
       // must never be hidden behind it.
       if (flyBoss) { flyBoss.render(ctx, camX, camY, worldW); flyBoss.renderHitFx(ctx, camX, camY, worldW); }
+      /* ⚠️ LIGHTNING UNDER THE BOSS. Drawn over him it cuts across his face and
+         reads as something happening TO him rather than something he is doing
+         — and at this length a bolt through the middle simply erases the
+         character. Behind him, he stays the thing you are looking at and the
+         strike radiates out from where he stands. */
+      for (const s of strikes) s.render(ctx, camX, camY, worldW);
       if (boss) boss.render(ctx, camX, camY, worldW);
       // The puff for a hit ON him sits at his depth, not in the explosion pass:
       // it is a mark on the boss, not a blast in front of the world.
@@ -1018,6 +1071,12 @@
             ctx.strokeRect(b.x, b.y, b.w, b.h);
         for (const o of orbs)
           for (const b of o.boxes(camX, camY, worldW))
+            ctx.strokeRect(b.x, b.y, b.w, b.h);
+        // The lightning's chain of boxes — worth seeing, because it is
+        // deliberately far narrower than the drawn bolt and the gap between the
+        // two is the only thing making the attack fair.
+        for (const s of strikes)
+          for (const b of s.boxes(camX, camY, worldW))
             ctx.strokeRect(b.x, b.y, b.w, b.h);
         const pbox = plane.hitBox(W, H);
         if (pbox) ctx.strokeRect(pbox.x, pbox.y, pbox.w, pbox.h);
@@ -1130,6 +1189,11 @@
     // The main game's explosion sheet — 9KB, so it loads up front with the rest.
     assets.loadImage('boom', CONFIG.ASSET_BASE + CONFIG.BOOM_SHEET).then(tick),
     assets.loadImage('boss', CONFIG.ASSET_BASE + CONFIG.BOSS_SHEET).then(tick),
+    // His special: the fists-up pose, and the four frames of the bolt. PNGs in
+    // enemy-sheets/, a folder package.sh already copies — no new cp line.
+    assets.loadImage('bossGolpe', CONFIG.ASSET_BASE + CONFIG.BOSS_GOLPE_SHEET).then(tick),
+    ...CONFIG.BOSS_FIRE_SHEETS.map((f, i) =>
+      assets.loadImage('bossFire_' + i, CONFIG.ASSET_BASE + f).then(tick)),
     // The orb he throws: the root game's FX sphere, recut by
     // tools/build-orb-frames.py. 33KB, so it loads with the rest.
     assets.loadImage('orb', CONFIG.ASSET_BASE + CONFIG.ORB_SHEET).then(tick),

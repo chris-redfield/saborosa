@@ -73,6 +73,23 @@ class Boss {
     // Throwing. Disarmed until he notices someone: -1 means "not counting".
     this.throwT = -1;
 
+    /* THE SPECIAL. A small state machine of its own, on REAL time — the game
+       clock is PAUSED for the whole of no-time mode, which is the only time
+       this fight happens, so anything driven off it would never advance.
+
+         null        stage 1: he does not have this yet
+         'wait'      counting down to the next cast
+         'telegraph' fists up, and the only warning the player gets
+         'wave1'     the cross is out
+         'gap'       between the two
+         'wave2'     the X is out
+
+       `specialT` is the countdown WITHIN the current phase, so one number
+       serves all of them and there is no second clock to fall out of step. */
+    this.specialPhase = null;
+    this.specialT = 0;
+    this._pendingStrike = null;   // the shell collects this via takeStrike()
+
     // Arrival blast — the same explosion a coin dies in, at the same rate
     // (boomMs belongs to the boom, not to the coin), just scaled to the boss.
     // Frozen at the SPAWN POINT rather than following: the boss walks out of
@@ -106,6 +123,88 @@ class Boss {
 
   isShootable() { return this.state === 'alive'; }
   isDead() { return this.state === 'dead'; }   // shell drops it and wins the run
+
+  /* Is he mid-special? Drives which SHEET he is drawn from — fists up from the
+     moment the telegraph starts until the last wave clears, so the pose the
+     player learns to fear is on screen for the whole of it and not just for
+     the warning. */
+  isCasting() {
+    return this.specialPhase !== null && this.specialPhase !== 'wait';
+  }
+
+  /* One wave, once. The shell builds the Strike from this, the same way it
+     builds an Orb from takeThrow() — so this file never has to know strike.js
+     exists.
+
+     The arms are rooted at his CENTRE including the bob, so the strike leaves
+     him where he is actually drawn rather than where his logical y says. */
+  takeStrike() {
+    const s = this._pendingStrike;
+    this._pendingStrike = null;
+    return s;
+  }
+
+  // Roll the gap to the next cast. Salted per cast rather than fixed, so a
+  // player cannot learn a metronome and simply be somewhere else on the beat.
+  _rearmSpecial() {
+    const c = this.cfg;
+    const salt = (Math.random() * 2 - 1) * c.bossSpecialSaltMs;
+    this.specialPhase = 'wait';
+    this.specialT = Math.max(500, c.bossSpecialEveryMs + salt);
+  }
+
+  /* The special's clock. Real ms, and deliberately NOT gated on `alerted`:
+     reaching stage 2 means the player has already put half his health into
+     him, so there is nothing left to notice. */
+  _updateSpecial(dt) {
+    const c = this.cfg;
+    if (this.state !== 'alive') return;
+
+    // Stage 2 arrives the frame his health crosses bossStage2At, and the first
+    // cast starts THEN — the special is how the fight announces it has changed,
+    // so making the player wait 20 seconds for the first one would waste it.
+    if (this.specialPhase === null) {
+      if (this.stage() < 2 || this._booming()) return;
+      this.specialPhase = 'telegraph';
+      this.specialT = c.bossSpecialTelegraphMs;
+      return;
+    }
+
+    this.specialT -= dt;
+    if (this.specialT > 0) return;
+
+    // Carry the overshoot into the next phase so a long frame cannot make the
+    // whole sequence drift later and later.
+    const over = -this.specialT;
+    if (this.specialPhase === 'wait') {
+      this.specialPhase = 'telegraph';
+      this.specialT = c.bossSpecialTelegraphMs - over;
+    } else if (this.specialPhase === 'telegraph') {
+      this.specialPhase = 'wave1';
+      this.specialT = c.bossSpecialHoldMs - over;
+      this._fire(0);
+    } else if (this.specialPhase === 'wave1') {
+      this.specialPhase = 'gap';
+      this.specialT = c.bossSpecialBetweenMs - over;
+    } else if (this.specialPhase === 'gap') {
+      this.specialPhase = 'wave2';
+      this.specialT = c.bossSpecialHoldMs - over;
+      this._fire(1);
+    } else {
+      this._rearmSpecial();
+    }
+  }
+
+  _fire(waveIdx) {
+    const c = this.cfg;
+    const angles = c.bossSpecialWaves[waveIdx];
+    if (!angles) return;
+    this._pendingStrike = {
+      x: this.x,
+      y: this.y + this._bob(),
+      angles: angles.slice(),
+    };
+  }
 
   /* 1 or 2. Derived from health rather than latched, so there is no stage flag
      to get out of step with the bar it is read from. Nothing here recovers
@@ -279,6 +378,7 @@ class Boss {
       this.throwT = c.orbFirstMs;
     }
     if (this.throwT > 0) this.throwT = Math.max(0, this.throwT - dt);
+    this._updateSpecial(dt);
 
     // Front while it hasn't noticed anyone; locked onto the player's side once
     // it has. Eased at a rate that crosses the full profile-to-profile sweep in
@@ -333,7 +433,11 @@ class Boss {
   render(ctx, camX, camY, worldW) {
     const c = this.cfg;
     if (this.state !== 'alive') return;         // gone the instant he dies
-    const sheet = this.assets.getDrawable('boss');
+    // Fists up for the whole special. The golpe sheet is the SAME 7 poses, so
+    // it swaps in against BOSS_RECTS with no second rect table and no change to
+    // anything below — measured, its poses sit within a few px of the
+    // originals and share the same top and heights.
+    const sheet = this.assets.getDrawable(this.isCasting() ? 'bossGolpe' : 'boss');
     if (!sheet) return;
     const r = c.BOSS_RECTS[this.frame()];
     if (!r) return;

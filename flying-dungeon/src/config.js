@@ -86,6 +86,11 @@ const CONFIG = {
        two. Below ~40ms it fuses completely and starts to colour the tone
        instead (comb filtering); it was 100ms, a slapback, and 300ms before
        that, a canon. Small changes here are not subtle. */
+    // The shine, on the frame a fruit is locked in. Very often the FIRST sound
+    // of the session — the intro auto-advances, so a player can reach the
+    // select without having pressed anything, and the key that confirms is the
+    // gesture that unlocks audio. once() plays through the resume for that.
+    select: { src: 'audio/efeito-player-select-shine-01.ogg', volume: 1 },
     /* Both boss kills. Only the FIRST PART of the take: it is two pieces with a
        620ms break at 10.88s, and build-sound.py cuts there — see OVERRIDES.
 
@@ -904,6 +909,54 @@ const CONFIG = {
     [1530, 79, 120, 219],   // profile, looking RIGHT
   ],
   BOSS_REF_H: 223,       // tallest frame — what bossSizePx is measured against
+
+  /* --- THE SPECIAL: fists up, then two waves of lightning -----------------
+     Dialled in tools/boss-lightning.html; see that file's header for why the
+     art works the way it does. The short version:
+
+       · saborosa-boss-time-golpe.png is the SAME 7 poses with his fists up, so
+         it swaps in against BOSS_RECTS with no second rect table.
+       · the four fire sheets are a LOOP, not a build-up — they cycle for as
+         long as a bolt is on screen.
+       · a bolt is an ARM ROOTED AT THE ORIGIN, and the root is the sprite's
+         RIGHT edge. Laid across him instead, half of every bolt runs the wrong
+         way and reads as lightning converging on him.
+
+     The two waves are the same four arms swung 45°, which is what makes them
+     read as one attack in two beats rather than two unrelated effects. */
+  BOSS_GOLPE_SHEET: 'enemy-sheets/saborosa-boss-time-golpe.png',
+  BOSS_FIRE_SHEETS: [
+    'enemy-sheets/saborosa-boss-time-fire-01.png',
+    'enemy-sheets/saborosa-boss-time-fire-02.png',
+    'enemy-sheets/saborosa-boss-time-fire-03.png',
+    'enemy-sheets/saborosa-boss-time-fire-04.png',
+  ],
+  /* ⚠️ THE TELL. He holds his fists up for this long before anything fires,
+     and it is the only warning there is — the bolts themselves appear at full
+     length in one frame. Shorten it and the attack becomes unavoidable rather
+     than hard, which is a different thing. 2s is long enough to cross the
+     screen at moveSpeed from anywhere inside the cross. */
+  bossSpecialTelegraphMs: 2000,
+  // The first one fires the moment he drops to stage 2; after that it is this
+  // often. SALT is rolled per cast (± the salt), so a player cannot learn a
+  // metronome and simply be elsewhere on the beat.
+  bossSpecialEveryMs: 15000,
+  bossSpecialSaltMs: 5000,
+  bossSpecialHoldMs: 420,      // each wave's time on screen — and its hitbox's
+  bossSpecialBetweenMs: 260,   // gap between the cross and the X
+  bossSpecialFrameMs: 70,      // the crackle: ms per fire frame
+  // Arm length in CANVAS px, like bossSizePx — the strike is scaled against the
+  // frame the player sees, not against the world.
+  bossSpecialArmPx: 952,
+  bossSpecialWaves: [
+    [0, 90, 180, 270],         // upright cross
+    [45, 135, 225, 315],       // the same four, swung 45°
+  ],
+  bossSpecialDamage: 1,
+  /* ⚠️ THE HITBOX IS MUCH NARROWER THAN THE ART, on purpose. The drawn bolt is
+     a ~196px band of jagged branches and forks; being killed by a wisp at the
+     edge of one would be indefensible. This is the trunk. */
+  bossSpecialHitPx: 56,
   bossSizePx: 260,       // drawn height in the fixed 1280x720 canvas
   // World px/sec. Horizontally this is the speed at full profile, tapering to 0
   // face-on (see the facing coupling in boss.js); vertically it is used flat,

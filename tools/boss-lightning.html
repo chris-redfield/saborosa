@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Time Boss Lightning</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #state { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #left { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #stage { flex:1; position:relative; overflow:hidden; background:#000;
+           display:flex; align-items:center; justify-content:center; }
+  canvas#cv { display:block; image-rendering:auto; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; z-index:5; text-align:center; }
+  #strip { height:132px; background:var(--panel); border-top:1px solid #0c1226;
+           padding:6px 10px; display:flex; gap:8px; align-items:center; overflow-x:auto; }
+  .cell { flex:0 0 auto; text-align:center; color:#7a8aa8; font-size:10px; }
+  .cell canvas { display:block; background:#e8e8e8; border:1px solid #3a4a6a; border-radius:2px; }
+  .cell.cur canvas { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+
+  #side { width:340px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:30px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; font-size:11px; letter-spacing:1px; color:var(--accent); }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  button.ok { background:#2c5a3a; border-color:#3e7a52; color:#dfe; }
+
+  /* Typed number, steppers, arrow keys. No sliders in this project's tools. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:76px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:26px; }
+  #dump { width:100%; height:150px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+  .note { color:#7a8aa8; font-size:11px; margin:5px 0 0; }
+  .warn { color:#d8a657; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>TIME BOSS — LIGHTNING</b>
+  <span class="hint">Space play · R restart · 1-4 hold a frame · Q single · W cross · E X · A attack · B bg</span>
+  <span id="state">loading…</span>
+</div>
+<div id="main">
+  <div id="left">
+    <div id="stage"><div id="loadmsg">loading…</div><canvas id="cv"></canvas></div>
+    <div id="strip"></div>
+  </div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   THE TIME BOSS'S SPECIAL — a preview bench, not the game.
+
+   Nothing here is wired into flying-dungeon/. It exists to answer the questions
+   you cannot answer by looking at a PNG: how fast the bolt should flicker, how
+   long he should hold his fists up, whether the wave should arrive all at once
+   or travel outward, and whether the upright CROSS and the diagonal X read as
+   two beats of one attack or as the same thing twice.
+
+   WHAT THE ART IS
+
+     saborosa-boss-time.png        the 7-pose turn already in the game
+     saborosa-boss-time-golpe.png  THE SAME 7 POSES with his fists up and his
+                                   mouth open — a parallel sheet, not extra
+                                   frames. Measured, its poses sit within a few
+                                   px of the originals and share top y=79 and
+                                   the same heights, so it is a drop-in swap:
+                                   the same rects, a different file.
+     saborosa-boss-time-fire-01..04.png
+                                   ONE full-width bolt each, ~1620-1680px long.
+                                   FOUR FRAMES OF A LOOP — not a build-up and
+                                   not four alternatives. They cycle
+                                   1→2→3→4→1 for as long as the bolt is on
+                                   screen, the way the mosca's flap does. All
+                                   four are distinct files (verified by hash;
+                                   unlike the mosca sheets, none is a
+                                   duplicate), and the growing branch count
+                                   from 01 to 04 is the crackle, not a
+                                   progression to be played once.
+
+   ⚠️ A BOLT IS AN ARM, ROOTED AT THE ORIGIN — not a diameter laid across it.
+   This was wrong first time round and is worth spelling out. Centring the
+   sprite on him puts half of it either side, and because a bolt has a
+   DIRECTION, only one of those halves runs the right way: the other reads as
+   lightning arriving from off-screen and converging on him, which is the
+   opposite of him casting it.
+
+   ⚠️ THE ROOT IS THE SPRITE'S RIGHT EDGE. I first read it the other way off the
+   ink-per-column profile — the rightmost tenth carries about half the ink of
+   the peak, which looked like a taper to a tip — and that was wrong: it is a
+   trailing tail, not the point of origin. What settles it is what the rays look
+   like when they meet, and anchored left-edge-first they met TIP TO TIP in the
+   middle. So `rootFlip` is ON by default: the right edge sits on the origin and
+   the bolt runs outward from it, and where the rays meet they meet at their
+   roots. Turn it off to see the wrong version.
+
+   ⚠️ THE FIGHT HAPPENS IN THE WHITE VOID. No-time mode has the world bleached
+   to pure white by the time he arrives, so white is the background this art has
+   to work against and is what the stage defaults to. Judging red lightning on
+   black would flatter it enormously and tell you nothing.
+
+   FRAME REGISTRATION. Each fire sheet is drawn on the same 1851x381 canvas, but
+   the bolts' own bounding boxes drift ~32px horizontally and ~11px vertically
+   across the four. `centre frames` re-centres each on its own box; leaving it
+   off keeps the artist's registration exactly as drawn. For lightning the
+   jitter is arguably the point — it is not a coin, it is supposed to be
+   unstable — so it is OFF by default and there to be compared.
+
+   Serve the repo and open this over http; it reads the PNGs with fetch/Image.
+--------------------------------------------------------------------------- */
+
+const BASE = '../assets-v2/flying-dungeon/enemy-sheets/';
+const FIRE = ['saborosa-boss-time-fire-01.png', 'saborosa-boss-time-fire-02.png',
+              'saborosa-boss-time-fire-03.png', 'saborosa-boss-time-fire-04.png'];
+const BOSS_NORMAL = 'saborosa-boss-time.png';
+const BOSS_GOLPE  = 'saborosa-boss-time-golpe.png';
+
+// The game's own canvas, so everything is judged at the size it will ship at.
+const GAME_W = 1280, GAME_H = 720;
+
+const P = {
+  // --- the strike ---
+  frameMs: 70,          // per fire frame
+  playMode: 'loop',     // loop | once | pingpong
+  centreFrames: false,  // re-centre each frame on its own alpha box
+  // ARM length — a radius now, not a diameter, so this is roughly half what it
+  // was when the sprite was laid across him.
+  // Arm length as a multiple of the canvas WIDTH. Scaling this scales the bolt
+  // WHOLE — the sprite keeps its aspect, so 20% longer is also 20% thicker.
+  boltScale: 0.744,     // 0.62 + 20%
+  spread: 0,            // px each arm's ROOT is pushed out from the origin
+  // ON: the sprite's RIGHT edge is the root and sits on the origin. See the
+  // header — anchoring the other way makes the rays meet tip to tip.
+  rootFlip: true,
+  // Where the arms come FROM, as px from the boss's centre. The attack is meant
+  // to leave the front of the clock rather than his middle.
+  originX: 0,
+  originY: 0,
+  // --- the wave ---
+  // 0 = the bolt is simply THERE, which is what the art is: a loop that plays
+  // while the strike lasts. Raise it to make the strike travel outward from him
+  // instead, revealed by a growing circle. An effect to opt into, not the
+  // default — at any non-zero value you spend the first frames looking at a
+  // partial bolt, which is no way to judge the animation.
+  waveMs: 0,
+  // The frame cycle FREE-RUNS off one clock rather than restarting per wave, so
+  // it reads as one continuous looping effect that the waves reveal — which is
+  // what a loop is. Off = each wave starts the cycle at frame 1.
+  freeRun: true,
+  // --- the attack ---
+  chargeMs: 2000,       // fists up before anything fires
+  // The two waves of the special: an upright cross, then the same four arms
+  // swung 45° into a diagonal one. Two shapes from one set of angles, which is
+  // what makes them read as one attack rather than two.
+  wave1: 'cross',
+  wave2: 'x',
+  holdMs: 420,          // how long each wave stays on screen
+  betweenMs: 260,       // gap between the two waves
+  // --- the boss ---
+  bossPose: 3,          // 0 profile-left … 3 front … 6 profile-right
+  bossSizePx: 260,      // matches CONFIG.bossSizePx
+  showBoss: true,
+  // --- view ---
+  bg: 'white',          // white | black | sky | check
+  pattern: 'attack',    // single | cross | attack
+};
+
+/* Arm angles, degrees clockwise from "out to the right". Four arms each,
+   because an arm is a radius now rather than a diameter.
+
+   The X is the CROSS ROTATED 45° — a diagonal cross, not a different shape.
+   Written out as its own list rather than derived, so the two waves can be
+   read side by side and either can be changed without touching the other. */
+const PATTERNS = {
+  single: [0],
+  cross: [0, 90, 180, 270],
+  x: [45, 135, 225, 315],
+};
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const stateEl = $('state'), loadMsg = $('loadmsg');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+let fire = [];        // {img, box:{x,y,w,h}}
+let bossNormal = null, bossGolpe = null;
+let bossRects = [];   // measured off the normal sheet
+let t = 0;            // ms since the sequence (re)started
+let playing = true;
+let heldFrame = -1;   // 1-4 pins a frame; -1 = animate
+let last = performance.now();
+
+cv.width = GAME_W; cv.height = GAME_H;
+
+/* --- loading + measuring -------------------------------------------------
+   Boxes are MEASURED at load rather than baked in, so dropping in a redrawn
+   bolt needs no edit here. Same alpha scan the project's other tools use. */
+
+function load(src) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error(src));
+    im.src = BASE + src;
+  });
+}
+
+function alphaBox(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, y0 = c.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < c.height; y++)
+    for (let x = 0; x < c.width; x++) {
+      if (d[(y * c.width + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  if (x1 < 0) return { x: 0, y: 0, w: img.width, h: img.height };
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+// Split a turn sheet into its poses: columns of alpha separated by a gap.
+// Same parameters the mosca rects were computed with (alpha 16, gap 6, minW 12).
+function poseRects(img) {
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d');
+  g.drawImage(img, 0, 0);
+  const d = g.getImageData(0, 0, c.width, c.height).data;
+  const on = new Uint8Array(c.width);
+  for (let x = 0; x < c.width; x++)
+    for (let y = 0; y < c.height; y++)
+      if (d[(y * c.width + x) * 4 + 3] > 16) { on[x] = 1; break; }
+  const runs = [];
+  let s = null, gap = 0;
+  for (let x = 0; x < c.width; x++) {
+    if (on[x]) { if (s === null) s = x; gap = 0; }
+    else if (s !== null && ++gap > 6) {
+      if (x - gap - s + 1 >= 12) runs.push([s, x - gap]);
+      s = null; gap = 0;
+    }
+  }
+  if (s !== null) runs.push([s, c.width - 1]);
+  return runs.map(([x0, x1]) => {
+    let y0 = c.height, y1 = -1;
+    for (let y = 0; y < c.height; y++)
+      for (let x = x0; x <= x1; x++)
+        if (d[(y * c.width + x) * 4 + 3] > 16) { if (y < y0) y0 = y; if (y > y1) y1 = y; break; }
+    return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  });
+}
+
+async function boot() {
+  const imgs = await Promise.all([...FIRE.map(load), load(BOSS_NORMAL), load(BOSS_GOLPE)]);
+  fire = imgs.slice(0, 4).map(img => ({ img, box: alphaBox(img) }));
+  bossNormal = imgs[4];
+  bossGolpe = imgs[5];
+  bossRects = poseRects(bossNormal);
+  loadMsg.style.display = 'none';
+  buildPanel();
+  buildStrip();
+  fit();
+}
+
+/* --- the sequence --------------------------------------------------------
+   `pattern: 'attack'` runs the whole thing on one clock so the beats can be
+   judged against each other:
+
+       0 ─── chargeMs ─── wave1 (holdMs) ─── betweenMs ─── wave2 (holdMs) ── end
+
+   The other three patterns skip the charge and just loop the strike, which is
+   what you want while dialling frameMs. */
+
+function totalMs() {
+  return P.chargeMs + P.holdMs + P.betweenMs + P.holdMs;
+}
+
+// What should be on screen at `t`: which pattern, and how far into its strike.
+function stateAt(ms) {
+  if (P.pattern !== 'attack') return { phase: 'strike', angles: PATTERNS[P.pattern], into: ms };
+  if (ms < P.chargeMs) return { phase: 'charge', angles: null, into: ms };
+  let m = ms - P.chargeMs;
+  if (m < P.holdMs) return { phase: 'wave1', angles: PATTERNS[P.wave1], into: m };
+  m -= P.holdMs;
+  if (m < P.betweenMs) return { phase: 'between', angles: null, into: m };
+  m -= P.betweenMs;
+  return { phase: 'wave2', angles: PATTERNS[P.wave2], into: m };
+}
+
+/* Which of the four frames is showing.
+
+   The clock is `t` — the global one — when freeRun is on, NOT the time since
+   this particular wave started. That is what makes it a LOOP: the crackle is a
+   property of the bolt, running the whole time it exists, and the waves reveal
+   a cycle already in progress rather than each restarting it from frame 1. With
+   it off, every wave opens on the same frame, which reads as a strike being
+   played rather than as lightning. */
+function frameAt(into) {
+  if (heldFrame >= 0) return heldFrame;
+  const n = fire.length;
+  if (P.frameMs <= 0) return 0;
+  const k = Math.floor((P.freeRun ? t : into) / P.frameMs);
+  if (P.playMode === 'loop') return ((k % n) + n) % n;
+  if (P.playMode === 'once') return Math.min(n - 1, k);
+  const period = n * 2 - 2;                    // pingpong
+  const i = ((k % period) + period) % period;
+  return i < n ? i : period - i;
+}
+
+/* --- drawing ------------------------------------------------------------- */
+
+function bg() {
+  if (P.bg === 'black') { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, GAME_W, GAME_H); return; }
+  if (P.bg === 'sky') {
+    const g = ctx.createLinearGradient(0, 0, 0, GAME_H);
+    g.addColorStop(0, '#5aa9d6'); g.addColorStop(1, '#bfe3f2');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, GAME_W, GAME_H); return;
+  }
+  if (P.bg === 'check') {
+    ctx.fillStyle = '#f4f4f4'; ctx.fillRect(0, 0, GAME_W, GAME_H);
+    ctx.fillStyle = '#e2e2e2';
+    for (let y = 0; y < GAME_H; y += 32)
+      for (let x = 0; x < GAME_W; x += 32)
+        if (((x / 32) + (y / 32)) % 2 === 0) ctx.fillRect(x, y, 32, 32);
+    return;
+  }
+  // WHITE — what no-time mode actually looks like, and the default for that
+  // reason. See the header.
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, GAME_W, GAME_H);
+}
+
+function drawBoss(charging) {
+  if (!P.showBoss) return;
+  const sheet = charging ? bossGolpe : bossNormal;
+  const r = bossRects[clamp(P.bossPose | 0, 0, bossRects.length - 1)];
+  if (!sheet || !r) return;
+  // Hung from the TOP, like the game does: every pose shares y=79 and the 4px
+  // the front frames gain is the stance widening at the feet.
+  const s = P.bossSizePx / 223;                // BOSS_REF_H
+  const dw = r.w * s, dh = r.h * s;
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(sheet, r.x, r.y, r.w, r.h,
+                GAME_W / 2 - dw / 2, GAME_H / 2 - dh / 2, dw, dh);
+}
+
+/* ONE ARM, rooted at the origin and running outward.
+
+   ⚠️ Anchored at its ROOT, not centred. The sprite is laid so its left edge
+   sits on the origin and its length runs along +x, which after the rotate is
+   "outward" — so the bolt leaves him and travels away, in every arm. Centring
+   it here is what made the opposite arm read as lightning converging on him
+   from off-screen.
+
+   `wave` 0..1 clips to a growing circle, so the strike can travel outward
+   instead of appearing whole. At 1 (or waveMs 0) there is no clip at all. */
+function drawBolt(f, angleDeg, wave) {
+  const src = fire[f];
+  if (!src) return;
+  const box = P.centreFrames ? src.box : { x: 0, y: 0, w: src.img.width, h: src.img.height };
+  const len = GAME_W * P.boltScale;
+  const s = len / box.w;
+  const dw = box.w * s, dh = box.h * s;
+
+  ctx.save();
+  ctx.translate(GAME_W / 2 + P.originX, GAME_H / 2 + P.originY);
+  if (wave < 1) {
+    const rad = wave * Math.hypot(GAME_W, GAME_H) * 0.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, rad, 0, Math.PI * 2);
+    ctx.clip();
+  }
+  ctx.rotate(angleDeg * Math.PI / 180);
+  ctx.translate(P.spread, 0);            // before the flip, so it always pushes OUT
+  ctx.imageSmoothingEnabled = true;
+  if (P.rootFlip) {
+    // Mirror, then draw into [-dw, 0] — which lands on screen x [0, dw] with
+    // the art reversed, i.e. the sprite's right end on the origin.
+    ctx.scale(-1, 1);
+    ctx.drawImage(src.img, box.x, box.y, box.w, box.h, -dw, -dh / 2, dw, dh);
+  } else {
+    ctx.drawImage(src.img, box.x, box.y, box.w, box.h, 0, -dh / 2, dw, dh);
+  }
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, GAME_W, GAME_H);
+  bg();
+  const st = stateAt(t);
+  const charging = (P.pattern === 'attack') && (st.phase === 'charge' || st.phase === 'between');
+
+  /* ⚠️ BOLTS FIRST, BOSS ON TOP. The lightning passes BEHIND him.
+     Drawn over him it cuts across his face and reads as something happening to
+     him rather than something he is doing — and at this scale a bolt through
+     the middle simply erases the character. Behind him, he stays the thing you
+     are looking at and the strike radiates out from where he stands. */
+  if (st.angles) {
+    const f = frameAt(st.into);
+    const wave = P.waveMs > 0 ? clamp(st.into / P.waveMs, 0, 1) : 1;
+    for (const a of st.angles) drawBolt(f, a, wave);
+    markStrip(f);
+  } else {
+    markStrip(-1);
+  }
+  drawBoss(charging || st.angles !== null);
+
+  const total = P.pattern === 'attack' ? totalMs() : 0;
+  stateEl.textContent =
+    `${st.phase}  ${(t / 1000).toFixed(2)}s` +
+    (total ? ` / ${(total / 1000).toFixed(2)}s` : '') +
+    (heldFrame >= 0 ? `  [frame ${heldFrame + 1} held]` : '');
+  stateEl.className = heldFrame >= 0 ? 'warn' : '';
+}
+
+function frame(now) {
+  const dt = now - last; last = now;
+  if (playing) {
+    t += dt;
+    if (P.pattern === 'attack' && t >= totalMs()) t = 0;
+    if (P.pattern !== 'attack' && t > 1e7) t = 0;
+  }
+  if (fire.length) draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+function fit() {
+  const r = $('stage').getBoundingClientRect();
+  const s = Math.min(r.width / GAME_W, r.height / GAME_H, 1);
+  cv.style.width = (GAME_W * s) + 'px';
+  cv.style.height = (GAME_H * s) + 'px';
+}
+window.addEventListener('resize', fit);
+
+/* --- the frame strip ------------------------------------------------------ */
+
+function buildStrip() {
+  const strip = $('strip');
+  strip.innerHTML = '';
+  fire.forEach((src, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    cell.id = 'cell' + i;
+    const c = document.createElement('canvas');
+    const H = 90, W = Math.round(src.img.width * (H / src.img.height));
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.drawImage(src.img, 0, 0, W, H);
+    cell.appendChild(c);
+    const cap = document.createElement('div');
+    cap.textContent = `${i + 1} · ${src.box.w}x${src.box.h}`;
+    cell.appendChild(cap);
+    cell.onclick = () => { heldFrame = (heldFrame === i) ? -1 : i; };
+    strip.appendChild(cell);
+  });
+}
+
+let strippedAt = -2;
+function markStrip(f) {
+  if (f === strippedAt) return;
+  strippedAt = f;
+  fire.forEach((_, i) => {
+    const el = $('cell' + i);
+    if (el) el.className = 'cell' + (i === f ? ' cur' : '');
+  });
+}
+
+/* --- panel ---------------------------------------------------------------- */
+
+const refreshers = [];
+function numField(parent, label, unit, get, set, step, digits) {
+  const row = document.createElement('div');
+  row.className = 'nf';
+  row.innerHTML = `<span class="lbl">${label}</span>
+    <span><button class="st">−</button></span><input type="text">
+    <span><button class="st">+</button></span><span class="unit">${unit || ''}</span>`;
+  const [minus, plus] = row.querySelectorAll('button.st');
+  const input = row.querySelector('input');
+  const show = () => { input.value = get().toFixed(digits); };
+  const apply = v => { if (isFinite(v)) { set(v); show(); dump(); } };
+  const nudge = d => apply(get() + d);
+  minus.onclick = () => nudge(-step);
+  plus.onclick = () => nudge(step);
+  input.addEventListener('change', () => apply(parseFloat(input.value.replace(',', '.'))));
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { apply(parseFloat(input.value.replace(',', '.'))); input.blur(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(step * (e.shiftKey ? 10 : 1)); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-step * (e.shiftKey ? 10 : 1)); }
+  });
+  show();
+  parent.appendChild(row);
+  refreshers.push(show);
+}
+
+function pick(parent, label, opts, get, set) {
+  const wrap = document.createElement('div');
+  wrap.className = 'row';
+  if (label) {
+    const l = document.createElement('span');
+    l.style.cssText = 'color:#9ab;font-size:11px;align-self:center;margin-right:2px;min-width:52px';
+    l.textContent = label;
+    wrap.appendChild(l);
+  }
+  opts.forEach(o => {
+    const b = document.createElement('button');
+    b.textContent = o;
+    b.className = get() === o ? 'on' : '';
+    b.onclick = () => { set(o); buildPanel(); dump(); };
+    wrap.appendChild(b);
+  });
+  parent.appendChild(wrap);
+}
+
+function buildPanel() {
+  const side = $('side');
+  side.innerHTML = '';
+  refreshers.length = 0;
+
+  const g1 = document.createElement('div');
+  g1.className = 'group';
+  g1.innerHTML = '<h3>WHAT TO SHOW</h3>';
+  side.appendChild(g1);
+  pick(g1, '', ['single', 'cross', 'x', 'attack'], () => P.pattern, v => { P.pattern = v; t = 0; });
+  const n1 = document.createElement('p');
+  n1.className = 'note';
+  n1.innerHTML = 'Each bolt is an ARM rooted on the origin, running outward. cross = four arms at ' +
+                 '0/90/180/270°, x = the same four swung 45°. <b>attack</b> runs charge → cross → gap → X.';
+  g1.appendChild(n1);
+  pick(g1, 'bg', ['white', 'black', 'sky', 'check'], () => P.bg, v => P.bg = v);
+  const n2 = document.createElement('p');
+  n2.className = 'note warn';
+  n2.textContent = 'White is the default because no-time mode has the world bleached to pure white by the time he arrives.';
+  g1.appendChild(n2);
+
+  const g2 = document.createElement('div');
+  g2.className = 'group';
+  g2.innerHTML = '<h3>THE STRIKE</h3>';
+  side.appendChild(g2);
+  numField(g2, 'frame hold', 'ms', () => P.frameMs, v => P.frameMs = clamp(v, 0, 2000), 5, 0);
+  pick(g2, 'play', ['loop', 'once', 'pingpong'], () => P.playMode, v => P.playMode = v);
+  const fr = document.createElement('div');
+  fr.className = 'row';
+  const fb = document.createElement('button');
+  fb.textContent = 'free-run cycle';
+  fb.className = P.freeRun ? 'ok' : '';
+  fb.title = 'the crackle runs continuously; waves reveal a cycle already going';
+  fb.onclick = () => { P.freeRun = !P.freeRun; fb.className = P.freeRun ? 'ok' : ''; dump(); };
+  fr.appendChild(fb);
+  g2.appendChild(fr);
+  numField(g2, 'wave travel', 'ms', () => P.waveMs, v => P.waveMs = clamp(v, 0, 4000), 20, 0);
+  numField(g2, 'arm length', '×W', () => P.boltScale, v => P.boltScale = clamp(v, 0.1, 4), 0.05, 2);
+  numField(g2, 'push out', 'px', () => P.spread, v => P.spread = v, 5, 0);
+  numField(g2, 'origin X', 'px', () => P.originX, v => P.originX = v, 5, 0);
+  numField(g2, 'origin Y', 'px', () => P.originY, v => P.originY = v, 5, 0);
+  const cf = document.createElement('div');
+  cf.className = 'row';
+  const cb = document.createElement('button');
+  cb.textContent = 'centre frames';
+  cb.className = P.centreFrames ? 'ok' : '';
+  cb.onclick = () => { P.centreFrames = !P.centreFrames; cb.className = P.centreFrames ? 'ok' : ''; dump(); };
+  cf.appendChild(cb);
+  // Labelled by what it IS rather than by what pressing it does — with the
+  // correct setting now the default, "root at other end" read as a warning
+  // when it was simply the truth.
+  const rb = document.createElement('button');
+  const rbLabel = () => 'root: ' + (P.rootFlip ? 'right edge' : 'left edge');
+  rb.textContent = rbLabel();
+  rb.className = 'ok';
+  rb.title = 'which end of the sprite sits on the origin — right is correct for this art';
+  rb.onclick = () => { P.rootFlip = !P.rootFlip; rb.textContent = rbLabel(); dump(); };
+  cf.appendChild(rb);
+  g2.appendChild(cf);
+  const nr = document.createElement('p');
+  nr.className = 'note';
+  nr.innerHTML = 'Each arm is ROOTED at the origin and runs outward, so where rays meet they meet at their roots — not tip to tip. <b>origin X/Y</b> moves where the arms leave him.';
+  g2.appendChild(nr);
+  const n3 = document.createElement('p');
+  n3.className = 'note';
+  n3.textContent = 'The four bolts\' boxes drift ~32px across and ~11px down. Off = the artist\'s registration, jitter and all — arguably right for lightning. On = each frame centred on its own box.';
+  g2.appendChild(n3);
+
+  const g3 = document.createElement('div');
+  g3.className = 'group';
+  g3.innerHTML = '<h3>THE ATTACK</h3>';
+  side.appendChild(g3);
+  numField(g3, 'fists up', 'ms', () => P.chargeMs, v => P.chargeMs = clamp(v, 0, 8000), 100, 0);
+  numField(g3, 'wave holds', 'ms', () => P.holdMs, v => P.holdMs = clamp(v, 30, 4000), 20, 0);
+  numField(g3, 'between', 'ms', () => P.betweenMs, v => P.betweenMs = clamp(v, 0, 4000), 20, 0);
+  pick(g3, 'first', ['cross', 'x', 'single'], () => P.wave1, v => P.wave1 = v);
+  pick(g3, 'then', ['x', 'cross', 'single'], () => P.wave2, v => P.wave2 = v);
+
+  const g4 = document.createElement('div');
+  g4.className = 'group';
+  g4.innerHTML = '<h3>THE BOSS</h3>';
+  side.appendChild(g4);
+  numField(g4, 'pose (0-6)', '', () => P.bossPose, v => P.bossPose = clamp(Math.round(v), 0, 6), 1, 0);
+  numField(g4, 'size', 'px', () => P.bossSizePx, v => P.bossSizePx = clamp(v, 40, 900), 10, 0);
+  const bf = document.createElement('div');
+  bf.className = 'row';
+  const bb = document.createElement('button');
+  bb.textContent = 'show boss';
+  bb.className = P.showBoss ? 'ok' : '';
+  bb.onclick = () => { P.showBoss = !P.showBoss; bb.className = P.showBoss ? 'ok' : ''; };
+  bf.appendChild(bb);
+  g4.appendChild(bf);
+  const n4 = document.createElement('p');
+  n4.className = 'note';
+  n4.textContent = 'golpe (fists up) is drawn while charging and while striking; the normal sheet in the gaps. Its poses measured within a few px of the originals, so it is a drop-in swap.';
+  g4.appendChild(n4);
+
+  const g5 = document.createElement('div');
+  g5.className = 'group';
+  g5.innerHTML = '<h3>SETTINGS</h3>';
+  side.appendChild(g5);
+  const ta = document.createElement('textarea');
+  ta.id = 'dump'; ta.readOnly = true;
+  g5.appendChild(ta);
+  const r = document.createElement('div');
+  r.className = 'row';
+  const cp = document.createElement('button');
+  cp.textContent = 'copy json';
+  cp.onclick = () => { ta.select(); document.execCommand('copy'); cp.textContent = 'copied'; setTimeout(() => cp.textContent = 'copy json', 900); };
+  r.appendChild(cp);
+  g5.appendChild(r);
+  dump();
+}
+
+function dump() {
+  const ta = $('dump');
+  if (!ta) return;
+  ta.value = JSON.stringify({
+    bossGolpeSheet: BOSS_GOLPE,
+    fireSheets: FIRE,
+    boltBoxes: fire.map(f => f.box),
+    bossRectsMeasured: bossRects,
+    tuning: {
+      frameMs: P.frameMs, playMode: P.playMode, freeRun: P.freeRun,
+      centreFrames: P.centreFrames,
+      boltScale: P.boltScale, spread: P.spread, waveMs: P.waveMs,
+      rootFlip: P.rootFlip, originX: P.originX, originY: P.originY,
+      chargeMs: P.chargeMs, holdMs: P.holdMs, betweenMs: P.betweenMs,
+      wave1: P.wave1, wave2: P.wave2, patternAngles: PATTERNS,
+    },
+  }, null, 2);
+}
+
+/* --- keys ----------------------------------------------------------------- */
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { e.preventDefault(); playing = !playing; }
+  else if (e.code === 'KeyR') { t = 0; playing = true; }
+  else if (/^Digit[1-4]$/.test(e.code)) {
+    const i = +e.code.slice(5) - 1;
+    heldFrame = (heldFrame === i) ? -1 : i;
+  }
+  else if (e.code === 'KeyQ') { P.pattern = 'single'; t = 0; buildPanel(); }
+  else if (e.code === 'KeyW') { P.pattern = 'cross'; t = 0; buildPanel(); }
+  else if (e.code === 'KeyE') { P.pattern = 'x'; t = 0; buildPanel(); }
+  else if (e.code === 'KeyA') { P.pattern = 'attack'; t = 0; buildPanel(); }
+  else if (e.code === 'KeyB') {
+    const o = ['white', 'black', 'sky', 'check'];
+    P.bg = o[(o.indexOf(P.bg) + 1) % o.length];
+    buildPanel();
+  }
+});
+
+boot().catch(err => {
+  loadMsg.innerHTML = 'FAILED: ' + err.message +
+    '<br><br>Serve the repo and open this over http.';
+  loadMsg.className = 'warn';
+  stateEl.textContent = 'error';
+});
+</script>
+</body>
+</html>

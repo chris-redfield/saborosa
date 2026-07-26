@@ -69,6 +69,7 @@ player decides which way the run goes by choosing what to shoot.
 | `src/coin.js` | the spinning time-coin: shootable, reversible, explodes |
 | `src/boss.js` | the Time Boss: facing sweep, stalking, arrival blast, health, the throw |
 | `src/orb.js` | what he throws — the root game's FX sphere, flying straight |
+| `src/strike.js` | one wave of his SPECIAL: lightning arms, and their hitbox |
 | `src/fly-boss.js` | the Mosca Boss: three-beat entrance, then a fight |
 | `src/boss-bar.js` | his health bar, top-centre. Stateless. **Not** part of the HUD |
 | `src/game-clock.js` | the run's own time base — scrubbable, and now actually scrubbed |
@@ -87,6 +88,7 @@ player decides which way the run goes by choosing what to shoot.
 | `tools/build-coin-frames.py` | coin masters → uniform 160px grid sheets |
 | `tools/build-orb-frames.py` | the root game's FX sphere → a 5-cell grid |
 | `tools/build-hustlebar.py` | the 22 hand-drawn health bars → 23 rotated frames |
+| `tools/boss-lightning.html` | previews the Time Boss's special before it is wired |
 | `tools/build-sound.py` | phone voice notes → trimmed, levelled, loop-ready ogg |
 | `tools/music-lab.html` | layers/aligns the three music takes; bounces the mix |
 | `tools/bake-trilha.py` | renders that mix to the single file the game plays |
@@ -1091,6 +1093,82 @@ Frame 0 only shows when he is actually dead (`frameFor` clamps to ≥1 while
 alive): an empty bar means dead, and showing it a hit early would call the fight
 before it was over. It IS drawn through the death blast, because an empty bar is
 the news.
+
+---
+
+### His SPECIAL — fists up, then two waves of lightning
+
+`src/strike.js`, and `tools/boss-lightning.html` is where it was dialled in.
+
+**When.** It arrives with **stage 2** — the frame his health crosses
+`bossStage2At` (0.5) — and the first cast starts *then*, not on a timer: the
+special is how the fight announces it has changed, so making the player wait for
+it would waste that. After that it is every `bossSpecialEveryMs` (15s) ±
+`bossSpecialSaltMs` (5s), **rolled per cast**, so a player cannot learn a
+metronome and simply be elsewhere on the beat.
+
+**The sequence**, ~3.1s end to end:
+
+```
+fists up 2000ms  →  CROSS 420ms  →  260ms  →  X 420ms  →  wait 10-20s
+```
+
+⚠️ Note the salt is now a third of the gap, not a quarter — at 15s ± 5s the
+quiet stretch runs 10-20s, so the *fastest* repeat is barely three times the
+attack's own length. Cutting the base much further without cutting the salt
+would start letting one cast follow another almost immediately.
+
+⚠️ **The 2s telegraph is the only warning there is** — the bolts appear at full
+length in one frame. Shorten it and the attack becomes unavoidable rather than
+hard, which is a different thing. He is drawn from the golpe sheet for the
+*whole* special, not just the warning, so the pose the player learns to fear is
+on screen throughout.
+
+⚠️ **The special's clock is REAL ms.** The game clock is paused for the whole of
+no-time mode, which is the only time this fight happens, so anything driven off
+it would never advance. Phase overshoot is carried forward so a long frame
+cannot make the sequence drift later and later.
+
+**The art**, and three things about it that are not guessable:
+
+- `saborosa-boss-time-golpe.png` is the **same 7 poses** with his fists up, so
+  it swaps in against `BOSS_RECTS` with no second rect table. Measured, its
+  poses sit within a few px of the originals and share the same top and heights.
+- The four fire sheets are a **LOOP, not a build-up** — all four are distinct
+  drawings (verified by hash) and they cycle for as long as a wave is on screen.
+  The growing branch count is the crackle, not a progression.
+- ⚠️ **A bolt is an ARM ROOTED AT THE ORIGIN, and the root is the sprite's RIGHT
+  edge**, so every arm is drawn mirrored. Laid across him instead — the obvious
+  reading of a full-width bolt — half of it runs backwards and reads as
+  lightning *converging* on him. And the root cannot be derived from the art:
+  the ink-per-column profile is thickest in the MIDDLE and tapers both ways, so
+  reading the thinner right end as the tip (which I did first) gives rays that
+  meet tip-to-tip in the centre. It was settled by looking at it.
+
+The two waves are the same four angles swung 45°, which is what makes them read
+as one attack in two beats rather than two unrelated effects.
+
+⚠️ **Collision is a CHAIN OF SMALL BOXES along each arm**, not one rotated
+rectangle. Everything in this game collides with AABBs, and a diagonal arm has
+no useful one — its bounding box is a huge square covering the gaps *between*
+the arms as well as the arm itself, which would hit a player standing safely in
+one. Boxes stepped along the arm at 0.8× their own width overlap, so there is no
+gap to slip through at any angle.
+
+⚠️ **The hitbox is far narrower than the art** (`bossSpecialHitPx` 56, against a
+drawn band of ~196px). The bolt is jagged branches and forks; being killed by a
+wisp at the edge of one would be indefensible. Hold **C** to see the difference —
+that gap is what makes the attack fair.
+
+**One hit, not two.** The wave costs a full point (`bossSpecialDamage` 1 — the
+half-point belongs to the swarm, not to him), and `plane.hurt()` is rejected
+inside the player's 1100ms i-frames, which outlast the whole cross-gap-X
+sequence. So being caught by both waves is ONE hit: the second wave exists to
+catch a player who moved badly, not to double the first's damage.
+
+Drawn **under** the boss, for the same reason the tool draws it that way: over
+him a bolt cuts across his face, reads as something happening *to* him, and at
+this length simply erases the character.
 
 ---
 
