@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Music Lab</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f;
+          --t1:#53d8fb; --t2:#e9a145; --t3:#a97be9; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #state { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #left { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #wrap { flex:1; position:relative; background:#0b1020; overflow:hidden; }
+  canvas#wave { display:block; position:absolute; inset:0; cursor:crosshair; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; font-size:12px; z-index:5; }
+  #transport { height:44px; display:flex; align-items:center; gap:9px; padding:0 12px;
+               background:var(--panel); border-top:1px solid #0c1226; }
+  #transport .read { color:var(--ok); margin-left:auto; }
+
+  #side { width:352px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:30px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; font-size:11px; letter-spacing:1px; color:var(--accent);
+              display:flex; align-items:center; gap:7px; }
+  .group h3 .sw { width:9px; height:9px; border-radius:2px; }
+  .group h3 .dur { margin-left:auto; color:#6d7e9e; letter-spacing:0; font-size:10px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  button.ok { background:#2c5a3a; border-color:#3e7a52; color:#dfe; }
+  label.cb { display:flex; align-items:center; gap:7px; margin:7px 0; color:#cfe; cursor:pointer; }
+
+  /* Typed number, steppers, arrow keys. No sliders in this project's tools —
+     these are values you want to set exactly and read back, and a slider gives
+     you neither. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf .stepper { display:flex; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:78px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:26px; }
+  #dump { width:100%; height:132px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+  .note { color:#7a8aa8; font-size:11px; margin:5px 0 0; }
+  .warn { color:#d8a657; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>MUSIC LAB</b>
+  <span class="hint">flying-dungeon · Space play/stop · 1/2/3 mute · shift+1/2/3 solo · R re-render · E export wav</span>
+  <span id="state">booting…</span>
+</div>
+<div id="main">
+  <div id="left">
+    <div id="wrap">
+      <div id="loadmsg">loading…</div>
+      <canvas id="wave"></canvas>
+    </div>
+    <div id="transport">
+      <button id="play">▶ play</button>
+      <button id="rerender">re-render</button>
+      <button id="exportWav">export wav</button>
+      <span class="hint">click the waveform to scrub</span>
+      <span class="read" id="read">—</span>
+    </div>
+  </div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   MUSIC LAB — sync three takes into ONE looping background track.
+
+   The soundtrack was written as three separate phone recordings. They are not
+   three alternatives and not three sections: they are LAYERS, meant to play at
+   the same time. Which means the whole job is alignment — three hummed takes
+   recorded independently do not agree about where the bar starts or exactly
+   how fast it goes, and nothing about that is visible in a file listing. You
+   have to hear it, and to hear it you have to be able to move one against the
+   others and hear it again immediately.
+
+   HOW IT WORKS — and why it is not three looping <audio> elements:
+
+   Every play RENDERS the mix down to a single buffer through an
+   OfflineAudioContext, and then loops that one buffer. Three independent
+   looping sources drift: each restarts on its own schedule and the browser
+   gives you no way to bind them, so a mix that sounds locked for ten seconds
+   is a mess a minute later. Rendering to one buffer makes sync a property of
+   the FILE rather than of playback — which is also exactly what the game will
+   ship (one file, one <audio>, no mixer at runtime), so what you hear here is
+   what the game does, not an approximation of it.
+
+   `export wav` writes out that same render. That is the deliverable: bounce it,
+   drop it in assets-v2/flying-dungeon/sound/music/, and build-sound.py turns it
+   into the game's ogg like any other master.
+
+   THE MASTER LOOP is the one number everything hangs off. Each layer repeats to
+   fill it, so a layer whose own length does not divide it evenly will be cut
+   mid-phrase at the wrap — which you will hear.
+
+   Two ways out of that, and this mix uses the second. Either pull the layers
+   into agreement with `rate` until they all divide the loop, or leave them at
+   their natural speed and CROP the loop to the last downbeat — end it at the
+   point they are all about to come round, and throw away the fragment that
+   would have been cut anyway. Cropping keeps the takes at the tempo they were
+   played at, which on hummed material is worth more than a tidy number.
+
+   The tool opens on the dialled-in mix (see DEFAULT_MIX / DEFAULT_MASTER
+   below), not on three layers stacked at zero.
+
+   SEAM BLEND crossfades the end of the loop back over its beginning, so the
+   wrap does not click. It costs you that much material — the rendered file is
+   still exactly the master loop length, but its first N ms are a blend of the
+   head and the tail.
+
+   ⚠️ It loads the BUILT files (assets-v2/flying-dungeon/audio/music/), not the
+   raw phone takes. Those are already trimmed of their dead air and levelled
+   against each other by tools/build-sound.py — aligning against untrimmed
+   masters would mean aligning against a second of silence.
+
+   ⚠️ Serve the repo, don't open this off the filesystem: decodeAudioData needs
+   a real fetch and file:// gives you a CORS error rather than a useful one.
+--------------------------------------------------------------------------- */
+
+const BASE = '../assets-v2/flying-dungeon/audio/music/';
+
+// The layers, in draw order. `color` is shared between the lane and its panel
+// heading so a waveform can be traced back to the controls that move it.
+const TRACKS = [
+  { file: 'trilha-01.ogg', name: 'trilha 01', color: '#53d8fb' },
+  { file: 'trilha-02.ogg', name: 'trilha 02', color: '#e9a145' },
+  { file: 'trilha-03.ogg', name: 'trilha 03', color: '#a97be9' },
+];
+
+// Per-layer mix state. Everything here is what `export json` writes out and
+// what a bake script would read back.
+//   on/solo   audition. Any solo mutes every layer that is not soloed.
+//   db        level, in dB so that -6 means the same thing it means anywhere else.
+//   offsetMs  where the layer's first hit lands inside the loop. THE alignment
+//             knob — negative pulls it in from before the loop starts, which is
+//             how you nudge a layer that came in fractionally late.
+//   trimMs    skip this much off the front of the source. Different from offset:
+//             trim throws material away, offset moves what is left.
+//   rate      playback speed. 1.02 = 2% faster. This is the tempo match, and on
+//             hummed takes it is usually a fraction of a percent.
+//   repeat    fill the master loop by repeating the layer end to end.
+//   gapMs     dead air between those repeats — for a layer that is a hit rather
+//             than a phrase and should not be wall to wall.
+//
+// THESE ARE THE DIALLED-IN VALUES, not neutral ones — the mix was found by ear
+// in this tool and the numbers put back here, so opening it plays the real
+// arrangement and `reset` returns to it rather than to three layers stacked at
+// zero. Change them by finding something better and copying it out of the MIX
+// panel, the same way these got here.
+//
+// What the arrangement is: 01 is pulled a second EARLY (offset -1000), so the
+// loop opens a second into its phrase rather than on its first beat — the
+// track is already going when the loop starts. 02 runs from the top untouched
+// and is the layer the other two are aligned against. 03 comes in 100ms late,
+// which is not a mistake being corrected but the swing that keeps it off 02's
+// beat. The gaps on 01 and 03 (150/140ms) are what make their repeats land on
+// 02's, since neither divides the loop on its own.
+const DEFAULT_MIX = [
+  { on: true, solo: false, db: 0, offsetMs: -1000, trimMs: 0, rate: 1, repeat: true, gapMs: 150 },
+  { on: true, solo: false, db: 0, offsetMs: 0,     trimMs: 0, rate: 1, repeat: true, gapMs: 0   },
+  { on: true, solo: false, db: 0, offsetMs: 100,   trimMs: 0, rate: 1, repeat: true, gapMs: 140 },
+];
+
+const DEFAULT_MASTER = {
+  /* CROPPED TO THE LAST DOWNBEAT, and that is the whole reason it is not 15302
+     (the length of the longest layer, which is where it started).
+
+     At 15302 the loop ran ~850ms past the point where all three layers come
+     back round together — so the wrap arrived with 01 a moment into its second
+     pass and 02/03 a moment into their third, all of them cut mid-phrase and
+     then jumped back to the top. That is the classic bad loop, and it is
+     audible immediately.
+
+     14452 is where the last of those restarts falls: layer 1's second pass
+     begins at 14452 and layers 2 and 3 begin theirs at 14466, so cropping to
+     the earliest of the three ends the loop exactly as everything is about to
+     start again — 14ms of 02/03's lead-in is lost, which is nothing.
+
+     ⚠️ DERIVED FROM THE OFFSETS AND GAPS ABOVE, so it is not independent of
+     them: change an offset, a gap or a rate and this number is stale. The
+     `crop` button in MASTER LOOP recomputes it. */
+  loopMs: 14452,
+  db: 0,
+  seamMs: 60,         // crossfade of the loop wrap
+};
+
+const mix = DEFAULT_MIX.map(m => Object.assign({}, m));
+const master = Object.assign({}, DEFAULT_MASTER);
+
+let ctx = null;               // live AudioContext (created on first gesture)
+let buffers = [];             // decoded layers, index-aligned with TRACKS
+let rendered = null;          // the mixed loop, as an AudioBuffer
+let dirty = true;             // mix changed since the last render
+let src = null;               // the playing source
+let startedAt = 0;            // ctx time the current playback began
+let playing = false;
+let scrubMs = 0;              // where a click on the waveform parked the head
+
+const $ = id => document.getElementById(id);
+const stateEl = $('state'), readEl = $('read'), loadMsg = $('loadmsg');
+const cv = $('wave'), g2 = cv.getContext('2d');
+
+const dbToGain = db => Math.pow(10, db / 20);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = ms => (ms / 1000).toFixed(3) + 's';
+
+/* --- loading ------------------------------------------------------------- */
+
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+async function loadAll() {
+  const ac = audio();
+  buffers = await Promise.all(TRACKS.map(async t => {
+    const r = await fetch(BASE + t.file);
+    if (!r.ok) throw new Error(t.file + ' — ' + r.status);
+    return ac.decodeAudioData(await r.arrayBuffer());
+  }));
+  // NOTE the loop length is NOT set from the buffers here. It is a tuned value
+  // (see DEFAULT_MASTER) and reading it off the longest layer would throw the
+  // crop away every time the page loaded.
+  loadMsg.style.display = 'none';
+  buildPanel();
+  await render();
+  draw();
+}
+
+/* --- the render ----------------------------------------------------------
+   One offline pass produces the whole loop. Layers are placed by scheduling a
+   buffer source per repetition — the offline context simply stops writing at
+   the end of its own length, so a repetition that runs past the wrap is
+   truncated for free and needs no arithmetic here.
+
+   `extra` is rendered PAST the loop end so the seam blend has real material to
+   fold back over the head, rather than fading into silence. -------------- */
+
+async function render() {
+  if (!buffers.length) return;
+  const sr = ctx.sampleRate;
+  const seam = clamp(master.seamMs, 0, Math.max(0, master.loopMs / 2)) / 1000;
+  const loopSec = master.loopMs / 1000;
+  const frames = Math.ceil((loopSec + seam) * sr);
+  if (frames < 2) return;
+
+  const anySolo = mix.some(m => m.solo);
+  const oc = new OfflineAudioContext(2, frames, sr);
+  const out = oc.createGain();
+  out.gain.value = dbToGain(master.db);
+  out.connect(oc.destination);
+
+  mix.forEach((m, i) => {
+    const buf = buffers[i];
+    if (!buf) return;
+    if (anySolo ? !m.solo : !m.on) return;
+
+    const g = oc.createGain();
+    g.gain.value = dbToGain(m.db);
+    g.connect(out);
+
+    const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+    const rate = clamp(m.rate, 0.25, 4);
+    const clip = (buf.duration - trim) / rate;      // how long one pass lasts
+    if (clip <= 0.001) return;
+    const step = clip + Math.max(0, m.gapMs / 1000);
+
+    let at = m.offsetMs / 1000;
+    let guard = 0;
+    do {
+      const s = oc.createBufferSource();
+      s.buffer = buf;
+      s.playbackRate.value = rate;
+      s.connect(g);
+      if (at >= 0) {
+        s.start(at, trim);
+      } else {
+        // Started before the loop begins: play it from the point it has already
+        // reached by t=0 instead. `at * rate` because the source offset is in
+        // SOURCE seconds and `at` is in output seconds — at rate 1.5 a layer
+        // pulled 100ms early is 150ms further into its own material.
+        const into = trim - at * rate;
+        if (into < buf.duration) s.start(0, into);
+      }
+      at += step;
+    } while (m.repeat && at < loopSec + seam && ++guard < 2000);
+  });
+
+  const body = await oc.startRendering();
+
+  // Fold the tail back over the head. Linear crossfade both ways: at the wrap
+  // the outgoing tail is at full and the new head at nothing, and `seam` later
+  // it is the other way round — so playing the result on loop is continuous
+  // through the join with no level dip and no click.
+  const loopFrames = Math.round(loopSec * sr);
+  const seamFrames = Math.min(Math.round(seam * sr), loopFrames);
+  const final = new AudioBuffer({ length: loopFrames, numberOfChannels: 2, sampleRate: sr });
+  for (let c = 0; c < 2; c++) {
+    const b = body.getChannelData(Math.min(c, body.numberOfChannels - 1));
+    const f = final.getChannelData(c);
+    f.set(b.subarray(0, loopFrames));
+    for (let i = 0; i < seamFrames; i++) {
+      const w = i / seamFrames;
+      f[i] = b[i] * w + b[loopFrames + i] * (1 - w);
+    }
+  }
+  rendered = final;
+  renderSeq++;
+  dirty = false;
+  stateEl.textContent = `loop ${fmt(master.loopMs)} · ${sr} Hz · peak ${peakDb(final).toFixed(1)} dB`;
+  stateEl.className = peakDb(final) > -0.1 ? 'warn' : '';
+}
+
+/* Where the loop should END: the last point inside it at which a layer starts
+   a fresh pass. Everything to the right of that is the beginning of a phrase
+   that the wrap is about to cut off and throw away, so cropping there is what
+   makes the loop come round on a downbeat instead of in the middle of one.
+
+   The EARLIEST of the layers' last downbeats, not the latest: cropping to the
+   earliest means no layer has got further than a few ms into its next pass, so
+   nothing audible is lost. Cropping to the latest would leave whichever layer
+   restarted first with a real fragment of a phrase hanging past the wrap.
+
+   A layer with no restart inside the loop (not repeating, or too long to come
+   round twice) simply does not vote — it has no downbeat to crop to, and
+   letting it force the answer to zero would be nonsense. */
+function cropMs() {
+  const anySolo = mix.some(m => m.solo);
+  const loopSec = master.loopMs / 1000;
+  let best = null;
+  mix.forEach((m, i) => {
+    const buf = buffers[i];
+    if (!buf) return;
+    if (anySolo ? !m.solo : !m.on) return;
+    const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+    const clip = (buf.duration - trim) / clamp(m.rate, 0.25, 4);
+    if (clip <= 0.001) return;
+    const step = clip + Math.max(0, m.gapMs / 1000);
+    let at = m.offsetMs / 1000, last = null, guard = 0;
+    while (at < loopSec && ++guard < 4000) {
+      if (at > 0.001) last = at;          // t=0 is the loop's own start, not a crop point
+      if (!m.repeat) break;
+      at += step;
+    }
+    if (last != null && (best == null || last < best)) best = last;
+  });
+  return best == null ? null : Math.round(best * 1000);
+}
+
+function peakDb(buf) {
+  let p = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > p) p = a; }
+  }
+  return p > 0 ? 20 * Math.log10(p) : -120;
+}
+
+/* --- transport ----------------------------------------------------------- */
+
+async function play(fromMs) {
+  stop();
+  if (dirty || !rendered) await render();
+  if (!rendered) return;
+  const ac = audio();
+  src = ac.createBufferSource();
+  src.buffer = rendered;
+  src.loop = true;
+  src.connect(ac.destination);
+  const at = clamp((fromMs != null ? fromMs : scrubMs) / 1000, 0, rendered.duration - 0.001);
+  src.start(0, at);
+  startedAt = ac.currentTime - at;
+  playing = true;
+  $('play').textContent = '■ stop';
+  $('play').classList.add('on');
+}
+
+function stop() {
+  if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
+  playing = false;
+  $('play').textContent = '▶ play';
+  $('play').classList.remove('on');
+}
+
+function headMs() {
+  if (!rendered) return 0;
+  if (!playing) return scrubMs;
+  return ((ctx.currentTime - startedAt) % rendered.duration) * 1000;
+}
+
+// Every knob lands here: mark the render stale, and if we are already playing,
+// rebuild and pick straight back up at the same point in the loop. That is the
+// whole point of the tool — a change you cannot hear immediately in context is
+// a change you cannot judge.
+async function touched() {
+  dirty = true;
+  draw();
+  if (playing) { const at = headMs(); await render(); play(at); }
+  else { await render(); draw(); }
+  dump();
+}
+
+/* --- drawing -------------------------------------------------------------
+   One shared timeline: the rendered mix across the top, then a lane per layer
+   showing where its repetitions actually fall inside the loop. Alignment is a
+   thing you SEE here and confirm by ear, rather than guessing at from numbers.
+------------------------------------------------------------------------- */
+
+function fit() {
+  const r = cv.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.max(1, Math.round(r.width * dpr));
+  cv.height = Math.max(1, Math.round(r.height * dpr));
+  cv.style.width = r.width + 'px';
+  cv.style.height = r.height + 'px';
+  g2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+window.addEventListener('resize', fit);
+
+// Min/max per column: an envelope, not a resample. A sparse sample-per-column
+// read misses transients entirely and draws a quiet track for a loud one.
+//
+// MEMOISED, and it has to be: this walks every sample in the buffer, the
+// playhead redraws the whole view 60 times a second, and there are four
+// buffers on screen. Uncached that is ~200M samples a second scanned to move
+// one green line. The key is everything that changes the picture.
+const peakCache = new Map();
+function peaks(buf, w, key, from) {
+  from = from || 0;
+  const k = key + '|' + w + '|' + from;
+  const hit = peakCache.get(k);
+  if (hit) return hit;
+  const out = new Float32Array(w * 2);
+  const d = buf.getChannelData(0).subarray(Math.min(from, buf.length - 1));
+  const per = d.length / w;
+  for (let x = 0; x < w; x++) {
+    const a = Math.floor(x * per), b = Math.min(d.length, Math.floor((x + 1) * per));
+    let lo = 0, hi = 0;
+    for (let i = a; i < b; i++) { const v = d[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    out[x * 2] = lo; out[x * 2 + 1] = hi;
+  }
+  if (peakCache.size > 60) peakCache.clear();
+  peakCache.set(k, out);
+  return out;
+}
+let renderSeq = 0;      // bumped per render, so the mix envelope is re-read once
+
+const PAD = 12;
+function laneRects() {
+  const W = cv.clientWidth, H = cv.clientHeight;
+  const top = PAD, mixH = Math.max(60, (H - PAD * 2) * 0.34);
+  const rest = H - PAD * 2 - mixH - 8;
+  const laneH = Math.max(34, rest / TRACKS.length - 6);
+  const lanes = TRACKS.map((_, i) => ({ y: top + mixH + 8 + i * (laneH + 6), h: laneH }));
+  return { W, H, mix: { y: top, h: mixH }, lanes, x0: PAD, w: W - PAD * 2 };
+}
+
+function draw() {
+  if (!cv.clientWidth) return;
+  const R = laneRects();
+  g2.clearRect(0, 0, R.W, R.H);
+  g2.fillStyle = '#0b1020';
+  g2.fillRect(0, 0, R.W, R.H);
+
+  const loopSec = master.loopMs / 1000;
+  const pxPerSec = R.w / Math.max(0.001, loopSec);
+
+  // Second gridlines behind everything — the ruler you judge offsets against.
+  g2.strokeStyle = '#1b2a4a'; g2.lineWidth = 1;
+  g2.fillStyle = '#4a5c80'; g2.font = '10px monospace';
+  for (let s = 0; s <= Math.ceil(loopSec); s++) {
+    const x = Math.round(R.x0 + s * pxPerSec) + 0.5;
+    if (x > R.x0 + R.w) break;
+    g2.beginPath(); g2.moveTo(x, PAD); g2.lineTo(x, R.H - PAD); g2.stroke();
+    g2.fillText(s + 's', x + 3, PAD - 2);
+  }
+
+  // The mix.
+  if (rendered) {
+    const p = peaks(rendered, Math.max(1, Math.round(R.w)), 'mix' + renderSeq);
+    const mid = R.mix.y + R.mix.h / 2, amp = R.mix.h / 2 - 2;
+    g2.fillStyle = '#dfe9ff';
+    for (let x = 0; x < R.w; x++) {
+      const lo = p[x * 2] * amp, hi = p[x * 2 + 1] * amp;
+      g2.fillRect(R.x0 + x, mid - hi, 1, Math.max(1, hi - lo));
+    }
+    g2.strokeStyle = '#2a3a5e';
+    g2.strokeRect(R.x0 + .5, R.mix.y + .5, R.w - 1, R.mix.h - 1);
+    g2.fillStyle = '#7a8aa8';
+    g2.fillText('MIX', R.x0 + 5, R.mix.y + 12);
+
+    // The seam: the head material that is a blend of head and tail.
+    const sw = (clamp(master.seamMs, 0, master.loopMs / 2) / 1000) * pxPerSec;
+    if (sw > 0.5) {
+      g2.fillStyle = 'rgba(233,69,96,0.18)';
+      g2.fillRect(R.x0, R.mix.y, sw, R.mix.h);
+    }
+  }
+
+  // The layers, each drawn where its repetitions land.
+  const anySolo = mix.some(m => m.solo);
+  TRACKS.forEach((t, i) => {
+    const L = R.lanes[i], m = mix[i], buf = buffers[i];
+    const audible = anySolo ? m.solo : m.on;
+    g2.strokeStyle = '#2a3a5e';
+    g2.strokeRect(R.x0 + .5, L.y + .5, R.w - 1, L.h - 1);
+    g2.fillStyle = '#7a8aa8'; g2.font = '10px monospace';
+    g2.fillText(t.name, R.x0 + 5, L.y + 12);
+    if (!buf) return;
+
+    const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+    const clip = (buf.duration - trim) / clamp(m.rate, 0.25, 4);
+    if (clip <= 0.001) return;
+    const step = clip + Math.max(0, m.gapMs / 1000);
+    // Only the material that actually plays: from the trim point on. Reading
+    // the whole buffer would draw a phrase the mix is not using.
+    const env = peaks(buf, Math.max(1, Math.round(clip * pxPerSec)), 'L' + i,
+                      Math.round(trim * buf.sampleRate));
+    const mid = L.y + L.h / 2, amp = L.h / 2 - 3;
+
+    let at = m.offsetMs / 1000, guard = 0;
+    do {
+      const x0 = R.x0 + at * pxPerSec;
+      g2.globalAlpha = audible ? 1 : 0.22;
+      g2.fillStyle = t.color;
+      for (let x = 0; x < env.length / 2; x++) {
+        const px = x0 + x;
+        if (px < R.x0 || px > R.x0 + R.w) continue;
+        const lo = env[x * 2] * amp, hi = env[x * 2 + 1] * amp;
+        g2.fillRect(px, mid - hi, 1, Math.max(1, hi - lo));
+      }
+      // A tick at every repetition's downbeat — the thing you are actually
+      // lining up when you move `offset`.
+      if (x0 >= R.x0 - 1 && x0 <= R.x0 + R.w) {
+        g2.globalAlpha = audible ? 0.85 : 0.25;
+        g2.fillStyle = '#fff';
+        g2.fillRect(Math.round(x0), L.y + 1, 1, L.h - 2);
+      }
+      at += step;
+    } while (m.repeat && at < loopSec && ++guard < 400);
+    g2.globalAlpha = 1;
+  });
+
+  // Playhead.
+  const h = headMs() / 1000;
+  const hx = Math.round(R.x0 + h * pxPerSec) + 0.5;
+  g2.strokeStyle = '#8fce8f'; g2.lineWidth = 1;
+  g2.beginPath(); g2.moveTo(hx, PAD); g2.lineTo(hx, R.H - PAD); g2.stroke();
+  readEl.textContent = fmt(headMs()) + ' / ' + fmt(master.loopMs);
+}
+
+function frame() { if (playing) draw(); requestAnimationFrame(frame); }
+requestAnimationFrame(frame);
+
+cv.addEventListener('mousedown', e => {
+  const R = laneRects();
+  const p = clamp((e.offsetX - R.x0) / R.w, 0, 1);
+  scrubMs = p * master.loopMs;
+  if (playing) play(scrubMs); else draw();
+});
+
+/* --- the panel ----------------------------------------------------------- */
+
+function numField(parent, label, unit, get, set, step, digits) {
+  const row = document.createElement('div');
+  row.className = 'nf';
+  row.innerHTML = `<span class="lbl">${label}</span>
+    <span class="stepper"><button class="st">−</button></span>
+    <input type="text"><span class="stepper"><button class="st">+</button></span>
+    <span class="unit">${unit || ''}</span>`;
+  const [minus, plus] = row.querySelectorAll('button.st');
+  const input = row.querySelector('input');
+  const show = () => { input.value = get().toFixed(digits); };
+  const apply = v => { if (isFinite(v)) { set(v); show(); touched(); } };
+  const nudge = d => apply(get() + d);
+  minus.onclick = () => nudge(-step);
+  plus.onclick = () => nudge(step);
+  input.addEventListener('change', () => apply(parseFloat(input.value.replace(',', '.'))));
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();                     // don't let Space/1/2/3 hit hotkeys
+    if (e.key === 'Enter') { apply(parseFloat(input.value.replace(',', '.'))); input.blur(); }
+    // Fine/coarse on the arrows: shift is 10x, so a layer can be walked in by
+    // 10ms and then chased down to 1ms without touching the step size.
+    else if (e.key === 'ArrowUp') { e.preventDefault(); nudge(step * (e.shiftKey ? 10 : 1)); }
+    else if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-step * (e.shiftKey ? 10 : 1)); }
+  });
+  show();
+  parent.appendChild(row);
+  return { show };
+}
+
+// Every numeric field registers a redraw here so that a button which changes a
+// value behind their backs (fit, ×2, reset) can push the new numbers into the
+// boxes. Cleared on rebuild — the panel is thrown away and re-made, and holding
+// closures over inputs that are no longer in the document leaks the lot.
+let refreshers = [];
+function buildPanel() {
+  const side = $('side');
+  side.innerHTML = '';
+  refreshers = [];
+
+  // --- master ---
+  const g = document.createElement('div');
+  g.className = 'group';
+  g.innerHTML = '<h3>MASTER LOOP</h3>';
+  side.appendChild(g);
+  refreshers.push(numField(g, 'loop length', 'ms', () => master.loopMs,
+    v => master.loopMs = Math.max(200, v), 10, 0).show);
+  refreshers.push(numField(g, 'seam blend', 'ms', () => master.seamMs,
+    v => master.seamMs = clamp(v, 0, master.loopMs / 2), 10, 0).show);
+  refreshers.push(numField(g, 'master level', 'dB', () => master.db,
+    v => master.db = clamp(v, -40, 12), 0.5, 1).show);
+
+  // Set the loop from a layer's own length. The useful case is not "make it
+  // that long" but "make it a whole multiple of that long" — a 7s layer under a
+  // 15s one wants the loop at 14s, and then the 15s layer wants a rate of 1.07.
+  const row = document.createElement('div');
+  row.className = 'row';
+  TRACKS.forEach((t, i) => {
+    [1, 2].forEach(mult => {
+      const b = document.createElement('button');
+      b.textContent = `${i + 1}${mult > 1 ? '×' + mult : ''}`;
+      b.title = `loop = ${t.name} length${mult > 1 ? ' × ' + mult : ''}`;
+      b.onclick = () => {
+        if (!buffers[i]) return;
+        const eff = (buffers[i].duration - mix[i].trimMs / 1000) / clamp(mix[i].rate, .25, 4);
+        master.loopMs = Math.round(eff * 1000 * mult);
+        refreshers.forEach(f => f());
+        touched();
+      };
+      row.appendChild(b);
+    });
+  });
+  const half = document.createElement('button');
+  half.textContent = '÷2';
+  half.onclick = () => { master.loopMs = Math.max(200, Math.round(master.loopMs / 2)); refreshers.forEach(f => f()); touched(); };
+  row.appendChild(half);
+  g.appendChild(row);
+
+  // Pull the loop end back to the last downbeat. This is how the shipped
+  // default got its 14452, and it is what to press after moving any offset,
+  // gap or rate — all of which move where the layers come round.
+  const row2 = document.createElement('div');
+  row2.className = 'row';
+  const cropB = document.createElement('button');
+  cropB.textContent = '✂ crop to downbeat';
+  cropB.title = 'end the loop at the last point a layer starts a fresh pass';
+  cropB.onclick = () => {
+    const c = cropMs();
+    if (c == null || c < 200) { cropB.textContent = 'no downbeat'; setTimeout(() => cropB.textContent = '✂ crop to downbeat', 1100); return; }
+    master.loopMs = c;
+    refreshers.forEach(f => f());
+    touched();
+  };
+  row2.appendChild(cropB);
+  g.appendChild(row2);
+
+  const n = document.createElement('p');
+  n.className = 'note';
+  n.innerHTML = 'loop = layer length (1/2/3), or ×2. A layer that does not divide the loop evenly gets cut at the wrap — <b>crop</b> ends the loop at the last restart instead, so it comes round on a downbeat.';
+  g.appendChild(n);
+
+  // --- layers ---
+  TRACKS.forEach((t, i) => {
+    const m = mix[i], buf = buffers[i];
+    const gg = document.createElement('div');
+    gg.className = 'group';
+    gg.innerHTML = `<h3><span class="sw" style="background:${t.color}"></span>${t.name.toUpperCase()}
+      <span class="dur">${buf ? buf.duration.toFixed(3) + 's' : '—'}</span></h3>`;
+    side.appendChild(gg);
+
+    const r = document.createElement('div');
+    r.className = 'row';
+    const onB = document.createElement('button');
+    onB.textContent = 'on';
+    onB.className = m.on ? 'ok' : '';
+    onB.onclick = () => { m.on = !m.on; onB.className = m.on ? 'ok' : ''; touched(); };
+    const soloB = document.createElement('button');
+    soloB.textContent = 'solo';
+    soloB.className = m.solo ? 'on' : '';
+    soloB.onclick = () => { m.solo = !m.solo; soloB.className = m.solo ? 'on' : ''; touched(); };
+    const repB = document.createElement('button');
+    repB.textContent = 'repeat';
+    repB.className = m.repeat ? 'ok' : '';
+    repB.onclick = () => { m.repeat = !m.repeat; repB.className = m.repeat ? 'ok' : ''; touched(); };
+    r.append(onB, soloB, repB);
+    gg.appendChild(r);
+
+    refreshers.push(numField(gg, 'level', 'dB', () => m.db, v => m.db = clamp(v, -40, 12), 0.5, 1).show);
+    refreshers.push(numField(gg, 'offset', 'ms', () => m.offsetMs, v => m.offsetMs = v, 10, 0).show);
+    refreshers.push(numField(gg, 'trim head', 'ms', () => m.trimMs, v => m.trimMs = Math.max(0, v), 10, 0).show);
+    refreshers.push(numField(gg, 'rate', '×', () => m.rate, v => m.rate = clamp(v, 0.25, 4), 0.005, 3).show);
+    refreshers.push(numField(gg, 'gap', 'ms', () => m.gapMs, v => m.gapMs = Math.max(0, v), 10, 0).show);
+
+    // Snap the layer to the loop: pick the rate that makes it (or two of it, or
+    // three) fill the master exactly. This is the tempo match done by
+    // arithmetic instead of by ear — usually right, always a starting point.
+    const rr = document.createElement('div');
+    rr.className = 'row';
+    [1, 2, 3, 4].forEach(k => {
+      const b = document.createElement('button');
+      b.textContent = `fit ${k}×`;
+      b.title = `rate so ${k} passes fill the loop exactly`;
+      b.onclick = () => {
+        if (!buffers[i]) return;
+        const body = buffers[i].duration - m.trimMs / 1000;
+        m.rate = clamp(body * k / (master.loopMs / 1000), 0.25, 4);
+        refreshers.forEach(f => f());
+        touched();
+      };
+      rr.appendChild(b);
+    });
+    gg.appendChild(rr);
+  });
+
+  // --- export ---
+  const ge = document.createElement('div');
+  ge.className = 'group';
+  ge.innerHTML = '<h3>MIX</h3>';
+  side.appendChild(ge);
+  const ta = document.createElement('textarea');
+  ta.id = 'dump';
+  ta.readOnly = true;
+  ge.appendChild(ta);
+  const rex = document.createElement('div');
+  rex.className = 'row';
+  const cp = document.createElement('button');
+  cp.textContent = 'copy json';
+  cp.onclick = () => { ta.select(); document.execCommand('copy'); cp.textContent = 'copied'; setTimeout(() => cp.textContent = 'copy json', 900); };
+  const rs = document.createElement('button');
+  rs.textContent = 'reset';
+  // Back to the DIALLED-IN mix, not to silence-and-zeros. The tuned arrangement
+  // is the thing you want to get back to after an experiment.
+  rs.onclick = () => {
+    mix.forEach((m, i) => Object.assign(m, DEFAULT_MIX[i]));
+    Object.assign(master, DEFAULT_MASTER);
+    buildPanel(); touched();
+  };
+  rex.append(cp, rs);
+  ge.appendChild(rex);
+  const en = document.createElement('p');
+  en.className = 'note';
+  en.innerHTML = '<b>export wav</b> bounces the loop. Drop it in <span class="warn">assets-v2/flying-dungeon/sound/music/</span> and run <span class="warn">tools/build-sound.py</span> — it is a master like any other.';
+  ge.appendChild(en);
+
+  dump();
+}
+
+function dump() {
+  const ta = $('dump');
+  if (!ta) return;
+  ta.value = JSON.stringify({
+    master: { loopMs: Math.round(master.loopMs), seamMs: Math.round(master.seamMs), db: +master.db.toFixed(1) },
+    layers: TRACKS.map((t, i) => ({
+      file: t.file, on: mix[i].on, db: +mix[i].db.toFixed(1),
+      offsetMs: Math.round(mix[i].offsetMs), trimMs: Math.round(mix[i].trimMs),
+      rate: +mix[i].rate.toFixed(3), repeat: mix[i].repeat, gapMs: Math.round(mix[i].gapMs),
+    })),
+  }, null, 2);
+}
+
+/* --- wav export ----------------------------------------------------------
+   16-bit PCM, because it is the format every DAW, every browser and
+   build-sound.py all read without argument, and the file is a working master
+   that gets re-encoded anyway. -------------------------------------------- */
+
+function wavBlob(buf) {
+  const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate;
+  const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) data.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); data.setUint32(4, 36 + n * ch * 2, true); str(8, 'WAVEfmt ');
+  data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, ch, true);
+  data.setUint32(24, sr, true); data.setUint32(28, sr * ch * 2, true);
+  data.setUint16(32, ch * 2, true); data.setUint16(34, 16, true);
+  str(36, 'data'); data.setUint32(40, n * ch * 2, true);
+  const chans = [];
+  for (let c = 0; c < ch; c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++)
+    for (let c = 0; c < ch; c++) {
+      const v = Math.max(-1, Math.min(1, chans[c][i]));
+      data.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      o += 2;
+    }
+  return new Blob([data], { type: 'audio/wav' });
+}
+
+$('exportWav').onclick = async () => {
+  if (dirty || !rendered) await render();
+  if (!rendered) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(wavBlob(rendered));
+  a.download = 'trilha-mix.wav';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+
+/* --- wiring -------------------------------------------------------------- */
+
+$('play').onclick = () => { if (playing) stop(); else play(); };
+$('rerender').onclick = () => touched();
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
+  else if (e.code === 'KeyR') touched();
+  else if (e.code === 'KeyE') $('exportWav').click();
+  else if (/^Digit[123]$/.test(e.code)) {
+    const i = +e.code.slice(5) - 1;
+    if (e.shiftKey) mix[i].solo = !mix[i].solo; else mix[i].on = !mix[i].on;
+    buildPanel(); touched();
+  }
+});
+
+loadAll().catch(err => {
+  loadMsg.innerHTML = 'FAILED: ' + err.message +
+    '<br><br>Serve the repo and open this over http — decodeAudioData cannot ' +
+    'read file:// URLs.<br>Run <b>tools/build-sound.py</b> if the audio/ folder is missing.';
+  loadMsg.className = 'warn';
+  stateEl.textContent = 'error';
+});
+fit();
+</script>
+</body>
+</html>
