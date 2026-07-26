@@ -1119,6 +1119,19 @@ const CONFIG = {
   // always crosses a stage boundary, and anything that ages him GRADUALLY later
   // (the boss's aging attack) just adds to the same number.
   planeHealth: 3,
+  /* What TOUCHING a little fly costs. Half a point, so it takes two of them to
+     age him one stage — the swarm is a nuisance that accumulates, where the
+     bosses and the orbs deal a full point and cost a third of the run outright.
+
+     This is precisely what `wear` being continuous was for. Nothing in the
+     plane needed changing to support it: `hp()` and `stage()` already floor the
+     number, so the first touch is invisible and the second ages him, and
+     `isDead()` is a `>=` that six halves reach exactly.
+
+     ⚠️ It is rate-limited by planeHurtMs like everything else, which is what
+     makes 13 flies survivable at all — without it, flying into the swarm would
+     be six frames from full health to dead. */
+  flyTouchDamage: 0.5,
   // i-frames, and the blink that shows them. Long by this game's standards
   // because a hit here costs a THIRD of the run, not 1/45th.
   planeHurtMs: 1100,

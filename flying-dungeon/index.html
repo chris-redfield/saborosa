@@ -29,6 +29,9 @@
   <canvas id="game"></canvas>
   <div id="bar"></div>
   <div id="help">arrows / WASD to fly &middot; hold SPACE to fire &middot; 1 to switch pilot &middot; M to mute &middot; hold C for hitboxes</div>
+  <!-- The tuning workbench. REMOVED unless the URL carries ?dev-mode=true —
+       see the DEV block at the top of src/game.js. It stays in the markup
+       rather than being built by script so it can still be edited by hand. -->
   <div id="controls">
     <label><input type="checkbox" id="ballistic" checked> ballistic corpse (arc)</label>
     <label><input type="checkbox" id="stepped" checked> stepped plane (low fps)</label>

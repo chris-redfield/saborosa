@@ -5,6 +5,7 @@ it is, and what's still open. Values here were read off `src/config.js` at the
 time of writing — trust the file over this document if they ever disagree.
 
 Run it: serve the repo root and open `flying-dungeon/index.html`.
+Tune it: same URL with **`?dev-mode=true`** — see Dev mode.
 Package it: `./package.sh` → `dist/` + `flying-dungeon-itch.zip`.
 
 ---
@@ -105,6 +106,35 @@ out of order. **A new `src/*.js` file must be added to that list.**
 `coin/` and `game-over/`. The first was a real shipped bug — every packaged
 build went out without fly sprites. **Adding an asset folder means adding a
 `cp` line**, or dev works and the build 404s.
+
+---
+
+## Dev mode
+
+The tuning panel in the bottom-right corner — rewind seconds, shot damage,
+stop-motion framerate, the film look, ballistic corpses — is a **workbench, not
+a game feature**. It only appears with:
+
+```
+flying-dungeon/index.html?dev-mode=true
+```
+
+Bare `?dev-mode` works too; typing the flag without a value is the obvious
+mistake and there is nothing to gain by punishing it.
+
+⚠️ Outside dev mode the panel is **removed from the DOM, not hidden**.
+`display:none` would leave a stack of live inputs a stray Tab could still reach,
+and SPACE landing on a focused checkbox instead of the gun is a bug this file
+has already had once — it is what the `blur()` calls after every control are
+there for.
+
+⚠️ The removal happens at the TOP of `game.js`, above the wiring. Every
+`getElementById` in that block was already null-guarded, so deleting the
+container first makes the whole thing no-op and **no other code needs a
+dev-mode test**. `chrome`'s `'controls'` entry is then legitimately `null`, and
+the guard in `showChrome` is what covers it — not defensive padding.
+
+`#help` (bottom-left) is untouched: it is the player's control list.
 
 ---
 
@@ -1187,12 +1217,36 @@ character himself is the readout. Each point lost deteriorates him one stage
 why this lives in `plane.js` rather than the HUD — and it *had* to, for the same
 reason the boss bar did.
 
-`wear` is a **continuous** number, not an integer counter. A hit adds exactly
-1.0, which always crosses a stage boundary — so every hit is guaranteed to
-change what the player looks like, which is the only feedback there is — while
-leaving room for anything that ages him *gradually* to add a fraction to the same
-number, with no second resource to keep in step. **The boss's aging attack goes
-here and needs nothing else built.**
+`wear` is a **continuous** number, not an integer counter. A full hit adds
+exactly 1.0, which always crosses a stage boundary — so every hit is guaranteed
+to change what the player looks like, which is the only feedback there is —
+while leaving room for anything that ages him *gradually* to add a fraction to
+the same number, with no second resource to keep in step. **The boss's aging
+attack goes here and needs nothing else built.**
+
+That room is now used. **Touching a little fly costs `flyTouchDamage: 0.5`** —
+two touches age him one stage, six kill him — where the bosses and the orbs
+deal a full point. It needed no change to `plane.js` at all: `hp()` and
+`stage()` already floor `wear`, so the first touch is invisible and the second
+ages him, and `isDead()` is a `>=` that six halves reach exactly.
+
+### What can hurt him
+
+| source | damage | credited as |
+|---|---|---|
+| a little fly, on contact | 0.5 | `'fly'` |
+| the Mosca Boss, on contact | 1 | `'fly'` |
+| a Time Boss orb | 1 | `'time'` |
+
+⚠️ **All of it is rate-limited by `planeHurtMs` (1100ms)**, and with 13 flies
+that is now load-bearing rather than a nicety: without it, flying into the
+swarm would be six frames from full health to dead.
+
+⚠️ The swarm test only counts flies that are **`isAlive()`**. Flies are never
+spliced from the list while a corpse is still being drawn on the floor, so
+without that the pile at the bottom of the screen would be a minefield. It also
+breaks out of both loops on the first landed touch, so a frame with three flies
+overlapping the plane is one hit, not three.
 
 ⚠️ **The deteriorated sprite packs do not exist yet.** `planeWearSheets` is the
 switch: off (today) one pack is loaded and the stage shows through a `ctx.filter`

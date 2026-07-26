@@ -27,6 +27,41 @@
   window.addEventListener('resize', fit);
   fit();
 
+  /* --- DEV MODE ------------------------------------------------------------
+     The tuning panel in the bottom-right corner is a WORKBENCH, not a game
+     feature: live knobs for rewind seconds, shot damage, the stop-motion
+     framerate and the film look, put there to dial the game while playing it.
+     Shipped to a player it is a row of controls that break the game and mean
+     nothing without this document.
+
+     So it is off unless the URL asks for it:
+
+         flying-dungeon/index.html?dev-mode=true
+
+     Bare `?dev-mode` works too — typing the flag without a value is the obvious
+     mistake and there is nothing to gain by punishing it. Anything else, and
+     the panel is REMOVED FROM THE DOM rather than hidden: display:none would
+     leave a stack of live inputs a stray Tab could still reach, and SPACE
+     landing on a focused checkbox instead of the gun is a bug this file has
+     already had once (see the blur() calls below).
+
+     ⚠️ Removal has to happen HERE, above the wiring. Every getElementById
+     below is already null-guarded — they were written that way for a build
+     without the panel — so deleting the container first means the whole block
+     simply no-ops. Nothing else needs a dev-mode test.
+
+     `#help` is untouched: it is the player's control list, not a workbench. */
+  const DEV = (function () {
+    const p = new URLSearchParams(location.search);
+    if (!p.has('dev-mode')) return false;
+    const v = (p.get('dev-mode') || '').toLowerCase();
+    return v === '' || v === 'true' || v === '1' || v === 'yes';
+  })();
+  if (!DEV) {
+    const panel = document.getElementById('controls');
+    if (panel) panel.remove();
+  }
+
   // Live toggle: ballistic (inherits the fly's velocity) vs straight-down drop.
   // blur() after changing so SPACE keeps firing the gun instead of re-toggling
   // the focused checkbox.
@@ -182,6 +217,8 @@
 
   // The help / toggles belong to the game, not the title sequence. (The HUD
   // itself is canvas-drawn now and simply isn't rendered during the intro.)
+  // 'controls' is legitimately NULL outside dev mode — it was removed above.
+  // The guard in showChrome is what covers that; it is not defensive padding.
   const chrome = ['help', 'controls'].map(id => document.getElementById(id));
   const showChrome = on => chrome.forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
   showChrome(false);
@@ -708,6 +745,32 @@
               if (!boxesOverlap(pb, b)) continue;
               if (plane.hurt(1)) killedBy = 'fly';
               break;
+            }
+          }
+
+          /* THE SWARM HURTS TOO, at HALF a point — the same rule as its boss,
+             scaled down. Two touches age him one stage, six kill him.
+
+             `isAlive()` and not merely "in the list": flies are never spliced
+             while a corpse is still being drawn on the floor, so without this
+             the pile at the bottom of the screen would be a minefield.
+
+             ⚠️ `labelled break` — once a touch has LANDED there is nothing left
+             to look for this frame, and continuing to test the other twelve
+             flies against a plane that is now inside its i-frames only asks
+             hurt() to say false twelve times. It also keeps the semantics
+             honest: a frame in which three flies overlap the plane is one hit,
+             not three, and that is enforced here as well as by the i-frames.
+
+             The credit goes to `'fly'` exactly as the Mosca Boss's does — being
+             brought down by flies is the same ending whichever size did it. */
+          swarm:
+          for (const e of enemies) {
+            if (!e.isAlive()) continue;
+            for (const b of e.boxes(camX, camY, worldW)) {
+              if (!boxesOverlap(pb, b)) continue;
+              if (plane.hurt(CONFIG.flyTouchDamage)) killedBy = 'fly';
+              break swarm;
             }
           }
           for (const o of orbs) {
