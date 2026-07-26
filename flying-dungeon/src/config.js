@@ -27,7 +27,7 @@ const CONFIG = {
      one-line rewrite carries it into the build with everything else and there
      is no second path to keep in step. */
   MUSIC_TRACK: 'audio/trilha-mix.ogg',
-  musicVolume: 0.55,     // M mutes, which rides above this
+  musicVolume: 0.495,    // M mutes, which rides above this
   // How long the bed takes to go down when a run ends. Not a hard stop: cutting
   // a buffer source dead chops the waveform mid-cycle and clicks. It also wants
   // to be shorter than overFadeOutMs (900ms) so the music is gone by the time
@@ -641,11 +641,11 @@ const CONFIG = {
   // toward the far edge. Only its ANGLE varies: one uniform sample in
   // ±corpseTiltDeg, drawn once when it lands and never touched again.
   corpseTiltDeg: 25,
-  // How many spawn (killed for good — no respawn). THREE, and that is now a
-  // pacing number rather than a scenery one: clearing all of them is what
-  // summons the Mosca Boss, so this is how long the swarm lasts before the
-  // fight starts.
-  flyCount: 3,
+  // How many spawn (killed for good — no respawn). A pacing number rather than
+  // a scenery one: clearing all of them is what summons the Mosca Boss, so this
+  // is how long the swarm lasts before the fight starts. At 13 that is a real
+  // swarm to work through rather than three shots.
+  flyCount: 13,
   flyScale: 0.13 * 0.5 * 1.4, // fly height as a fraction of the canvas height (50% of prior, then +40%)
   flySpeed: 200,         // base leftward speed (world px/sec) — net right-to-left
   flyVSpeed: 300,        // vertical wander speed (world px/sec) — big up/down darts
@@ -679,7 +679,32 @@ const CONFIG = {
   // either of these only alongside a rebuild.
   COIN_CELL: 160,
   COIN_FRAMES: 22,       // one full rotation
-  coinCount: 22,         // how many drift the world at once (12 + 10)
+  /* WHEN THE COINS ARRIVE. They no longer exist at spawn — the world starts
+     with none, and each wave drops its coins in when the game clock first
+     reaches its mark. The opening 30 seconds therefore have no rewind available
+     at all: time can only run forward until the first wave lands, and the
+     choice the whole game is about does not open up until then.
+
+     `count` is how many APPEAR in that wave, not a target for the field — coins
+     are destroyed for good when shot, so nothing tops them back up. Left alone,
+     the three waves put 30 coins in the world.
+
+     ⚠️ LATCHED, AND IT HAS TO BE. The clock goes BACKWARDS in this game — that
+     is what the coins are for — so a wave testing `clock.now() >= atMs` every
+     frame would undo itself the moment the player used the thing it gave them:
+     shoot a coin at 0:31, the clock drops under 0:30, and the coins that made
+     it possible vanish. Each wave fires once, on the way up, and stays fired.
+
+     ⚠️ THE 2:00 WAVE LANDS EXACTLY ON timeOverMs (120000) — the same instant
+     the run ends. As written it can never be played. Left at the requested
+     value rather than quietly moved, because moving it is a design decision:
+     either pull it back (1:45 gives it fifteen seconds to matter) or push
+     timeOverMs out. */
+  COIN_WAVES: [
+    { atMs: 30000, count: 5 },    // 0:30
+    { atMs: 90000, count: 10 },   // 1:30
+    { atMs: 120000, count: 15 },  // 2:00 — see the warning above
+  ],
   // Drawn height in the fixed 1280x720 canvas, NOT a fraction of it — the coin
   // is a pickup sized against the plane and the HUD, both of which are also in
   // canvas px, rather than something that should grow with the window.
@@ -729,13 +754,13 @@ const CONFIG = {
   // surplus also buys a short flourish after the last hit instead of the world
   // snapping round the instant you stop firing.
   rewindSpinMs: 240,
-  coinHealth: 8,
+  coinHealth: 7,
   // The rate limit, and it is NOT optional: the beam is re-tested every frame
   // while fire is held, so without it the whole health bar drains in as many
   // frames (~200ms) and reads exactly like a one-shot kill. It doubles as the
   // reverse window and the jolt window, so the i-frames are always exactly as
   // long as the feedback showing them — the same bargain flyHurtMs makes.
-  // 8 × 160ms ≈ 1.3s of held fire to empty a coin, pushing it ~150 world px
+  // 7 × 160ms ≈ 1.1s of held fire to empty a coin, pushing it ~130 world px
   // backwards on the way.
   coinHurtMs: 160,
   // Collision box as a fraction of the drawn size. Fixed, not the frame's own

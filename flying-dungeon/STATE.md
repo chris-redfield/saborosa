@@ -283,10 +283,10 @@ sheets and identical across all three characters (the packs are registered).
 
 ## Flies
 
-- `flyCount: 3`, `flyHealth: 3`, `rayDamage: 1`. Coins: `coinCount: 22`.
-- **Three is a PACING number now, not a scenery one.** Killing all of them is
+- `flyCount: 13`, `flyHealth: 3`, `rayDamage: 1`.
+- **It is a PACING number now, not a scenery one.** Killing all of them is
   what summons the Mosca Boss, so `flyCount` sets how long the swarm lasts
-  before the first fight starts. It was 30.
+  before the first fight starts. It was 30, then 3, and is now 13.
 - **The shot is a hitscan beam re-tested every frame**, so damage must be rate
   limited or 3 HP drains in 3 frames (~50ms) and it dies instantly anyway.
   `flyHurtMs: 180` is that limit and doubles as the blink + knockback window,
@@ -415,10 +415,49 @@ the plane so nothing you are aiming at can hide behind one, and they spawn in a
 band of 0.10–0.80 of world height, the lower bound chosen to clear the corpse
 floor plane at 0.899 so they aren't buried in the tablecloth.
 
+### When they arrive
+
+The world starts with **no coins**. They land in waves, on the game clock:
+
+| wave | at | coins |
+|---|---|---|
+| 1 | 0:30 | 5 |
+| 2 | 1:30 | 10 |
+| 3 | 2:00 | 15 |
+
+`count` is how many **appear** in that wave, not a target for the field — coins
+are destroyed for good when shot and nothing tops them back up.
+
+The opening 30 seconds therefore have **no rewind available at all**: time can
+only run forward until wave 1 lands, and the choice the whole game is about does
+not open up until then.
+
+⚠️ **The schedule is LATCHED, and it has to be.** The clock goes backwards in
+this game — that is what the coins are *for* — so a wave testing
+`clock.now() >= atMs` afresh each frame would undo itself the instant the player
+used the thing it gave them: shoot a coin at 0:31, the clock drops under 0:30,
+and the coins that made it possible vanish. `coinWave` is an index that only
+counts up.
+
+⚠️ **The check is a `while`, not an `if`.** Nothing guarantees one wave per
+frame: the finale scrubs two minutes of game time through in about five seconds
+of real time, and a first frame after a stall can carry a large dt. Either would
+step over a mark, and an `if` would silently drop the wave.
+
+⚠️ **WAVE 3 LANDS EXACTLY ON `timeOverMs` (120000)** — the same instant the run
+ends — so as written it can never be played. Left at the requested value rather
+than quietly moved, because moving it is a design decision: pull the wave back
+(1:45 gives it fifteen seconds to matter), or push `timeOverMs` out.
+
+Waves are also gated on `!noTime`: no-time mode has just emptied the coin list
+on purpose, and a wave landing there would put coins in the Time Boss's arena.
+That is also what keeps the post-finale promise that the flies come back but the
+coins never do.
+
 ### Shooting a coin
 
 Coins take the same hitscan beam the flies do — it **pierces**, so one shot can
-hit a fly and a coin on the same line. `coinHealth: 8`, and each connected hit
+hit a fly and a coin on the same line. `coinHealth: 7`, and each connected hit
 throws the coin into reverse for `coinHurtMs`: it travels **backwards at the
 speed it was drifting** (its own `vx` negated, not a separate knockback value,
 so a push always exactly undoes its drift), its **spin runs backwards** with
@@ -488,8 +527,9 @@ in that division.
 |---|---|
 | one hit | **5s**, every 160ms of held fire |
 | held fire on one coin | ~31s of clock per real second |
-| a full coin | 40s, for ~1.3s of firing |
-| all 22 coins | **880s (14.7 min)** — against a 120s run |
+| a full coin | 35s, for ~1.1s of firing |
+| wave 1 alone (5 coins) | 175s — already more than a 120s run |
+| everything reachable (15 coins) | **525s (8.75 min)** |
 
 Deliberately enormous: two fully drained coins take you from 0:00 to the boss
 at -2:00. **`coinRewindMs` is live-editable** from the controls under the canvas
@@ -1671,9 +1711,10 @@ number. Expect to move them.
    Ship a webfont (licensed Futura, or a free geometric lookalike like Jost)
    with an `@font-face` + `package.sh` copy, or accept the fallback stack.
    Affects the HUD *and* the TIME OVER title.
-2. **The rewind economy is enormous.** At `coinRewindMs` 5s and `coinHealth` 8,
-   22 coins hold **880s** against a 120s run, and three drained coins take you
-   from 0:00 to the boss. Live-editable from the controls, so tune it in play.
+2. **The rewind economy is enormous.** At `coinRewindMs` 5s and `coinHealth` 7,
+   the five coins of wave 1 alone hold **175s** against a 120s run, and four
+   drained coins take you from 0:00 to the boss. Live-editable from the
+   controls, so tune it in play.
 3. **Sim on game time** — see Game clock. Only needed if a *reconstructive*
    rewind is ever wanted; the event-based one does not need it.
 4. **Plane clips the frame edges** — at full stick up/down the sprite is half

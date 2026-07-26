@@ -130,6 +130,11 @@
   // Coins are their own list, not enemies: the hitscan beam iterates `enemies`,
   // and a coin is not something you shoot.
   const coins = [];
+  /* How many COIN_WAVES have landed. An INDEX, not a set of per-wave booleans,
+     and that is what makes the schedule one-way: it only ever counts up, so a
+     rewind — which is the whole point of the coins — cannot un-land a wave and
+     make the coins that paid for it disappear. Reset by spawnWorld(). */
+  let coinWave = 0;
   const film = new Film(CONFIG);
   const hud = new Hud(CONFIG);
   // Deliberately NOT part of the Hud: the whole HUD is hidden in no-time mode,
@@ -257,12 +262,12 @@
     restartArmed = on;
   }
 
-  // Fill the world with flies and coins. Called once when the assets land, and
-  // again on every restart — it CLEARS first, so a restart doesn't stack a
-  // second swarm on top of the leftovers of the last run.
+  // Fill the world with flies. Called once when the assets land, and again on
+  // every restart — it CLEARS first, so a restart doesn't stack a second swarm
+  // on top of the leftovers of the last run.
   // Scatter the flies at random WORLD positions (they wrap on X, so anywhere
-  // across the width is fair game). Killed flies are gone for good — and with
-  // flyCount at 3, killing all of them is what summons the Mosca Boss.
+  // across the width is fair game). Killed flies are gone for good, and killing
+  // all of them is what summons the Mosca Boss.
   function spawnFlies() {
     enemies.length = 0;
     const worldW = bg.worldWidth(), worldH = bg.worldHeight();
@@ -273,22 +278,32 @@
     }
   }
 
-  function spawnWorld() {
-    spawnFlies();
-    coins.length = 0;
+  /* Drop `n` coins into the world, scattered the same way the flies are.
+     Variants are dealt round-robin off a running index rather than rolled per
+     coin, so that if more than one is ever configured again they stay evenly
+     represented instead of randomly lopsided — and the index carries ACROSS
+     waves, so wave two continues the deal rather than restarting it. With the
+     single upright spin configured today this just hands every coin that one. */
+  let coinDealt = 0;
+  function spawnCoins(n) {
     const worldW = bg.worldWidth(), worldH = bg.worldHeight();
-    // Coins: scattered the same way. Variants are dealt round-robin rather than
-    // rolled per coin, so that if more than one is ever configured again they
-    // are evenly represented instead of randomly lopsided. With the single
-    // upright spin configured today this just hands every coin that one.
     const top = CONFIG.coinBandTop * worldH;
     const span = Math.max(1, (CONFIG.coinBandBottom - CONFIG.coinBandTop) * worldH);
-    for (let i = 0; i < CONFIG.coinCount; i++) {
+    for (let i = 0; i < n; i++) {
       coins.push(new Coin(assets, CONFIG,
         Math.random() * worldW,
         top + Math.random() * span,
-        COIN_KEYS[i % COIN_KEYS.length]));
+        COIN_KEYS[coinDealt++ % COIN_KEYS.length]));
     }
+  }
+
+  // The world at the start of a run: flies, and NO COINS. The coins arrive on a
+  // schedule now — see COIN_WAVES and the wave check in the loop.
+  function spawnWorld() {
+    spawnFlies();
+    coins.length = 0;
+    coinDealt = 0;
+    coinWave = 0;
   }
 
   /* --- Restart -------------------------------------------------------------
@@ -415,6 +430,25 @@
       // past 2:00, and no-time mode would climb straight back out of the white.
       if (!clock.started && !plane.controlLocked) clock.start();
       clock.advance(dt);
+
+      /* THE COIN WAVES. The world starts with no coins at all; each wave drops
+         its own in when the clock first reaches its mark, so the opening 30
+         seconds have no rewind available and time can only run forward.
+
+         A `while`, not an `if`: nothing guarantees one wave per frame. The
+         finale scrubs the clock through two minutes of game time in about five
+         seconds of real time, and a first frame after a long stall can carry a
+         large dt — either would step over a mark and, with an `if`, silently
+         drop the wave.
+
+         Guarded on `!noTime` because no-time mode has just emptied the coin
+         list on purpose: the run has stopped being about time, and a wave
+         landing in the white void would put coins in the Time Boss's arena. */
+      while (!noTime && coinWave < CONFIG.COIN_WAVES.length
+             && clock.now() >= CONFIG.COIN_WAVES[coinWave].atMs) {
+        spawnCoins(CONFIG.COIN_WAVES[coinWave].count);
+        coinWave++;
+      }
 
       // Time up. Freeze the clock so the drain stops at exactly full grey and
       // the HUD's last reading is the one the player ends on, then run the
@@ -568,9 +602,9 @@
       for (const e of enemies) e.update(dt, worldW, worldH, rewindSpinT > 0);
       for (const c of coins) c.update(dt, worldW);
 
-      /* THE MOSCA BOSS. The swarm is only three flies, and killing all of them
-         is what brings it out — the room's own reward, where the Time Boss is
-         the rewind's. Latched so a second swarm (the flies come back if the Time
+      /* THE MOSCA BOSS. Clearing the whole swarm — all `flyCount` of them — is
+         what brings it out: the room's own reward, where the Time Boss is the
+         rewind's. Latched so a second swarm (the flies come back if the Time
          Boss is beaten) cannot summon it again.
 
          Flies are never spliced from the list — a landed corpse reports
