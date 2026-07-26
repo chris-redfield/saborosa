@@ -74,6 +74,7 @@ class Sound {
     // an occupied slot rejects the new press rather than cutting the old one.
     this.sfx = Object.create(null);
     this.sfxPlaying = Object.create(null);
+    this.sfxVol = Object.create(null);      // name -> its own level, 1 unless set
     this.muted = false;
     this.volume = cfg.musicVolume;
     // The game has asked for music, whether or not it is actually audible yet.
@@ -171,8 +172,13 @@ class Sound {
       // The one-shots. Nothing to catch up on if one arrives late — a press
       // that happened before the clip landed is over, and firing it now would
       // put a climb sound on a frame the player is no longer climbing.
-      ...Object.keys(this.cfg.SFX || {}).map(name =>
-        grab(this.cfg.SFX[name], name).then(buf => { this.sfx[name] = buf; })),
+      // An entry is a path, or { src, volume } when the clip needs its own level.
+      ...Object.keys(this.cfg.SFX || {}).map(name => {
+        const e = this.cfg.SFX[name];
+        const src = (typeof e === 'string') ? e : e.src;
+        this.sfxVol[name] = (typeof e === 'string' || e.volume == null) ? 1 : e.volume;
+        return grab(src, name).then(buf => { this.sfx[name] = buf; });
+      }),
     ]);
   }
 
@@ -207,20 +213,103 @@ class Sound {
   once(name) {
     const buf = this.sfx[name];
     if (!buf) return;                            // not loaded, or failed: silent
-    if (this.sfxPlaying[name]) return;           // still going — see above
+    const live = this.sfxPlaying[name];
+    if (live && live.length) return;             // still going — see above
     const ctx = this._audio();
     if (!ctx || ctx.state !== 'running') return; // no gesture yet; not worth queueing
-    const s = ctx.createBufferSource();
-    s.buffer = buf;
-    s.connect(this.sfxGain);
-    // Free the slot when it ends NATURALLY — which is the only way it can end,
-    // since nothing here ever calls stop() on one.
-    s.onended = () => {
-      if (this.sfxPlaying[name] === s) this.sfxPlaying[name] = null;
-      try { s.disconnect(); } catch (e) {}
+
+    const e = this.cfg.SFX[name];
+    const clipVol = this.sfxVol[name] == null ? 1 : this.sfxVol[name];
+    /* Playback speed for every voice of this clip. 0.9 = 10% slower.
+
+       ⚠️ IT RESAMPLES, so it drops the pitch with it — about 1.8 semitones at
+       0.9. That is what `playbackRate` on a buffer source does and there is no
+       flag to avoid it; preserving pitch would need a real time-stretch, which
+       Web Audio does not provide. On a death sting the drop is the point, but
+       it is worth knowing this is a tape-speed change, not a tempo change. */
+    const rate = (e && typeof e === 'object' && e.rate) ? e.rate : 1;
+    const voices = [];
+
+    // One voice = one buffer source on its own gain. A node per voice rather
+    // than a shared one, because the copies do not have to be at the same
+    // level, and the cost of a GainNode is nothing next to being able to say so.
+    const voice = (when, vol) => {
+      const s = ctx.createBufferSource();
+      s.buffer = buf;
+      s.playbackRate.value = rate;
+      const g = ctx.createGain();
+      g.gain.value = clipVol * vol;
+      g.connect(this.sfxGain);
+      s.connect(g);
+      s.onended = () => {
+        const arr = this.sfxPlaying[name];
+        if (arr) {
+          const i = arr.indexOf(s);
+          if (i >= 0) arr.splice(i, 1);
+        }
+        try { s.disconnect(); } catch (err) {}
+        try { g.disconnect(); } catch (err) {}
+      };
+      s.start(when);
+      voices.push(s);
     };
-    s.start();
-    this.sfxPlaying[name] = s;
+
+    const now = ctx.currentTime;
+    voice(now, 1);
+
+    /* THE DOUBLE. A second voice off the SAME decoded buffer, started a fixed
+       delay later — so it costs one more source node and nothing else. No
+       second file, no second decode, no second copy of the samples: an
+       AudioBuffer can feed any number of sources at once, and this is exactly
+       what that is for.
+
+       Scheduled against ctx.currentTime, NOT with a setTimeout. The audio clock
+       is sample-accurate and runs on its own thread; a timer runs on the main
+       one, behind whatever the frame is doing, and would land the copy 300ms
+       later give or take a stutter — turning a fixed interval into a variable
+       one, which is the one thing this effect cannot survive.
+
+       The delay decides what the effect IS, and small changes are not subtle.
+       Under ~40ms the ear fuses the two copies into one sound and the delay
+       colours its tone instead; at 50ms, where this sits, it is right on that
+       edge — nearly one thickened sound with a hard edge on it; at 100ms a
+       slapback; by 300ms the round of a canon. `SFX[name].double.delayMs` is
+       the knob. */
+    const dbl = (e && typeof e === 'object') ? e.double : null;
+    if (dbl && dbl.delayMs > 0) {
+      /* ⚠️ DIVIDED BY `rate`, so `delayMs` is measured in the CLIP's own time
+         rather than in wall-clock ms. Slowing the clip therefore slows the
+         whole combination — the gap stretches with the material, exactly as it
+         would if the two voices had been bounced to one file and that file
+         played slower. Leaving the gap fixed while the material stretched would
+         change the relationship between the copies, which is the effect. */
+      voice(now + (dbl.delayMs / 1000) / rate,
+            dbl.volume == null ? 1 : dbl.volume);
+    }
+
+    this.sfxPlaying[name] = voices;
+  }
+
+  /* Cut a one-shot short. The deliberate EXCEPTION to "nothing stops these",
+     and it exists for exactly one case: the death sting still ringing when the
+     player restarts. The panel arms its "press anything" before the sting has
+     finished, so without this a new run's title sequence opens over the sound
+     of the last one dying.
+
+     Not called for the movement whooshes, and it should not be — those are
+     short, incidental, and the whole point of them is that they finish. */
+  stopOnce(name) {
+    const arr = this.sfxPlaying[name];
+    if (!arr || !arr.length) return;
+    // A copy: stop() fires onended, which splices the array being walked.
+    // Cleared first so a voice that has not started yet still counts as gone.
+    this.sfxPlaying[name] = [];
+    for (const s of arr.slice()) {
+      // Stopping a source whose start time is still in the FUTURE cancels it
+      // outright — it never plays. Which is what should happen to a double
+      // still waiting its 300ms when the player restarts.
+      try { s.stop(); } catch (e) {}
+    }
   }
 
   /* --- the machine gun ---------------------------------------------------

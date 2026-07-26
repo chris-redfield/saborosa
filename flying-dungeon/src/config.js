@@ -58,9 +58,34 @@ const CONFIG = {
      nudging up and down constantly, stacking would be a pile of overlapping
      whooshes. The two directions are independent of each other, so changing
      direction always speaks. */
+  /* An entry is either a path, or `{ src, volume }` when the clip needs its own
+     level. The death sting does: it is a piece of MUSIC standing in for the bed
+     that has just stopped, not a sound effect sitting under one, so it plays at
+     full on a bus tuned for whooshes. */
   SFX: {
     up: 'audio/efeito-pra-cima-01.ogg',
     down: 'audio/efeito-pra-baixo-01.ogg',
+    /* Plays on all three bad endings, when the PANEL arrives — not when the
+       player dies. `double` plays a second voice off the same decoded buffer
+       behind the first: no second file and no second decode, just one more
+       source node reading the same samples.
+
+       At 50ms (56ms of real time once `rate` is applied) it is right on the
+       EDGE OF FUSION — the ear stops hearing two attacks somewhere around 40ms,
+       so this is nearly one thickened sound with a hard edge on it rather than
+       two. Below ~40ms it fuses completely and starts to colour the tone
+       instead (comb filtering); it was 100ms, a slapback, and 300ms before
+       that, a canon. Small changes here are not subtle. */
+    gameOver: {
+      src: 'audio/game-over.ogg',
+      volume: 1,
+      // 10% slower, and it slows the WHOLE combination: `delayMs` is in the
+      // clip's own time, so the 50ms gap stretches to 56ms of real time along
+      // with the material. It resamples rather than time-stretches, so the
+      // pitch drops with it (~1.8 semitones) — on a death sting, the point.
+      rate: 0.9,
+      double: { delayMs: 50, volume: 1 },
+    },
   },
   sfxVolume: 0.6,
 
@@ -732,7 +757,7 @@ const CONFIG = {
   // and it jolts. Holding fire therefore walks a coin back up the screen
   // against its own drift.
   // THE POINT OF THE COIN: every connected hit winds the run clock BACK by this
-  // much game time. Shooting a coin buys you time — 12 hits, so a full coin is
+  // much game t  ime. Shooting a coin buys you time — 12 hits, so a full coin is
   // worth 12 seconds off the clock.
   //
   // It rewinds the game clock, which the colour drain and the 2:00 deadline are
@@ -1001,6 +1026,36 @@ const CONFIG = {
     [1278, 38, 212, 265],
     [1504, 38, 252, 265],   // profile, facing RIGHT
   ],
+  /* WHERE ITS FACE IS in each pose, as a fraction of that pose's own rect —
+     same indexing as MOSCA_RECTS above, so the two are read together.
+
+     This exists because the impact puff was landing on the CENTRE of the
+     sprite, and the centre of this fly is its black abdomen: a black-outlined
+     burst drawn on a solid black body is feedback the player cannot see. The
+     face is the only part of it with any contrast — two red compound eyes — so
+     that is where a hit has to register.
+
+     MEASURED, not guessed, the same way gunAnchorX/Y were: the centroid of the
+     red eye pixels in each pose, as a fraction of the pose rect.
+
+         python3 -c "..."   # see the Mosca Boss section of STATE.md
+
+     Note how far the face travels — from 0.22 of the width in profile-left to
+     0.77 in profile-right — which is exactly why one fixed offset would not do
+     and this has to be per pose. Vertically it barely moves at all (0.475-0.489,
+     i.e. dead centre), so the problem was only ever horizontal.
+
+     Identical across all three flap sheets: the flap moves the wings and
+     nothing else, so one table serves them all. */
+  MOSCA_FACE: [
+    [0.224, 0.480],   // profile, facing LEFT
+    [0.248, 0.489],
+    [0.307, 0.489],
+    [0.484, 0.475],   // head-on
+    [0.684, 0.489],
+    [0.750, 0.489],
+    [0.773, 0.479],   // profile, facing RIGHT
+  ],
   MOSCA_REF_H: 265,
   flyBossSizePx: 300,    // drawn height in the fixed 1280x720 canvas
 
@@ -1136,7 +1191,39 @@ const CONFIG = {
   // because a hit here costs a THIRD of the run, not 1/45th.
   planeHurtMs: 1100,
   planeBlinkMs: 100,     // half-period of the blink through those i-frames
-  planeHitWRel: 0.55,    // collision box vs the drawn sprite
+
+  /* --- THE FLINCH --------------------------------------------------------
+     A hit now rattles him as well as making him blink, and the two are saying
+     DIFFERENT THINGS — which is the whole reason this is a second timer rather
+     than more behaviour hung off hurtT.
+
+       the blink   lasts planeHurtMs (1100ms) and reports a STATE: you are
+                   invulnerable, and for exactly this much longer.
+       the flinch  lasts planeShakeMs (260ms) and reports an EVENT: that hit
+                   just landed, and it hurt.
+
+     Stretching the shake over the full i-frame window would turn the impact
+     into a condition — a plane that vibrates for over a second reads as broken
+     machinery rather than as having been struck — and the moment of contact,
+     which is the thing the player needs to feel, would be lost inside it.
+
+     ⚠️ DRAW-ONLY. It is added to the render translate, never to x/y, so it
+     moves neither the camera (which pans off displayX/displayY) nor the
+     collision box. A hitbox that jitters would make what hits you a matter of
+     luck at exactly the moment the game is punishing you. The muzzle stays put
+     with it, so the shot line leaves the nose's true position while the sprite
+     rattles around it — a few px for a quarter-second, and far better than a
+     beam whose origin shakes. */
+  planeShakeMs: 260,
+  planeShakeAmp: 12,     // px in the fixed 1280x720 canvas, at the instant of impact
+  // ~14Hz: about four oscillations across the 260ms, which is a rattle. Slower
+  // and it is a wobble; faster and at 60fps it aliases into a blur.
+  planeShakeFreq: 90,    // rad/sec
+  // Y is shorter and runs at a different rate, so the two axes trace a small
+  // erratic figure instead of sliding up and down one diagonal.
+  planeShakeYRel: 0.55,
+  planeShakeYFreqRel: 0.7,
+  planeHitWRel: 0.35,    // collision box vs the drawn sprite
   planeHitHRel: 0.5,
 
   /* THE DEATH FALL. The last hit does not cut straight to a panel — the plane

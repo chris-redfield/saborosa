@@ -203,21 +203,22 @@ class FlyBoss {
      everything damageable here needs, because the beam is re-tested EVERY frame
      and an ungated bar drains in as many frames as it has points.
 
-     `atY` is the world height the beam crossed it at, so the puff lands where
-     the shot did rather than always in the middle of it. X stays on its centre;
-     the puff belongs on the fly, not on its leading edge. */
-  hit(dmg, atY) {
+     ⚠️ IT NO LONGER TAKES THE BEAM'S HEIGHT. It used to, so the puff landed
+     where the shot crossed — which is the right instinct and is still what the
+     Time Boss does, but it does not survive contact with this particular art:
+     wherever the beam crosses, it crosses a big black fly, and the burst is
+     black line art. The puff now goes on the FACE regardless of where the shot
+     landed, because being visible beats being accurate about a body you cannot
+     see anything against. `hitFx` therefore carries only a clock — see
+     _facePoint() for why the position is not stored with it. */
+  hit(dmg) {
     if (!this.isShootable() || this.hurtT > 0) return false;
     this.hp -= (dmg === undefined ? 1 : dmg);
     if (this.hp <= 0) this._die();
     else {
       this.hurtT = this.cfg.flyBossHurtMs;
       this.spasmT = 0;
-      this.hitFx = {
-        x: this.x,
-        y: (atY === undefined || atY === null) ? this.y + this._bob() : atY,
-        t: 0,
-      };
+      this.hitFx = { t: 0 };
     }
     return true;
   }
@@ -251,6 +252,36 @@ class FlyBoss {
   pose() {
     const n = this.cfg.MOSCA_RECTS.length;
     return Math.max(0, Math.min(n - 1, Math.round(this.facing * (n - 1))));
+  }
+
+  /* Where its FACE is right now, in world coords — the point a hit registers on.
+     Not its centre: the centre of this fly is its black abdomen, and a
+     black-outlined puff drawn on a solid black body is feedback the player
+     cannot see. The eyes are the only part with any contrast.
+
+     ⚠️ It MIRRORS render() line for line — same scale, same spasm dx/dy, same
+     spasm scale `k` — because the puff has to sit on the face while the body is
+     jolting, and a body that is being shaken by a hit is exactly when this gets
+     called. If render()'s transform ever changes, this changes with it.
+
+     ⚠️ Recomputed EVERY FRAME rather than frozen when the hit landed, because
+     the fly keeps turning and moving while the puff plays: the face slides from
+     0.22 of the sprite's width to 0.77 across the turn, so a point pinned at
+     impact would drift off the face — and off the fly — within the four frames
+     the burst lasts. This is a mark ON the boss, so it goes where the boss is. */
+  _facePoint() {
+    const c = this.cfg;
+    const j = this._spasm();
+    const x = this.x + (j ? j.dx : 0);
+    const y = this.y + this._bob() + (j ? j.dy : 0);
+    const r = c.MOSCA_RECTS[this.pose()];
+    const f = c.MOSCA_FACE && c.MOSCA_FACE[this.pose()];
+    if (!r || !f) return { x, y };            // no table: fall back to the centre
+    const s = (c.flyBossSizePx / c.MOSCA_REF_H) * (j ? j.k : 1);
+    return {
+      x: x + (f[0] - 0.5) * r[2] * s,
+      y: y + (f[1] - 0.5) * r[3] * s,
+    };
   }
 
   // Which SHEET the flap is on. The pose picks the column; this picks the file.
@@ -320,10 +351,14 @@ class FlyBoss {
     const s = (c.flyBossSizePx * c.flyBossHitFxSize) / widest;
     const dw = r[2] * s, dh = r[3] * s;
 
+    // Live, not stored: the fly turns and moves under its own puff. See
+    // _facePoint().
+    const p = this._facePoint();
+
     ctx.imageSmoothingEnabled = true;
-    for (const wx of [fx.x - worldW, fx.x, fx.x + worldW])
+    for (const wx of [p.x - worldW, p.x, p.x + worldW])
       ctx.drawImage(sheet, r[0], r[1], r[2], r[3],
-                    wx - camX - dw / 2, fx.y - camY - dh / 2, dw, dh);
+                    wx - camX - dw / 2, p.y - camY - dh / 2, dw, dh);
   }
 
   // The death blast, in the shell's over-everything pass. Same twelve frames and

@@ -360,6 +360,10 @@
     // intro has no firing block to turn it off.
     sound.stopMusic();
     sound.gun(false);
+    // And the death sting, which is very likely STILL RINGING: the panel arms
+    // its "press anything" before the sting's 3.4s are up, so without this a
+    // new run's title sequence opens over the sound of the last one dying.
+    sound.stopOnce('gameOver');
     ending = null;
     rewindSpinT = 0;
     boss = null;             // has to be re-earned every run
@@ -563,6 +567,26 @@
         // hear it looping over the game-over panel forever. The music is
         // already down; it was stopped when `ending` latched.
         sound.gun(false);
+
+        /* THE DEATH STING BELONGS TO THIS SCREEN, not to the death.
+           Reaching this block IS the cut to the game-over screen — everything
+           above it is still the played scene dipping away — so the sting starts
+           on the first frame of it.
+
+           It used to fire where `ending` latched, which is ~900ms earlier, and
+           that was wrong in a way that is obvious once heard: the song began
+           while the player was still watching their own wreck fall, so it
+           scored the death instead of the screen that follows it.
+
+           Latched on the `ending` object rather than checked against once()'s
+           own state, because once() frees its slot when the clip finishes — so
+           an unlatched call here would simply restart the sting every 3.4s for
+           as long as the panel is up. `ending` is rebuilt per run, so the flag
+           resets itself. */
+        if (!ending.sung) {
+          ending.sung = true;
+          sound.once('gameOver');
+        }
         if (CONFIG.film) film.update(dt);
         const W = canvas.width, H = canvas.height;
         // Which ending: the clock ran out (black, TIME OVER) or the Time Boss
@@ -852,7 +876,10 @@
           if (flyBoss && flyBoss.isShootable()) {
             for (const b of flyBoss.boxes(camX, camY, worldW)) {
               if (!rayHitsBox(ray, CONFIG.rayThickness, b)) continue;
-              flyBoss.hit(CONFIG.rayDamage, ray.y + camY);
+              // No beam height handed over, unlike the Time Boss below: its
+              // puff goes on its FACE wherever the shot crossed, because its
+              // body is solid black and a black burst on it is invisible.
+              flyBoss.hit(CONFIG.rayDamage);
               break;
             }
           }

@@ -1127,6 +1127,51 @@ holds its column while the sheet underneath it cycles.
 They are PNGs in `enemy-sheets/`, a folder `package.sh` already copies — **no new
 `cp` line**.
 
+### The hit puff goes on its FACE
+
+Every other damageable thing in this game takes the beam's height and puts the
+impact puff where the shot crossed. This one **doesn't**, and the reason is the
+art: the centre of this fly is its solid black abdomen, and the burst is black
+line art. A hit registered there is feedback the player cannot see. Its face —
+two red compound eyes — is the only part of it with any contrast.
+
+So `flyBoss.hit()` takes no `atY` at all, and the puff is drawn at
+`_facePoint()`. Being visible beats being accurate about a body you can't see
+anything against.
+
+`MOSCA_FACE` holds the face position per pose, as a fraction of that pose's own
+rect — **measured, not guessed**, the same way `gunAnchorX/Y` were: the centroid
+of the red eye pixels.
+
+```python
+# re-derive if the art changes
+from PIL import Image; import numpy as np
+im = np.array(Image.open('assets-v2/flying-dungeon/enemy-sheets/'
+                         'saborosa-boss-mosca-01.png').convert('RGBA')).astype(int)
+for i, r in enumerate(MOSCA_RECTS):
+    c = im[r[1]:r[1]+r[3], r[0]:r[0]+r[2]]
+    R, G, B, A = c[...,0], c[...,1], c[...,2], c[...,3]
+    m = (A > 128) & (R > 150) & (G < 125) & (B < 125) & (R - G > 60)
+    ys, xs = np.nonzero(m)
+    print(i, xs.mean()/r[2], ys.mean()/r[3])
+```
+
+Note how far it travels — **0.22 of the width in profile-left to 0.77 in
+profile-right** — which is why one fixed offset would not do and this has to be
+per pose. Vertically it barely moves (0.475–0.489, i.e. dead centre), so the
+problem was only ever horizontal. Identical across all three flap sheets: the
+flap moves the wings and nothing else, so one table serves them all.
+
+⚠️ **`_facePoint()` mirrors `render()` line for line** — same scale, same spasm
+`dx`/`dy`, same spasm scale `k`. The puff has to sit on the face *while the body
+is jolting*, and a body being shaken by a hit is exactly when this gets called.
+Change `render()`'s transform and this changes with it.
+
+⚠️ **It is recomputed every frame, not frozen at impact.** The fly keeps turning
+and moving while the puff plays, and the face slides across half the sprite's
+width over the turn — a point pinned at impact would drift off the face, and off
+the fly, within the four frames the burst lasts.
+
 ### The entrance
 
 A cutscene in three beats, and it cannot be interrupted:
@@ -1229,6 +1274,39 @@ two touches age him one stage, six kill him — where the bosses and the orbs
 deal a full point. It needed no change to `plane.js` at all: `hp()` and
 `stage()` already floor `wear`, so the first touch is invisible and the second
 ages him, and `isDead()` is a `>=` that six halves reach exactly.
+
+### Two things happen on a hit, and they mean different things
+
+| | lasts | reports |
+|---|---|---|
+| the **blink** (`hurtT`, `planeHurtMs` 1100ms) | the i-frame window | a **state** — you are invulnerable, for exactly this much longer |
+| the **flinch** (`shakeT`, `planeShakeMs` 260ms) | a quarter-second | an **event** — that hit just landed, and it hurt |
+
+They are separate timers on purpose. Hanging the shake off `hurtT` would
+stretch it over the full second of invulnerability, and a plane that vibrates
+for that long reads as broken machinery rather than as having been struck — the
+moment of contact, which is the thing the player needs to feel, gets lost inside
+it. The decay is *squared*, so the shake is nearly over by its own half-way
+point; a linear fade spends its second half as a gentle drift that reads as the
+plane being unsteady.
+
+It restarts on **every landed hit**, including the half-point fly touches. That
+matters most there: a graze that does not cross a stage boundary changes nothing
+about how the plane is drawn, so without the flinch the player would have no way
+to tell it from nothing at all.
+
+⚠️ **`_shake()` is DRAW-ONLY and deliberately not part of `_metrics()`.**
+Everything in `_metrics()` is shared with `muzzle()`. The shake is added to the
+render translate alone, so it moves neither the camera (which pans off
+`displayX`/`displayY`), nor `hitBox()`, nor the muzzle. A hitbox that jittered
+would make what hits you a matter of luck at exactly the moment the game is
+punishing you. The cost is that the shot line leaves the nose's *true* position
+while the sprite rattles around it — a few px for a quarter-second, and far
+better than a beam whose origin shakes.
+
+It goes on the translate rather than being drawn separately so it carries the
+**muzzle flash** with it; the flash is drawn inside the same transform, and a
+plane that rattled while its gun flash stayed put would come apart on every hit.
 
 ### What can hurt him
 
@@ -1604,6 +1682,73 @@ the waveform wherever it happens to be, and a waveform ending anywhere but zero
 is a step, which is a loud click. `_start()` resets the gain afterwards rather
 than a timer restoring it, so a run started again mid-fade cannot bring the old
 level back under the new track.
+
+**The death sting belongs to the PANEL, not to the death.** `game-over.ogg`
+(3.44s) starts on the first frame of the game-over screen — the top of the block
+that fills black/white and `return`s — which is ~900ms after `ending` latches.
+
+⚠️ It first fired at the latch, and that was wrong in a way that is obvious once
+heard: the song began while the player was still watching their own wreck fall,
+so it scored *the death* instead of the screen that follows it. The dip to black
+is still the played scene going away; the sting waits for what replaces it.
+
+⚠️ **Latched on `ending.sung`, not on once()'s own state.** `once()` frees its
+slot when the clip finishes, so an unlatched call in that block would restart
+the sting every 3.4s for as long as the panel is up. `ending` is rebuilt per
+run, so the flag resets itself.
+
+It rides on the SFX bus as a `once()` like the movement whooshes — same
+semantics, plays entirely, cannot stack — but with `{ src, volume }` giving it
+its own level, because it is a piece of music standing in for the bed that just
+stopped, not a sound effect sitting under one.
+
+**It is DOUBLED against itself**: `double: { delayMs: 300 }` starts a second
+voice off the same decoded buffer 300ms behind the first. No second file, no
+second decode, no second copy of the samples — an `AudioBuffer` can feed any
+number of sources at once, and this costs one more source node.
+
+⚠️ The copy is scheduled against `ctx.currentTime`, **not** with a `setTimeout`.
+The audio clock is sample-accurate and runs on its own thread; a timer runs on
+the main one, behind whatever the frame is doing, and would land the copy at
+300ms give or take a stutter — turning a fixed interval into a variable one,
+which is the one thing this effect cannot survive.
+
+**The delay decides what the effect is**, and small changes are not subtle:
+
+| `delayMs` | |
+|---|---|
+| under ~40 | the copies fuse — one sound, tone coloured by comb filtering |
+| **50** ← where it is | the edge of fusion: nearly one thickened sound with a hard edge |
+| 100 | a slapback — two attacks, still reading as one event |
+| 300 | the round of a canon |
+
+**The whole combination runs 10% slow** (`rate: 0.9`), and that means the pair,
+not just the material: `delayMs` is measured in the *clip's own time* and
+divided by `rate`, so the 50ms gap stretches to 56ms of real time along with
+it — exactly as it would if the two voices had been bounced to one file and that
+file played slower. A fixed gap under stretched material would change the
+relationship between the copies, which is the whole effect.
+
+⚠️ `rate` **resamples**; it does not time-stretch. The pitch drops with the
+speed, about 1.8 semitones at 0.9. That is what `playbackRate` on a buffer
+source does and there is no flag to avoid it — preserving pitch would need a
+real time-stretch, which Web Audio does not provide. On a death sting the drop
+is the point, but it is a tape-speed change, not a tempo change.
+
+⚠️ **`restart()` calls `stopOnce('gameOver')`, the one exception to "nothing
+stops a one-shot".** The panel arms its "press anything" before 3.44s are up, so
+without it a new run's title sequence opens over the sound of the last one
+dying. The movement whooshes are deliberately *not* stopped this way — they are
+short and incidental and the whole point is that they finish.
+
+⚠️ **This take needed a hand cut** — the first entry in `OVERRIDES` in
+`build-sound.py`. A handling thump (the recording being stopped) sits at
+5.0–5.25s, a full second after the sting ends at ~4.1s, and the silence trim
+keeps it because it *is* sound: 250ms at -26dB, well above the noise floor and
+far past any start-duration minimum. Left in, it lands as a thunk over the
+game-over panel. `OVERRIDES` entries are **not** re-applied automatically — the
+up-to-date check compares mtimes — so changing one needs
+`--force --only <name>`.
 
 ---
 

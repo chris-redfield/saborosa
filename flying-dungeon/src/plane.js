@@ -62,6 +62,10 @@ class Plane {
     // integer part is which deteriorated pack he is drawn from.
     this.wear = 0;
     this.hurtT = 0;          // ms left of the i-frames, and of the blink
+    // ms left of the FLINCH — a separate, much shorter clock from hurtT, and
+    // deliberately so: see the config note. The blink reports a state, this
+    // reports the moment of impact.
+    this.shakeT = 0;
     // The death fall. <0 = not falling. `fallY` is a DRAW offset in px, like
     // every other offset on this sprite, so nothing downstream has to know the
     // plane is on its way out of the frame.
@@ -110,6 +114,13 @@ class Plane {
     if (this.hurtT > 0 || this.isDead()) return false;
     this.wear = Math.min(this.cfg.planeHealth, this.wear + (amount === undefined ? 1 : amount));
     this.hurtT = this.cfg.planeHurtMs;
+    /* Restarted, not accumulated — and it is restarted on EVERY landed hit,
+       including the half-point ones the flies deal and including the fatal one.
+       A hit that took half a point still connected, and the flinch is what says
+       so: without it a fly touch that does not cross a stage boundary would
+       produce no feedback at all beyond the blink, and the player would have no
+       way to tell a graze from nothing. */
+    this.shakeT = this.cfg.planeShakeMs || 0;
     // The last one starts the fall. The i-frames and the blink are left running
     // on top of it on purpose: the player should see the hit land and THEN see
     // the plane go down, rather than the two being one indistinguishable event.
@@ -223,6 +234,10 @@ class Plane {
     // sampler: how long the player is invulnerable for should not depend on
     // what framerate the art happens to be hopping at.
     if (this.hurtT > 0) this.hurtT = Math.max(0, this.hurtT - dt);
+    // The flinch, the same way and for a second reason: at ~14Hz, quantising it
+    // to the 12fps sprite step would alias it into a slow lurch. It is a
+    // physical event, like the death fall, not part of the hopping animation.
+    if (this.shakeT > 0) this.shakeT = Math.max(0, this.shakeT - dt);
     if (this.falling) this._fall(dt);
 
     if (this.locked) {
@@ -283,6 +298,33 @@ class Plane {
     } else {
       this._snapshot();
     }
+  }
+
+  /* The flinch offset, in canvas px. A damped oscillation: it starts at full
+     amplitude on the frame of the hit and rings out over planeShakeMs.
+
+     The decay is SQUARED rather than linear so the shake is nearly over by the
+     half-way point — the violence belongs at the moment of contact, and a
+     linear fade spends the second half of its life as a gentle drift that reads
+     as the plane being unsteady rather than as having been hit.
+
+     ⚠️ NOT part of _metrics(). Everything in there is shared with muzzle(), and
+     the whole point of this offset is that it moves the picture and nothing
+     else — not the muzzle, not the hitbox, not the camera. Kept separate so it
+     cannot leak into them by someone later adding it "for consistency". */
+  _shake() {
+    const c = this.cfg;
+    if (this.shakeT <= 0 || !c.planeShakeMs || !c.planeShakeAmp) return null;
+    const t = (c.planeShakeMs - this.shakeT) / 1000;   // seconds since impact
+    const decay = this.shakeT / c.planeShakeMs;        // 1 at the hit → 0 at the end
+    const a = c.planeShakeAmp * decay * decay;
+    const w = c.planeShakeFreq;
+    return {
+      x: a * Math.sin(w * t),
+      // Different rate and an offset phase, so the two axes trace a small
+      // erratic figure instead of sliding up and down a single diagonal.
+      y: a * c.planeShakeYRel * Math.sin(w * c.planeShakeYFreqRel * t + 1.1),
+    };
   }
 
   // Current draw metrics (frame, scaled size, bob offset) — shared by render()
@@ -384,11 +426,19 @@ class Plane {
         && Math.floor(this.hurtT / c.planeBlinkMs) % 2 === 1) {
       ctx.globalAlpha *= 0.3;
     }
-    // Both offsets are DRAW-only (entryOff slides it in from the left,
-    // planeOffsetY lifts it in frame); neither touches displayX/displayY, so the
-    // camera keeps its own framing.
-    ctx.translate((this.disp.x + this.disp.entryOff) * W,
-                  (this.disp.y + (c.planeOffsetY || 0)) * H + bob + this.fallY);
+    // Every offset here is DRAW-only (entryOff slides it in from the left,
+    // planeOffsetY lifts it in frame, the flinch rattles it); none of them
+    // touches displayX/displayY, so the camera keeps its own framing — and none
+    // touches hitBox() or muzzle() either.
+    //
+    // The shake is added to the translate rather than drawn separately so it
+    // carries the MUZZLE FLASH with it: the flash is drawn inside this same
+    // transform, and a plane that rattled while its gun flash stayed put would
+    // come apart on every hit.
+    const sh = this._shake();
+    ctx.translate((this.disp.x + this.disp.entryOff) * W + (sh ? sh.x : 0),
+                  (this.disp.y + (c.planeOffsetY || 0)) * H + bob + this.fallY
+                    + (sh ? sh.y : 0));
     // The tumble, about the sprite's own centre — which is where the translate
     // above already is, so it costs one call and nothing has to be re-anchored.
     if (this.fallRot) ctx.rotate(this.fallRot);

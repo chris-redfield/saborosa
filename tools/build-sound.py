@@ -80,6 +80,21 @@ SILENCE_DB = '-45dB'
 # you ever do.
 START_DURATION = 0.05
 
+# HAND CUTS, keyed by BUILT name, in seconds. The escape hatch for takes the
+# silence trim cannot fix on its own — it finds where the sound STOPS, and
+# sometimes what needs removing is itself a sound.
+#
+# ⚠️ NOT re-applied automatically. The up-to-date check compares mtimes, so a
+# file whose only change is an entry here needs `--force --only <name>`.
+OVERRIDES = {
+    # A handling thump — the recording being stopped — sits at 5.0-5.25s, a full
+    # second after the sting itself ends at ~4.1s. The trim keeps it because it
+    # IS sound: 250ms at -26dB, well above the noise floor and far past any
+    # start-duration minimum. Left in, it lands as a thunk over the game-over
+    # panel about a second after the music has finished.
+    'game-over': {'end': 4.20},
+}
+
 FADE_MS = 12          # ms of fade on each edge — kills the loop-point click
 
 
@@ -117,7 +132,7 @@ def duration(path):
         return 0.0
 
 
-def build(src, dst, args):
+def build(src, dst, args, ov=None):
     """Trim → normalise → fade → encode.
 
     The tail trim is the head trim done backwards: ffmpeg's silenceremove only
@@ -144,7 +159,19 @@ def build(src, dst, args):
     # which needs no measurement at all and is exact.
     chain += ['areverse', f'afade=t=in:st=0:d={fade}', 'areverse']
 
-    cmd = ['ffmpeg', '-v', 'error', '-y', '-i', src,
+    # A hand cut, if this take has one. Applied to the INPUT — so before the
+    # trim and before loudness is measured, and a thump on its way out cannot
+    # drag the normaliser around as it goes.
+    ov = ov or {}
+    pre = []
+    start = float(ov.get('start', 0) or 0)
+    if start:
+        pre += ['-ss', str(start)]
+    if ov.get('end') is not None:
+        # Duration rather than -to: unambiguous whether or not -ss is also set.
+        pre += ['-t', str(float(ov['end']) - start)]
+
+    cmd = ['ffmpeg', '-v', 'error', '-y'] + pre + ['-i', src,
            '-af', ','.join(chain),
            '-c:a', 'libopus', '-b:a', args.bitrate,
            '-vn', '-map_metadata', '-1', dst]
@@ -188,7 +215,7 @@ def main():
             print(f'  = {os.path.join(rel, stem)}.ogg (up to date)')
             continue
         before = duration(src)
-        build(src, dst, args)
+        build(src, dst, args, OVERRIDES.get(stem))
         after = duration(dst)
         rel_name = os.path.join(rel, stem + '.ogg')
         print(f'  + {rel_name:<28} {before:5.2f}s -> {after:5.2f}s '
