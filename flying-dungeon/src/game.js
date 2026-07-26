@@ -356,14 +356,18 @@
     bindRestart(false);
     // Back to the title sequence, so the music goes with the run that owned it.
     // startGame() brings it back at the top of the loop — see stopMusic().
-    // The gun too: the key that restarted may well have been held, and the
-    // intro has no firing block to turn it off.
+    // The held loops too: the key that restarted may well have been held, and
+    // the intro has no firing block to turn them off.
     sound.stopMusic();
-    sound.gun(false);
+    sound.stopLoops();
     // And the death sting, which is very likely STILL RINGING: the panel arms
     // its "press anything" before the sting's 3.4s are up, so without this a
     // new run's title sequence opens over the sound of the last one dying.
     sound.stopOnce('gameOver');
+    // And the victory sting, for the same reason: at 10.7s it easily outlives a
+    // player who beats the Mosca Boss and then dies, or who restarts off the
+    // finale's logo. Both stings belong to the run that earned them.
+    sound.stopOnce('victory');
     ending = null;
     rewindSpinT = 0;
     boss = null;             // has to be re-earned every run
@@ -562,11 +566,13 @@
       // just drawing it. 30 flies, 12 coins and the tray's frame stepping are
       // all pure waste from here on.
       if (ending && ending.t >= CONFIG.overFadeOutMs) {
-        // ⚠️ This path RETURNS, skipping the whole firing block below — so the
-        // gun has to be silenced here or a player who died holding fire would
-        // hear it looping over the game-over panel forever. The music is
-        // already down; it was stopped when `ending` latched.
-        sound.gun(false);
+        // ⚠️ This path RETURNS, skipping the whole firing block below — so every
+        // held loop has to be silenced here, or a player who died holding fire
+        // would hear the gun (and the coin it was on) running over the game-over
+        // panel forever. stopLoops() rather than naming them, so a loop added
+        // later cannot be the one nobody remembered. The music is already down;
+        // it was stopped when `ending` latched.
+        sound.stopLoops();
 
         /* THE DEATH STING BELONGS TO THIS SCREEN, not to the death.
            Reaching this block IS the cut to the game-over screen — everything
@@ -686,7 +692,16 @@
       }
       if (flyBoss) {
         flyBoss.update(dt, worldW, worldH, planePt);
-        if (flyBoss.isDead()) flyBoss = null;
+        /* WON THE ROOM. isDead() is the moment its death blast has burnt out,
+           not the moment its health hit zero — so the sting lands on the fight
+           being over rather than under an explosion still playing. The Time
+           Boss's kill below is read at the same point, so both victories are
+           timed the same way. Nothing stops the music for this: winning a fight
+           is not the end of a run, and the bed carries on under it. */
+        if (flyBoss.isDead()) {
+          flyBoss = null;
+          sound.once('victory');
+        }
       }
 
       /* NO TIME MODE. The clock has been dragged all the way to bossAtMs, and
@@ -743,6 +758,11 @@
           boss = null;
           bossBeaten = true;
           orbs.length = 0;
+          // The second victory, read at the same point as the Mosca Boss's —
+          // the blast burnt out — so both kills are timed the same way. It runs
+          // OVER the finale's opening rather than replacing anything: the bed
+          // is still playing and stays playing.
+          sound.once('victory');
           finale.start(plane);
         }
       }
@@ -822,6 +842,10 @@
       // --- Shooting: while firing, project a thin hitscan line forward from
       // the nose. Anything whose box it crosses is hit and bursts.
       let ray = null;
+      // Is the beam currently crossing a coin? Declared out here, with `ray`,
+      // so it is false on every frame the firing block does not run — the same
+      // reason `ray` is.
+      let coinBeam = false;
       // Deliberately NOT gated on `ending`: the player keeps firing through the
       // 900ms dip to black, and can still hit coins and wind the clock back
       // there. It does not save them — `ending` has already latched — so those
@@ -850,6 +874,13 @@
             if (!cn.isShootable()) continue;
             for (const b of cn.boxes(camX, camY, worldW)) {
               if (!rayHitsBox(ray, CONFIG.rayThickness, b)) continue;
+              /* Set on the BEAM CROSSING, not on hit() succeeding. hit() is
+                 rejected inside the coin's 160ms i-frames, so gating the sound
+                 on it would chop the loop on and off several times a second
+                 while the player held a steady beam on a coin they are visibly
+                 damaging. The state being reported is "this coin is under
+                 fire", which is true on every frame the beam is on it. */
+              coinBeam = true;
               // hit() returns false inside the coin's i-frames, so the rewind
               // is rate-limited by exactly the same window as the damage —
               // otherwise the every-frame beam would wind the clock back a
@@ -909,8 +940,12 @@
          futile final volley should be audible. It stops when the panel takes
          over — see the early return further up.
 
-         Handed a boolean every frame; sound.gun() no-ops unless it flips. */
-      sound.gun(!!ray);
+         Handed a boolean every frame; sound.loop() no-ops unless it flips. */
+      sound.loop('gun', !!ray);
+      // And the coin taking damage, on the same terms — it can only be true on
+      // a frame the gun is also firing, so it layers under it rather than
+      // replacing it.
+      sound.loop('coinHit', coinBeam);
 
       ctx.clearRect(0, 0, W, H);
 

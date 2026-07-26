@@ -1275,6 +1275,29 @@ deal a full point. It needed no change to `plane.js` at all: `hp()` and
 `stage()` already floor `wear`, so the first touch is invisible and the second
 ages him, and `isDead()` is a `>=` that six halves reach exactly.
 
+### The victory sting
+
+`victory-sound-01.ogg`, on **both boss kills** — the Mosca Boss and the Time
+Boss. Read at `isDead()` in each case, which is the moment the death blast has
+burnt out rather than the moment health hit zero, so the sting lands on the
+fight being over instead of under an explosion still playing. Both are timed the
+same way on purpose.
+
+**It plays OVER the bed, not instead of it.** Nothing stops the music; being a
+`once()` on the SFX bus it simply layers. That is the difference between winning
+a fight and ending a run — the music carries on because the game does. Compare
+the death sting, which arrives only after `stopMusic()`.
+
+⚠️ **Only the FIRST PART of the take.** It is two pieces: a 620ms break at
+10.88s, then a second, louder section from 11.50s. `OVERRIDES` cuts at 11.00s
+and the normal tail trim finds where part one actually stops — **18.27s →
+10.72s**. Which gap is *the* gap is not a judgement call: the longest musical
+rest anywhere else in the take is 220ms. Nothing plays part two.
+
+⚠️ `restart()` calls `stopOnce('victory')` as well as `stopOnce('gameOver')`. At
+10.7s this easily outlives a player who beats the Mosca Boss and then dies, or
+who restarts off the finale's logo.
+
 ### Two things happen on a hit, and they mean different things
 
 | | lasts | reports |
@@ -1752,36 +1775,64 @@ up-to-date check compares mtimes — so changing one needs
 
 ---
 
-## The machine gun
+## Held loops — the gun, and the coin taking damage
 
-`efeito-metralha-01.ogg`, and it is a **loop, not a one-shot**: `gun(true)`
-starts it, `gun(false)` stops it, holding fire keeps it running. There is no
-per-shot event to hang a one-shot on — the shot is a continuous hitscan beam
-re-tested every frame, so a one-shot would be sixty overlapping copies a second.
+`CONFIG.LOOPS`. These are **loops, not one-shots**, because they report a STATE
+the player is holding rather than an event: `loop(name, true)` starts one,
+`loop(name, false)` stops it. Both hang off the same beam, which is re-tested
+every frame while fire is down — there is no per-shot moment to hang a one-shot
+on, and one retriggered per frame would be sixty overlapping copies a second.
 
-**Gated on `ray`, not on `input.firing`.** `ray` is non-null on exactly the
-frames the gun is actually shooting: null during the fly-in (`controlLocked`),
-null while falling, null through the finale (`cine`), null with no muzzle. So
-the sound stays welded to the muzzle flash instead of drifting from it. Holding
-fire during the entrance would otherwise play a gun that visibly is not firing.
+| | plays while |
+|---|---|
+| `gun` (`efeito-metralha-01.ogg`) | the gun is actually shooting |
+| `coinHit` (`coin-hit-01.ogg`) | that beam is crossing a coin |
 
-⚠️ **Two places have to silence it explicitly**, because both leave the game
-phase without passing the firing block:
+**The gun is gated on `ray`, not on `input.firing`.** `ray` is non-null on
+exactly the frames the gun is actually shooting: null during the fly-in
+(`controlLocked`), null while falling, null through the finale (`cine`), null
+with no muzzle. So the sound stays welded to the muzzle flash instead of
+drifting from it — holding fire during the entrance would otherwise play a gun
+that visibly is not firing.
+
+**`coinHit` is set on the BEAM CROSSING, not on `hit()` succeeding.** `hit()` is
+rejected inside the coin's 160ms i-frames, so gating the sound on it would chop
+the loop on and off several times a second while the player held a steady beam
+on a coin they can see taking damage. The state being reported is "this coin is
+under fire", which is true on every frame the beam is on it. It can only be true
+on a frame the gun is also playing, so it is mixed to sit *inside* the gun
+rather than fight it.
+
+⚠️ **Two places have to silence every loop explicitly**, because both leave the
+game phase without passing the firing block:
 
 - the game-over panel path, which `return`s before it — a player who died
   holding fire would otherwise hear the gun over the panel forever;
 - `restart()`, since the key that restarted was probably held and the intro has
   no firing block to turn it off.
 
-Like the shooting itself it is deliberately **not** gated on `ending`: the final
-volley through the dip to black should be audible.
+Both call **`stopLoops()`** rather than naming the loops, so a third looping
+sound added later cannot be the one nobody remembered to silence.
 
-⚠️ **The loop skips the clip's own fades** (`gunLoopTrimMs`, via `loopStart` /
-`loopEnd`). `build-sound.py` fades 12ms in and out of everything it builds,
+Like the shooting itself they are deliberately **not** gated on `ending`: the
+final volley through the dip to black should be audible.
+
+⚠️ **The loop region skips the clip's own fades** (`loopTrimMs`, via `loopStart`
+/ `loopEnd`). `build-sound.py` fades 12ms in and out of everything it builds,
 which is right for a clip played once and wrong for one played end to end: the
-two fades meet at the wrap and punch a 24ms hole in the burst about once a
-second, which reads as the gun stuttering. The fade-in still plays as the
-attack on the first press — playback just never returns to it.
+two fades meet at the wrap and punch a 24ms hole in the sound, once per pass. On
+the gun that reads as a stutter in the burst; on any loop it is an audible seam.
+The fade-in still plays as the attack when the loop first starts — playback
+simply never returns to it.
+
+⚠️ **`coin-hit-01.ogg` needed an `OVERRIDES` cut**, and it matters more here than
+it did on the game-over sting because this one loops. The take is two hits, the
+second decaying into the floor by ~1.30s, then 300ms of nothing, then a 100ms
+plateau at -30dB from 1.67s that cuts off abruptly — a flat top and a hard edge,
+so handling noise rather than a third tap, which would decay. Left in, every
+pass of the loop would carry half a second of silence and a thud. Cut at 1.45s;
+the normal tail trim then finds where the sound actually stops. Built: **1.83s →
+1.12s**, two hits per pass.
 
 ---
 

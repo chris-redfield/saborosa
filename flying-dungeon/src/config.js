@@ -27,25 +27,35 @@ const CONFIG = {
      one-line rewrite carries it into the build with everything else and there
      is no second path to keep in step. */
   MUSIC_TRACK: 'audio/trilha-mix.ogg',
-  musicVolume: 0.495,    // M mutes, which rides above this
+  musicVolume: 0.4455,   // M mutes, which rides above this. 0.55 → 0.495 → here
   // How long the bed takes to go down when a run ends. Not a hard stop: cutting
   // a buffer source dead chops the waveform mid-cycle and clicks. It also wants
   // to be shorter than overFadeOutMs (900ms) so the music is gone by the time
   // the picture is, rather than still going under a black screen.
   musicFadeOutMs: 420,
 
-  /* --- The machine gun ---------------------------------------------------
-     A held weapon, so the clip LOOPS while fire is down rather than being
-     retriggered — the shot is a continuous hitscan beam, not discrete rounds,
-     and there is no per-shot event to hang a one-shot on. */
-  GUN_SOUND: 'audio/efeito-metralha-01.ogg',
-  gunVolume: 0.45,
-  // Skipped off each end of the LOOP REGION only. build-sound.py fades 12ms in
-  // and out of everything it builds, which is right for a clip played once and
-  // wrong for one played end to end: the two fades meet at the wrap and punch a
-  // 24ms hole in the burst about once a second. The fade-in still plays as the
-  // gun's attack on the first press — playback just never returns to it.
-  gunLoopTrimMs: 12,
+  /* --- Held loops --------------------------------------------------------
+     Sounds that report a STATE the player is holding, not an event. Both of
+     these hang off the same beam: it is re-tested every frame while fire is
+     down, so there is no per-shot moment to hang a one-shot on, and a one-shot
+     retriggered per frame would be sixty overlapping copies a second.
+
+       gun      while the gun is actually shooting
+       coinHit  while that beam is crossing a coin — the coin taking damage
+
+     `loopTrimMs` is skipped off each end of the LOOP REGION only.
+     build-sound.py fades 12ms in and out of everything it builds, which is
+     right for a clip played once and wrong for one played end to end: the two
+     fades meet at the wrap and punch a 24ms hole in the sound, once per pass.
+     The fade-in still plays as the attack when the loop first starts —
+     playback simply never returns to it. */
+  LOOPS: {
+    gun: { src: 'audio/efeito-metralha-01.ogg', volume: 0.495, loopTrimMs: 12 },
+    // Two hits per 1.1s pass. It plays UNDER the gun, which is running at the
+    // same time by definition — you cannot be hitting a coin without firing —
+    // so it is mixed to sit inside the gun rather than fight it.
+    coinHit: { src: 'audio/coin-hit-01.ogg', volume: 0.605, loopTrimMs: 12 },
+  },
 
   /* --- Movement one-shots ------------------------------------------------
      Climbing and diving. The opposite of the gun in every respect: fired on the
@@ -76,6 +86,17 @@ const CONFIG = {
        two. Below ~40ms it fuses completely and starts to colour the tone
        instead (comb filtering); it was 100ms, a slapback, and 300ms before
        that, a canon. Small changes here are not subtle. */
+    /* Both boss kills. Only the FIRST PART of the take: it is two pieces with a
+       620ms break at 10.88s, and build-sound.py cuts there — see OVERRIDES.
+
+       Unlike the death sting, this plays OVER the bed rather than instead of
+       it: nothing stops the music, and being on the SFX bus it simply layers.
+       That is the difference between winning a fight and ending a run — the
+       music carries on because the game does. */
+    victory: {
+      src: 'audio/victory-sound-01.ogg',
+      volume: 1,
+    },
     gameOver: {
       src: 'audio/game-over.ogg',
       volume: 1,

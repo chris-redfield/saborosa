@@ -32,17 +32,23 @@
  * and `wanted` remembers that the game asked for music even if the context was
  * not ready to give it yet.
  *
- * THE GUN is a LOOP, not a one-shot, because the weapon is held rather than
- * fired: `gun(true)` starts it, `gun(false)` stops it, and holding fire keeps
- * it running. A one-shot retriggered per frame would be sixty overlapping
- * copies a second, and one retriggered per "shot" would need a rate the gun
- * does not have — the shot is a hitscan beam, continuous while the key is down.
+ * LOOPS (CONFIG.LOOPS) are for sounds that report a STATE the player is holding
+ * rather than an event: `loop(name, true)` starts one, `loop(name, false)` stops
+ * it, and holding whatever caused it keeps it running. The machine gun is the
+ * type case — the weapon is held, not fired, and the shot is a hitscan beam
+ * re-tested every frame, so there is no per-shot event to hang a one-shot on. A
+ * one-shot retriggered per frame would be sixty overlapping copies a second.
  *
- * Both are cheap to call every frame and are: gun() no-ops unless the state
- * actually flips, so the caller can hand it a boolean each frame and not track
- * edges itself. That is deliberate — the firing test in game.js is already
- * three conditions deep and should not have to grow a "was I firing last
- * frame?" as well.
+ * `loop()` is cheap to call every frame and is meant to be: it no-ops unless the
+ * state actually flips, so callers hand it a boolean each frame and never track
+ * edges themselves. That is deliberate — the firing test in game.js is already
+ * three conditions deep and should not have to grow a "was I firing last frame?"
+ * as well.
+ *
+ * ⚠️ A LOOP HAS TO BE TURNED OFF BY WHOEVER TURNED IT ON, and the shell has two
+ * paths that leave the game phase without passing the code that would: the
+ * game-over panel (which `return`s early) and `restart()`. Both silence every
+ * loop by hand. A loop nobody stops runs forever.
  *
  * THE MOVEMENT ONE-SHOTS are the gun's opposite and are worth contrasting with
  * it, because between them they cover both shapes a game sound can have. The
@@ -51,12 +57,15 @@
  * never cut short. Releasing the key does not stop them, and holding it does
  * not repeat them.
  *
- * The graph is four gains so mute is one knob over three independently balanced
- * sources:
+ * The graph is one gain per bus so mute is a single knob over independently
+ * balanced sources:
  *
- *      music   ─→ musicGain ─┐
- *      gun     ─→ gunGain ───┼─→ master ─→ destination
- *      one-shots → sfxGain ──┘
+ *      music     ─→ musicGain ─┐
+ *      loops     ─→ loopGain ──┼─→ master ─→ destination
+ *      one-shots ─→ sfxGain ───┘
+ *
+ * Each loop and each one-shot also gets its own gain node under its bus, so a
+ * clip can be levelled without moving anything else on it.
  */
 class Sound {
   constructor(cfg) {
@@ -64,11 +73,13 @@ class Sound {
     this.ctx = null;
     this.master = null;
     this.musicGain = null;
-    this.gunGain = null;
+    this.loopGain = null;
     this.buffer = null;
     this.source = null;
-    this.gunBuffer = null;
-    this.gunSource = null;
+    // name -> { buf, source, gain, wanted }. `wanted` is what the game last
+    // ASKED for and survives a clip that has not downloaded yet and a context
+    // that has not been unlocked yet — both resolve into a start later.
+    this.loops = Object.create(null);
     // name -> decoded clip, and name -> the voice currently playing it (null
     // when nothing is). One voice per name is what enforces "plays entirely":
     // an occupied slot rejects the new press rather than cutting the old one.
@@ -81,9 +92,6 @@ class Sound {
     // Survives a blocked context, a track that hasn't downloaded, and the gap
     // between the two.
     this.wanted = false;
-    // Same idea for the gun: the player can be holding fire before the clip has
-    // downloaded, and should not have to let go and press again to hear it.
-    this.gunWanted = false;
     this._unbind = null;
   }
 
@@ -98,9 +106,9 @@ class Sound {
       this.musicGain = this.ctx.createGain();
       this.musicGain.gain.value = this.volume;
       this.musicGain.connect(this.master);
-      this.gunGain = this.ctx.createGain();
-      this.gunGain.gain.value = this.cfg.gunVolume;
-      this.gunGain.connect(this.master);
+      this.loopGain = this.ctx.createGain();
+      this.loopGain.gain.value = 1;
+      this.loopGain.connect(this.master);
       this.sfxGain = this.ctx.createGain();
       this.sfxGain.gain.value = this.cfg.sfxVolume;
       this.sfxGain.connect(this.master);
@@ -119,7 +127,7 @@ class Sound {
       const p = this.ctx.resume();
       if (p && p.then) p.then(() => {
         if (this.wanted) this._start();
-        if (this.gunWanted) this._gunStart();
+        for (const n in this.loops) if (this.loops[n].wanted) this._loopStart(n);
         this._disarm();
       }).catch(() => {});
     };
@@ -165,9 +173,15 @@ class Sound {
         this.buffer = buf;
         if (buf && this.wanted) this._start();
       }),
-      grab(this.cfg.GUN_SOUND, 'gun').then(buf => {
-        this.gunBuffer = buf;
-        if (buf && this.gunWanted) this._gunStart();
+      // The loops. A clip that lands while the game is already asking for it
+      // starts itself — the player holding fire through the first second of a
+      // run should not have to let go and press again to hear the gun.
+      ...Object.keys(this.cfg.LOOPS || {}).map(name => {
+        const L = this.loops[name] || (this.loops[name] = { wanted: false });
+        return grab(this.cfg.LOOPS[name].src, name).then(buf => {
+          L.buf = buf;
+          if (buf && L.wanted) this._loopStart(name);
+        });
       }),
       // The one-shots. Nothing to catch up on if one arrives late — a press
       // that happened before the clip landed is over, and firing it now would
@@ -312,52 +326,70 @@ class Sound {
     }
   }
 
-  /* --- the machine gun ---------------------------------------------------
-     Hand it `input.firing` every frame and forget about it. */
-  gun(on) {
+  /* --- held loops ---------------------------------------------------------
+     Hand it a boolean every frame and forget about it: `loop('gun', firing)`,
+     `loop('coinHit', beamOnACoin)`. No-ops unless the state flips. */
+  loop(name, on) {
+    const L = this.loops[name] || (this.loops[name] = { wanted: false });
     if (on) {
-      if (this.gunWanted) return;                // already going: nothing to do
-      this.gunWanted = true;
+      if (L.wanted) return;                      // already going: nothing to do
+      L.wanted = true;
       const ctx = this._audio();
       if (!ctx) return;
       if (ctx.state === 'suspended') { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); }
-      this._gunStart();
+      this._loopStart(name);
     } else {
-      this.gunWanted = false;
-      if (!this.gunSource) return;
-      try { this.gunSource.stop(); } catch (e) {}
-      this.gunSource.disconnect();
-      this.gunSource = null;
+      L.wanted = false;
+      if (!L.source) return;
+      try { L.source.stop(); } catch (e) {}
+      try { L.source.disconnect(); } catch (e) {}
+      if (L.gain) { try { L.gain.disconnect(); } catch (e) {} L.gain = null; }
+      L.source = null;
     }
   }
 
-  _gunStart() {
-    if (!this.ctx || !this.gunBuffer || this.gunSource) return;
-    if (this.ctx.state !== 'running') return;
-    const s = this.ctx.createBufferSource();
-    s.buffer = this.gunBuffer;
-    s.loop = true;
-    /* The loop skips the clip's own fades. build-sound.py puts a 12ms fade on
-       each edge of everything it builds, which is right for a clip that plays
-       once and wrong for one that plays end to end sixty times a minute: the
-       two fades meet at the wrap and put a 24ms hole in the middle of the
-       burst, roughly once a second, which reads as the gun stuttering.
+  /* Every loop off at once. What the two paths that leave the game phase
+     without passing their own `loop(..., false)` call use — the game-over
+     panel, which returns early, and restart(). Having them call this rather
+     than each naming every loop is what stops the NEXT looping sound from
+     being the one nobody remembered to silence. */
+  stopLoops() {
+    for (const name in this.loops) this.loop(name, false);
+  }
 
-       Looping between them instead keeps the fade-in as the gun's attack — you
-       hear it on the first press, which is what it is for — and never returns
-       to it. Clamped so a clip shorter than the trim cannot produce an inverted
-       loop region. */
-    const trim = Math.max(0, (this.cfg.gunLoopTrimMs || 0) / 1000);
-    if (this.gunBuffer.duration > trim * 3) {
+  _loopStart(name) {
+    const L = this.loops[name];
+    const cfg = (this.cfg.LOOPS || {})[name];
+    if (!L || !cfg || !this.ctx || !L.buf || L.source) return;
+    if (this.ctx.state !== 'running') return;    // a gesture will come back for this
+    const s = this.ctx.createBufferSource();
+    s.buffer = L.buf;
+    s.loop = true;
+    /* The loop region skips the clip's own fades. build-sound.py puts a 12ms
+       fade on each edge of everything it builds, which is right for a clip that
+       plays once and wrong for one that plays end to end: the two fades meet at
+       the wrap and put a 24ms hole in the sound, once per pass. On the gun that
+       reads as a stutter in the burst; on any loop it is an audible seam.
+
+       Looping between them keeps the fade-in as the sound's ATTACK — heard on
+       the frame it starts, which is what it is for — and never returns to it.
+       Clamped so a clip shorter than the trim cannot invert the loop region. */
+    const trim = Math.max(0, (cfg.loopTrimMs || 0) / 1000);
+    if (L.buf.duration > trim * 3) {
       s.loopStart = trim;
-      s.loopEnd = this.gunBuffer.duration - trim;
+      s.loopEnd = L.buf.duration - trim;
     }
-    s.connect(this.gunGain);
-    // From the very top, not from loopStart: the first thing the player hears
-    // when they pull the trigger should be the gun starting, and every press
-    // should sound the same. Playback falls into the loop region on its own.
+    // Its own level, under the shared loop bus.
+    const g = this.ctx.createGain();
+    g.gain.value = (cfg.volume == null ? 1 : cfg.volume);
+    g.connect(this.loopGain);
+    s.connect(g);
+    // From the very top, not from loopStart: the first thing heard when this
+    // starts should be the sound starting, and every start should be identical.
+    // Playback falls into the loop region on its own.
     s.start();
-    this.gunSource = s;
+    L.source = s;
+    L.gain = g;
   }
 
   // Both are safe to call whenever: play while already playing is a no-op, and

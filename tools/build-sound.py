@@ -93,6 +93,21 @@ OVERRIDES = {
     # start-duration minimum. Left in, it lands as a thunk over the game-over
     # panel about a second after the music has finished.
     'game-over': {'end': 4.20},
+    # Same story, and it matters more because this one LOOPS. Two hits, then the
+    # second decaying into the floor by ~1.30s, then 300ms of nothing, then a
+    # 100ms plateau at -30dB starting at 1.67 that cuts off abruptly — a flat
+    # top and a hard edge, so handling noise rather than a third tap, which
+    # would decay. Cut at 1.45 to remove that and let the normal tail trim find
+    # where the music actually stops. Left in, every loop would carry half a
+    # second of silence and a thud.
+    'coin-hit-01': {'end': 1.45},
+    # A different job: this take is two pieces and the game only wants the
+    # first. There is a 620ms break at 10.88s — against 220ms for the longest
+    # musical rest anywhere in it, so which gap is THE gap is not a judgement
+    # call — and a second, louder section from 11.50s. Cut just inside the
+    # break; the normal tail trim then finds where the first part actually
+    # stops. Nothing plays part two.
+    'victory-sound-01': {'end': 11.00},
 }
 
 FADE_MS = 12          # ms of fade on each edge — kills the loop-point click
