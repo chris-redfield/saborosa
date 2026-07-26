@@ -34,6 +34,9 @@ class Input {
     this.debug = false;       // hold C: show collision boxes + the shot line
     this.engaged = false;
     this._cycleQueued = false;
+    this._muteQueued = false;   // M: an edge event, consumed once via takeMute()
+    // Rising edges on up/down, recomputed by poll(). See takeUpPress().
+    this._upEdge = this._downEdge = false;
 
     // The two halves that get OR'd into the fields above. See the header.
     this._kb = { left: false, right: false, up: false, down: false, firing: false };
@@ -62,6 +65,7 @@ class Input {
       if (m) { e.preventDefault(); this._kb[m] = true; this.engaged = true; return; }
       if (e.code === 'Space') { e.preventDefault(); this._kb.firing = true; }
       else if (e.code === 'KeyC') { this.debug = true; }
+      else if (e.code === 'KeyM') { this._muteQueued = true; }
       else if (e.code === 'Digit1' || e.code === 'Numpad1') { this._cycleQueued = true; }
     });
     t.addEventListener('keyup', e => {
@@ -174,16 +178,40 @@ class Input {
     }
 
     const kb = this._kb;
+    const wasUp = this.up, wasDown = this.down;
     this.left = kb.left || pad.left;
     this.right = kb.right || pad.right;
     this.up = kb.up || pad.up;
     this.down = kb.down || pad.down;
     this.firing = kb.firing || pad.firing;
     if (pad.left || pad.right || pad.up || pad.down) this.engaged = true;
+
+    /* Rising edges on up/down, computed HERE because this is the only place the
+       keyboard and the pad have been folded into one answer — a caller watching
+       `this.up` from outside would see the same field and have to keep its own
+       previous value, and every caller that wanted it would keep its own copy.
+
+       Recomputed every frame rather than queued: unlike takeCycle(), an unread
+       movement edge is stale rather than pending. A press that happened while
+       the plane was flying in should evaporate, not fire a whoosh the moment
+       control is handed over. */
+    this._upEdge = this.up && !wasUp;
+    this._downEdge = this.down && !wasDown;
   }
 
   // True once per character-cycle press (Digit1, or the mapped pad button).
   takeCycle() { const c = this._cycleQueued; this._cycleQueued = false; return c; }
+
+  // True once per M press. Keyboard only — there is no `mute` action in the
+  // main game's mapping file to bind it to, and inventing one here would be the
+  // second copy of that file this game went out of its way not to have.
+  takeMute() { const m = this._muteQueued; this._muteQueued = false; return m; }
+
+  /* True once when up/down goes from not-held to held — the PRESS, not the
+     hold. What the movement sounds hang off: holding the key must not retrigger
+     them, so the held flag is exactly the wrong thing to watch. */
+  takeUpPress() { const u = this._upEdge; this._upEdge = false; return u; }
+  takeDownPress() { const d = this._downEdge; this._downEdge = false; return d; }
 
   /* True once for "any pad button just went down" — the controller's answer to
      the keydown/mousedown listeners the skip and restart screens use, which a

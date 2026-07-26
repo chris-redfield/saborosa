@@ -174,8 +174,14 @@ const TRACKS = [
 // which is not a mistake being corrected but the swing that keeps it off 02's
 // beat. The gaps on 01 and 03 (150/140ms) are what make their repeats land on
 // 02's, since neither divides the loop on its own.
+//
+// 01 also runs 2% SLOW (rate 0.980), and that changes its role rather than just
+// its speed: at 15.302s it had to come round twice inside the loop, and at
+// 15.614s it does not come round at all — one unbroken pass, entered a second
+// in, still playing when the loop ends. So 01 is the bed the loop sits on and
+// 02/03 are what repeats over it, which is only true at this rate.
 const DEFAULT_MIX = [
-  { on: true, solo: false, db: 0, offsetMs: -1000, trimMs: 0, rate: 1, repeat: true, gapMs: 150 },
+  { on: true, solo: false, db: 0, offsetMs: -1000, trimMs: 0, rate: 0.980, repeat: true, gapMs: 150 },
   { on: true, solo: false, db: 0, offsetMs: 0,     trimMs: 0, rate: 1, repeat: true, gapMs: 0   },
   { on: true, solo: false, db: 0, offsetMs: 100,   trimMs: 0, rate: 1, repeat: true, gapMs: 140 },
 ];
@@ -190,14 +196,18 @@ const DEFAULT_MASTER = {
      then jumped back to the top. That is the classic bad loop, and it is
      audible immediately.
 
-     14452 is where the last of those restarts falls: layer 1's second pass
-     begins at 14452 and layers 2 and 3 begin theirs at 14466, so cropping to
-     the earliest of the three ends the loop exactly as everything is about to
-     start again — 14ms of 02/03's lead-in is lost, which is nothing.
+     14452 is where the last of those restarts fell: layer 1's second pass began
+     at 14452 and layers 2 and 3 began theirs at 14466, so cropping to the
+     earliest of the three ended the loop exactly as everything was about to
+     start again — 14ms of 02/03's lead-in lost, which is nothing.
 
-     ⚠️ DERIVED FROM THE OFFSETS AND GAPS ABOVE, so it is not independent of
-     them: change an offset, a gap or a rate and this number is stale. The
-     `crop` button in MASTER LOOP recomputes it. */
+     ⚠️ 01 HAS SINCE BEEN SLOWED to 0.980 and no longer restarts inside the
+     loop at all, so 14452 is now kept for 02 and 03 — whose passes land at
+     7233/14466 and 7283/14466 — rather than for the reason it was first
+     chosen. It is deliberately NOT re-cropped to those: pressing `crop` now
+     answers 7233, because that is the last restart that fits inside a loop
+     already shorter than 14466, and halving the loop is not the tidy-up it
+     sounds like. The number stands; the reasoning above is the old one. */
   loopMs: 14452,
   db: 0,
   seamMs: 60,         // crossfade of the loop wrap

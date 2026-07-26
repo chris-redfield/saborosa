@@ -78,6 +78,7 @@ player decides which way the run goes by choosing what to shoot.
 | `src/fruit-select.js` | the SELECT FRUIT board, ported from the main game |
 | `src/liftoff.js` | the plane's takeoff over the countdown |
 | `src/film.js` | grain / vignette / frame line / gate weave |
+| `src/sound.js` | the background music: one baked loop, played on Web Audio |
 | `src/assets.js` | tiny asset store; goes when this lifts into the engine |
 | `src/input.js` | keyboard + gamepad; goes when this lifts into the engine |
 | `tools/build-intro-frames.py` | intro masters → webp (64MB → 1MB) |
@@ -85,6 +86,9 @@ player decides which way the run goes by choosing what to shoot.
 | `tools/build-coin-frames.py` | coin masters → uniform 160px grid sheets |
 | `tools/build-orb-frames.py` | the root game's FX sphere → a 5-cell grid |
 | `tools/build-hustlebar.py` | the 22 hand-drawn health bars → 23 rotated frames |
+| `tools/build-sound.py` | phone voice notes → trimmed, levelled, loop-ready ogg |
+| `tools/music-lab.html` | layers/aligns the three music takes; bounces the mix |
+| `tools/bake-trilha.py` | renders that mix to the single file the game plays |
 | `tools/coin-anim.html` | times the coin spin, A/Bs the two variants |
 | `tools/intro-align.py` | measures how far the camera should roll between boards |
 
@@ -1421,6 +1425,165 @@ in place is instant.
 
 `spawnWorld()` clears both lists before refilling them, so a restart doesn't
 stack a second swarm on the leftovers of the last run.
+
+---
+
+## Music
+
+One file, one loop, no mixer: `assets-v2/flying-dungeon/audio/trilha-mix.ogg`,
+a seamless **14.452s** bed. It starts in `startGame()` — with the first game
+screen, never under the intro — and `restart()` stops it, so it always begins a
+run from its own first beat. `M` mutes, in every phase.
+
+**The track is three separate takes.** They were delivered as phone voice notes,
+and getting from those to one file is a three-stage pipeline, each stage a
+tool. It is worth knowing why there are three rather than one:
+
+```
+sound/*.ogg          the masters, as recorded. Never edited.
+   │  tools/build-sound.py    trim the dead air, level them against each other
+audio/music/trilha-0N.ogg     three aligned STEMS — ingredients, never shipped
+   │  tools/music-lab.html    layer them, find the alignment, crop the loop
+   │  tools/bake-trilha.py    render that arrangement down to one file
+audio/trilha-mix.ogg          what the game loads, and all it loads
+```
+
+⚠️ **Every take has ~1s of dead air at each end**, because the recording starts
+when the thumb goes down. Looping that raw goes silent for two seconds every
+time it comes round — the single most audible flaw a loop can have, and it is
+in the file, not the music. That is what `build-sound.py` exists for.
+
+⚠️ **`bake-trilha.py` reads the arrangement OUT OF `music-lab.html`** — the
+`DEFAULT_MIX` / `DEFAULT_MASTER` literals are the single source of truth. Dial
+a change in the tool, put the numbers back in those literals, re-run the bake.
+A second copy of them in the Python would be wrong the first time anyone
+nudged an offset.
+
+⚠️ **NEVER run `trilha-mix.ogg` through `build-sound.py`.** It trims silence off
+both ends, which is right for a raw take and destroys a loop that has been
+cropped to a downbeat.
+
+**Why the loop is 14452ms and not the 15302ms of the longest take:** at 15302
+the wrap arrived with every layer part-way into a fresh phrase and then jumped
+to the top. 14452 is where the layers come back round together. The comment on
+`DEFAULT_MASTER` has the full derivation, including why the tool's `crop`
+button now gives a different (wrong) answer than it did when that number was
+chosen.
+
+**Why Web Audio and not an `<audio>` element.** The whole exercise was making
+the wrap seamless — the loop is cropped to a downbeat and its first 60ms are a
+crossfade of its own tail. `HTMLAudioElement.loop` re-primes the decoder at the
+wrap and can drop a few ms there: inaudible on a song, fatal on a bed that
+comes round every 14 seconds, and it would throw away exactly what the pipeline
+bought. `AudioBufferSourceNode.loop` is sample-accurate by specification. It
+costs ~2.7MB of decoded audio held in memory, against ~30MB of art.
+
+**Autoplay** keeps an AudioContext suspended until the player has interacted
+with the page. By `startGame()` they have pressed several keys, but that is a
+fact about the current intro rather than a guarantee — with `CONFIG.intro` off,
+nothing has been pressed. So `sound.js` retries the resume on every gesture
+until one takes, and remembers that the game asked for music in the meantime.
+
+Loading is **not awaited and not part of the progress total**, same as the
+gamepad mapping and for the same reason: ~240KB, optional, and the game must
+never sit on a loading bar for it. If it lands after the game has begun it
+starts itself. A missing file or a browser that cannot decode opus leaves the
+game silent and otherwise untouched.
+
+`package.sh` copies **the root of `audio/` only, never `audio/music/`** — the
+stems are ingredients the game has no code to play.
+
+**The music stops on all three bad endings**, and it is two calls rather than
+three because they all funnel through one flag: `ending`. The clock running out
+latches it in one place; the plane dying latches it in the other, covering both
+the Time Boss (THE END) and the Mosca Boss (TIME OVER, `failedTitle`). A fourth
+ending added later inherits the behaviour as long as it sets `ending` too.
+
+It stops where `ending` is LATCHED, not where the panel finally appears — that
+is the moment the picture starts dipping, and the bed going down with it is what
+makes the dip read as the end of the run. `musicFadeOutMs` (420) is deliberately
+shorter than `overFadeOutMs` (900) so silence lands before black does. **Winning
+is not one of these** — the finale keeps its music.
+
+⚠️ The stop RAMPS rather than cutting. Stopping a buffer source outright chops
+the waveform wherever it happens to be, and a waveform ending anywhere but zero
+is a step, which is a loud click. `_start()` resets the gain afterwards rather
+than a timer restoring it, so a run started again mid-fade cannot bring the old
+level back under the new track.
+
+---
+
+## The machine gun
+
+`efeito-metralha-01.ogg`, and it is a **loop, not a one-shot**: `gun(true)`
+starts it, `gun(false)` stops it, holding fire keeps it running. There is no
+per-shot event to hang a one-shot on — the shot is a continuous hitscan beam
+re-tested every frame, so a one-shot would be sixty overlapping copies a second.
+
+**Gated on `ray`, not on `input.firing`.** `ray` is non-null on exactly the
+frames the gun is actually shooting: null during the fly-in (`controlLocked`),
+null while falling, null through the finale (`cine`), null with no muzzle. So
+the sound stays welded to the muzzle flash instead of drifting from it. Holding
+fire during the entrance would otherwise play a gun that visibly is not firing.
+
+⚠️ **Two places have to silence it explicitly**, because both leave the game
+phase without passing the firing block:
+
+- the game-over panel path, which `return`s before it — a player who died
+  holding fire would otherwise hear the gun over the panel forever;
+- `restart()`, since the key that restarted was probably held and the intro has
+  no firing block to turn it off.
+
+Like the shooting itself it is deliberately **not** gated on `ending`: the final
+volley through the dip to black should be audible.
+
+⚠️ **The loop skips the clip's own fades** (`gunLoopTrimMs`, via `loopStart` /
+`loopEnd`). `build-sound.py` fades 12ms in and out of everything it builds,
+which is right for a clip played once and wrong for one played end to end: the
+two fades meet at the wrap and punch a 24ms hole in the burst about once a
+second, which reads as the gun stuttering. The fade-in still plays as the
+attack on the first press — playback just never returns to it.
+
+---
+
+## Climb and dive
+
+`CONFIG.SFX.up` / `.down` — and they are the gun's opposite in every respect,
+which is the useful way to hold the two in mind:
+
+| | the gun | climb / dive |
+|---|---|---|
+| what it is | a **state** — on while the trigger is down | an **event** — the moment of the press |
+| trigger | the held flag (`ray`) | the rising edge (`takeUpPress`) |
+| loops | yes | never |
+| release | stops it | does nothing — it plays out |
+
+The edges come from `input.js`, computed in `poll()` where the keyboard and pad
+have already been folded into one answer. They are **recomputed every frame
+rather than queued**, unlike `takeCycle()`: an unread movement edge is stale,
+not pending, so a press during the fly-in evaporates instead of firing a whoosh
+the moment control is handed over.
+
+⚠️ **A second press of the same direction while it is still playing is
+IGNORED** — not restarted, not stacked. "Plays entirely" and "retriggers on
+every press" cannot both be true. Restarting interrupts (the one thing the
+sounds must not do) and stacking, in a game where the player nudges up and down
+constantly, is a pile of overlapping whooshes. The two directions are
+independent, so reversing direction always speaks.
+
+Nothing stops these — not releasing the key, not the run ending, not a restart.
+They are short, they were asked for, and a sound cut off half way is more
+noticeable than one that finishes a beat late.
+
+⚠️ **These takes needed `START_DURATION`, added to `build-sound.py` for them.**
+Both open with a click a fraction of a second into the dead air — the thumb on
+the screen, the mic switching on. Without a minimum sustained duration, the trim
+stops at that click and keeps everything after it: `cima` would have kept 315ms
+of silence and `baixo` 437ms, so the whoosh would arrive a third of a second
+after the key press. 50ms is far longer than any such artefact and far shorter
+than any real note. ⚠️ Changing it changes where takes start, which for the
+trilha stems would invalidate the alignment baked into `trilha-mix.ogg` — the
+mtime skip protects a normal run, but `--force` after changing it would not.
 
 ---
 

@@ -113,6 +113,11 @@
 
   const assets = new Assets();
   const input = new Input();
+  // Not a `let`: unlike everything a RUN owns, the music is not rebuilt on
+  // restart — it holds the decoded track, and throwing that away to re-fetch it
+  // between runs would be the one thing this game cannot afford, for exactly
+  // the reason a page reload is avoided below.
+  const sound = new Sound(CONFIG);
   const bg = new TrayBackground(assets, CONFIG);
   // Everything a RUN owns is `let`, not `const`: restarting rebuilds these
   // rather than reaching into each one to undo its state. All of their
@@ -214,6 +219,10 @@
   let skipArmAt = 0;
   function onSkip(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    // M is the mute key, not "any key". Muting the game should never also blow
+    // past the title sequence — the two are unrelated and one of them is
+    // irreversible from the player's point of view.
+    if (e.code === 'KeyM') return;
     if (performance.now() < skipArmAt) return;
     // While the fruit select is up, keys are the player choosing — not skipping.
     if (intro.awaitingInput) return;
@@ -237,6 +246,7 @@
   let restartArmed = false;
   function onRestart(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
+    if (e.code === 'KeyM') return;      // mute, not "any key" — same as onSkip
     restart();
   }
   function bindRestart(on) {
@@ -292,6 +302,12 @@
      everyone. */
   function restart() {
     bindRestart(false);
+    // Back to the title sequence, so the music goes with the run that owned it.
+    // startGame() brings it back at the top of the loop — see stopMusic().
+    // The gun too: the key that restarted may well have been held, and the
+    // intro has no firing block to turn it off.
+    sound.stopMusic();
+    sound.gun(false);
     ending = null;
     rewindSpinT = 0;
     boss = null;             // has to be re-earned every run
@@ -325,6 +341,17 @@
     phase = 'game';
     bar.style.display = 'none';
     showChrome(true);
+    /* THE MUSIC STARTS HERE — with the first game screen, not at boot.
+
+       The intro doubles as the loading screen and can hold on black waiting for
+       the tray frames, so a track playing under it would be scoring a progress
+       bar. Starting on the cut into the game also means the loop's first beat
+       lands on the frame the player first sees the world, which is worth
+       having and is free.
+
+       No-op and harmless if the track has not downloaded yet: Sound remembers
+       that it was asked and starts itself when it lands. */
+    sound.playMusic();
     // Fly whoever the player picked in the intro (null if they skipped past it,
     // in which case the plane keeps its default).
     if (intro.pickedCharacter !== null) plane.setCharacter(intro.pickedCharacter);
@@ -344,6 +371,9 @@
     // The Gamepad API has no button events — this poll IS the controller, for
     // every phase. Before anything reads input, and only once a frame.
     input.poll();
+    // Mute, in every phase rather than only in-game: a player who wants the
+    // sound off wants it off now, not once they have got through the intro.
+    if (input.takeMute()) sound.toggleMute();
 
     if (phase === 'intro') {
       intro.update(dt, input);
@@ -389,8 +419,24 @@
       // Time up. Freeze the clock so the drain stops at exactly full grey and
       // the HUD's last reading is the one the player ends on, then run the
       // handover off real time — a fade shouldn't be on a rate-scaled clock.
+      /* ⚠️ THE MUSIC STOPS WHEREVER `ending` IS LATCHED, and there are exactly
+         two such places — here and the death below — covering all THREE ways a
+         run can end badly: the clock running out (TIME OVER), the Time Boss
+         ageing you (THE END), and the Mosca Boss knocking you down (TIME OVER,
+         failedTitle). They all funnel through this one flag, which is why this
+         is two calls rather than three, and why a fourth ending added later
+         gets the behaviour for free as long as it sets `ending` too.
+
+         It is latched at the START of the handover, not when the panel finally
+         appears: `ending` is the moment the picture begins dipping, and the bed
+         going down with it is what makes the dip read as the end of the run
+         rather than as a fade that happens to be in progress. The fade is
+         shorter than the dip (see musicFadeOutMs), so silence lands first.
+
+         NOT the finale — beating the Time Boss is a win and keeps its music. */
       if (!ending && clock.running && clock.now() >= CONFIG.timeOverMs) {
         ending = { t: 0 };
+        sound.stopMusic();
         clock.pause();
       }
       /* Aged to death — the third orb landed. This gets its OWN ending, and the
@@ -427,6 +473,11 @@
             white: killedBy === 'time',
             title: killedBy === 'fly' ? 'failedTitle' : null,
           };
+          // Endings two and three — see the note on the other latch. Here the
+          // music goes as the WRECK LEAVES THE FRAME rather than on the fatal
+          // hit, because that is when the run is over: the fall is still the
+          // game, and scoring it is the point of having it.
+          sound.stopMusic();
         }
       }
       if (ending) ending.t += dt;
@@ -436,6 +487,11 @@
       // just drawing it. 30 flies, 12 coins and the tray's frame stepping are
       // all pure waste from here on.
       if (ending && ending.t >= CONFIG.overFadeOutMs) {
+        // ⚠️ This path RETURNS, skipping the whole firing block below — so the
+        // gun has to be silenced here or a player who died holding fire would
+        // hear it looping over the game-over panel forever. The music is
+        // already down; it was stopped when `ending` latched.
+        sound.gun(false);
         if (CONFIG.film) film.update(dt);
         const W = canvas.width, H = canvas.height;
         // Which ending: the clock ran out (black, TIME OVER) or the Time Boss
@@ -477,6 +533,21 @@
       // frame's stop-motion snapshot — which is what the camera pans off.
       finale.update(dt, plane, clock);
       plane.update(dt, input);
+
+      /* CLIMB / DIVE. On the press, so holding the key plays the sound once and
+         lets it finish rather than looping it — the opposite shape from the gun
+         a few hundred lines down, which is a held state and loops.
+
+         Gated on controlLocked for the same reason the firing is: during the
+         fly-in, the death fall and the finale the plane ignores input entirely
+         (Plane.update swaps in NO_INPUT), so a whoosh there would be scoring a
+         movement that never happened. The edges are consumed either way —
+         poll() recomputes them each frame, so an unread one goes stale instead
+         of firing late. */
+      if (!plane.controlLocked) {
+        if (input.takeUpPress()) sound.once('up');
+        if (input.takeDownPress()) sound.once('down');
+      }
       hud.update(dt);            // advances the timer's rewind jolt
       if (CONFIG.film) film.update(dt);
       const W = canvas.width, H = canvas.height;
@@ -701,6 +772,22 @@
         }
       }
 
+      /* THE GUN'S SOUND, gated on `ray` rather than on `input.firing`.
+
+         `ray` is non-null on exactly the frames the gun is actually shooting —
+         it is null while the plane is flying in (controlLocked) and null when
+         the plane has no muzzle to fire from — so this stays welded to the
+         muzzle flash instead of drifting from it. Holding fire during the
+         entrance would otherwise play a gun that visibly is not firing.
+
+         Note it is deliberately NOT gated on `ending`, exactly as the shooting
+         above is not: the player keeps firing through the dip to black, and the
+         futile final volley should be audible. It stops when the panel takes
+         over — see the early return further up.
+
+         Handed a boolean every frame; sound.gun() no-ops unless it flips. */
+      sound.gun(!!ray);
+
       ctx.clearRect(0, 0, W, H);
 
       // The scene weaves vertically (gate jitter) under the film effect; the
@@ -866,6 +953,12 @@
   // controller profile. If it lands late the pad simply uses standard-layout
   // defaults until it does.
   input.loadMapping(CONFIG.GAMEPAD_MAPPING);
+
+  // Same treatment, and for the same reasons: started now, not awaited, and not
+  // counted in TOTAL. The track is ~240KB and the game must never sit on a
+  // loading bar for it. If it arrives after startGame() has already run it
+  // starts itself — see sound.js.
+  sound.load();
 
   Promise.all([
     bg.load(tick),

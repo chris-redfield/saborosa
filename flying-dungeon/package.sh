@@ -27,7 +27,8 @@ mkdir -p "$dist/src" "$dist/assets/flying-dungeon/character-sheets" \
          "$dist/assets/flying-dungeon/enemy-sheets" \
          "$dist/assets/flying-dungeon/select" \
          "$dist/assets/flying-dungeon/coin" \
-         "$dist/assets/flying-dungeon/game-over"
+         "$dist/assets/flying-dungeon/game-over" \
+         "$dist/assets/flying-dungeon/audio"
 
 # --- code ---
 cp "$here/index.html" "$dist/"
@@ -40,6 +41,11 @@ cp "$src_assets/enemy-sheets/"*.png "$dist/assets/flying-dungeon/enemy-sheets/"
 cp "$src_assets/select/"*.webp "$dist/assets/flying-dungeon/select/"
 cp "$src_assets/coin/"*.webp "$dist/assets/flying-dungeon/coin/"
 cp "$src_assets/game-over/"*.webp "$dist/assets/flying-dungeon/game-over/"
+# Audio: the ROOT of audio/ only, never audio/music/. The stems in there are
+# ingredients — three separate takes that tools/bake-trilha.py has already
+# resolved into trilha-mix.ogg — and shipping them would be a megabyte of files
+# the game has no code to play.
+cp "$src_assets/audio/"*.ogg "$dist/assets/flying-dungeon/audio/"
 
 # --- the controller mapping (the MAIN GAME's file, shared not copied) ---
 # Optional: a build without it still plays, on standard-layout pad defaults.

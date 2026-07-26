@@ -17,6 +17,53 @@ const CONFIG = {
      Optional: if it is missing, input.js keeps its standard-layout defaults. */
   GAMEPAD_MAPPING: '../assets/gamepad-mapping.json',
 
+  /* --- Music -------------------------------------------------------------
+     The background track: three takes layered, aligned and cropped to a
+     seamless 14.452s loop in tools/music-lab.html, then bounced to this single
+     file by tools/bake-trilha.py. The game does no mixing — see src/sound.js
+     for why that had to be settled offline.
+
+     Under ASSET_BASE rather than a path of its own, so package.sh's existing
+     one-line rewrite carries it into the build with everything else and there
+     is no second path to keep in step. */
+  MUSIC_TRACK: 'audio/trilha-mix.ogg',
+  musicVolume: 0.55,     // M mutes, which rides above this
+  // How long the bed takes to go down when a run ends. Not a hard stop: cutting
+  // a buffer source dead chops the waveform mid-cycle and clicks. It also wants
+  // to be shorter than overFadeOutMs (900ms) so the music is gone by the time
+  // the picture is, rather than still going under a black screen.
+  musicFadeOutMs: 420,
+
+  /* --- The machine gun ---------------------------------------------------
+     A held weapon, so the clip LOOPS while fire is down rather than being
+     retriggered — the shot is a continuous hitscan beam, not discrete rounds,
+     and there is no per-shot event to hang a one-shot on. */
+  GUN_SOUND: 'audio/efeito-metralha-01.ogg',
+  gunVolume: 0.45,
+  // Skipped off each end of the LOOP REGION only. build-sound.py fades 12ms in
+  // and out of everything it builds, which is right for a clip played once and
+  // wrong for one played end to end: the two fades meet at the wrap and punch a
+  // 24ms hole in the burst about once a second. The fade-in still plays as the
+  // gun's attack on the first press — playback just never returns to it.
+  gunLoopTrimMs: 12,
+
+  /* --- Movement one-shots ------------------------------------------------
+     Climbing and diving. The opposite of the gun in every respect: fired on the
+     PRESS rather than the hold, never looped, and never cut short — holding up
+     plays this once and lets it end, and letting go does not stop it.
+
+     ⚠️ A second press of the SAME direction while it is still playing is
+     IGNORED, not stacked and not restarted. "Plays entirely" and "retriggers
+     on every press" cannot both be true, and in a game where the player is
+     nudging up and down constantly, stacking would be a pile of overlapping
+     whooshes. The two directions are independent of each other, so changing
+     direction always speaks. */
+  SFX: {
+    up: 'audio/efeito-pra-cima-01.ogg',
+    down: 'audio/efeito-pra-baixo-01.ogg',
+  },
+  sfxVolume: 0.6,
+
   // --- Canvas: fixed internal resolution (matches the main game) ----------
   GAME_W: 1280,
   GAME_H: 720,           // CSS-scaled to the window with letterboxing

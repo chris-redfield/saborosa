@@ -65,6 +65,21 @@ LOUDNESS = 'I=-16:TP=-1.5:LRA=11'
 # quiet playing. Raise it if a take starts with a breath you want gone.
 SILENCE_DB = '-45dB'
 
+# How much sustained sound has to arrive before the trim decides the take has
+# started. NOT cosmetic: a phone recording routinely opens with a single click
+# — the thumb on the screen, the mic switching on — sitting in the middle of the
+# dead air. With no minimum, the trim stops at that click and leaves everything
+# after it, so a take with 690ms of silence keeps 440ms of it and the sound
+# arrives late. 50ms is far longer than any such artefact and far shorter than
+# any real note.
+#
+# ⚠️ Changing this changes where takes start, which for the TRILHA STEMS would
+# invalidate the alignment dialled in by hand in music-lab.html and baked into
+# trilha-mix.ogg. Up-to-date files are skipped, so a normal run cannot do that
+# — but `--force` after changing this would, silently. Re-run bake-trilha.py if
+# you ever do.
+START_DURATION = 0.05
+
 FADE_MS = 12          # ms of fade on each edge — kills the loop-point click
 
 
@@ -115,7 +130,7 @@ def build(src, dst, args):
     music up to compensate, so the trimmed result comes out hot.
     """
     trim = (f'silenceremove=start_periods=1:start_threshold={args.silence_db}'
-            ':start_silence=0:detection=peak')
+            f':start_silence=0:start_duration={args.start_duration}:detection=peak')
     fade = args.fade_ms / 1000.0
     chain = [
         trim,
@@ -146,6 +161,8 @@ def main():
     p.add_argument('--bitrate', default=BITRATE)
     p.add_argument('--loudness', default=LOUDNESS)
     p.add_argument('--silence-db', default=SILENCE_DB)
+    p.add_argument('--start-duration', type=float, default=START_DURATION,
+                   help='sustained sound (s) needed before the take counts as started')
     p.add_argument('--fade-ms', type=float, default=FADE_MS)
     args = p.parse_args()
 
