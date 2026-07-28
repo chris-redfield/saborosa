@@ -86,6 +86,9 @@ class Sound {
     this.sfx = Object.create(null);
     this.sfxPlaying = Object.create(null);
     this.sfxVol = Object.create(null);      // name -> its own level, 1 unless set
+    // Which one-shot, if any, has taken the music off the air for its duration.
+    // Null the rest of the time. See the solo block in _playOnce().
+    this._musicSolo = null;
     this.muted = false;
     this.volume = cfg.musicVolume;
     // The game has asked for music, whether or not it is actually audible yet.
@@ -281,6 +284,14 @@ class Sound {
         }
         try { s.disconnect(); } catch (err) {}
         try { g.disconnect(); } catch (err) {}
+        // The LAST voice of a soloing clip hands the bed back. Tested against
+        // `_musicSolo` rather than just "this clip finished", so anything that
+        // legitimately silenced the music in the meantime — a run ending, a
+        // restart — keeps it silenced. See _playOnce().
+        if (arr && arr.length === 0 && this._musicSolo === name) {
+          this._musicSolo = null;
+          this.playMusic();
+        }
       };
       s.start(when);
       voices.push(s);
@@ -320,6 +331,25 @@ class Sound {
     }
 
     this.sfxPlaying[name] = voices;
+
+    /* SOLO. The clip takes the stage: the bed stops for as long as it plays and
+       comes back when it ends.
+
+       ⚠️ It RESTARTS the bed from its first beat rather than resuming where it
+       was, and that is the same call stopMusic() already makes for a new run:
+       the loop is an arrangement built around where it begins, and dropping
+       back in three-quarters of the way through one lands mid-phrase. Coming
+       back on the downbeat reads as the music returning; coming back mid-bar
+       reads as it having been interrupted.
+
+       ⚠️ `wanted` is captured BEFORE the stop, because stopMusic() clears it.
+       Without that, a victory earned during a run with the bed already off
+       (muted, or not yet started) would TURN IT ON when the sting finished. */
+    if (e && typeof e === 'object' && e.soloMusic) {
+      const wasWanted = this.wanted;
+      this.stopMusic();
+      this._musicSolo = wasWanted ? name : null;
+    }
   }
 
   /* Cut a one-shot short. The deliberate EXCEPTION to "nothing stops these",
@@ -332,6 +362,9 @@ class Sound {
      short, incidental, and the whole point of them is that they finish. */
   stopOnce(name) {
     const arr = this.sfxPlaying[name];
+    // Cut short means cut short: a clip that was soloing the music does not get
+    // to hand it back on its way out.
+    if (this._musicSolo === name) this._musicSolo = null;
     if (!arr || !arr.length) return;
     // A copy: stop() fires onended, which splices the array being walked.
     // Cleared first so a voice that has not started yet still counts as gone.
@@ -433,6 +466,13 @@ class Sound {
      dip to black rather than vanishing on one frame. */
   stopMusic() {
     this.wanted = false;
+    /* ⚠️ CANCELS ANY SOLO. If something else silences the bed while a soloing
+       clip is still playing — a run ending, a restart — that clip must not hand
+       the music back when it finishes. This one line is what stops a victory
+       sting earned seconds before death from restarting the bed over the
+       game-over panel. _playOnce() sets the solo AFTER calling this, so the
+       solo's own stop cannot clear itself. */
+    this._musicSolo = null;
     const s = this.source;
     if (!s) return;
     this.source = null;

@@ -101,6 +101,10 @@ const CONFIG = {
     victory: {
       src: 'audio/victory-sound-01.ogg',
       volume: 1,
+      // It takes the stage: the bed stops while it plays and comes back on its
+      // own first beat when it ends. It used to layer over the top, and two
+      // pieces of music at once was two pieces of music at once.
+      soloMusic: true,
     },
     gameOver: {
       src: 'audio/game-over.ogg',
@@ -118,6 +122,28 @@ const CONFIG = {
   // --- Canvas: fixed internal resolution (matches the main game) ----------
   GAME_W: 1280,
   GAME_H: 720,           // CSS-scaled to the window with letterboxing
+  // How the canvas fills the viewport — see fit() in game.js for why both of
+  // these differ from the main game's. 0 margin because an itch iframe has no
+  // browser chrome to clear; 0 cap because itch's fullscreen button has to be
+  // able to fill a big monitor.
+  fitMarginPx: 0,
+  fitMaxScale: 0,        // 0 = uncapped
+
+  /* --- The title screen --------------------------------------------------
+     The first thing the game shows: the game-over panel's crawling vermin as a
+     backdrop, with the SABOROSA logo where its lettering goes. Any button takes
+     you to the storyboard intro.
+
+     It REUSES both assets rather than adding art — the same `game-over/` frames
+     the endings run on and the same logo the finale lands on — so the game
+     opens and closes on the same two images. That also means its cost is not
+     new bytes, only bytes moved EARLIER: the panel art used to load lazily
+     during the run because nothing needed it for two minutes, and now it is the
+     first thing on screen. See the title-assets load in game.js. */
+  title: true,
+  titleLogoWRel: 0.52,   // logo width as a fraction of the canvas
+  titleFadeOutMs: 600,   // to black, once dismissed
+  titleFadeInMs: 600,    // the intro coming up out of that black
 
   // --- Intro: the storyboard roll -----------------------------------------
   // 12 panels, drawn from the masters by tools/build-intro-frames.py (64MB of
@@ -168,10 +194,12 @@ const CONFIG = {
   },
   introFadeInMs: 550,    // black -> first panel
   introFadeOutMs: 420,   // last panel -> black -> game
-  introSkipFadeMs: 200,  // faster fade when the player skips out
-  introHintText: 'press any key to skip',
-  introHintInMs: 1600,   // when the hint fades in
-  introHintHoldMs: 3200, // how long it stays before fading out
+  /* ⚠️ introSkipFadeMs / introHintText / introHintInMs / introHintHoldMs are
+     GONE, along with the skip they served. The intro plays through in full:
+     skipping faded out the whole sequence, and the FRUIT SELECT is one of the
+     boards inside it, so a keypress on board 1 took the player past choosing a
+     character and into a run flying the default. See the note where skip() used
+     to be in intro.js. */
 
   // --- Liftoff (the takeoff played over the countdown) --------------------
   // The gridded cloth at the bottom of boards 8-12 is the runway: the chosen
@@ -546,10 +574,9 @@ const CONFIG = {
   // still held from the last seconds of the run, can't blow straight past the
   // screen the player is meant to see. Arming works out at ~3s into the panel.
   overRestartArmMs: 500,
-  // And after the restart the key is very probably STILL DOWN, with the OS
-  // repeating keydown — which would land on the intro's skip handler and blow
-  // past the title sequence too. Skips are ignored for this long afterwards.
-  restartSkipGuardMs: 400,
+  // (restartSkipGuardMs lived here. It existed only to stop the key that
+  // restarted the game from landing on the intro's skip handler; with the skip
+  // gone there is nothing for a held key to trigger.)
   // The panel: 3 frames, pre-cropped to their shared band (3002x1687 ≈ 16:9) by
   // tools/build-game-over-frames.py, so they stretch to fill the canvas and stay
   // aligned with each other. Tuned in tools/game-over-anim.html.

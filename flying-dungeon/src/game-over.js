@@ -80,19 +80,32 @@ class GameOver {
    *                  out, and being knocked out of the sky by the Mosca Boss —
    *                  and the only difference between them is what it says.
    */
-  render(ctx, W, H, t, alpha, titleKey) {
+  /* JUST THE PICTURE — the crawling vermin, no lettering.
+
+     Split out because the TITLE SCREEN borrows this backdrop and puts the logo
+     where the words go. Sharing the draw rather than copying it means the two
+     screens cannot end up on different frames of the same animation, or drift
+     apart if the art is ever recut. */
+  renderBackdrop(ctx, W, H, t, alpha) {
     const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
     if (a <= 0) return;
     const img = this.assets.getDrawable('gameover_' + this.frameAt(t));
-
+    if (!img) return;
     ctx.save();
     ctx.globalAlpha = a;
-    if (img) {
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      // The band IS the picture and it is already 16:9 — fill the canvas.
-      ctx.drawImage(img, 0, 0, W, H);
-    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    // The band IS the picture and it is already 16:9 — fill the canvas.
+    ctx.drawImage(img, 0, 0, W, H);
+    ctx.restore();
+  }
+
+  render(ctx, W, H, t, alpha, titleKey) {
+    const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
+    if (a <= 0) return;
+    this.renderBackdrop(ctx, W, H, t, a);
+    ctx.save();
+    ctx.globalAlpha = a;
     this._title(ctx, W, H, t, a, this._titleFor(titleKey));
     ctx.restore();
   }

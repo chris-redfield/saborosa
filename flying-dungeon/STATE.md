@@ -111,6 +111,49 @@ build went out without fly sprites. **Adding an asset folder means adding a
 
 ---
 
+## Shipping it — itch.io / GMTK
+
+`./package.sh` → `flying-dungeon-itch.zip`, **25MB, 135 files, `index.html` at
+the top level of the zip** (which is itch's one hard requirement). Upload that
+zip and set the project's kind to **HTML**.
+
+### Embed options
+
+| option | set to | why |
+|---|---|---|
+| Viewport | **1280 × 720** | the canvas's exact internal resolution → 1:1, no resampling. Drop to 960×540 if the page theme overflows; it scales cleanly to 0.75. |
+| Mobile friendly | **off** | keyboard + gamepad only. There is no touch input at all, and ticking this advertises support that does not exist. |
+| Automatically start on page load | **off** | the "Run game" click both FOCUSES the iframe and counts as the user gesture. Without it a judge can watch the intro, reach the fruit select, and press keys that go nowhere because the iframe was never focused — and the AudioContext stays suspended. |
+| Fullscreen button | **on** | see below. |
+| Enable scrollbars | **off** | the body is `overflow:hidden` and the canvas letterboxes itself; scrollbars only add a scroll offset to fight. |
+| SharedArrayBuffer | **off** | not used, experimental, can break the page. |
+
+### Two fit() rules that had to change for the embed
+
+`fit()` began as a copy of the main game's `scaleCanvas()` and both of its rules
+were wrong here:
+
+- **The 40px margin** existed to keep the canvas off the edges of a browser
+  window. In an embed the iframe *is* the game, so it was 40px of the player's
+  viewport spent on nothing. `fitMarginPx: 0`.
+- ⚠️ **The "never upscale past 1:1" cap** was the worse one, because itch offers
+  a fullscreen button. Capped, pressing it on a 1440p monitor left the game as a
+  1280×720 stamp in the middle of a black field — exactly when someone judging a
+  jam entry is looking hardest. `fitMaxScale: 0` (uncapped) fills the screen:
+  1.5× at 1080p, 2× at 1440p.
+
+  Safe to uncap **because this art is drawn illustration scaled with smoothing
+  on**, not pixel art — upscaling softens it slightly and nothing more. A
+  pixel-art game would want the cap back, or integer steps.
+
+### Layout note
+
+`#help` (the control list) sits bottom-**left**; itch's fullscreen button is
+bottom-**right**, so they do not overlap. The dev panel that used to live
+bottom-right is removed unless `?dev-mode=true`, which itch cannot pass anyway.
+
+---
+
 ## Dev mode
 
 The tuning panel in the bottom-right corner — rewind seconds, shot damage,

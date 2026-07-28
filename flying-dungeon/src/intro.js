@@ -56,7 +56,6 @@ class Intro {
     this.t = 0;              // ms elapsed in the current mode
     this.elapsed = 0;        // ms since the intro started (drives fade-in + hint)
     this.done = false;
-    this.skipped = false;
     this.pickedCharacter = null;
 
     // Covers the case where the takeoff board IS the first one; normally it's
@@ -120,17 +119,20 @@ class Intro {
     };
   }
 
-  // Cut the sequence short — the player pressed something. Ignored while the
-  // selection is up: there, keys are the player choosing a fruit, not skipping.
-  skip() {
-    if (this.mode === 'out' || this.mode === 'select' || this.done) return;
-    this.skipped = true;
-    this.mode = 'out';
-    this.t = 0;
-  }
+  /* ⚠️ THERE IS NO skip(). There was, and removing it was deliberate.
 
-  // True while the board is waiting on the player (the shell stops treating
-  // keypresses as "skip the intro").
+     It set `mode = 'out'`, which faded the whole sequence away — and the FRUIT
+     SELECT is one of the boards inside that sequence. So a single keypress on
+     the first board took the player past the storyboard AND past choosing a
+     fruit, into a run flying whatever the default character was. Choosing is a
+     decision the run needs; it is not part of the show that can be waved off.
+
+     The sequence now always plays through: boards → select → countdown →
+     takeoff. `skipped`, `introSkipFadeMs` and the "press any key to skip" hint
+     all went with it. */
+
+  // True while a board is waiting on the player rather than on a clock. Read by
+  // _msUntilBoard(), which cannot schedule across an open-ended wait.
   get awaitingInput() { return this.mode === 'select'; }
 
   // Forwarded from the select board so the shell has one thing to poll and does
@@ -231,7 +233,7 @@ class Intro {
       const b = this._beat(this.i);
       if (this.t >= b.roll) { this.t -= b.roll; this.i++; this.mode = 'hold'; }
     } else if (this.mode === 'out') {
-      const ms = this.skipped ? this.cfg.introSkipFadeMs : this.cfg.introFadeOutMs;
+      const ms = this.cfg.introFadeOutMs;
       if (this.t >= ms) this.done = true;
     }
   }
@@ -267,30 +269,17 @@ class Intro {
     // The select board opens in front of the panel that's already on screen.
     if (this.mode === 'select') this.select.render(ctx, W, H);
 
-    // Skip hint — fades in after a beat, out once it has been read. Suppressed
-    // while the player is choosing, where "any key" means something else.
+    // ⚠️ The "press any key to skip" hint used to be drawn here. It went with
+    // the skip itself — a prompt for a control that does not exist is worse
+    // than no prompt, and it also broke the intro's own rule that the boards
+    // show raw art with nothing overlaid on them.
     const c = this.cfg;
-    if (!this.skipped && this.mode !== 'select' && c.introHintText) {
-      const a = this._hintAlpha();
-      if (a > 0) {
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.font = '13px monospace';
-        ctx.textAlign = 'right';
-        ctx.textBaseline = 'bottom';
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillText(c.introHintText, W - 17, H - 15);   // cheap drop shadow
-        ctx.fillStyle = '#e8e8e0';
-        ctx.fillText(c.introHintText, W - 18, H - 16);
-        ctx.restore();
-      }
-    }
 
     // Fade in from black at the top of the sequence, out to black at the end.
     let black = 0;
     if (this.elapsed < c.introFadeInMs) black = 1 - this.elapsed / c.introFadeInMs;
     if (this.mode === 'out') {
-      const ms = this.skipped ? c.introSkipFadeMs : c.introFadeOutMs;
+      const ms = c.introFadeOutMs;
       black = Math.max(black, Math.min(1, this.t / ms));
     }
     if (black > 0) {
@@ -304,14 +293,4 @@ class Intro {
     if (im) ctx.drawImage(im, 0, Math.round(this.stationY[k] - camY), W, H);
   }
 
-  _hintAlpha() {
-    const c = this.cfg, t = this.elapsed;
-    if (t < c.introHintInMs) return 0;
-    const fade = 400;
-    if (t < c.introHintInMs + fade) return (t - c.introHintInMs) / fade;
-    const outAt = c.introHintInMs + c.introHintHoldMs;
-    if (t < outAt) return 1;
-    if (t < outAt + fade) return 1 - (t - outAt) / fade;
-    return 0;
-  }
 }

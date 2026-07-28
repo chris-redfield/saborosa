@@ -16,11 +16,32 @@
   // with letterboxing so the aspect never distorts.
   canvas.width = CONFIG.GAME_W;
   canvas.height = CONFIG.GAME_H;
-  // Same rule as the main game's scaleCanvas(): fit the window with a 40px
-  // margin, but never upscale past native 1:1.
+  /* Fit the viewport, letterboxed, aspect preserved.
+
+     This started as a copy of the main game's scaleCanvas() — a 40px margin,
+     and never upscale past native 1:1 — and BOTH of those are wrong for a build
+     that ships inside an itch.io iframe:
+
+     · THE MARGIN was there to keep the canvas off the edges of a browser
+       window. In an embed the iframe IS the game, so 40px of inset is 40px of
+       the player's viewport spent on nothing. `fitMarginPx` is 0.
+
+     · THE 1:1 CAP is worse, because itch offers a FULLSCREEN BUTTON. Capped,
+       pressing it on a 2560x1440 monitor leaves the game as a 1280x720 stamp
+       in the middle of a black field — which is exactly the moment someone
+       judging a jam entry is looking hardest. Uncapped it fills the screen.
+
+       Safe to uncap here specifically because this art is drawn illustration
+       scaled with smoothing on, not pixel art: upscaling softens it slightly
+       and nothing more. A pixel-art game would want the cap, or integer steps.
+
+     Both are config so the standalone and embedded cases can differ later
+     without this function being rewritten. */
   function fit() {
-    const s = Math.min((window.innerWidth - 40) / CONFIG.GAME_W,
-                       (window.innerHeight - 40) / CONFIG.GAME_H, 1);
+    const m = CONFIG.fitMarginPx || 0;
+    const cap = CONFIG.fitMaxScale > 0 ? CONFIG.fitMaxScale : Infinity;
+    const s = Math.min((window.innerWidth - m) / CONFIG.GAME_W,
+                       (window.innerHeight - m) / CONFIG.GAME_H, cap);
     canvas.style.width = (CONFIG.GAME_W * s) + 'px';
     canvas.style.height = (CONFIG.GAME_H * s) + 'px';
   }
@@ -221,10 +242,17 @@
 
   // The help / toggles belong to the game, not the title sequence. (The HUD
   // itself is canvas-drawn now and simply isn't rendered during the intro.)
-  // 'controls' is legitimately NULL outside dev mode — it was removed above.
-  // The guard in showChrome is what covers that; it is not defensive padding.
-  const chrome = ['help', 'controls'].map(id => document.getElementById(id));
-  const showChrome = on => chrome.forEach(el => { if (el) el.style.display = on ? '' : 'none'; });
+  /* The only DOM the game shows over the canvas is the dev panel, and only in
+     dev mode — the control list that used to sit bottom-left is gone with every
+     other hint. `controls` is therefore legitimately NULL in a normal build,
+     which the guard below covers; it is not defensive padding.
+
+     ⚠️ 'block', NOT ''. The panel is `display: none` in the stylesheet so it
+     cannot flash before this script runs (see index.html), which means clearing
+     the inline style would hand it straight back to a rule that hides it and
+     nothing would ever appear. */
+  const chrome = [document.getElementById('controls')];
+  const showChrome = on => chrome.forEach(el => { if (el) el.style.display = on ? 'block' : 'none'; });
   showChrome(false);
 
   // Black & white via a GPU-cheap CSS filter on the canvas; keep it in sync.
@@ -258,33 +286,59 @@
   }
 
   let last = performance.now();
-  let phase = 'boot';       // 'boot' (black) → 'intro' → 'game'
+  let phase = 'boot';       // 'boot' (black) → 'title' → 'intro' → 'game'
   let gameReady = false;
 
-  // Skip the title sequence on any key or click. Bound only while it plays.
-  // Before this timestamp, skips are ignored — see restart().
-  let skipArmAt = 0;
-  function onSkip(e) {
+  /* --- The title screen ----------------------------------------------------
+     Owned by the shell rather than given a class of its own: it is two draw
+     calls over art two other screens already own, and a class would be a file
+     that holds one timer.
+
+     `titleOut` is -1 until it is dismissed and then counts the fade to black,
+     which is also the "already dismissed" flag — a second press during the fade
+     must not restart it. `introFadeT` is the other half of the same handover,
+     counting the intro back up out of that black. */
+  let titleT = 0;
+  let titleOut = -1;
+  let introFadeT = -1;
+  let titleBound = false;
+
+  function onTitlePress(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
-    // M is the mute key, not "any key". Muting the game should never also blow
-    // past the title sequence — the two are unrelated and one of them is
-    // irreversible from the player's point of view.
-    if (e.code === 'KeyM') return;
-    if (performance.now() < skipArmAt) return;
-    // While the fruit select is up, keys are the player choosing — not skipping.
-    if (intro.awaitingInput) return;
-    intro.skip();
+    if (e.code === 'KeyM') return;      // mute, not "any button" — as elsewhere
+    dismissTitle();
   }
-  // Tracked as well as bound: a gamepad fires no DOM events, so the pad path
-  // has to be able to ask whether skipping is live rather than relying on a
-  // listener being attached.
-  let skipBound = false;
-  function bindSkip(on) {
+  function bindTitle(on) {
+    if (on === titleBound) return;
     const m = on ? 'addEventListener' : 'removeEventListener';
-    window[m]('keydown', onSkip);
-    window[m]('mousedown', onSkip);
-    skipBound = on;
+    window[m]('keydown', onTitlePress);
+    window[m]('mousedown', onTitlePress);
+    titleBound = on;
   }
+  function dismissTitle() {
+    if (titleOut >= 0) return;          // already going
+    titleOut = 0;
+    bindTitle(false);
+  }
+  // Set to true once the title has had its turn — or was never going to get
+  // one. See where it is declared, below the loop.
+  let titleDone;
+
+  /* ⚠️ THE INTRO CANNOT BE SKIPPED, and that is a decision rather than an
+     omission — there used to be an onSkip/bindSkip pair here and a matching
+     pad path, and all of it is gone.
+
+     Skipping did not do what it looked like it did. `intro.skip()` faded the
+     whole sequence out, and the FRUIT SELECT lives inside that sequence — so
+     one keypress on the first board took the player past the storyboard AND
+     past choosing a fruit, straight into the game flying whatever the default
+     was. The select is a decision the run needs, not part of the show.
+
+     It could have been made to skip only as far as the select. It is not,
+     because the storyboard is the game's opening and it is short. Everything
+     that existed to make skipping safe went with it: the arm-time guard after a
+     restart, the "not while the select is up" test, and the pad's parallel
+     route into the same handler. */
 
   // "Any button" on the TIME OVER panel starts over. Bound only once the panel
   // has finished arriving (see the loop) so a key pressed during the fade — or
@@ -293,7 +347,7 @@
   let restartArmed = false;
   function onRestart(e) {
     if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
-    if (e.code === 'KeyM') return;      // mute, not "any key" — same as onSkip
+    if (e.code === 'KeyM') return;      // mute, not "any key"
     restart();
   }
   function bindRestart(on) {
@@ -355,7 +409,7 @@
      `assets` store, so this is instant.
 
      `plane`/`intro`/… are read through their `let` bindings everywhere
-     (onSkip, startGame, the loop), so swapping them here swaps them for
+     (startGame, the loop), so swapping them here swaps them for
      everyone. */
   function restart() {
     bindRestart(false);
@@ -394,12 +448,6 @@
     input.engaged = false;
     phase = 'intro';
     bar.style.display = 'none';
-    // The key that restarted is very probably STILL DOWN, and the OS repeats
-    // keydown while it is — which would land straight on the intro's skip
-    // handler and blow past the title sequence the player just asked to see.
-    // Same trap the fruit select and the plane entrance each had to solve.
-    skipArmAt = performance.now() + CONFIG.restartSkipGuardMs;
-    bindSkip(true);
     last = performance.now();   // don't hand the first frame the gap since the last
   }
 
@@ -418,11 +466,12 @@
        No-op and harmless if the track has not downloaded yet: Sound remembers
        that it was asked and starts itself when it lands. */
     sound.playMusic();
-    // Fly whoever the player picked in the intro (null if they skipped past it,
-    // in which case the plane keeps its default).
+    // Fly whoever the player picked in the intro. Always set now that the
+    // sequence cannot be skipped — the null branch survives only for
+    // CONFIG.intro being off.
     if (intro.pickedCharacter !== null) plane.setCharacter(intro.pickedCharacter);
-    // The key that skipped the intro shouldn't read as "the player is flying":
-    // un-latch, so the tray free-runs until they actually take control.
+    // The key that confirmed the fruit shouldn't read as "the player is
+    // flying": un-latch, so the tray free-runs until they take control.
     input.engaged = false;
     last = performance.now();   // don't hand the first frame the load's dt
     // Pull the TIME OVER panel in the background. 1.5MB that isn't needed for
@@ -441,7 +490,59 @@
     // sound off wants it off now, not once they have got through the intro.
     if (input.takeMute()) sound.toggleMute();
 
-    if (phase === 'intro') {
+    if (phase === 'title') {
+      titleT += dt;
+      if (titleOut >= 0) titleOut += dt;
+      if (CONFIG.film) film.update(dt);
+
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+
+      ctx.save();
+      if (CONFIG.film) ctx.translate(0, film.weaveOffset());
+      // The endings' backdrop, on its own animation clock — shared with
+      // GameOver rather than copied, so the two screens can never end up on
+      // different frames of the same crawl.
+      gameOver.renderBackdrop(ctx, W, H, titleT, 1);
+      // The logo where the lettering goes. Same asset the finale lands on, so
+      // the game opens and closes on the same image.
+      const logo = assets.getDrawable('logo');
+      if (logo) {
+        const dw = W * CONFIG.titleLogoWRel;
+        const dh = dw * (logo.height / logo.width);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(logo, W / 2 - dw / 2, H / 2 - dh / 2, dw, dh);
+      }
+      ctx.restore();
+      if (CONFIG.film) film.render(ctx, W, H);
+
+      // A pad fires no DOM events, so it needs its own path — same as the two
+      // "press anything" screens at the other end of the run.
+      if (titleBound && input.takeAnyPress()) dismissTitle();
+
+      if (titleOut >= 0) {
+        const a = CONFIG.titleFadeOutMs > 0
+          ? Math.min(1, titleOut / CONFIG.titleFadeOutMs) : 1;
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+        if (titleOut >= CONFIG.titleFadeOutMs) {
+          /* Hand over. The intro may still be streaming — if so, drop back to
+             black with the loading bar and let advanceFromBoot() pick it up,
+             which is the same path the game had before the title existed.
+             Either way the intro comes up out of black. */
+          introFadeT = 0;
+          titleDone = true;
+          phase = 'boot';
+          last = performance.now();
+          advanceFromBoot();
+        }
+      }
+    } else if (phase === 'intro') {
       intro.update(dt, input);
       /* The shine, on the frame the player locks a fruit in.
          ⚠️ THIS IS VERY OFTEN THE FIRST SOUND OF THE SESSION, and the key that
@@ -465,14 +566,25 @@
       ctx.restore();
       if (CONFIG.film) film.render(ctx, W, H);
 
-      // Any pad button skips, exactly as any key does. Routed through onSkip so
-      // it inherits both of that function's guards: the arm-time window after a
-      // restart, and "not while the fruit select is up, where buttons are the
-      // player choosing rather than skipping".
-      if (skipBound && input.takeAnyPress()) onSkip({ type: 'gamepad' });
+      /* Coming up out of the title's fade to black. Drawn OVER the film pass,
+         unlike the fades inside the run: this is a handover between two
+         screens, not something happening within one, and grain crawling on top
+         of it would keep the black from ever being black. */
+      if (introFadeT >= 0) {
+        introFadeT += dt;
+        const a = CONFIG.titleFadeInMs > 0
+          ? 1 - Math.min(1, introFadeT / CONFIG.titleFadeInMs) : 0;
+        if (a <= 0) introFadeT = -1;
+        else {
+          ctx.save();
+          ctx.globalAlpha = a;
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
+        }
+      }
 
       if (intro.done) {
-        bindSkip(false);
         // The intro doubles as the loading screen: the heavy tray frames stream
         // in behind it. If it outran them, sit on black with the bar until they land.
         if (gameReady) startGame();
@@ -1156,15 +1268,81 @@
   // The intro panels are small (~1MB all told), so they load FIRST and the
   // sequence starts playing right away — the tray frames (the heavy part)
   // stream in underneath it. The title sequence IS the loading screen.
-  if (CONFIG.intro) {
-    intro.load().then(() => {
-      if (phase !== 'boot') return;               // assets beat it; already playing
-      phase = 'intro';
-      bar.style.display = 'none';                 // the intro replaces the loading bar
+  /* --- Boot order ----------------------------------------------------------
+     THE TITLE SCREEN GOES FIRST, so its art has to land first. It borrows the
+     game-over panel (~1.5MB) and the finale's logo (~30KB) — both of which the
+     game already ships, so this costs no new bytes, only bytes moved EARLIER.
+
+     ⚠️ The panel used to load lazily from startGame(), on the reasoning that
+     1.5MB nobody needs for two minutes has no business delaying the game
+     appearing. That reasoning is now inverted: it is the first thing on screen.
+     gameOver.load() memoises its promise, so the call left in startGame() is
+     harmless and still covers CONFIG.title being off.
+
+     The intro panels stream in behind the title, and the heavy tray frames
+     behind them — so time the player spends reading the title screen is time
+     the rest of the game is loading. That is the one real gain from putting a
+     screen in front of the intro, and it is why the intro is no longer the
+     first thing waited on. */
+  let introReady = false;
+  const introLoad = CONFIG.intro ? intro.load().then(() => { introReady = true; })
+                                 : Promise.resolve();
+
+  /* Has the title had its turn — so the intro is free to start?
+
+     ⚠️ It has to be true in the FAILURE case as well as the finished one.
+     Gating the intro on "the title was dismissed" alone means that if its art
+     never arrives — a 404, a dead connection — the title never shows, nothing
+     ever dismisses it, and the game sits on black for good. Missing art has to
+     degrade to the old behaviour, not to a hang. */
+  titleDone = !CONFIG.title;
+
+  if (CONFIG.title) {
+    Promise.all([
+      gameOver.load(),
+      assets.loadImage('logo', CONFIG.ASSET_BASE + CONFIG.LOGO_SHEET),
+    ]).then(() => {
+      if (phase !== 'boot') return;               // the intro beat it; let it play
+      phase = 'title';
+      titleT = 0;
+      bar.style.display = 'none';
       last = performance.now();
-      bindSkip(true);
+      bindTitle(true);
+    }).catch(err => {
+      console.warn('[title] art unavailable, skipping title screen:', err && err.message);
+      titleDone = true;
+      advanceFromBoot();
     });
   }
+
+  /* WHAT FOLLOWS THE BLACK. One function decides, because three things arrive
+     in an order nobody controls — the title art, the intro panels, and 25MB of
+     tray frames — and any of them can be the last. Spreading the decision
+     across their three callbacks is how you get a combination that lands on
+     none of them: with the intro disabled, dismissing the title used to leave
+     the game on a black screen with a loading bar for good, because the only
+     thing that would have started it had already run and returned.
+
+     Idempotent and safe to call from anywhere: it does nothing unless we are
+     sitting on the black with the title out of the way. */
+  function advanceFromBoot() {
+    if (phase !== 'boot' || !titleDone) return;
+
+    if (!CONFIG.intro) {
+      // No intro to play: straight in, once there is a game to go to.
+      if (gameReady) startGame(); else bar.style.display = '';
+      return;
+    }
+    if (!introReady) { bar.style.display = ''; return; }   // its art is still coming
+
+    phase = 'intro';
+    bar.style.display = 'none';                   // the intro replaces the loading bar
+    last = performance.now();
+    /* No skip guard needed here any more: the intro cannot be skipped at all,
+       so a key still held from dismissing the title has nothing to trigger. */
+  }
+
+  introLoad.then(advanceFromBoot);
 
   // Not awaited and not part of TOTAL: it is a few hundred bytes, it is
   // optional, and the game must never sit on a loading bar waiting for a
@@ -1208,8 +1386,27 @@
   ]).then(() => {
     spawnWorld();
     gameReady = true;
-    // If the intro is still rolling, it gets to finish — startGame() runs when
-    // it does. Otherwise (skipped, disabled, or slower art) go now.
-    if (phase !== 'intro') startGame();
+
+    /* ⚠️ A SCREEN THAT IS HOLDING KEEPS HOLDING. This used to read
+       `if (phase !== 'intro') startGame()`, which was correct when 'boot' and
+       'intro' were the only phases — and became a real bug the moment the title
+       screen existed: sit on the title touching nothing, let the 25MB of tray
+       frames finish arriving, and the game would launch itself out from under a
+       player who had not pressed anything.
+
+       Two things can be waiting on a human rather than on bytes, and neither
+       may be interrupted by an asset landing:
+         · 'title' — waiting for a button, indefinitely.
+         · 'intro' — playing out; it calls startGame() itself when it finishes.
+       And `titleDone` covers the gap before the title has appeared at all,
+       where the phase is still 'boot' but a screen is on its way.
+
+       What is left — no title pending, no screen up — is the case this line was
+       always for: the intro is off, or its art lost the race. */
+    if (phase === 'title' || phase === 'intro') return;
+    if (!titleDone) return;
+    // Via advanceFromBoot rather than straight to startGame(), so the "intro is
+    // enabled but its art has not landed" case still gets its intro.
+    advanceFromBoot();
   });
 })();
