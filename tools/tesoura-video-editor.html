@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TESOURA — browser cut bench</title>
+<style>
+:root{
+  --ink:#0f1218;
+  --panel:#161b24;
+  --panel-2:#1c222d;
+  --line:#2a3341;
+  --bone:#e9e7e0;
+  --dim:#8a94a6;
+  --bar-white:#c9c9c9;
+  --bar-yellow:#c9c22e;
+  --bar-cyan:#2ec2c9;
+  --bar-green:#3fbf5a;
+  --bar-magenta:#b93fbf;
+  --bar-red:#cf3b3b;
+  --bar-blue:#3b5ccf;
+  --amber:#f2a93b;
+  --display:"Oswald","Barlow Condensed","Arial Narrow","Helvetica Neue",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono","Roboto Mono",Menlo,Consolas,monospace;
+  --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ink);color:var(--bone);font-family:var(--body);
+  font-size:14px;overflow:hidden;
+}
+button,input,select{font-family:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--bar-cyan);outline-offset:2px}
+
+/* ---------- shell ---------- */
+.shell{display:grid;grid-template-rows:auto 1fr auto;height:100dvh}
+
+header{
+  display:flex;align-items:center;gap:16px;padding:10px 16px;
+  background:var(--panel);border-bottom:1px solid var(--line);
+}
+.wordmark{display:flex;align-items:baseline;gap:10px}
+.wordmark h1{
+  font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.22em;
+  margin:0;text-transform:uppercase;
+}
+.wordmark span{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.1em}
+.bars{display:flex;height:22px;width:98px;border:1px solid var(--line);flex:0 0 auto}
+.bars i{flex:1}
+header .spacer{flex:1}
+
+.btn{
+  background:var(--panel-2);border:1px solid var(--line);color:var(--bone);
+  padding:8px 14px;border-radius:2px;font-family:var(--display);
+  text-transform:uppercase;letter-spacing:.12em;font-size:13px;
+  transition:border-color .12s,background .12s;
+}
+.btn:hover:not(:disabled){border-color:var(--bar-cyan)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.primary{background:var(--bar-cyan);border-color:var(--bar-cyan);color:#08131a;font-weight:600}
+.btn.rec{border-color:var(--amber);color:var(--amber)}
+.btn.rec.on{background:var(--amber);color:#1a1206;animation:pulse 1.1s infinite}
+@keyframes pulse{50%{opacity:.62}}
+@media (prefers-reduced-motion:reduce){.btn.rec.on{animation:none}}
+.btn.sm{padding:4px 8px;font-size:11px;letter-spacing:.08em}
+
+/* ---------- body ---------- */
+.main{display:grid;grid-template-columns:1fr 336px;min-height:0}
+.stage{display:flex;flex-direction:column;min-width:0;background:#000}
+.canvas-wrap{flex:1;display:flex;align-items:center;justify-content:center;min-height:0;padding:12px;position:relative}
+canvas{max-width:100%;max-height:100%;background:#000;box-shadow:0 0 0 1px var(--line)}
+.rec-dot{
+  position:absolute;top:22px;left:26px;display:none;align-items:center;gap:8px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--amber);
+}
+.rec-dot.on{display:flex}
+.rec-dot b{width:10px;height:10px;border-radius:50%;background:var(--amber);animation:pulse 1.1s infinite}
+
+.transport{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  background:var(--panel);border-top:1px solid var(--line);flex-wrap:wrap;
+}
+.tc{font-family:var(--mono);font-size:15px;letter-spacing:.06em;color:var(--bone)}
+.tc s{color:var(--dim);text-decoration:none}
+
+.side{
+  background:var(--panel);border-left:1px solid var(--line);
+  overflow-y:auto;min-height:0;
+}
+.sec{border-bottom:1px solid var(--line);padding:14px 14px 16px}
+.sec h2{
+  font-family:var(--display);font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 12px;font-weight:500;
+}
+
+/* clip cards */
+.clip{border:1px solid var(--line);border-left:3px solid var(--c);background:var(--panel-2);margin-bottom:10px}
+.clip.active{border-color:var(--bar-cyan);border-left-color:var(--c)}
+.clip-top{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.clip-idx{font-family:var(--mono);font-size:11px;color:var(--c)}
+.clip-name{
+  flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.clip-body{padding:0 10px 10px;display:grid;gap:8px}
+.row{display:flex;align-items:center;gap:6px}
+.row label{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.08em;width:26px}
+.num{
+  font-family:var(--mono);font-size:11px;background:#0d1117;border:1px solid var(--line);
+  padding:3px 5px;width:62px;border-radius:2px;
+}
+.seg{display:flex;border:1px solid var(--line);border-radius:2px;overflow:hidden;flex:1}
+.seg button{
+  flex:1;background:transparent;border:0;padding:5px 2px;font-family:var(--mono);
+  font-size:10px;letter-spacing:.08em;color:var(--dim);
+}
+.seg button[aria-pressed="true"]{background:var(--bar-cyan);color:#08131a}
+/* stepper: typed number field flanked by − / + */
+.step{display:flex;align-items:center;flex:1}
+.step .num{
+  flex:1;width:auto;text-align:center;border-radius:0;border-left:0;border-right:0;
+  -moz-appearance:textfield;
+}
+.step .num::-webkit-inner-spin-button,
+.step .num::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
+.stepbtn{
+  flex:0 0 auto;width:22px;height:23px;padding:0;
+  background:var(--panel-2);border:1px solid var(--line);color:var(--dim);
+  font-family:var(--mono);font-size:12px;line-height:1;
+}
+.stepbtn:first-child{border-radius:2px 0 0 2px}
+.stepbtn:last-child{border-radius:0 2px 2px 0}
+.stepbtn:hover{background:var(--bar-cyan);border-color:var(--bar-cyan);color:#08131a}
+.unit{font-family:var(--mono);font-size:10px;color:var(--dim);margin-left:6px;width:12px}
+
+/* live input meter */
+.meter{
+  position:relative;height:9px;flex:1;background:#0d1117;
+  border:1px solid var(--line);border-radius:2px;overflow:hidden;
+}
+.meter i{display:block;height:100%;width:0;background:var(--bar-green)}
+.meter i.hot{background:var(--amber)}
+.meter i.over{background:var(--bar-red)}
+.meter u{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.hint{font-size:11px;color:var(--dim);line-height:1.5}
+.warn{border-left:3px solid var(--bar-red);background:#22151a;padding:8px 10px;font-size:11px;line-height:1.5;margin-bottom:10px}
+.warn code{font-family:var(--mono);font-size:10px;color:var(--amber);word-break:break-all}
+
+/* takes */
+.take{display:flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel-2);padding:6px 8px;margin-bottom:6px}
+.take .lab{flex:1;font-family:var(--mono);font-size:11px;color:var(--amber)}
+
+/* ---------- timeline ---------- */
+.tl{background:var(--panel);border-top:1px solid var(--line);padding:10px 16px 14px;user-select:none}
+.tl-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.tl-head h2{font-family:var(--display);font-size:12px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim);margin:0;font-weight:500}
+.track{position:relative;height:46px;background:#0b0e13;border:1px solid var(--line);display:flex;cursor:crosshair}
+.tblock{
+  position:relative;border-right:1px solid #0b0e13;overflow:hidden;
+  display:flex;align-items:flex-end;padding:4px 6px;min-width:2px;
+}
+.tblock::before{content:"";position:absolute;inset:0;background:var(--c);opacity:.30}
+.tblock.active::before{opacity:.55}
+.tblock span{position:relative;font-family:var(--mono);font-size:10px;color:var(--bone);white-space:nowrap;text-shadow:0 1px 2px #000}
+.narr{position:relative;height:22px;background:#0b0e13;border:1px solid var(--line);border-top:0;overflow:hidden}
+.take-block{position:absolute;top:2px;bottom:2px;background:var(--amber);opacity:.75;border-radius:1px}
+.playhead{position:absolute;top:0;bottom:0;width:1px;background:var(--bar-red);pointer-events:none;z-index:3}
+.playhead::before{content:"";position:absolute;top:0;left:-4px;border-left:4.5px solid transparent;border-right:4.5px solid transparent;border-top:7px solid var(--bar-red)}
+.ph-wrap{position:relative}
+
+.empty{padding:26px 16px;text-align:center;color:var(--dim);font-size:12px;line-height:1.6}
+
+#toast{
+  position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  background:var(--panel-2);border:1px solid var(--bar-cyan);padding:9px 16px;
+  font-family:var(--mono);font-size:12px;z-index:50;opacity:0;pointer-events:none;
+  transition:opacity .2s;
+}
+#toast.on{opacity:1}
+
+@media (max-width:860px){
+  body{overflow:auto}
+  .shell{height:auto}
+  .main{grid-template-columns:1fr}
+  .side{border-left:0;border-top:1px solid var(--line);max-height:none}
+  .canvas-wrap{min-height:220px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<header>
+  <div class="bars" aria-hidden="true">
+    <i style="background:var(--bar-white)"></i><i style="background:var(--bar-yellow)"></i>
+    <i style="background:var(--bar-cyan)"></i><i style="background:var(--bar-green)"></i>
+    <i style="background:var(--bar-magenta)"></i><i style="background:var(--bar-red)"></i>
+    <i style="background:var(--bar-blue)"></i>
+  </div>
+  <div class="wordmark"><h1>Tesoura</h1><span>BROWSER CUT BENCH</span></div>
+  <div class="spacer"></div>
+  <button class="btn" id="addBtn">Add clips</button>
+  <button class="btn primary" id="exportBtn" disabled>Export</button>
+  <input type="file" id="file" accept="video/*" multiple hidden>
+</header>
+
+<div class="main">
+  <div class="stage">
+    <div class="canvas-wrap">
+      <canvas id="cv" width="1280" height="720"></canvas>
+      <div class="rec-dot" id="recDot"><b></b> RECORDING NARRATION</div>
+    </div>
+    <div class="transport">
+      <button class="btn" id="playBtn" disabled>Play</button>
+      <button class="btn" id="stopBtn" disabled>Stop</button>
+      <div class="tc"><span id="tcNow">00:00.00</span> <s>/</s> <span id="tcTot">00:00.00</span></div>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn" id="inBtn" disabled>Set in</button>
+      <button class="btn" id="outBtn" disabled>Set out</button>
+      <button class="btn" id="splitBtn" disabled>Split</button>
+      <button class="btn rec" id="recBtn" disabled>● Narrate</button>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="sec">
+      <h2>Clips</h2>
+      <div id="warns"></div>
+      <div id="clipList"><div class="empty">No clips yet.<br>Add your .mov or .mp4 files to start.</div></div>
+    </div>
+
+    <div class="sec">
+      <h2>Narration</h2>
+      <div id="takeList"><div class="hint">Press <b>Narrate</b> to record voice over the timeline from the playhead. Wear headphones so the mic does not catch the clip audio.</div></div>
+      <div class="row" style="margin-top:10px"><label>IN</label>
+        <div class="meter"><i id="micBar"></i><u style="left:70%"></u><u style="left:88%"></u></div>
+        <span class="unit" id="micPk" style="width:30px">—</span>
+      </div>
+      <div class="row" style="margin-top:8px"><label>MIC</label>
+        <div class="step">
+          <button class="stepbtn" data-step="-1">−</button>
+          <input class="num" type="number" id="micGain" min="100" max="2000" step="25" value="500">
+          <button class="stepbtn" data-step="1">+</button>
+        </div><span class="unit">%</span>
+      </div>
+      <div class="row"><label>VOL</label>
+        <div class="step">
+          <button class="stepbtn" data-step="-1">−</button>
+          <input class="num" type="number" id="narrVol" min="0" max="200" step="5" value="100">
+          <button class="stepbtn" data-step="1">+</button>
+        </div><span class="unit">%</span>
+      </div>
+      <div class="row"><label>DUCK</label>
+        <div class="step">
+          <button class="stepbtn" data-step="-1">−</button>
+          <input class="num" type="number" id="duck" min="0" max="100" step="5" value="18">
+          <button class="stepbtn" data-step="1">+</button>
+        </div><span class="unit">%</span>
+      </div>
+      <div class="hint" style="margin-top:8px"><b>Mic</b> boosts the raw mic into a compressor, so quiet narration comes up without peaks clipping. Aim the <b>IN</b> meter at the first tick while you talk.<br><b>Duck</b> is the level clip audio drops to while a take plays, for clips set to <b>DUCK</b>.</div>
+    </div>
+
+    <div class="sec">
+      <h2>Export</h2>
+      <div class="row"><label>FMT</label>
+        <select class="num" id="fmt" style="width:auto;flex:1">
+          <option value="mp4">.mp4 — H.264</option>
+          <option value="mov">.mov — H.264</option>
+          <option value="webm">.webm — VP9</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px"><label>SIZE</label>
+        <select class="num" id="res" style="width:auto;flex:1">
+          <option value="1280">1280 × 720</option>
+          <option value="1920">1920 × 1080</option>
+          <option value="854">854 × 480</option>
+        </select>
+      </div>
+      <div class="row" style="margin-top:6px"><label>RATE</label>
+        <div class="step">
+          <button class="stepbtn" data-step="-1">−</button>
+          <input class="num" type="number" id="vbr" min="0.5" max="20" step="0.5" value="3">
+          <button class="stepbtn" data-step="1">+</button>
+        </div><span class="unit" style="width:34px">Mb/s</span>
+      </div>
+      <div class="hint" style="margin-top:8px" id="estHint">—</div>
+      <div class="hint" style="margin-top:6px">Export renders in real time, so it takes as long as the timeline. Keep this tab in front. For a true re-encode at a target quality: <code>ffmpeg -i cut.mp4 -c:v libx264 -crf 20 -c:a aac out.mov</code></div>
+    </div>
+  </aside>
+</div>
+
+<div class="tl">
+  <div class="tl-head">
+    <h2>Timeline</h2>
+    <span class="hint" id="tlHint">Click or drag to scrub. Space plays, S splits, R records.</span>
+  </div>
+  <div class="ph-wrap">
+    <div class="track" id="track"></div>
+    <div class="narr" id="narrTrack"></div>
+    <div class="playhead" id="ph" style="left:0"></div>
+  </div>
+</div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+"use strict";
+
+const BARS = ["--bar-yellow","--bar-cyan","--bar-green","--bar-magenta","--bar-blue","--bar-white","--bar-red"];
+const $ = (s)=>document.querySelector(s);
+
+const state = {
+  sources: [], clips: [], takes: [],
+  t: 0, playing: false, recording: false, exporting: false,
+  activeIndex: 0, seekLock: false
+};
+
+let audioCtx=null, master=null, streamDest=null, narrDrive=null, narrComp=null;
+const cv = $("#cv"), cx = cv.getContext("2d", {alpha:false});
+
+/* ---------- audio graph ---------- */
+function ensureAudio(){
+  if(audioCtx) return audioCtx;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  master = audioCtx.createGain();
+  master.gain.value = 1;
+  master.connect(audioCtx.destination);
+  streamDest = audioCtx.createMediaStreamDestination();
+  master.connect(streamDest);
+
+  // narration bus: takes -> drive (makeup gain) -> compressor -> master.
+  // The mic is captured with autoGainControl off, so it lands around -30 dBFS.
+  // Drive lifts it into a usable range and the compressor holds the peaks down.
+  narrDrive = audioCtx.createGain();
+  narrDrive.gain.value = 5;
+  narrComp = audioCtx.createDynamicsCompressor();
+  narrComp.threshold.value = -18;
+  narrComp.knee.value = 12;
+  narrComp.ratio.value = 4;
+  narrComp.attack.value = 0.005;
+  narrComp.release.value = 0.2;
+  narrDrive.connect(narrComp);
+  narrComp.connect(master);
+  return audioCtx;
+}
+
+/* ---------- helpers ---------- */
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+/* read a percent-valued number field as a 0..n multiplier, falling back while it is mid-edit */
+function pct(sel, dflt){
+  const v = parseFloat($(sel).value);
+  return (isFinite(v) ? v : dflt) / 100;
+}
+const dur = c => Math.max(0, c.out - c.in);
+const total = () => state.clips.reduce((s,c)=>s+dur(c),0);
+function fmt(t){
+  if(!isFinite(t)) t=0;
+  const m=Math.floor(t/60), s=Math.floor(t%60), cs=Math.floor((t%1)*100);
+  return String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")+"."+String(cs).padStart(2,"0");
+}
+let toastTimer;
+function toast(msg){
+  const el=$("#toast"); el.textContent=msg; el.classList.add("on");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove("on"),2200);
+}
+function locate(t){
+  let acc=0;
+  const cl=state.clips;
+  for(let i=0;i<cl.length;i++){
+    const d=dur(cl[i]);
+    if(t < acc+d || i===cl.length-1) return {index:i, clip:cl[i], local:clamp(t-acc,0,d), startAt:acc};
+    acc+=d;
+  }
+  return null;
+}
+function startOf(i){ let a=0; for(let k=0;k<i;k++) a+=dur(state.clips[k]); return a; }
+
+/* ---------- loading ---------- */
+$("#addBtn").onclick = ()=> $("#file").click();
+$("#file").onchange = async (e)=>{
+  const files=[...e.target.files]; e.target.value="";
+  for(const f of files) await addFile(f);
+  refreshAll();
+};
+
+async function addFile(file){
+  const url = URL.createObjectURL(file);
+  const probe = document.createElement("video");
+  probe.preload="metadata"; probe.src=url;
+  const ok = await new Promise(res=>{
+    probe.onloadedmetadata = ()=> res(true);
+    probe.onerror = ()=> res(false);
+    setTimeout(()=>res(probe.readyState>0), 9000);
+  });
+  if(!ok || !isFinite(probe.duration) || probe.duration<=0){
+    state.sources.push({name:file.name, bad:true});
+    return;
+  }
+  const src = {
+    id: crypto.randomUUID(), name:file.name, url,
+    w: probe.videoWidth||1280, h: probe.videoHeight||720, duration: probe.duration
+  };
+  state.sources.push(src);
+  state.clips.push(makeClip(src, 0, src.duration));
+}
+
+function makeClip(src, inP, outP, copy){
+  ensureAudio();
+  const v = document.createElement("video");
+  v.src = src.url; v.preload="auto"; v.playsInline=true; v.crossOrigin="anonymous";
+  v.muted = false; v.load();
+  const node = audioCtx.createMediaElementSource(v);
+  const gain = audioCtx.createGain(); gain.gain.value = 0;
+  node.connect(gain); gain.connect(master);
+  const c = {
+    id: crypto.randomUUID(), src, video:v, gain,
+    in: inP, out: outP,
+    vol: copy? copy.vol : 1,
+    mode: copy? copy.mode : "duck"
+  };
+  v.addEventListener("loadeddata", ()=>{ try{ v.currentTime = c.in; }catch(_){} }, {once:true});
+  return c;
+}
+
+/* ---------- transport ---------- */
+async function play(){
+  if(!state.clips.length) return;
+  ensureAudio(); await audioCtx.resume();
+  if(state.t >= total()-0.02) state.t = 0;
+  state.playing = true;
+  seek(state.t, true);
+  syncButtons();
+}
+function pause(){
+  state.playing=false;
+  state.clips.forEach(c=>{ if(!c.video.paused) c.video.pause(); });
+  state.takes.forEach(t=>{ if(!t.audio.paused) t.audio.pause(); });
+  syncButtons();
+}
+function seek(t, resume){
+  const tot = total();
+  state.t = clamp(t, 0, tot);
+  const loc = locate(state.t);
+  if(!loc) return;
+  state.activeIndex = loc.index;
+  state.clips.forEach((c,i)=>{ if(i!==loc.index && !c.video.paused) c.video.pause(); });
+  const c = loc.clip, target = c.in + loc.local;
+  if(Math.abs(c.video.currentTime - target) > 0.06){
+    state.seekLock = true;
+    try{ c.video.currentTime = target; }catch(_){}
+    setTimeout(()=>state.seekLock=false, 60);
+  }
+  if(resume && state.playing) c.video.play().catch(()=>{});
+  const nx = state.clips[loc.index+1];
+  if(nx && Math.abs(nx.video.currentTime - nx.in) > 0.3){ try{ nx.video.currentTime = nx.in; }catch(_){} }
+  syncTakes(true);
+}
+$("#playBtn").onclick = ()=> state.playing ? pause() : play();
+$("#stopBtn").onclick = ()=>{ pause(); seek(0); };
+$("#splitBtn").onclick = splitAtPlayhead;
+$("#inBtn").onclick = ()=> setEdge("in");
+$("#outBtn").onclick = ()=> setEdge("out");
+
+function setEdge(which){
+  const loc = locate(state.t); if(!loc) return;
+  const c = loc.clip, p = c.in + loc.local;
+  if(which==="in"){
+    if(p >= c.out-0.1) return toast("In point must sit before the out point");
+    c.in = p;
+  } else {
+    if(p <= c.in+0.1) return toast("Out point must sit after the in point");
+    c.out = p;
+  }
+  const at = startOf(loc.index);
+  refreshAll(); seek(which==="in" ? at : Math.min(at+dur(c), total()));
+}
+
+function splitAtPlayhead(){
+  const loc = locate(state.t); if(!loc) return;
+  const c = loc.clip, cut = c.in + loc.local;
+  if(cut <= c.in+0.15 || cut >= c.out-0.15) return toast("Move the playhead inside the clip, away from its edges");
+  const b = makeClip(c.src, cut, c.out, c);
+  c.out = cut;
+  state.clips.splice(loc.index+1, 0, b);
+  refreshAll(); seek(state.t);
+  toast("Split into two clips");
+}
+
+/* ---------- narration ---------- */
+let mediaRec=null, micStream=null, recChunks=[], recStartT=0;
+let micAnalyser=null, micSrcNode=null, micBuf=null, micPeak=0;
+$("#recBtn").onclick = ()=> state.recording ? stopNarration() : startNarration();
+
+async function startNarration(){
+  if(!state.clips.length) return toast("Add a clip before recording narration");
+  try{
+    micStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false, noiseSuppression:true, autoGainControl:false}});
+  }catch(err){
+    return toast("Microphone blocked. Open this file directly in the browser and allow mic access.");
+  }
+  ensureAudio(); await audioCtx.resume();
+  // Meter only. The mic is deliberately never connected to master or streamDest,
+  // so monitoring can never feed back into the room or leak into the export.
+  micSrcNode = audioCtx.createMediaStreamSource(micStream);
+  micAnalyser = audioCtx.createAnalyser();
+  micAnalyser.fftSize = 1024;
+  micBuf = new Float32Array(micAnalyser.fftSize);
+  micSrcNode.connect(micAnalyser);
+  micPeak = 0;
+  const mime = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(m=>MediaRecorder.isTypeSupported(m)) || "";
+  mediaRec = new MediaRecorder(micStream, mime?{mimeType:mime}:undefined);
+  recChunks = [];
+  mediaRec.ondataavailable = e => { if(e.data.size) recChunks.push(e.data); };
+  mediaRec.onstop = finishTake;
+  recStartT = state.t;
+  state.recording = true;
+  $("#recDot").classList.add("on");
+  $("#recBtn").classList.add("on");
+  $("#recBtn").textContent = "■ Stop";
+  mediaRec.start();
+  play();
+}
+function stopNarration(){
+  if(!mediaRec) return;
+  state.recording = false;
+  $("#recDot").classList.remove("on");
+  $("#recBtn").classList.remove("on");
+  $("#recBtn").textContent = "● Narrate";
+  try{ mediaRec.stop(); }catch(_){}
+  micStream.getTracks().forEach(t=>t.stop());
+  try{ micSrcNode.disconnect(); }catch(_){}
+  micAnalyser = micSrcNode = micBuf = null;
+  $("#micBar").style.width = "0";
+  pause();
+}
+
+/* Live input level, drawn from the raw mic before any drive is applied. */
+function drawMeter(){
+  const bar = $("#micBar");
+  if(!micAnalyser){ if(micPeak){ micPeak = 0; $("#micPk").textContent = "—"; } return; }
+  micAnalyser.getFloatTimeDomainData(micBuf);
+  let peak = 0;
+  for(let i=0;i<micBuf.length;i++){ const v = Math.abs(micBuf[i]); if(v>peak) peak = v; }
+  // decay so the bar falls smoothly instead of strobing
+  micPeak = Math.max(peak, micPeak * 0.88);
+  const db = micPeak > 0.00001 ? 20*Math.log10(micPeak) : -90;
+  // map -60..0 dBFS onto the bar
+  const f = clamp((db + 60) / 60, 0, 1);
+  bar.style.width = (f*100)+"%";
+  bar.className = db > -3 ? "over" : db > -10 ? "hot" : "";
+  $("#micPk").textContent = db <= -90 ? "—" : Math.round(db)+"dB";
+}
+function finishTake(){
+  const length = Math.max(0.2, state.t - recStartT);
+  const blob = new Blob(recChunks, {type: recChunks[0]?.type || "audio/webm"});
+  const url = URL.createObjectURL(blob);
+  const a = new Audio(); a.src = url; a.preload="auto";
+  ensureAudio();
+  const node = audioCtx.createMediaElementSource(a);
+  const gain = audioCtx.createGain(); gain.gain.value = 0;
+  node.connect(gain); gain.connect(narrDrive);
+  state.takes.push({id:crypto.randomUUID(), url, audio:a, gain, start:recStartT, len:length, offset:0, blob});
+  refreshAll();
+  toast("Take recorded, "+fmt(length));
+}
+function takeStart(t){ return Math.max(0, t.start + t.offset); }
+function takeActive(t){ return state.t >= takeStart(t) && state.t < takeStart(t)+t.len; }
+function syncTakes(force){
+  for(const t of state.takes){
+    if(takeActive(t) && state.playing){
+      const want = state.t - takeStart(t);
+      if(force || Math.abs(t.audio.currentTime - want) > 0.22){ try{ t.audio.currentTime = want; }catch(_){} }
+      if(t.audio.paused) t.audio.play().catch(()=>{});
+    } else if(!t.audio.paused){ t.audio.pause(); }
+  }
+}
+
+/* ---------- render loop ---------- */
+function tick(){
+  requestAnimationFrame(tick);
+  const cl = state.clips;
+  if(!cl.length){ drawBars(); return; }
+  const loc = locate(state.t);
+  if(state.playing && loc && !state.seekLock){
+    const c = loc.clip, v = c.video;
+    if(v.readyState >= 2){
+      if(v.currentTime >= c.out - 0.02){
+        const next = loc.startAt + dur(c) + 0.001;
+        if(next >= total()-0.02){ pause(); state.t = total(); if(state.exporting) finishExport(); }
+        else seek(next, true);
+      } else {
+        const local = clamp(v.currentTime - c.in, 0, dur(c));
+        state.t = loc.startAt + local;
+      }
+    }
+  }
+  draw();
+  applyGains();
+  syncTakes(false);
+  drawMeter();
+  paintPlayhead();
+}
+
+function draw(){
+  const loc = locate(state.t);
+  cx.fillStyle="#000"; cx.fillRect(0,0,cv.width,cv.height);
+  if(!loc) return;
+  const v = loc.clip.video;
+  if(v.readyState < 2 || !v.videoWidth) return;
+  const s = Math.min(cv.width/v.videoWidth, cv.height/v.videoHeight);
+  const w = v.videoWidth*s, h = v.videoHeight*s;
+  cx.drawImage(v, (cv.width-w)/2, (cv.height-h)/2, w, h);
+}
+function drawBars(){
+  const cols=["#c9c9c9","#c9c22e","#2ec2c9","#3fbf5a","#b93fbf","#cf3b3b","#3b5ccf"];
+  const w = cv.width/cols.length;
+  cols.forEach((c,i)=>{ cx.fillStyle=c; cx.fillRect(i*w,0,w+1,cv.height*0.78); });
+  cx.fillStyle="#0f1218"; cx.fillRect(0,cv.height*0.78,cv.width,cv.height*0.22);
+  cx.fillStyle="#8a94a6"; cx.font="500 "+Math.round(cv.height*0.055)+"px "+getComputedStyle(document.body).fontFamily;
+  cx.textAlign="center";
+  cx.fillText("NO CLIPS LOADED", cv.width/2, cv.height*0.90);
+  cx.textAlign="left";
+}
+
+function applyGains(){
+  if(!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const narrating = state.takes.some(t=>takeActive(t)) || state.recording;
+  const duckLvl = pct("#duck", 18);
+  const narrVol = pct("#narrVol", 100);
+  narrDrive.gain.setTargetAtTime(pct("#micGain", 500), now, 0.05);
+  state.clips.forEach((c,i)=>{
+    let g = 0;
+    if(i===state.activeIndex && state.playing){
+      if(c.mode==="mute") g = 0;
+      else if(c.mode==="duck") g = c.vol * (narrating ? duckLvl : 1);
+      else g = c.vol;
+    }
+    c.gain.gain.setTargetAtTime(g, now, 0.05);
+  });
+  state.takes.forEach(t=>{
+    t.gain.gain.setTargetAtTime(takeActive(t)&&state.playing ? narrVol : 0, now, 0.03);
+  });
+}
+
+/* ---------- UI ---------- */
+function refreshAll(){ renderClips(); renderTakes(); renderTimeline(); syncButtons(); resizeCanvas(); updateEstimate(); }
+
+function resizeCanvas(){
+  const w = parseInt($("#res").value,10);
+  let ratio = 16/9;
+  const first = state.clips[0];
+  if(first && first.src.w && first.src.h) ratio = first.src.w/first.src.h;
+  cv.width = w; cv.height = Math.round(w/ratio/2)*2;
+}
+$("#res").onchange = resizeCanvas;
+
+function syncButtons(){
+  const has = state.clips.length>0;
+  ["playBtn","stopBtn","splitBtn","inBtn","outBtn","recBtn","exportBtn"].forEach(id=>{
+    $("#"+id).disabled = !has || (state.exporting && id!=="exportBtn");
+  });
+  $("#playBtn").textContent = state.playing ? "Pause" : "Play";
+  $("#tcTot").textContent = fmt(total());
+}
+
+function renderClips(){
+  const host = $("#clipList"); host.innerHTML="";
+  const bad = state.sources.filter(s=>s.bad);
+  $("#warns").innerHTML = bad.length ? bad.map(s=>
+    `<div class="warn"><b>${esc(s.name)}</b> will not decode in this browser. Try Safari, or remux it first:<br><code>ffmpeg -i "${esc(s.name)}" -c copy out.mp4</code></div>`).join("") : "";
+  if(!state.clips.length){
+    host.innerHTML = '<div class="empty">No clips yet.<br>Add your .mov or .mp4 files to start.</div>';
+    return;
+  }
+  state.clips.forEach((c,i)=>{
+    const color = `var(${BARS[i%BARS.length]})`;
+    const el = document.createElement("div");
+    el.className = "clip"+(i===state.activeIndex?" active":"");
+    el.style.setProperty("--c", color);
+    el.innerHTML = `
+      <div class="clip-top">
+        <span class="clip-idx">${String(i+1).padStart(2,"0")}</span>
+        <span class="clip-name" title="${esc(c.src.name)}">${esc(c.src.name)}</span>
+        <button class="btn sm" data-a="up" ${i===0?"disabled":""}>↑</button>
+        <button class="btn sm" data-a="down" ${i===state.clips.length-1?"disabled":""}>↓</button>
+        <button class="btn sm" data-a="del">✕</button>
+      </div>
+      <div class="clip-body">
+        <div class="row">
+          <label>IN</label><input class="num" data-a="in" type="number" step="0.05" min="0" value="${c.in.toFixed(2)}">
+          <label>OUT</label><input class="num" data-a="out" type="number" step="0.05" value="${c.out.toFixed(2)}">
+          <span class="hint">${fmt(dur(c))}</span>
+        </div>
+        <div class="row"><label>AUD</label>
+          <div class="seg">
+            <button data-a="mode" data-v="orig" aria-pressed="${c.mode==="orig"}">ORIGINAL</button>
+            <button data-a="mode" data-v="duck" aria-pressed="${c.mode==="duck"}">DUCK</button>
+            <button data-a="mode" data-v="mute" aria-pressed="${c.mode==="mute"}">MUTE</button>
+          </div>
+        </div>
+        <div class="row"><label>VOL</label>
+          <div class="step">
+            <button class="stepbtn" data-step="-1">−</button>
+            <input class="num" type="number" data-a="vol" min="0" max="200" step="5" value="${Math.round(c.vol*100)}">
+            <button class="stepbtn" data-step="1">+</button>
+          </div><span class="unit">%</span>
+        </div>
+      </div>`;
+    el.addEventListener("click", ev=>{
+      const b = ev.target.closest("[data-a]"); if(!b || b.tagName==="INPUT") return;
+      const a = b.dataset.a;
+      if(a==="up"){ state.clips.splice(i-1,0,state.clips.splice(i,1)[0]); refreshAll(); seek(state.t); }
+      if(a==="down"){ state.clips.splice(i+1,0,state.clips.splice(i,1)[0]); refreshAll(); seek(state.t); }
+      if(a==="del"){ c.video.pause(); state.clips.splice(i,1); refreshAll(); seek(Math.min(state.t,total())); }
+      if(a==="mode"){ c.mode = b.dataset.v; renderClips(); }
+    });
+    el.addEventListener("input", ev=>{
+      const inp = ev.target; const a = inp.dataset.a;
+      if(a==="vol"){ const v=parseFloat(inp.value); c.vol = (isFinite(v)?v:100)/100; }
+      if(a==="in"){ const v=clamp(parseFloat(inp.value)||0, 0, c.out-0.1); c.in=v; renderTimeline(); syncButtons(); }
+      if(a==="out"){ const v=clamp(parseFloat(inp.value)||0, c.in+0.1, c.src.duration); c.out=v; renderTimeline(); syncButtons(); }
+    });
+    host.appendChild(el);
+  });
+}
+
+function renderTakes(){
+  const host = $("#takeList");
+  if(!state.takes.length){
+    host.innerHTML = '<div class="hint">Press <b>Narrate</b> to record voice over the timeline from the playhead. Wear headphones so the mic does not catch the clip audio.</div>';
+    return;
+  }
+  host.innerHTML="";
+  state.takes.forEach((t,i)=>{
+    const el=document.createElement("div"); el.className="take";
+    el.innerHTML = `<span class="lab">TAKE ${String(i+1).padStart(2,"0")} · ${fmt(takeStart(t))} · ${fmt(t.len)}</span>
+      <button class="btn sm" data-a="back">−.1</button>
+      <button class="btn sm" data-a="fwd">+.1</button>
+      <button class="btn sm" data-a="go">↦</button>
+      <button class="btn sm" data-a="del">✕</button>`;
+    el.onclick = ev=>{
+      const b=ev.target.closest("[data-a]"); if(!b) return;
+      const a=b.dataset.a;
+      if(a==="back") t.offset-=0.1;
+      if(a==="fwd") t.offset+=0.1;
+      if(a==="go"){ seek(takeStart(t)); }
+      if(a==="del"){ t.audio.pause(); state.takes.splice(i,1); }
+      refreshAll();
+    };
+    host.appendChild(el);
+  });
+}
+
+function renderTimeline(){
+  const track=$("#track"); track.innerHTML="";
+  const tot=total()||1;
+  state.clips.forEach((c,i)=>{
+    const b=document.createElement("div");
+    b.className="tblock"+(i===state.activeIndex?" active":"");
+    b.style.setProperty("--c", `var(${BARS[i%BARS.length]})`);
+    b.style.flex = dur(c)/tot+" 0 0";
+    b.innerHTML = `<span>${String(i+1).padStart(2,"0")} ${esc(c.src.name.slice(0,18))}</span>`;
+    track.appendChild(b);
+  });
+  const nt=$("#narrTrack"); nt.innerHTML="";
+  state.takes.forEach(t=>{
+    const b=document.createElement("div"); b.className="take-block";
+    b.style.left=(takeStart(t)/tot*100)+"%";
+    b.style.width=Math.max(0.4, t.len/tot*100)+"%";
+    nt.appendChild(b);
+  });
+}
+
+let lastActive=-1;
+function paintPlayhead(){
+  const tot=total()||1;
+  $("#ph").style.left = (state.t/tot*100)+"%";
+  $("#tcNow").textContent = fmt(state.t);
+  const loc=locate(state.t);
+  if(loc && loc.index!==state.activeIndex && !state.playing) state.activeIndex=loc.index;
+  if(state.activeIndex!==lastActive){
+    lastActive=state.activeIndex;
+    document.querySelectorAll("#clipList .clip").forEach((el,i)=>el.classList.toggle("active", i===state.activeIndex));
+    document.querySelectorAll("#track .tblock").forEach((el,i)=>el.classList.toggle("active", i===state.activeIndex));
+  }
+}
+
+/* scrubbing */
+let dragging=false;
+function scrubFrom(ev){
+  const r=$("#track").getBoundingClientRect();
+  const f=clamp((ev.clientX-r.left)/r.width,0,1);
+  seek(f*total(), true);
+}
+["#track","#narrTrack"].forEach(sel=>{
+  $(sel).addEventListener("pointerdown", e=>{ if(state.exporting) return; dragging=true; $(sel).setPointerCapture(e.pointerId); scrubFrom(e); });
+  $(sel).addEventListener("pointermove", e=>{ if(dragging) scrubFrom(e); });
+  $(sel).addEventListener("pointerup", ()=> dragging=false);
+});
+
+/* stepper buttons: nudge the field they flank, then let its normal input handler run */
+document.addEventListener("click", e=>{
+  const b = e.target.closest(".stepbtn"); if(!b) return;
+  const inp = b.parentElement.querySelector("input");
+  if(!inp) return;
+  const stp = parseFloat(inp.step)||1, dir = parseFloat(b.dataset.step);
+  const lo = inp.min===""? -Infinity : parseFloat(inp.min);
+  const hi = inp.max===""?  Infinity : parseFloat(inp.max);
+  const cur = parseFloat(inp.value);
+  const next = clamp((isFinite(cur)?cur:0) + stp*dir, lo, hi);
+  inp.value = parseFloat(next.toFixed(4));
+  inp.dispatchEvent(new Event("input", {bubbles:true}));
+});
+/* keep typed values inside their declared range */
+document.addEventListener("change", e=>{
+  const inp = e.target;
+  if(inp.tagName!=="INPUT" || inp.type!=="number" || !inp.closest(".step")) return;
+  const lo = inp.min===""? -Infinity : parseFloat(inp.min);
+  const hi = inp.max===""?  Infinity : parseFloat(inp.max);
+  const v = parseFloat(inp.value);
+  if(!isFinite(v)) return;
+  const cl = clamp(v, lo, hi);
+  if(cl!==v){ inp.value = cl; inp.dispatchEvent(new Event("input", {bubbles:true})); }
+});
+
+document.addEventListener("keydown", e=>{
+  if(e.target.tagName==="INPUT"||e.target.tagName==="SELECT") return;
+  if(e.target.closest && e.target.closest(".stepbtn")) return; // Space/Enter belongs to the button
+  if(state.exporting) return;
+  if(e.code==="Space"){ e.preventDefault(); state.playing?pause():play(); }
+  if(e.key==="s"||e.key==="S") splitAtPlayhead();
+  if(e.key==="r"||e.key==="R") state.recording?stopNarration():startNarration();
+  if(e.key==="ArrowLeft"){ pause(); seek(state.t-(e.shiftKey?1:1/30)); }
+  if(e.key==="ArrowRight"){ pause(); seek(state.t+(e.shiftKey?1:1/30)); }
+});
+
+function esc(s){ return String(s).replace(/[&<>"]/g, m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
+
+/* ---------- export ---------- */
+let outRec=null, outChunks=[], outExt="webm";
+const AUDIO_BPS = 128_000;
+
+const MP4_MIMES = ["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4;codecs=avc1,mp4a","video/mp4"];
+const WEBM_MIMES = ["video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+const supported = list => list.find(m => MediaRecorder.isTypeSupported(m));
+
+/* .mov and .mp4 are the same ISO base media container, so an H.264 recording can
+   carry either extension. We never mux real QuickTime, we just name it .mov. */
+function pickFormat(){
+  const want = $("#fmt").value;
+  if(want==="webm"){
+    const m = supported(WEBM_MIMES);
+    return m ? {mime:m, ext:"webm"} : null;
+  }
+  const m = supported(MP4_MIMES);
+  if(m) return {mime:m, ext: want==="mov" ? "mov" : "mp4"};
+  const fb = supported(WEBM_MIMES);
+  if(fb){
+    toast("This browser cannot record H.264. Falling back to .webm.");
+    return {mime:fb, ext:"webm"};
+  }
+  return null;
+}
+
+function estBytes(){
+  const vbr = (parseFloat($("#vbr").value)||3) * 1_000_000;
+  return (vbr + AUDIO_BPS) * total() / 8;
+}
+function updateEstimate(){
+  const t = total();
+  const el = $("#estHint");
+  if(!t){ el.textContent = "Add clips to see the estimated output size."; return; }
+  const mb = estBytes()/1048576;
+  el.innerHTML = "Estimated output: <b>"+mb.toFixed(0)+" MB</b> for "+fmt(t)+
+    ". Rate is the only thing that drives size — the source file's own bitrate does not carry over, because export re-encodes the canvas.";
+}
+["#vbr","#fmt","#res"].forEach(s=>{
+  $(s).addEventListener("input", updateEstimate);
+  $(s).addEventListener("change", updateEstimate);
+});
+
+$("#exportBtn").onclick = async ()=>{
+  if(state.exporting) return;
+  if(!state.clips.length) return;
+  ensureAudio(); await audioCtx.resume();
+  const f = pickFormat();
+  if(!f) return toast("This browser cannot record video. Try Chrome or Edge for export.");
+  outExt = f.ext;
+  const vbr = clamp(parseFloat($("#vbr").value)||3, 0.5, 20) * 1_000_000;
+  const stream = cv.captureStream(30);
+  streamDest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));
+  outChunks=[];
+  outRec = new MediaRecorder(stream, {
+    mimeType: f.mime,
+    videoBitsPerSecond: vbr,
+    audioBitsPerSecond: AUDIO_BPS
+  });
+  outRec.ondataavailable = e=>{ if(e.data.size) outChunks.push(e.data); };
+  outRec.onstop = saveExport;
+  state.exporting = true;
+  $("#res").disabled = true;
+  $("#fmt").disabled = true;
+  $("#vbr").disabled = true;
+  $("#exportBtn").textContent = "Rendering…";
+  $("#tlHint").textContent = "Rendering in real time. Do not switch tabs.";
+  syncButtons();
+  seek(0);
+  await new Promise(r=>setTimeout(r,350));
+  outRec.start(1000);
+  await play();
+};
+function finishExport(){
+  if(!state.exporting) return;
+  state.exporting = false;
+  setTimeout(()=>{ try{ outRec.stop(); }catch(_){} }, 400);
+}
+function saveExport(){
+  const blob = new Blob(outChunks, {type: outExt==="webm" ? "video/webm" : "video/mp4"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "cut-"+Date.now()+"."+outExt;
+  a.click();
+  $("#exportBtn").textContent = "Export";
+  $("#res").disabled = false;
+  $("#fmt").disabled = false;
+  $("#vbr").disabled = false;
+  $("#tlHint").textContent = "Click or drag to scrub. Space plays, S splits, R records.";
+  syncButtons();
+  toast("Exported "+(blob.size/1048576).toFixed(1)+" MB");
+}
+
+/* ---------- go ---------- */
+updateEstimate();
+resizeCanvas();
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
