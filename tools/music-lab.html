@@ -62,7 +62,7 @@
 <body>
 <div id="top">
   <b>MUSIC LAB</b>
-  <span class="hint">flying-dungeon · Space play/stop · 1/2/3 mute · shift+1/2/3 solo · R re-render · E export wav</span>
+  <span class="hint">flying-dungeon · Space play/stop · P loop↔promo · 1/2/3 mute · shift+1/2/3 solo · R re-render · E export wav</span>
   <span id="state">booting…</span>
 </div>
 <div id="main">
@@ -73,6 +73,7 @@
     </div>
     <div id="transport">
       <button id="play">▶ play</button>
+      <button id="mode">mode: loop</button>
       <button id="rerender">re-render</button>
       <button id="exportWav">export wav</button>
       <span class="hint">click the waveform to scrub</span>
@@ -126,6 +127,23 @@
    wrap does not click. It costs you that much material — the rendered file is
    still exactly the master loop length, but its first N ms are a blend of the
    head and the tail.
+
+   PROMO BUILD (the second mode, toggled in the transport) renders the same mix
+   as a FINITE piece instead of a loop: several cycles laid end to end with the
+   layers entering one at a time, which is what promotional material wants and
+   what a seamless loop by definition cannot do — a loop has no beginning to
+   build from.
+
+   It is assembled from STEMS, not by muting layers during one render. Each
+   layer is rendered on its own through exactly the loop path above, and the
+   build then sums those stems with an entry point each. That matters for two
+   reasons: the stems concatenate seamlessly (each is already seam-blended, and
+   a linear crossfade of a sum is the sum of the crossfades, so seamed stems
+   summed = the seamed mix), and a layer is sampled at ABSOLUTE time — where it
+   would be if it had been playing since t=0 — so a layer that enters halfway
+   joins the music already in progress rather than starting its own phrase
+   against everyone else's. Joining and starting sound completely different and
+   only one of them is an arrangement.
 
    ⚠️ It loads the BUILT files (assets-v2/flying-dungeon/audio/music/), not the
    raw phone takes. Those are already trimmed of their dead air and levelled
@@ -213,12 +231,57 @@ const DEFAULT_MASTER = {
   seamMs: 60,         // crossfade of the loop wrap
 };
 
+/* THE PROMO ARRANGEMENT. All times are absolute on the finished piece, not
+   relative to whichever cycle they land in — the whole point of the build is
+   that there is one timeline, so the numbers are read off that timeline.
+
+   The shape: 02 alone from the top; 01 joins at the loop's middle point; the
+   cycle finishes and runs again; 03 joins at the middle point of THAT cycle;
+   all three then run to the end.
+
+   The "middle point" is 7233ms and it is not a round 7 seconds by accident —
+   it is where trilha 02 comes round inside the loop (its pass is 7.233s as
+   DECODED and it runs from the top at rate 1). 02 is the layer the mix is
+   aligned against, so its restart is the arrangement's downbeat and the only
+   sensible place to bring a layer in. The second entry is one full cycle
+   later: 14452 + 7233 = 21685.
+
+   ⚠️ 7.233 is not what the file says. The ogg container reports 7.239 and the
+   decoder hands back a few ms less; these numbers are the decoded ones, which
+   are the ones the render actually places. `mid 1` recomputes it live from the
+   buffer, so press it rather than trusting a duration read off disk.
+
+   totalMs is 3 cycles exactly. 3 × 14452 = 43356, which is the ~43s asked for
+   and, more usefully, lands on the point where all three layers are about to
+   come round together — so the piece ends on a downbeat rather than being
+   chopped mid-phrase at a round number.
+
+   fadeMs is a de-click, not an effect: 25ms is under the threshold where an
+   entry reads as a fade-in, but enough that a layer cutting in mid-waveform
+   does not pop. Push it to 200+ if you want an audible swell instead.
+
+   tailMs is the same idea at the end — short on purpose, because 43356 is a
+   musical stopping point and a long fade would duck the last phrase. */
+const DEFAULT_PROMO = {
+  totalMs: 43356,
+  enterMs: [7233, 0, 21685],   // index-aligned with TRACKS: 01, 02, 03
+  fadeMs: 25,
+  tailMs: 150,
+};
+
 const mix = DEFAULT_MIX.map(m => Object.assign({}, m));
 const master = Object.assign({}, DEFAULT_MASTER);
+const promo = { ...DEFAULT_PROMO, enterMs: DEFAULT_PROMO.enterMs.slice() };
+
+// 'loop' renders the seamless master loop and plays it round; 'promo' renders
+// the finite build. Everything downstream — render, draw, transport, export —
+// asks this rather than carrying two copies of itself.
+let mode = 'loop';
 
 let ctx = null;               // live AudioContext (created on first gesture)
 let buffers = [];             // decoded layers, index-aligned with TRACKS
-let rendered = null;          // the mixed loop, as an AudioBuffer
+let rendered = null;          // what plays: the mixed loop, or the promo build
+let stems = [];               // promo mode: one loop-length render per layer
 let dirty = true;             // mix changed since the last render
 let src = null;               // the playing source
 let startedAt = 0;            // ctx time the current playback began
@@ -232,6 +295,18 @@ const cv = $('wave'), g2 = cv.getContext('2d');
 const dbToGain = db => Math.pow(10, db / 20);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const fmt = ms => (ms / 1000).toFixed(3) + 's';
+
+// What the waveform view, the scrub bar and the readout all span. The loop is
+// its own timeline; the promo build is a longer one made of cycles of it.
+const timelineMs = () => mode === 'promo' ? promo.totalMs : master.loopMs;
+// Where trilha 02 comes round inside the loop — the arrangement's middle point,
+// computed from the mix rather than assumed, so it follows a change of rate or
+// trim on 02 instead of silently going stale.
+function midMs() {
+  const buf = buffers[1], m = mix[1];
+  if (!buf) return Math.round(master.loopMs / 2);
+  return Math.round(m.offsetMs + (buf.duration - m.trimMs / 1000) / clamp(m.rate, 0.25, 4) * 1000);
+}
 
 /* --- loading ------------------------------------------------------------- */
 
@@ -264,17 +339,24 @@ async function loadAll() {
    truncated for free and needs no arithmetic here.
 
    `extra` is rendered PAST the loop end so the seam blend has real material to
-   fold back over the head, rather than fading into silence. -------------- */
+   fold back over the head, rather than fading into silence.
 
-async function render() {
-  if (!buffers.length) return;
+   `audible(m, i)` picks the layers. The loop mix passes the on/solo state; the
+   promo build calls this once per layer to get its stem, which is why the
+   layer selection is an argument rather than read from the mix state here.
+
+   Returns BOTH the raw body and the seamed loop. The promo build wants the raw
+   head for its FIRST cycle: the seamed head is a blend with the tail, which is
+   exactly right at a wrap and wrong at t=0, where it would open the piece with
+   a ghost of the ending underneath it. ------------------------------------ */
+
+async function renderLayers(audible) {
   const sr = ctx.sampleRate;
   const seam = clamp(master.seamMs, 0, Math.max(0, master.loopMs / 2)) / 1000;
   const loopSec = master.loopMs / 1000;
   const frames = Math.ceil((loopSec + seam) * sr);
-  if (frames < 2) return;
+  if (frames < 2) return null;
 
-  const anySolo = mix.some(m => m.solo);
   const oc = new OfflineAudioContext(2, frames, sr);
   const out = oc.createGain();
   out.gain.value = dbToGain(master.db);
@@ -283,7 +365,7 @@ async function render() {
   mix.forEach((m, i) => {
     const buf = buffers[i];
     if (!buf) return;
-    if (anySolo ? !m.solo : !m.on) return;
+    if (!audible(m, i)) return;
 
     const g = oc.createGain();
     g.gain.value = dbToGain(m.db);
@@ -334,11 +416,75 @@ async function render() {
       f[i] = b[i] * w + b[loopFrames + i] * (1 - w);
     }
   }
-  rendered = final;
+  return { body, final };
+}
+
+/* Lay the stems out on one absolute timeline.
+
+   The layer is read at `n % L` — its position in the LOOP for output frame n,
+   not for the frame it has been playing. So a layer whose entry lands halfway
+   through a cycle picks the music up halfway through, in step with everything
+   already playing. Reading it from its own start instead would be a second
+   arrangement running against the first, and no amount of alignment work in
+   this tool would save it.
+
+   Below L the raw body is used, above it the seamed loop — see renderLayers. */
+
+function assemblePromo() {
+  const sr = ctx.sampleRate;
+  const total = Math.max(1, Math.round(promo.totalMs / 1000 * sr));
+  const out = new AudioBuffer({ length: total, numberOfChannels: 2, sampleRate: sr });
+  const fadeF = Math.max(0, Math.round(promo.fadeMs / 1000 * sr));
+
+  stems.forEach((st, i) => {
+    if (!st) return;
+    const L = st.final.length;
+    if (L < 1) return;
+    const enter = Math.round(promo.enterMs[i] / 1000 * sr);
+    for (let c = 0; c < 2; c++) {
+      const raw = st.body.getChannelData(Math.min(c, st.body.numberOfChannels - 1));
+      const seamed = st.final.getChannelData(c);
+      const o = out.getChannelData(c);
+      for (let n = Math.max(0, enter); n < total; n++) {
+        const g = fadeF > 0 ? Math.min(1, (n - enter) / fadeF) : 1;
+        o[n] += (n < L ? raw[n] : seamed[n % L]) * g;
+      }
+    }
+  });
+
+  const tailF = clamp(Math.round(promo.tailMs / 1000 * sr), 0, total);
+  for (let c = 0; c < 2 && tailF > 0; c++) {
+    const o = out.getChannelData(c);
+    for (let i = 0; i < tailF; i++) o[total - tailF + i] *= 1 - i / tailF;
+  }
+  return out;
+}
+
+async function render() {
+  if (!buffers.length) return;
+  const anySolo = mix.some(m => m.solo);
+  const audible = (m, i) => anySolo ? m.solo : m.on;
+
+  if (mode === 'promo') {
+    // One render per layer. Sequential rather than Promise.all: three short
+    // offline passes, and running them together buys nothing but a stall.
+    stems = [];
+    for (let i = 0; i < mix.length; i++)
+      stems[i] = audible(mix[i], i) ? await renderLayers((m, j) => j === i) : null;
+    rendered = assemblePromo();
+  } else {
+    stems = [];
+    const r = await renderLayers(audible);
+    rendered = r ? r.final : null;
+  }
+  if (!rendered) return;
+
   renderSeq++;
   dirty = false;
-  stateEl.textContent = `loop ${fmt(master.loopMs)} · ${sr} Hz · peak ${peakDb(final).toFixed(1)} dB`;
-  stateEl.className = peakDb(final) > -0.1 ? 'warn' : '';
+  const peak = peakDb(rendered);
+  stateEl.textContent = (mode === 'promo' ? `promo ${fmt(promo.totalMs)}` : `loop ${fmt(master.loopMs)}`) +
+                        ` · ${rendered.sampleRate} Hz · peak ${peak.toFixed(1)} dB`;
+  stateEl.className = peak > -0.1 ? 'warn' : '';
 }
 
 /* Where the loop should END: the last point inside it at which a layer starts
@@ -393,12 +539,16 @@ async function play(fromMs) {
   if (dirty || !rendered) await render();
   if (!rendered) return;
   const ac = audio();
-  src = ac.createBufferSource();
-  src.buffer = rendered;
-  src.loop = true;
-  src.connect(ac.destination);
+  const s = ac.createBufferSource();
+  src = s;
+  s.buffer = rendered;
+  s.loop = mode !== 'promo';        // the promo build is a piece, not a loop
+  s.connect(ac.destination);
+  // Reaching the end of the promo is a stop like any other — without this the
+  // transport still reads "playing" over silence.
+  s.onended = () => { if (src === s) { stop(); draw(); } };
   const at = clamp((fromMs != null ? fromMs : scrubMs) / 1000, 0, rendered.duration - 0.001);
-  src.start(0, at);
+  s.start(0, at);
   startedAt = ac.currentTime - at;
   playing = true;
   $('play').textContent = '■ stop';
@@ -406,7 +556,7 @@ async function play(fromMs) {
 }
 
 function stop() {
-  if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
+  if (src) { src.onended = null; try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
   playing = false;
   $('play').textContent = '▶ play';
   $('play').classList.remove('on');
@@ -415,7 +565,8 @@ function stop() {
 function headMs() {
   if (!rendered) return 0;
   if (!playing) return scrubMs;
-  return ((ctx.currentTime - startedAt) % rendered.duration) * 1000;
+  const t = ctx.currentTime - startedAt;
+  return (mode === 'promo' ? clamp(t, 0, rendered.duration) : t % rendered.duration) * 1000;
 }
 
 // Every knob lands here: mark the render stale, and if we are already playing,
@@ -494,16 +645,31 @@ function draw() {
   g2.fillRect(0, 0, R.W, R.H);
 
   const loopSec = master.loopMs / 1000;
-  const pxPerSec = R.w / Math.max(0.001, loopSec);
+  const viewSec = timelineMs() / 1000;
+  const pxPerSec = R.w / Math.max(0.001, viewSec);
+  const cycles = mode === 'promo' ? Math.ceil(viewSec / Math.max(0.001, loopSec)) : 1;
 
   // Second gridlines behind everything — the ruler you judge offsets against.
+  // Labels thin out on the long promo timeline, where 43 of them is not a ruler.
+  const labelEvery = viewSec > 20 ? 5 : 1;
   g2.strokeStyle = '#1b2a4a'; g2.lineWidth = 1;
   g2.fillStyle = '#4a5c80'; g2.font = '10px monospace';
-  for (let s = 0; s <= Math.ceil(loopSec); s++) {
+  for (let s = 0; s <= Math.ceil(viewSec); s++) {
     const x = Math.round(R.x0 + s * pxPerSec) + 0.5;
     if (x > R.x0 + R.w) break;
     g2.beginPath(); g2.moveTo(x, PAD); g2.lineTo(x, R.H - PAD); g2.stroke();
-    g2.fillText(s + 's', x + 3, PAD - 2);
+    if (s % labelEvery === 0) g2.fillText(s + 's', x + 3, PAD - 2);
+  }
+
+  // Cycle joins: where one pass of the master loop hands over to the next. The
+  // build is only as good as these are inaudible, so they are worth seeing.
+  if (mode === 'promo') {
+    g2.strokeStyle = '#3a5a8a';
+    for (let c = 1; c < cycles; c++) {
+      const x = Math.round(R.x0 + c * loopSec * pxPerSec) + 0.5;
+      if (x > R.x0 + R.w) break;
+      g2.beginPath(); g2.moveTo(x, PAD); g2.lineTo(x, R.H - PAD); g2.stroke();
+    }
   }
 
   // The mix.
@@ -520,11 +686,14 @@ function draw() {
     g2.fillStyle = '#7a8aa8';
     g2.fillText('MIX', R.x0 + 5, R.mix.y + 12);
 
-    // The seam: the head material that is a blend of head and tail.
+    // The seam: the head material that is a blend of head and tail. In the
+    // promo it sits at every cycle join instead — and NOT at t=0, which is a
+    // real beginning there and rendered raw.
     const sw = (clamp(master.seamMs, 0, master.loopMs / 2) / 1000) * pxPerSec;
     if (sw > 0.5) {
       g2.fillStyle = 'rgba(233,69,96,0.18)';
-      g2.fillRect(R.x0, R.mix.y, sw, R.mix.h);
+      for (let c = mode === 'promo' ? 1 : 0; c < cycles; c++)
+        g2.fillRect(R.x0 + c * loopSec * pxPerSec, R.mix.y, sw, R.mix.h);
     }
   }
 
@@ -548,28 +717,54 @@ function draw() {
     const env = peaks(buf, Math.max(1, Math.round(clip * pxPerSec)), 'L' + i,
                       Math.round(trim * buf.sampleRate));
     const mid = L.y + L.h / 2, amp = L.h / 2 - 3;
+    // Before its entry a layer is drawn faint: the lane still shows the whole
+    // pattern, and the point the colour comes up is the arrangement.
+    const enterSec = mode === 'promo' ? promo.enterMs[i] / 1000 : -1;
 
-    let at = m.offsetMs / 1000, guard = 0;
-    do {
-      const x0 = R.x0 + at * pxPerSec;
-      g2.globalAlpha = audible ? 1 : 0.22;
-      g2.fillStyle = t.color;
-      for (let x = 0; x < env.length / 2; x++) {
-        const px = x0 + x;
-        if (px < R.x0 || px > R.x0 + R.w) continue;
-        const lo = env[x * 2] * amp, hi = env[x * 2 + 1] * amp;
-        g2.fillRect(px, mid - hi, 1, Math.max(1, hi - lo));
-      }
-      // A tick at every repetition's downbeat — the thing you are actually
-      // lining up when you move `offset`.
-      if (x0 >= R.x0 - 1 && x0 <= R.x0 + R.w) {
-        g2.globalAlpha = audible ? 0.85 : 0.25;
-        g2.fillStyle = '#fff';
-        g2.fillRect(Math.round(x0), L.y + 1, 1, L.h - 2);
-      }
-      at += step;
-    } while (m.repeat && at < loopSec && ++guard < 400);
+    // The layer's schedule restarts every cycle, so the promo draws the same
+    // repetition pattern once per cycle, shifted.
+    for (let c = 0; c < cycles; c++) {
+      const base = c * loopSec;
+      let at = m.offsetMs / 1000, guard = 0;
+      do {
+        const x0 = R.x0 + (base + at) * pxPerSec;
+        g2.fillStyle = t.color;
+        // Alpha flips at most once per repetition (at the entry), so set it on
+        // the flip rather than per column — this loop runs every frame while
+        // the head is moving.
+        let alpha = -1;
+        for (let x = 0; x < env.length / 2; x++) {
+          const px = x0 + x;
+          if (px < R.x0 || px > R.x0 + R.w) continue;
+          const a = audible && (base + at + x / pxPerSec) >= enterSec ? 1 : 0.22;
+          if (a !== alpha) { g2.globalAlpha = a; alpha = a; }
+          const lo = env[x * 2] * amp, hi = env[x * 2 + 1] * amp;
+          g2.fillRect(px, mid - hi, 1, Math.max(1, hi - lo));
+        }
+        // A tick at every repetition's downbeat — the thing you are actually
+        // lining up when you move `offset`.
+        if (x0 >= R.x0 - 1 && x0 <= R.x0 + R.w) {
+          g2.globalAlpha = audible && (base + at) >= enterSec ? 0.85 : 0.25;
+          g2.fillStyle = '#fff';
+          g2.fillRect(Math.round(x0), L.y + 1, 1, L.h - 2);
+        }
+        at += step;
+      } while (m.repeat && base + at < Math.min(viewSec, base + loopSec) && ++guard < 400);
+    }
     g2.globalAlpha = 1;
+
+    // The entry itself, across the whole picture: this is the number being set.
+    if (mode === 'promo' && promo.enterMs[i] > 0) {
+      const ex = Math.round(R.x0 + enterSec * pxPerSec) + 0.5;
+      if (ex <= R.x0 + R.w) {
+        g2.strokeStyle = t.color; g2.lineWidth = 1;
+        g2.setLineDash([3, 3]);
+        g2.beginPath(); g2.moveTo(ex, R.mix.y); g2.lineTo(ex, L.y + L.h); g2.stroke();
+        g2.setLineDash([]);
+        g2.fillStyle = t.color;
+        g2.fillText(t.name.replace('trilha ', '') + ' in', ex + 3, L.y + L.h - 4);
+      }
+    }
   });
 
   // Playhead.
@@ -577,7 +772,7 @@ function draw() {
   const hx = Math.round(R.x0 + h * pxPerSec) + 0.5;
   g2.strokeStyle = '#8fce8f'; g2.lineWidth = 1;
   g2.beginPath(); g2.moveTo(hx, PAD); g2.lineTo(hx, R.H - PAD); g2.stroke();
-  readEl.textContent = fmt(headMs()) + ' / ' + fmt(master.loopMs);
+  readEl.textContent = fmt(headMs()) + ' / ' + fmt(timelineMs());
 }
 
 function frame() { if (playing) draw(); requestAnimationFrame(frame); }
@@ -586,7 +781,7 @@ requestAnimationFrame(frame);
 cv.addEventListener('mousedown', e => {
   const R = laneRects();
   const p = clamp((e.offsetX - R.x0) / R.w, 0, 1);
-  scrubMs = p * master.loopMs;
+  scrubMs = p * timelineMs();
   if (playing) play(scrubMs); else draw();
 });
 
@@ -691,6 +886,67 @@ function buildPanel() {
   n.innerHTML = 'loop = layer length (1/2/3), or ×2. A layer that does not divide the loop evenly gets cut at the wrap — <b>crop</b> ends the loop at the last restart instead, so it comes round on a downbeat.';
   g.appendChild(n);
 
+  // --- promo build ---
+  // Sits under the loop because it is made OF the loop: every number here is
+  // read against master.loopMs, and the ×N / mid-N buttons say so out loud.
+  const gp = document.createElement('div');
+  gp.className = 'group';
+  gp.innerHTML = '<h3>PROMO BUILD <span class="dur">' + (mode === 'promo' ? 'active' : 'loop mode') + '</span></h3>';
+  side.appendChild(gp);
+
+  const mrow = document.createElement('div');
+  mrow.className = 'row';
+  const modeB = document.createElement('button');
+  modeB.textContent = mode === 'promo' ? '▣ promo mode' : '▢ promo mode';
+  modeB.className = mode === 'promo' ? 'on' : '';
+  modeB.onclick = () => setMode(mode === 'promo' ? 'loop' : 'promo');
+  mrow.appendChild(modeB);
+  gp.appendChild(mrow);
+
+  refreshers.push(numField(gp, 'total length', 'ms', () => promo.totalMs,
+    v => promo.totalMs = Math.max(200, v), 100, 0).show);
+  const trow = document.createElement('div');
+  trow.className = 'row';
+  [1, 2, 3, 4, 5].forEach(k => {
+    const b = document.createElement('button');
+    b.textContent = '×' + k;
+    b.title = k + ' cycle' + (k > 1 ? 's' : '') + ' of the master loop';
+    b.onclick = () => { promo.totalMs = Math.round(master.loopMs * k); refreshers.forEach(f => f()); touched(); };
+    trow.appendChild(b);
+  });
+  gp.appendChild(trow);
+
+  refreshers.push(numField(gp, 'entry fade', 'ms', () => promo.fadeMs,
+    v => promo.fadeMs = Math.max(0, v), 5, 0).show);
+  refreshers.push(numField(gp, 'tail fade', 'ms', () => promo.tailMs,
+    v => promo.tailMs = Math.max(0, v), 50, 0).show);
+
+  // One entry per layer, with the arrangement's own vocabulary as buttons:
+  // `top` is from the beginning, `mid N` is the middle of cycle N — where 02
+  // comes round — and `cyc N` is a cycle boundary.
+  TRACKS.forEach((t, i) => {
+    refreshers.push(numField(gp, `<span style="color:${t.color}">${t.name}</span> enters`, 'ms',
+      () => promo.enterMs[i], v => promo.enterMs[i] = Math.max(0, v), 10, 0).show);
+    const er = document.createElement('div');
+    er.className = 'row';
+    const put = (label, ms, title) => {
+      const b = document.createElement('button');
+      b.textContent = label; b.title = title;
+      b.onclick = () => { promo.enterMs[i] = Math.round(ms()); refreshers.forEach(f => f()); touched(); };
+      er.appendChild(b);
+    };
+    put('top', () => 0, 'plays from the beginning');
+    [1, 2, 3].forEach(c => put('mid ' + c, () => (c - 1) * master.loopMs + midMs(),
+      'middle of cycle ' + c + ' — where trilha 02 comes round'));
+    [2, 3].forEach(c => put('cyc ' + c, () => (c - 1) * master.loopMs, 'start of cycle ' + c));
+    gp.appendChild(er);
+  });
+
+  const pn = document.createElement('p');
+  pn.className = 'note';
+  pn.innerHTML = 'A finite build instead of a loop: cycles of the master laid end to end, layers entering one at a time. A layer joins the music <b>already in progress</b> — entering at <b>mid 2</b> picks it up halfway through, it does not restart its phrase. <b>export wav</b> in this mode writes the build, not the loop.';
+  gp.appendChild(pn);
+
   // --- layers ---
   TRACKS.forEach((t, i) => {
     const m = mix[i], buf = buffers[i];
@@ -765,6 +1021,7 @@ function buildPanel() {
   rs.onclick = () => {
     mix.forEach((m, i) => Object.assign(m, DEFAULT_MIX[i]));
     Object.assign(master, DEFAULT_MASTER);
+    Object.assign(promo, DEFAULT_PROMO, { enterMs: DEFAULT_PROMO.enterMs.slice() });
     buildPanel(); touched();
   };
   rex.append(cp, rs);
@@ -781,7 +1038,12 @@ function dump() {
   const ta = $('dump');
   if (!ta) return;
   ta.value = JSON.stringify({
+    mode,
     master: { loopMs: Math.round(master.loopMs), seamMs: Math.round(master.seamMs), db: +master.db.toFixed(1) },
+    promo: {
+      totalMs: Math.round(promo.totalMs), fadeMs: Math.round(promo.fadeMs),
+      tailMs: Math.round(promo.tailMs), enterMs: promo.enterMs.map(Math.round),
+    },
     layers: TRACKS.map((t, i) => ({
       file: t.file, on: mix[i].on, db: +mix[i].db.toFixed(1),
       offsetMs: Math.round(mix[i].offsetMs), trimMs: Math.round(mix[i].trimMs),
@@ -821,20 +1083,37 @@ $('exportWav').onclick = async () => {
   if (!rendered) return;
   const a = document.createElement('a');
   a.href = URL.createObjectURL(wavBlob(rendered));
-  a.download = 'trilha-mix.wav';
+  a.download = mode === 'promo' ? 'trilha-promo.wav' : 'trilha-mix.wav';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
 
 /* --- wiring -------------------------------------------------------------- */
 
+// Switching mode changes what the timeline means, so the head goes back to the
+// top rather than landing at a position that belonged to the other one.
+function setMode(m) {
+  if (m === mode) return;
+  const wasPlaying = playing;
+  stop();
+  mode = m;
+  scrubMs = 0;
+  $('mode').textContent = 'mode: ' + mode;
+  $('mode').className = mode === 'promo' ? 'on' : '';
+  buildPanel();
+  dirty = true;
+  if (wasPlaying) play(0); else touched();
+}
+
 $('play').onclick = () => { if (playing) stop(); else play(); };
 $('rerender').onclick = () => touched();
+$('mode').onclick = () => setMode(mode === 'promo' ? 'loop' : 'promo');
 
 window.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
   else if (e.code === 'KeyR') touched();
+  else if (e.code === 'KeyP') setMode(mode === 'promo' ? 'loop' : 'promo');
   else if (e.code === 'KeyE') $('exportWav').click();
   else if (/^Digit[123]$/.test(e.code)) {
     const i = +e.code.slice(5) - 1;
