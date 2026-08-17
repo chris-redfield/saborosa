@@ -35,6 +35,7 @@
  */
 const DBG = {
   walk:   'rgba(90,190,255,0.85)',
+  nowalk: 'rgba(255,120,220,0.95)',  // where the player CANNOT stand
   plate:  'rgba(255,120,220,0.9)',
   body:   'rgba(90,190,255,0.95)',
   wind:   'rgba(255,190,60,0.9)',
@@ -63,6 +64,7 @@ class Debug {
 
     const live = all.filter(f => f && !(f.dead && f.downPhase === 'lie'));
     const plate = this._plateInfo(ctx, backdrop, camX);
+    this._noWalk(ctx, stage, camX);
     this._walkable(ctx, stage, camX);
     this._sideBoxes(ctx, live, camX);
 
@@ -74,17 +76,6 @@ class Debug {
 
   /* ===== The plate ======================================================== */
 
-  /**
-   * What the backdrop layer actually paints.
-   *
-   * ⚠️ THE RECT IS CLAMPED INTO VIEW BEFORE BEING DRAWN. The plate is taller
-   * than the canvas (y −30 to 730 against a 0..720 frame), so drawing it
-   * honestly put both horizontal edges off-screen and left two hairlines flush
-   * against the extreme left and right pixels — invisible, and it hid the only
-   * thing worth knowing. The TRUE numbers are printed instead, with a verdict on
-   * whether the plate covers the frame, because a plate that falls short shows
-   * the clear colour through and that is near-impossible to spot against dark art.
-   */
   /**
    * ⚠️ THE PLATE IS THE WHOLE BACKGROUND PICTURE, not the strip above the belt.
    * It is the painted (later filmed) image that fills the entire frame, and the
@@ -142,6 +133,64 @@ class Debug {
       ctx.restore();
     }
     return out;
+  }
+
+  /* ===== The NO-WALK region =============================================== */
+
+  /**
+   * MAGENTA = EVERYWHERE THE PLAYER CANNOT STAND. The complement of the
+   * walkable band within the frame: the strip above the belt, the strip below
+   * it, and anything outside the segment's walls.
+   *
+   * This is what the magenta is FOR. It used to outline the backdrop plate,
+   * which was the whole canvas and therefore said nothing. Marking the forbidden
+   * region instead makes the belt's size directly negotiable by eye — you can
+   * look at a band and say "eat 100px of that into the belt", and the labels
+   * name the exact knob that does it.
+   *
+   * ⚠️ THE TWO BANDS ARE GOVERNED BY DIFFERENT NUMBERS, which is why they are
+   * labelled separately rather than as one "no-walk" area:
+   *
+   *     top band     ends at  beltTopY                  — LOWER beltTopY to eat it
+   *     bottom band  starts at beltTopY + beltDepth     — RAISE beltDepth to eat it
+   *
+   * So "make the belt 100px taller" is two different edits depending on which
+   * edge is meant to move, and this makes which one obvious before the change
+   * rather than after.
+   *
+   * Drawn with an even-odd fill — the whole canvas, minus the walkable rect —
+   * so the two can never disagree about where the boundary is.
+   */
+  _noWalk(ctx, stage, camX) {
+    const b = stage.bounds();
+    const x0 = Debug.sx(b.minX, camX), x1 = Debug.sx(b.maxX, camX);
+    const y0 = Debug.sy(0), y1 = Debug.sy(CONFIG.beltDepth);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.fillStyle = 'rgba(255,120,220,0.20)';
+    ctx.fill('evenodd');
+
+    ctx.strokeStyle = DBG.nowalk;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, y0); ctx.lineTo(CONFIG.GAME_W, y0);
+    ctx.moveTo(0, y1); ctx.lineTo(CONFIG.GAME_W, y1);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // The measurements, at the edge each one governs.
+    ctx.fillStyle = DBG.nowalk;
+    ctx.fillText(`NO-WALK  ${Math.round(y0)}px tall  ` +
+                 `— beltTopY ${CONFIG.beltTopY}, lower it to eat into this`,
+                 12, Math.max(2, y0 - 15));
+    const below = CONFIG.GAME_H - y1;
+    ctx.fillText(`NO-WALK  ${Math.round(below)}px tall  ` +
+                 `— beltDepth ${CONFIG.beltDepth}, raise it to eat into this`,
+                 12, y1 + 6);
+    ctx.restore();
   }
 
   /* ===== The walkable region ============================================== */
@@ -395,7 +444,8 @@ class Debug {
 
   _legend(ctx, stage, plate) {
     const lines = [
-      ['walkable area / walls', DBG.walk],
+      ['walkable belt', DBG.walk],
+      ['NO-WALK — player blocked', DBG.nowalk],
       ['hurtbox — footprint on floor', DBG.body],
       ['i-frames: cannot be hit', DBG.iframe],
       ['attack: winding up, no box', DBG.wind],
