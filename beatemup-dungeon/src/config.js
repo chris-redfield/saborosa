@@ -12,10 +12,10 @@ const CONFIG = {
   /* The MAIN GAME's assets — the character packs live here, and we read them
      rather than copying them, so a re-run of tools/build-character-defs.py
      updates both games at once. */
-  ASSET_BASE: './assets/',
+  ASSET_BASE: '../assets/',
   /* The masters folder — the infinite dungeon floor tile is in here and has no
      packed copy in assets/. */
-  ASSET_V2_BASE: './assets-v2/',
+  ASSET_V2_BASE: '../assets-v2/',
   /* Controller mapping: the MAIN GAME's own file, not a copy — a pad set up
      once in tools/gamepad-mapper.html works in all three games and there is no
      second copy to drift. Optional; input.js keeps standard-layout defaults if
