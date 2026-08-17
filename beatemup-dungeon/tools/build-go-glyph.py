@@ -8,22 +8,22 @@ intro's pointing hand came off. It holds the whole game's hand-lettered UI
 vocabulary twice over: a WHITE-FILL version on the left half and a YELLOW-FILL
 version on the right.
 
-    MISTER EGG          MISTER EGG
-    ☞ -START            ☞ -START
-    👍 -OPTIONS         👍 -OPTIONS
-       GO!                 GO!          <- this one
-    VOLUME -OFF -ON     VOLUME -OFF -ON
-    THE END             THE END
-    SABOROSA            SABOROSA
+    MISTER EGG               MISTER EGG
+    (hand) -START            (hand) -START
+    (thumb) -OPTIONS         (thumb) -OPTIONS
+            GO!                      GO!        <- this one
+    VOLUME -OFF -ON          VOLUME -OFF -ON
+    THE END                  THE END
+    SABOROSA                 SABOROSA
 
-⚠️ THE CROP IS FOUND, NOT HARD-CODED. The bbox below is derived by projection —
+THE CROP IS FOUND, NOT HARD-CODED. The bbox below is derived by projection —
 content rows in the yellow half, then content columns inside the band, then the
 tight box of the run that GO! occupies. Hard-coded pixel coordinates off a
 5994px master are exactly the kind of thing that silently cuts half a glyph when
 the art is re-exported, which is the fire-sheet lesson recorded in the main
 README. The numbers are printed on every run so a change is visible.
 
-⚠️ BOTH FILLS ARE CUT, from the SAME box. The white version is the left half's
+BOTH FILLS ARE CUT, from the SAME box. The white version is the left half's
 copy at the identical offset, so the two are pixel-aligned and can be
 crossfaded — the trick the SABOROSA letters already use for their yellow/white
 flicker. The beat 'em up only draws the yellow one today; the white is built so
