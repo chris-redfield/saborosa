@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Saborosa — Beat 'em up</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #game { display: block; position: absolute; top: 50%; left: 50%;
+          transform: translate(-50%, -50%); background: #0b0714; }
+  /* Starts at zero width and is hidden by script once loading finishes. Same
+     lesson as the flying dungeon's: nothing may paint until the script has
+     decided it should, or itch shows a flash of dev furniture in the corner
+     before the game appears. */
+  #bar  { position: absolute; left: 0; top: 0; height: 4px; width: 0;
+          background: #f2d94c; transition: width .1s; z-index: 2; }
+  #help { position: absolute; left: 12px; bottom: 10px; z-index: 3;
+          color: #cfe; font: 12px/1.5 monospace; opacity: .55;
+          text-shadow: 0 1px 2px #000; pointer-events: none; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="bar"></div>
+  <div id="help">
+    ARROWS / WASD &nbsp;move &nbsp;·&nbsp; J / Z / SPACE &nbsp;punch (tap again to combo)
+    &nbsp;·&nbsp; K / X &nbsp;jump &nbsp;·&nbsp; hold C &nbsp;boxes
+  </div>
+
+  <!--
+    Load order matters (plain globals, like the main Saborosa game and the
+    flying dungeon).
+
+    Written out by script rather than as plain tags so each file can carry a
+    cache-busting ?v=. Twice in the flying dungeon a change landed in source and
+    dist and STILL threw "x is not a function" in the browser, because it was
+    running a cached copy of a file whose URL had not changed — which looks
+    exactly like a bug in the new code and wastes a debugging session proving it
+    isn't. src/ is tiny against the art, so never caching it costs nothing.
+
+    `async = false` is what preserves execution ORDER for scripts inserted this
+    way — without it these run in whatever order they finish downloading and the
+    globals are not defined when game.js goes looking for them.
+
+    ⚠️ A NEW src/*.js FILE MUST BE ADDED TO THIS LIST.
+  -->
+  <script>
+  (function () {
+    var files = [
+      'config', 'assets', 'input', 'sheets', 'backdrop',
+      'fighter', 'player', 'enemy', 'fly-boss', 'combat', 'stage',
+      'life-bar', 'hud', 'debug', 'game',
+    ];
+    var v = Date.now();
+    for (var i = 0; i < files.length; i++) {
+      var s = document.createElement('script');
+      s.src = 'src/' + files[i] + '.js?v=' + v;
+      s.async = false;             // keep load order — see above
+      document.head.appendChild(s);
+    }
+  })();
+  </script>
+</body>
+</html>
