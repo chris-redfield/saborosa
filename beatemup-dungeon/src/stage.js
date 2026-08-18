@@ -146,7 +146,9 @@ class Stage {
       this.index++;
       this.spawned = false;
       this.lockX = null;
-      this.banner = 1.6;                // the arrow that says "this way"
+      // The arrow that says "this way". Length is CONFIG.goMs, with everything
+      // else about the prompt; the fade out is the tail of it, not extra.
+      this.banner = (CONFIG.goMs || 1600) / 1000;
       const r = this._enter(player, crowd);
       return r || 'advance';
     }
@@ -162,16 +164,27 @@ class Stage {
   _spawn(seg, crowd) {
     crowd.clear();
     for (const e of seg.enemies || []) {
-      /* ENEMIES ARE PLACED OFF THE RIGHT-HAND EDGE AND WALK IN, rather than
-         appearing at the spot they will fight from. A fighter that materialises
-         in front of the player reads as a bug even when it is the design, and
-         the walk-in also gives the player the beat they need to see how many
-         are coming and where from. Their configured x is where they head FOR;
-         the entry delay staggers them so a group does not arrive as a wall. */
-      const fromX = this.camX + CONFIG.GAME_W + 70;
+      /* ENEMIES ARE PLACED OFF SCREEN AND WALK IN, rather than appearing at the
+         spot they will fight from. A fighter that materialises in front of the
+         player reads as a bug even when it is the design, and the walk-in also
+         gives the player the beat they need to see how many are coming and
+         where from. Their configured x is where they head FOR; the entry delay
+         staggers them so a group does not arrive as a wall.
+
+         `from: 'behind'` BRINGS ONE IN FROM THE LEFT INSTEAD -- out of the
+         ground the player has already cleared, which is the one direction they
+         are not watching. Everything else follows for free: the walk-in already
+         steers toward `entryX` and takes its facing from the direction it
+         walks, so an enemy placed to the left arrives walking and facing right
+         without a special case. Only its starting side and its first-frame
+         facing are set here. */
+      const behind = e.from === 'behind';
+      const fromX = behind ? this.camX - 70
+                           : this.camX + CONFIG.GAME_W + 70;
       const en = new Enemy(e.kind, fromX, e.z, {
         delayMs: e.delayMs || 0,
         entryX: e.x,          // the spot it walks IN to before it starts fighting
+        facing: behind ? 'right' : 'left',
       });
       crowd.add(en);
     }

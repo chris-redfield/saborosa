@@ -13,10 +13,11 @@ Inspect it:  node tools/build-manifest.js --list
 ```
 
 Controls: **arrows/WASD** move · **J / Z / Space** punch (tap again to combo) ·
-**K / X** jump · **hold C** debug.
+**K / X** jump · **L / E** pick up · **hold C** debug.
 
-On a pad: **A** (bottom face) jump · **X** (left face) punch · **d-pad / left
-stick** move · any button dismisses an end screen. The mapping is the main
+On a pad: **A** (bottom face) jump · **X** (left face) punch · **B** (right
+face) pick up · **d-pad / left stick** move · any button dismisses an end
+screen. The mapping is the main
 game's own `assets/gamepad-mapping.json`, shared and not copied — but it names
 no `jump`, because the main game has none. `applyMapping` puts jump on the first
 free button and **tries 0 first on purpose**, so it lands on A rather than
@@ -108,6 +109,13 @@ to 285px because an extended arm is wider than a guard, so centring on the bbox
 drags the body sideways on every punch. Each frame stores a point read off the
 coconut BODY — horizontal centroid, body's lowest row as the ground line.
 
+⚠️ **That lowest row means a RUN of body, not one matching pixel.** The arm's
+antialiased edge passes through colours within tolerance of the body tan — one
+pixel per row — and taking the lowest of those put the ground-pickup anchor 34px
+low, at the tip of the reaching arm, drawing the coconut suspended off its own
+hand. `BODY_MIN_RUN` in the cutter; the real body has 8-51 pixels a row against
+the noise's 1, so it is not a tuned number.
+
 ⚠️ **A knocked-down fighter is rotated ONLY if its pack has no knockdown art.**
 The grid packs have none, so the flattened carry pose gets tipped on its back.
 The coconut has real falling and dying rows; rotating those tips a body that is
@@ -191,6 +199,16 @@ connect = overlap in x  AND  overlap in z
 | combo3 | 70 | 80 | 100 | 250 | 6 | 79 | ±33 |
 | combo4 | 55 | 70 | 85 | 240 | 4 | 72 | ±33 |
 | combo5 | 110 | 100 | 240 | — | 9 | 85 | ±37 |
+
+⚠️ **THE FINISHER ALTERNATES, off the same button.** Row 6 is the same string
+as row 5 through hit four and ends in a LOW LUNGING PUNCH instead of the
+uppercut, so the two combos are one move with two endings. Chains intercalate —
+uppercut, low punch, uppercut — and the player never chooses. `CONFIG.COMBO`
+holds the shared hits, `COMBO_ALT_FINISH` the other ending, and
+`Player._comboDefs()` flips ONLY when a chain begins, so a finisher cannot
+change out from under a combo in progress. Both do 9 damage: alternating is a
+look, not a rotation to track, and an ending that hit harder would make mashing
+optimal on every other chain.
 
 **FIVE HITS, because the coconut's own sheet has five.** The old three were
 faked out of the main game's lift-and-throw poses. Hit 3 is the leaning punch
@@ -419,13 +437,16 @@ reader is the shape to look for.
 - **Villain sheets.** TOM, JUIXY and ERKPA are still the main game's 9×5 packs
   read as punches. Until they are redrawn, `sheets.js` has to carry two formats
   and the grid path cannot go.
-- **Cut but unwired, waiting on a decision or a mechanic.** `airPunch` (row 4)
-  has no jump-attack state. `comboLow` (row 6) is the same five-hit string
-  ending in a low punch instead of the uppercut — which finisher the player gets,
-  and how they pick, is undecided. `lift` / `liftThrow` / `pickGround` /
-  `carryWalk` (rows 7-10) are a complete pickup loop and this game has no
-  liftable objects at all. All are cut, named and mapped in `POSE_RAGGED`, so
-  each is a wiring job rather than a trip back to the illustrator.
+- **The lift mechanic is HALF WIRED.** The button exists (L/E, pad B), the
+  `pickup` state exists, and BOTH animations are wired and chosen by weight —
+  `pickGround` (row 9, a stoop) for a light thing, `lift` (row 7, a hoist) for a
+  barrel. What does not exist is anything to pick up. `Player._liftTargetHeavy()`
+  is the entire seam: it returns false, so the stoop always plays. Objects,
+  carrying (`carryWalk`, row 10) and throwing (`liftThrow`, row 8) are still to
+  do.
+- **Cut but unwired.** `airPunch` (row 4) has no jump-attack state. It is cut,
+  named and mapped in `POSE_RAGGED`, so it is a wiring job rather than a trip
+  back to the illustrator.
 - **No sound at all.** The flying dungeon's `sound.js` is the model.
 - **`Escape`/`P` are captured but do nothing** — `takePause()` exists, no pause
   state does.

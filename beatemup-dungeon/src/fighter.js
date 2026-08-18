@@ -65,6 +65,12 @@ class Fighter {
     this.launch = 0;           // apex of the current knockdown arc
     this.jumping = false;
     this.jumpT = 0;
+    /* The live pick-up: which animation it is playing and how long for. Held
+       on the fighter rather than looked up each frame, because WHICH pose a
+       pick-up uses is decided once, from the object, at the moment it starts --
+       see pickup(). */
+    this.pickupPose = 'pickGround';
+    this.pickupMs = 0;
     // Time left holding the landing frame after the arc ends. See
     // CONFIG.jumpLandHoldMs -- cosmetic only, it blocks nothing.
     this.landHoldT = 0;
@@ -90,7 +96,7 @@ class Fighter {
   /** Can it start a new action this frame? */
   canAct() {
     return !this.dead && this.state !== 'hurt' && this.state !== 'down'
-      && this.state !== 'enter' && !this.atk;
+      && this.state !== 'enter' && this.state !== 'pickup' && !this.atk;
   }
 
   /** Can it be hit? i-frames run for the whole of hurt AND the whole knockdown,
@@ -134,6 +140,29 @@ class Fighter {
     this.state = 'attack';
     this.step = 0;
     this.animT = 0;
+    return true;
+  }
+
+  /**
+   * Reach for something. ONE BUTTON, TWO ANIMATIONS, and the object chooses.
+   *
+   * A light thing on the floor is taken with a stoop (`pickGround`, row 9). A
+   * barrel or anything heavy is hoisted from in front of the body instead
+   * (`lift`, row 7) -- a different drawing for a different weight, off the same
+   * press. `heavy` comes from whatever is in range; with nothing there at all
+   * the stoop is the default, so the button always does something visible.
+   *
+   * THE POSE IS CHOSEN ONCE, HERE, and not re-derived per frame. If it were
+   * read from the object every frame, an object destroyed or snatched mid-reach
+   * would change the animation halfway through the reach for it.
+   */
+  pickup(heavy) {
+    if (!this.canAct() || this.jumping) return false;
+    const cfg = (CONFIG.PICKUP_MS || {});
+    this.pickupPose = heavy ? 'lift' : 'pickGround';
+    this.pickupMs = (heavy ? cfg.heavy : cfg.ground) || 420;
+    this.state = 'pickup';
+    this.stateT = 0;
     return true;
   }
 
@@ -245,6 +274,10 @@ class Fighter {
       this.stateT = 0;
     }
     if (this.state === 'down') this._updateDown(dt);
+    if (this.state === 'pickup' && this.stateT >= this.pickupMs / 1000) {
+      this.state = 'idle';
+      this.stateT = 0;
+    }
   }
 
   _updateJump(dt) {
@@ -376,6 +409,7 @@ class Fighter {
     if (this.state === 'down') return 'down';
     if (this.state === 'hurt') return 'hurt';
     if (this.atk) return this.atk.def.pose;
+    if (this.state === 'pickup') return this.pickupPose;
     /* IN THE AIR, BUT BELOW THE ATTACK — punching while jumping draws the
        punch, because that is the thing with a hitbox on it.
 
@@ -426,6 +460,15 @@ class Fighter {
     if (p === 'jump') {
       if (!this.jumping) return n - 1;      // the landing hold
       const t = Math.min(1, this.jumpT / (CONFIG.jumpMs / 1000));
+      return Math.min(n - 1, Math.floor(t * n));
+    }
+
+    /* The pick-up spreads its frames across the ACTION, like the jump does
+       across its arc, rather than running at a fixed rate. The action length is
+       what the player feels; a fixed rate would either finish the drawing early
+       and hold, or still be reaching when control came back. */
+    if (p === 'pickGround' || p === 'lift') {
+      const t = Math.min(1, this.stateT / ((this.pickupMs || 420) / 1000));
       return Math.min(n - 1, Math.floor(t * n));
     }
 

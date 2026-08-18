@@ -23,7 +23,10 @@ class Enemy extends Fighter {
     const o = opts || {};
     super(kind, x, z, {
       hp: (CONFIG.enemyHealth && CONFIG.enemyHealth[kind]) || 40,
-      facing: 'left',
+      // Which way it is drawn on its FIRST frame. The walk-in overwrites this
+      // as soon as it moves; it matters only for one that spawns from behind,
+      // which would otherwise flash facing away from the player as it appears.
+      facing: o.facing || 'left',
     });
     this.ai = 'enter';
     this.aiT = 0;

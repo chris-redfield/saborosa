@@ -79,6 +79,10 @@ NATIVE = 'right'
 # body (192,168,144) tan, arms (240,216,48) yellow, skirt white, neck red.
 BODY_RGB   = (192, 168, 144)
 BODY_TOL   = 40
+# How many body-coloured pixels a row needs before it counts as the body.
+# NOT a tuning constant -- it is the difference between a stoop and a handstand.
+# See anchor().
+BODY_MIN_RUN = 6
 
 # (name, human row number, expected frame count). The illustrator's list.
 ROWS = [
@@ -121,6 +125,21 @@ def runs(flags, gap):
 def anchor(tile):
     """Ground point inside a tile: body centroid x, body bottom y.
 
+    THE BOTTOM IS THE LOWEST ROW WITH A REAL RUN OF BODY IN IT, not the lowest
+    body-coloured pixel, and that distinction is the whole function.
+
+    Where the yellow arm meets its black outline the art antialiases through
+    colours that sit within tolerance of the body tan. They are single pixels --
+    literally one per row -- but "lowest matching pixel" cannot tell them from
+    a body, so on the ground-pickup frame the bottom came out 34px below the
+    real body, at the tip of the reaching arm. Planted on the floor line, that
+    drew the coconut hanging in the air off its own hand: a handstand.
+
+    Requiring BODY_MIN_RUN pixels in a row ignores the strays and needs no
+    tuning -- the real body has 8 to 51 pixels per row where the noise has 1.
+    Rows below the bottom are then dropped from the centroid too, so a stray
+    cannot pull the horizontal anchor sideways either.
+
     Falls back to the whole silhouette if no body pixels are found, so a frame
     drawn in an unexpected palette still lands somewhere sane instead of at 0,0.
     """
@@ -130,8 +149,16 @@ def anchor(tile):
     body = opaque & (d < BODY_TOL * 3)
     if body.sum() < 40:
         body = opaque
+
+    per_row = body.sum(axis=1)
+    solid = np.nonzero(per_row >= BODY_MIN_RUN)[0]
+    if not len(solid):                      # a very small body: take what there is
+        solid = np.nonzero(per_row > 0)[0]
+    bottom = int(solid.max()) + 1
+
+    body[bottom:] = False
     ys, xs = np.nonzero(body)
-    return float(xs.mean()), float(ys.max() + 1)
+    return float(xs.mean()), float(bottom)
 
 
 def main():

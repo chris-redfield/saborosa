@@ -85,6 +85,31 @@ Looping poses (idle, walk) run off a free-running clock and wrap. One-shot
 poses (hurt, down, death) play forward once and **hold the last frame** —
 holding matters, or a death would loop and resurrect the corpse every second.
 
+**Picking up** spreads its frames across the action rather than running at a
+fixed rate, so the drawing always fills exactly the time the player is committed
+for. One button, two animations, and the OBJECT chooses which:
+
+```js
+PICKUP_MS: { ground: 420, heavy: 640 },
+```
+
+`ground` is the stoop (row 9, 2 frames); `heavy` is the hoist from in front
+(row 7, 4 frames). Changing the number changes both the commitment and the
+animation length together. Which one plays comes from
+`Player._liftTargetHeavy()` — there are no liftable objects yet, so it is always
+the stoop.
+
+**The GO prompt** — the arrow shown when an arena clears and the way forward
+opens:
+
+```js
+goMs: 2600,      // total time on screen
+goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
+```
+
+So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
+place, size, bob and fade are the other `go*` knobs in the same block.
+
 **After you die**, the death row plays out and then *holds*, before the game
 will accept a restart or fade up the DOWN card:
 
@@ -140,6 +165,25 @@ Changing them changes the fight:
 
 Current string: 5 hits, 210 / 210 / 250 / 210 / 450ms, **1330ms** uncancelled.
 
+**The two combos intercalate off one button.** Both rows are the same string
+through hit four — the same drawings — and differ only in the finisher, so
+`CONFIG.COMBO` holds the shared hits and `CONFIG.COMBO_ALT_FINISH` replaces the
+last one on alternate chains:
+
+```
+chain 1   ... -> combo5     the uppercut, launches
+chain 2   ... -> comboLow5  the low lunging punch, shoves down the belt
+chain 3   ... -> combo5     and so on
+```
+
+The flip happens in `Player._comboDefs()` and **only when a chain begins**, so
+a finisher can never change mid-combo. A chain broken by a hit still alternates,
+which is what stops it settling back into one drawing when a fight goes badly.
+
+**Both endings do the same damage on purpose.** Alternating is a look, not a
+rotation to track — if one ending hit harder the string would become worth
+counting, and mashing would be optimal on every other chain.
+
 ---
 
 ## How hard everyone hits
@@ -194,10 +238,10 @@ The illustrator's rows, 1-indexed as delivered:
 | 3 | pulando | 6 | `jump` |
 | 4 | pulando e socando | 7 | `airPunch` — **cut, not wired** |
 | 5 | combo 1 | 10 | `combo` — 5 hits, ends in the **uppercut** |
-| 6 | combo 2 | 10 | `comboLow` — same 5 hits, ends in a low punch. **Cut, not wired** |
-| 7 | levanta objeto | 4 | `lift` — **cut, not wired** |
+| 6 | combo 2 | 10 | `comboLow` — same 5 hits, ends in a low punch. **Wired**, alternates |
+| 7 | levanta objeto | 4 | `lift` — the heavy hoist, **wired** to pickup |
 | 8 | levanta e joga | 5 | `liftThrow` — **cut, not wired** |
-| 9 | pega do chao | 2 | `pickGround` — **cut, not wired** |
+| 9 | pega do chao | 2 | `pickGround` — the stoop, **wired** to pickup (default) |
 | 10 | carregando e andando | 5 | `carryWalk` — **cut, not wired** |
 | 11 | apanhando 1 | 2 | `hurt` |
 | 12 | apanhando e caindo | 6 | `down` |
@@ -218,6 +262,15 @@ arms): horizontal centroid, and the body's lowest row as the ground line. Centre
 a ragged frame on its bbox and an extended arm drags the centre toward the
 punch, so the body wobbles away from it on every hit.
 
+**The body's bottom is the lowest row with a RUN of body in it**, not the lowest
+body-coloured pixel — `BODY_MIN_RUN` in the cutter. Where the yellow arm meets
+its black outline the art antialiases through colours within tolerance of the
+body tan; they are single pixels, one per row, but "lowest matching pixel"
+cannot tell them from a body. On the ground-pickup frame that put the anchor
+34px low, at the tip of the reaching arm, and the coconut was drawn hanging in
+the air off its own hand — a handstand. The real body has 8 to 51 pixels a row
+where the noise has 1, so the rule needs no tuning.
+
 **Which way the art faces is recorded in the defs, not assumed in code.** This
 sheet is drawn facing **right**; the main game's packs face **left**. Each pack
 declares `native` and the draw flip is "not that side". Getting this wrong does
@@ -226,18 +279,21 @@ direction it is moving.
 
 ### Wiring a cut-but-unused row
 
-The pickup rows and the low-punch finisher are cut and named but have no
-mechanic behind them. To wire one, it is a `POSE_RAGGED` entry (already there)
-plus whatever state drives it. For example the alternate finisher is a one-line
-swap in `COMBO`:
+`airPunch` (row 4), `liftThrow` (row 8) and `carryWalk` (row 10) are cut and
+named but have no mechanic behind them. To wire one it is a `POSE_RAGGED` entry
+(already there) plus whatever state drives it.
+
+**The lift mechanic is half wired.** The button (L/E, pad B), the `pickup` state
+and both animations are in; what is missing is anything to pick up. The whole
+seam is one method:
 
 ```js
-{ pose: 'combo5',    ... }   // uppercut, launches   <- current
-{ pose: 'comboLow5', ... }   // low lunging punch
+// player.js -- returns false today, so the stoop always plays
+_liftTargetHeavy() { return false; }
 ```
 
-`lift` / `liftThrow` / `pickGround` / `carryWalk` need an actual liftable-object
-entity first — there are none in this game yet.
+Give it something to find and the hoist starts appearing on its own. Carrying
+and throwing still need `carryWalk` and `liftThrow` wired on top.
 
 ---
 

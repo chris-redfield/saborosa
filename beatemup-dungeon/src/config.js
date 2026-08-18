@@ -225,20 +225,44 @@ const CONFIG = {
      because it is derived. */
   SEGMENTS: [
     { kind: 'scroll', toX: 900 },          // camera ends ≈ 230; view ≈ 230..1510
+    /* THE FIRST WAVE TEACHES THAT THE BELT HAS TWO ENDS. Two walk in from the
+       front, and then TOM comes in from BEHIND -- out of the ground the player
+       has already walked over, which is the one direction they have had no
+       reason to watch. His delay is long on purpose: the player commits to the
+       two in front first, and the third arrives once they have turned their
+       back on the way they came. It is the cheapest lesson in the genre and
+       the first arena is the place to teach it, while a mistake costs almost
+       nothing. */
     {
       kind: 'arena',
       enemies: [
-        { kind: 'tomato',  x: 1080, z: 60 },
-        { kind: 'laranja', x: 1240, z: 150, delayMs: 700 },
+        { kind: 'eggplant', x: 1080, z: 60 },
+        { kind: 'laranja',  x: 1240, z: 150, delayMs: 700 },
+        { kind: 'tomato',   x: 1010, z: 110, delayMs: 1800, from: 'behind' },
       ],
     },
     { kind: 'scroll', toX: 2100 },         // camera ends ≈ 1430; view ≈ 1430..2710
+    /* THE SECOND WAVE IS THE FIRST ONE THAT DOES NOT END WHERE IT LOOKS LIKE IT
+       WILL. Three walk in from the front and read as the whole fight; then, five
+       seconds after the last of them has arrived, a SECOND ERKPA comes in from
+       the left, and three seconds after that a second JUIXY behind him.
+
+       The reinforcements come from the left for the same reason TOM does in the
+       first arena -- it is the direction the player has stopped watching -- but
+       here the lesson has teeth, because by then they are committed to a fight
+       and cannot simply back off the way they came.
+
+       All `delayMs` are measured from the moment the ARENA STARTS, so the
+       later two are 1400 + 5000 and then + 3000. Change the reference and both
+       want moving together. */
     {
       kind: 'arena',
       enemies: [
         { kind: 'laranja',  x: 2280, z: 40 },
         { kind: 'tomato',   x: 2450, z: 120, delayMs: 500 },
         { kind: 'eggplant', x: 2360, z: 175, delayMs: 1400 },
+        { kind: 'eggplant', x: 2200, z: 90,  delayMs: 6400, from: 'behind' },
+        { kind: 'laranja',  x: 2240, z: 160, delayMs: 9400, from: 'behind' },
       ],
     },
     { kind: 'scroll', toX: 3300 },
@@ -403,6 +427,23 @@ const CONFIG = {
      row was drawn for is not spent behind a piece of UI. */
   deathHoldMs: 1000,
 
+  /* How long a pick-up takes, in ms, by weight. ONE BUTTON, TWO ANIMATIONS --
+     the object decides which, not the player:
+
+       ground  a light thing off the floor, taken with a stoop  (row 9)
+       heavy   a barrel or the like, hoisted from in front      (row 7)
+
+     These are also the ANIMATION lengths: the rows spread their frames across
+     the action rather than running at a fixed rate, so the drawing always fills
+     exactly the time the player is committed for. Change one and the other
+     follows.
+
+     Heavy is longer because it looks longer -- four frames of hoisting against
+     two of stooping -- and because a barrel should cost more to pick up than a
+     bottle. It is the only difference between them today; when there are real
+     objects it is the natural place to hang a weight penalty. */
+  PICKUP_MS: { ground: 420, heavy: 640 },
+
   /* Drawn height of a fighter, in the fixed 1280x720 canvas — NOT a fraction
      of it. A fighter is sized against the belt and the other fighters, all of
      which are in canvas px, rather than being something that should grow with
@@ -538,6 +579,29 @@ const CONFIG = {
       damage: 9, reachX: 118 * BODY_SCALE, reachZ: 52 * BODY_SCALE, knockback: 320,
       lift: 190 * BODY_SCALE, knockdown: true },
   ],
+
+  /* THE ALTERNATE FINISHER. Row 6 is the same five-hit string as row 5 through
+     hit four -- literally the same drawings -- and then ends in a LOW LUNGING
+     PUNCH instead of the uppercut. So the two combos are not two moves; they
+     are one move with two endings, and this is the ending.
+
+     THE PLAYER PRESSES THE SAME BUTTON AND NEVER CHOOSES. Chains alternate:
+     the first string ends in the uppercut, the next in this, and so on. Both
+     drawings get used, the combo stops looking like a loop, and there is
+     nothing new to learn -- see Player._comboDefs().
+
+     IT DOES THE SAME 9 DAMAGE, deliberately. Alternating is a LOOK, not a
+     rotation the player has to track: if one ending hit harder, the string
+     would become worth counting, and mashing would silently become optimal on
+     every other chain. What differs is the shape of the blow -- no `lift`,
+     because the fist drives forward and down rather than up, so this one shoves
+     the target down the belt instead of launching it, and reaches slightly
+     further for the lunge. */
+  COMBO_ALT_FINISH: {
+    pose: 'comboLow5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
+    damage: 9, reachX: 124 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 420,
+    lift: 0, knockdown: true,
+  },
 
   /* HITSTOP — both fighters freeze for a moment on a connect. It is the single
      cheapest piece of juice in the genre and the one most responsible for a
@@ -809,7 +873,19 @@ const CONFIG = {
   goMarginRight: 60,
   goBobFreq: 9,           // rad/sec
   goBobAmp: 8,            // px of horizontal nudge
-  goFadeMs: 400,          // the fade as it leaves
+
+  /* How long the prompt is up for, in ms, from the moment an arena clears.
+
+     THE FADE IS INSIDE THIS, NOT ADDED TO IT: the last `goFadeMs` of the span
+     is the fade-out, so the prompt is at full strength for goMs - goFadeMs and
+     then leaves. Raising goMs buys solid time, not fade.
+
+     It lived as a bare `1.6` in stage.js while everything else about the
+     prompt -- its place, its size, its bob, its fade -- was already a knob
+     here, so the one number anyone actually wants to change was the one that
+     took a code edit. */
+  goMs: 2600,
+  goFadeMs: 400,          // the fade as it leaves; part of goMs, not extra
 
   // --- Debug ---------------------------------------------------------------
   /* Hold C: draw the boxes. Same key as the other two games, deliberately —

@@ -27,6 +27,7 @@ class Input {
     this._attackQueued = false;
     this._jumpQueued = false;
     this._pauseQueued = false;
+    this._pickupQueued = false;
     this._anyPress = false;
 
     this._kb = { left: false, right: false, up: false, down: false };
@@ -61,6 +62,8 @@ class Input {
         e.preventDefault(); this._attackQueued = true; this._anyPress = true;
       } else if (e.code === 'KeyK' || e.code === 'KeyX') {
         e.preventDefault(); this._jumpQueued = true; this._anyPress = true;
+      } else if (e.code === 'KeyL' || e.code === 'KeyE') {
+        e.preventDefault(); this._pickupQueued = true; this._anyPress = true;
       } else if (e.code === 'KeyC') { this.debug = true; }
       else if (e.code === 'Escape' || e.code === 'KeyP') { this._pauseQueued = true; }
       else { this._anyPress = true; }
@@ -84,19 +87,23 @@ class Input {
      (it is what the main game does), but it means a different pad wants its own
      mapping re-authored rather than expecting the shipped one to fit.
 
-     ONE THING IS MERGED BACK: `jump`. The main game has no jump action, so a
-     mapping authored over there names no button for it, and a straight replace
-     would leave this game unable to jump on a pad that works fine everywhere
-     else. If the loaded map binds no `jump`, it is put on the first button the
-     map has left free.
+     TWO ACTIONS ARE MERGED BACK: `jump` and `pickup`. The main game has
+     neither, so a mapping authored over there names no button for them, and a
+     straight replace would leave this game unable to jump or pick anything up
+     on a pad that works fine everywhere else. Each is put on the first button
+     the map has left free, in its own order of preference.
 
-     THE ORDER OF THAT SEARCH IS THE BINDING, so it is a preference and not an
-     implementation detail. Button 0 -- the BOTTOM face button, A on a standard
-     pad -- is tried first because that is where every player reaches for jump,
-     and it is the first button anyone presses when they pick up a controller.
-     The search used to start at 1, which put jump on B and left A doing
-     nothing at all; the shipped mapping binds neither, so the arbitrary order
-     was the whole difference. */
+     THOSE ORDERS ARE THE BINDING, so they are a preference and not an
+     implementation detail:
+
+       jump    0 first -- the BOTTOM face button, A on a standard pad. That is
+               where every player reaches for jump, and it is the first button
+               anyone presses when they pick up a controller.
+       pickup  1 first -- the RIGHT face button, B. Asked for by name.
+
+     The jump search used to start at 1, which put jump on B and left A doing
+     nothing at all. The shipped mapping binds neither button, so the arbitrary
+     order was the whole difference. */
   applyMapping(cfg) {
     if (!cfg) return;
     if (typeof cfg.deadzone === 'number') this.deadzone = cfg.deadzone;
@@ -114,9 +121,10 @@ class Input {
       for (const [act, idx] of Object.entries(cfg.buttons)) map[idx] = act;
     }
     if (!Object.keys(map).length) return;
-    if (!Object.values(map).includes('jump')) {
-      for (const b of [0, 1, 2, 3]) {
-        if (map[b] === undefined) { map[b] = 'jump'; break; }
+    for (const [act, prefer] of [['jump', [0, 1, 2, 3]], ['pickup', [1, 3, 2, 0]]]) {
+      if (Object.values(map).includes(act)) continue;
+      for (const b of prefer) {
+        if (map[b] === undefined) { map[b] = act; break; }
       }
     }
     this.padMap = map;
@@ -164,6 +172,7 @@ class Input {
           this._anyPress = true;
           if (act === 'lift') this._attackQueued = true;
           else if (act === 'jump') this._jumpQueued = true;
+          else if (act === 'pickup') this._pickupQueued = true;
         }
         this._padPrev[i] = down;
         if (!down) continue;
@@ -188,12 +197,14 @@ class Input {
   // still come out when the world resumes.
   takeAttack() { const a = this._attackQueued; this._attackQueued = false; return a; }
   takeJump() { const j = this._jumpQueued; this._jumpQueued = false; return j; }
+  takePickup() { const p = this._pickupQueued; this._pickupQueued = false; return p; }
   takePause() { const p = this._pauseQueued; this._pauseQueued = false; return p; }
   takeAnyPress() { const a = this._anyPress; this._anyPress = false; return a; }
 
   /** Drop anything queued — used when a screen changes, so a key pressed on the
       way out of one state does not act on the state it lands in. */
   flush() {
-    this._attackQueued = this._jumpQueued = this._pauseQueued = this._anyPress = false;
+    this._attackQueued = this._jumpQueued = this._pickupQueued = false;
+    this._pauseQueued = this._anyPress = false;
   }
 }
