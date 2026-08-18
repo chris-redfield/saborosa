@@ -393,6 +393,16 @@ const CONFIG = {
      rather than as being stuck. */
   jumpLandHoldMs: 150,
 
+  /* How long the final frame of the death row is held BEFORE the game will
+     accept a restart, in ms, on top of the row playing out (8 frames x 130ms).
+
+     THIS IS NOT PADDING. A player who dies is almost always mid-mash, so
+     without it the first press lands a heartbeat after the animation ends and
+     the death is gone before it registers -- you know you lost, but not how.
+     The DOWN card is held back for the same span, so the one moment the death
+     row was drawn for is not spent behind a piece of UI. */
+  deathHoldMs: 1000,
+
   /* Drawn height of a fighter, in the fixed 1280x720 canvas — NOT a fraction
      of it. A fighter is sized against the belt and the other fighters, all of
      which are in canvas px, rather than being something that should grow with

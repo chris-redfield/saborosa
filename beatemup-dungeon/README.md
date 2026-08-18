@@ -85,6 +85,18 @@ Looping poses (idle, walk) run off a free-running clock and wrap. One-shot
 poses (hurt, down, death) play forward once and **hold the last frame** —
 holding matters, or a death would loop and resurrect the corpse every second.
 
+**After you die**, the death row plays out and then *holds*, before the game
+will accept a restart or fade up the DOWN card:
+
+```js
+deathHoldMs: 1000,   // held on the last frame, on top of the row's 1040ms
+```
+
+A player who dies is almost always mid-mash. Without the hold the first press
+lands a heartbeat after the animation ends, and the death is gone before it
+registers — you know you lost, but not how. Total before anything is accepted:
+**2040ms**.
+
 > **Reading old numbers back:** these were once tuned against a bug. `animT` was
 > advanced twice per frame, so every looping pose ran at DOUBLE the written
 > rate — `walk: 95` really played at 47ms. That is fixed. What is written here

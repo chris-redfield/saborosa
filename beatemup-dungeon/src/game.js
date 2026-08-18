@@ -137,11 +137,13 @@
       if (phase === 'dead') player.tickDeath(dt);
     }
 
-    /* The restart prompt WAITS FOR THE DEATH TO FINISH PLAYING. Otherwise the
-       card fades up over a body that is still falling, and the one moment the
-       death row was drawn for is spent behind a piece of UI. */
-    const deathHold = (phase === 'dead') ? player.deathRemaining(sheets) : 0;
-    if ((phase === 'dead' || phase === 'clear') && deathHold <= 0
+    /* NOTHING IS ACCEPTED UNTIL THE DEATH HAS BEEN SEEN. The row plays out and
+       then holds -- see Fighter.deathWatch. Without the hold the card faded up
+       over a body still falling, and a player mashing as they died restarted
+       the game a heartbeat after the animation ended, so they never found out
+       what happened to them. */
+    const deathLock = (phase === 'dead') ? player.deathLock(sheets) : 0;
+    if ((phase === 'dead' || phase === 'clear') && deathLock <= 0
         && phaseT > 1.2 && input.takeAnyPress()) {
       start();
       return;
@@ -167,9 +169,26 @@
     combat.bossHits(stage.boss, player);
 
     const ev = stage.update(dt, player, crowd);
-    if (ev === 'clear') { phase = 'clear'; phaseT = 0; }
+    if (ev === 'clear') { phase = 'clear'; phaseT = 0; endScreen(); }
 
-    if (player.dead) { phase = 'dead'; phaseT = 0; }
+    if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
+  }
+
+  /**
+   * Entering an end screen: DROP EVERY QUEUED INPUT.
+   *
+   * WITHOUT THIS THE END SCREEN DISMISSES ITSELF. `_anyPress` is set by every
+   * keydown of the whole fight and nothing consumes it -- `takeAnyPress()` is
+   * only ever called here -- so by the time the boss dies the flag has been
+   * true for minutes. The moment the screen's own delay expires the restart
+   * fires, having never been pressed. "press anything" was already satisfied
+   * before it was drawn.
+   *
+   * It also stops the punch that killed the boss from counting as the press
+   * that dismisses the card celebrating it.
+   */
+  function endScreen() {
+    input.flush();
   }
 
   // --- Render --------------------------------------------------------------
@@ -214,11 +233,11 @@
     if (phase === 'clear') {
       hud.drawCard(ctx, ['CLEAR', 'press anything'], Math.min(1, phaseT / 0.6));
     } else if (phase === 'dead') {
-      // Held back until the death row has played; see `deathHold` in loop().
-      // Length comes from the pack, not a literal -- the row is 8 frames today
-      // and a redraw that adds one must not start clipping the card.
-      const t = phaseT - sheets.poseLength(player.kind, 'death')
-                         * (CONFIG.POSE_MS.death / 1000);
+      /* Held back for the whole watch -- the row playing plus the hold after it.
+         Length comes from the pack and the knob, never a literal, so a redraw
+         that adds a frame or a change to deathHoldMs cannot start clipping the
+         card over the death it was moved out of the way of. */
+      const t = player.deathT - player.deathWatch(sheets);
       hud.drawCard(ctx, ['DOWN', 'press anything'], Math.max(0, Math.min(1, t / 0.6)), '#E4463A');
     }
   }

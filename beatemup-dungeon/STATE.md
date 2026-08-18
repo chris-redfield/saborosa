@@ -386,8 +386,24 @@ so no fighters and no HUD were drawn — and the exception escaped `loop()` befo
 scheduling the next frame. One bad radius froze the game. There is now a separate
 `shadowLiftRef` (240) and a clamp.
 
+⚠️ **THE END SCREENS DISMISSED THEMSELVES, and no input was involved.**
+"press anything" was already satisfied before it was drawn. `_anyPress` is set
+by every keydown of the whole fight, and the ONLY consumer is the end screen's
+own `takeAnyPress()` — so by the time the boss died the flag had been true for
+minutes. The instant the screen's delay expired, the restart fired.
+
+`input.flush()` existed for exactly this, with a docstring describing it, and
+was only ever called on entering PLAY. It is now called on entering `clear` and
+`dead` too, via `endScreen()`. The symptom looks like a timer bug and is not one
+— the delay was working perfectly, and the press it was waiting for had been
+queued since the first punch of the level.
+
+It also silently defeated `deathHoldMs`: the death screen held for its full
+2040ms and then dismissed itself anyway.
+
 Both were one-line assumptions that held until something new arrived. Worth
-grepping for others of the same shape.
+grepping for others of the same shape — a flag with many writers and one
+reader is the shape to look for.
 
 ---
 

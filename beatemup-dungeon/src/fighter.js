@@ -340,12 +340,28 @@ class Fighter {
     this.animT += dt;
   }
 
-  /** How long the death row still has to run, in seconds. 0 if it has none. */
-  deathRemaining(sheets) {
+  /**
+   * How long a death should be WATCHED, in seconds: the row playing out, plus
+   * `CONFIG.deathHoldMs` holding on the final frame afterwards.
+   *
+   * THE HOLD IS THE POINT, not padding. The row finishes in about a second,
+   * and a player who dies is usually mid-mash — so the first press after it
+   * ended used to restart the game a heartbeat later, and the death was gone
+   * before it registered as having happened. Nothing is accepted until this
+   * runs out.
+   *
+   * 0 for a pack with no death row, so the grid-pack fighters are unaffected.
+   */
+  deathWatch(sheets) {
     if (!this.dead || !sheets.has(this.kind, 'death')) return 0;
     const n = sheets.poseLength(this.kind, 'death');
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
-    return Math.max(0, n * (ms / 1000) - this.deathT);
+    return n * (ms / 1000) + (CONFIG.deathHoldMs || 0) / 1000;
+  }
+
+  /** Seconds left of that watch. 0 once the death has been seen. */
+  deathLock(sheets) {
+    return Math.max(0, this.deathWatch(sheets) - this.deathT);
   }
 
   /** The pose to draw, derived from state — never stored, so it cannot fall out
