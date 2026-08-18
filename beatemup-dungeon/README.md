@@ -1,0 +1,246 @@
+# Beat 'em up — how to edit it
+
+The knobs, and where they are. `STATE.md` is the design record: what the game
+is and why it is shaped that way. **This file is the opposite** — it assumes you
+know what you want to change and just need the number.
+
+Everything here lives in `src/config.js` unless it says otherwise. Config is
+plain data with no logic, so nothing in it can break by being edited; the worst
+case is a value that reads wrong.
+
+```
+Run it:      serve the repo root, open beatemup-dungeon/index.html
+Debug it:    hold C
+Package it:  ./package.sh   ->  dist/ + beatemup-dungeon-itch.zip
+Inspect it:  node tools/build-manifest.js --list
+```
+
+Reloading is enough to see a config change — `index.html` cache-busts its own
+script tags with `?v=Date.now()`, so there is no stale-JS trap.
+
+---
+
+## How big everyone is
+
+**One number: `BODY_SCALE`, at the very top of `config.js`.**
+
+```js
+const BODY_SCALE = 0.72;   // 0.8 was the original; 0.72 is 10% smaller
+```
+
+Lower it and the whole cast shrinks. It scales everything measured against a
+body — drawn height, hurtbox, every punch's reach and lift, enemy stand-off and
+reach, jump height, ground shadow, floating enemy bars — so a sprite never
+shrinks while the punch it throws stays long.
+
+It deliberately does **not** touch anything measured against the level (belt
+depth, walk speed, camera, knockback) or the player's life bar, which is screen
+furniture rather than a fighter.
+
+> It used to be a literal `* 0.8` written out twenty-odd times with a comment
+> saying "grep it and move them all together". Missing one did not fail — it
+> just made a punch land across a visible gap.
+
+### One thing BODY_SCALE does NOT scale, on purpose
+
+`verticalReach: 70` — how far up or down a punch connects. If it scaled with the
+bodies, a shrinking cast would eventually be unable to reach the Mosca Boss at
+all, and the fight would silently become impossible.
+
+The trade is that shrinking the cast still narrows the window you can hit the
+boss in, because the jump apex drops while `flyBossHoverY` stays put:
+
+| BODY_SCALE | jump apex | window to punch the boss |
+|---|---|---|
+| 0.80 | 94 | 221ms of the 620ms jump |
+| 0.72 | 85 | 136ms |
+
+If that gets too tight, lower **`flyBossHoverY`** (150) rather than touching
+`verticalReach`. 142 restores the 0.80 window at 0.72 scale.
+
+---
+
+## How fast the animations play
+
+Three separate systems. Only the first is free to change.
+
+### 1. `POSE_MS` — the looping and one-shot poses
+
+```js
+POSE_MS: { idle: 200, walk: 124, hurt: 100, down: 110, death: 130 },
+```
+
+Milliseconds **per frame**. Pure animation — changing these costs nothing in
+gameplay. Multiply by the row's frame count for the full pass:
+
+| pose | frames | ms/frame | full pass |
+|---|---|---|---|
+| idle | 3 | 200 | 600ms breath |
+| walk | 6 | 124 | 744ms cycle |
+| hurt | 2 | 100 | 200ms |
+| down (knockdown) | 6 | 110 | 660ms |
+| death | 8 | 130 | 1040ms |
+
+Looping poses (idle, walk) run off a free-running clock and wrap. One-shot
+poses (hurt, down, death) play forward once and **hold the last frame** —
+holding matters, or a death would loop and resurrect the corpse every second.
+
+> **Reading old numbers back:** these were once tuned against a bug. `animT` was
+> advanced twice per frame, so every looping pose ran at DOUBLE the written
+> rate — `walk: 95` really played at 47ms. That is fixed. What is written here
+> is now what is drawn.
+
+### 2. The jump — driven by the arc, not by a clock
+
+The six jump frames are spread across **`jumpMs: 620`**, so they stay married to
+the height the fighter is actually at. Retiming the jump retimes the animation
+for free; there is no separate frame rate to keep in sync.
+
+**`jumpMs` is gameplay** — it sets the window above, so changing it changes the
+boss fight.
+
+To make the *landing* read longer without touching that, use:
+
+```js
+jumpLandHoldMs: 150,   // the last frame is held this long AFTER touchdown
+```
+
+This adds time rather than moving it — re-weighting the six frames to linger on
+the landing would have to steal that time from the rise. The hold is dropped the
+instant the player moves, so it reads as landing rather than as sticking.
+
+### 3. The combo — driven by the hit windows
+
+```js
+COMBO: [ { pose: 'combo1', startupMs: 55, activeMs: 70, recoverMs: 85, ... }, ... ]
+```
+
+**These are not animation timings.** Each combo hit is a 2-frame slice — the
+wind-up is shown for `startupMs`, the strike for `activeMs + recoverMs` — so
+the drawing can never drift out of step with the window that can actually hit.
+
+Changing them changes the fight:
+
+- `startupMs` is the tell an opponent can react to. Longer = easier to read you.
+- `activeMs` is how long the hitbox lives.
+- `recoverMs` is your punish window if you whiff.
+- `cancelMs` is how long a press still continues the string.
+
+Current string: 5 hits, 210 / 210 / 250 / 210 / 450ms, **1330ms** uncancelled.
+
+---
+
+## How hard everyone hits
+
+```
+COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
+enemy HP       JUIXY 34   TOM 40   ERKPA 55
+player HP      110
+```
+
+**Keep the player's HP a multiple of 22.** The hand-drawn life bar is 22 squares,
+so 110 makes each square exactly 5 damage. The boss's 88 is a multiple for the
+same reason.
+
+The full-combo total was held at 28 when the combo went from three hits to five,
+deliberately — so every enemy's time-to-kill stayed where it was tuned. Raising
+it is a real rebalance, not a tweak: at 40 damage a full string one-combos TOM.
+
+---
+
+## The coconut's sprites
+
+The player has a sheet drawn for this game. The villains are still the main
+game's 9x5 packs, so `sheets.js` carries both formats until villain sheets exist.
+
+### Re-cutting the sheet
+
+```
+python3 tools/build-beat-coconut-defs.py     # from the REPO ROOT, not here
+```
+
+Master in, atlas + defs out:
+
+```
+assets-v2/beatemup-dungeon/coconut-sprites-flat.png     the illustrator's file
+  ->  coconut-beat-game.png        packed atlas, 45 unique frames
+  ->  coconut-beat-sprites.json    per-frame rects + anchors, named animations
+```
+
+The tool **fails loudly** if a row's frame count does not match what it expects,
+rather than cutting something plausible and wrong. If the illustrator adds or
+removes a frame, update the `ROWS` table in the tool to match.
+
+### The 13 rows
+
+The illustrator's rows, 1-indexed as delivered:
+
+| row | meaning | frames | animation |
+|---|---|---|---|
+| 1 | respirando | 3 | `idle` |
+| 2 | andando | 6 | `walk` |
+| 3 | pulando | 6 | `jump` |
+| 4 | pulando e socando | 7 | `airPunch` — **cut, not wired** |
+| 5 | combo 1 | 10 | `combo` — 5 hits, ends in the **uppercut** |
+| 6 | combo 2 | 10 | `comboLow` — same 5 hits, ends in a low punch. **Cut, not wired** |
+| 7 | levanta objeto | 4 | `lift` — **cut, not wired** |
+| 8 | levanta e joga | 5 | `liftThrow` — **cut, not wired** |
+| 9 | pega do chao | 2 | `pickGround` — **cut, not wired** |
+| 10 | carregando e andando | 5 | `carryWalk` — **cut, not wired** |
+| 11 | apanhando 1 | 2 | `hurt` |
+| 12 | apanhando e caindo | 6 | `down` |
+| 13 | caindo e morrendo | 8 | `death` |
+
+Both combo rows are the **same string** pose-for-pose through hit 4; only the
+9th frame and the finisher differ. Contact lands on frames 2, 4, 6, 8 and 10.
+
+### Two things about this sheet that will bite
+
+**It is not a grid.** Rows hold 3 to 10 frames and frame widths run 190px to
+285px, because an extended arm is simply wider than a guard. There is no cell
+size to divide by — every frame is found by its own content bbox.
+
+**Every frame carries an anchor, and centring on the bbox instead is wrong.**
+The anchor is read off the coconut *body* (the tan ball, ignoring the yellow
+arms): horizontal centroid, and the body's lowest row as the ground line. Centre
+a ragged frame on its bbox and an extended arm drags the centre toward the
+punch, so the body wobbles away from it on every hit.
+
+**Which way the art faces is recorded in the defs, not assumed in code.** This
+sheet is drawn facing **right**; the main game's packs face **left**. Each pack
+declares `native` and the draw flip is "not that side". Getting this wrong does
+not fail loudly — the character simply walks backwards, facing away from the
+direction it is moving.
+
+### Wiring a cut-but-unused row
+
+The pickup rows and the low-punch finisher are cut and named but have no
+mechanic behind them. To wire one, it is a `POSE_RAGGED` entry (already there)
+plus whatever state drives it. For example the alternate finisher is a one-line
+swap in `COMBO`:
+
+```js
+{ pose: 'combo5',    ... }   // uppercut, launches   <- current
+{ pose: 'comboLow5', ... }   // low lunging punch
+```
+
+`lift` / `liftThrow` / `pickGround` / `carryWalk` need an actual liftable-object
+entity first — there are none in this game yet.
+
+---
+
+## Adding an asset
+
+Add it to **`src/manifest.js`**, once. `package.sh` derives its copy list from
+that same file, so the build follows automatically and never needs editing.
+
+This is not a style preference. The flying dungeon shipped without its fly
+sprites because a folder was added and a `cp` line was not — dev kept working
+because it read the repo, and every packaged build was broken.
+
+`package.sh` refuses to build on: a `src/*.js` missing from `index.html`'s
+loader list, a missing required asset, a failed path rewrite, or any manifest
+file absent from `dist/`.
+
+> **`dist/` is a transformed copy, not a snapshot.** `package.sh` rewrites the
+> asset base paths inside it. Never restore source from `dist/` — use git.

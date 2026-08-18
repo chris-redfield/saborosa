@@ -8,6 +8,28 @@
  * self-contained itch zip. Adding a fourth source of assets means adding a
  * fourth rewrite line over there, so don't.
  */
+/**
+ * BODY_SCALE — how big the FIGHTERS are, and nothing else.
+ *
+ * ONE NUMBER, MOVED ONCE. This used to be a literal `* BODY_SCALE` written out
+ * twenty-odd times, with a comment telling you to grep for it and move them
+ * all together. That is a footgun rather than a knob: the one you miss does
+ * not fail, it just quietly makes a punch land across a visible gap.
+ *
+ * EVERYTHING MEASURED AGAINST A BODY IS SCALED BY IT: the drawn height, the
+ * hurtbox, every punch's reach and lift, the enemy stand-off and their reach,
+ * the jump height, the ground shadow, and the floating enemy bars.
+ *
+ * WHAT IS DELIBERATELY NOT SCALED is everything measured against the LEVEL:
+ * belt depth, walk speed, the camera, knockback distance -- and the player's
+ * own life bar across the top of the screen. Those describe the world the
+ * fighters stand in, or the furniture around it, not the fighters. Scaling
+ * them would shrink the whole game rather than the cast in it.
+ *
+ * Lower it to make everyone smaller. 0.8 was the original; 0.72 is 10% down.
+ */
+const BODY_SCALE = 0.72;
+
 const CONFIG = {
   /* The MAIN GAME's assets — the character packs live here, and we read them
      rather than copying them, so a re-run of tools/build-character-defs.py
@@ -375,17 +397,9 @@ const CONFIG = {
      of it. A fighter is sized against the belt and the other fighters, all of
      which are in canvas px, rather than being something that should grow with
      the window. */
-  /* THE `* 0.8` HERE IS REPEATED THROUGHOUT THIS FILE — grep it — and every
-     one of them has to move together. Everything measured against a body was
-     scaled with it — the hurtbox, every punch's reach, the enemy stand-off, the
-     jump, the shadow, the floating health bar — because a sprite that shrinks
-     while its reach does not starts landing punches across a visible gap.
-
-     What was deliberately NOT scaled is everything measured against the LEVEL:
-     belt depth, walk speed, the camera, knockback distance. Those describe the
-     world the fighters are in, not the fighters, and shrinking them would have
-     scaled the whole game rather than the characters in it. */
-  fighterSizePx: 190 * 0.8,
+  /* Sized by BODY_SCALE, along with everything else measured against a body —
+     see the note on the knob at the top of this file. */
+  fighterSizePx: 190 * BODY_SCALE,
   /* The HURTBOX, in world units — deliberately NOT the sprite's own silhouette.
      The poses run from 79px to 149px tall and from 74px to 137px wide, and a box
      that breathed with the art would make a fighter harder to hit exactly as it
@@ -395,8 +409,8 @@ const CONFIG = {
      `bodyZ` is the DEPTH of the box, and it is small on purpose: a fighter
      occupies one narrow line across the belt, so lining up in depth is a real
      act. Widen it and the belt stops mattering. */
-  bodyW: 74 * 0.8,
-  bodyZ: 30 * 0.8,
+  bodyW: 74 * BODY_SCALE,
+  bodyZ: 30 * BODY_SCALE,
 
   /* Frames are BOTTOM-ALIGNED to the fighter's ground line, so the feet stay
      planted while the poses change height (the packs run 79px to 149px tall).
@@ -406,14 +420,14 @@ const CONFIG = {
 
      Per-pose nudges in px for hand-correcting the ones that don't sit. Positive
      is DOWN. */
-  poseNudge: { finisher: -6 * 0.8 },
+  poseNudge: { finisher: -6 * BODY_SCALE },
 
   /* The ground shadow's radii, in canvas px at the near edge of the belt. These
      lived as literals in game.js until the characters were resized and it
      became obvious they were a body measurement like any other — a shadow that
      kept its old size would sit visibly wider than the feet standing on it. */
-  shadowW: 44 * 0.8,
-  shadowH: 13 * 0.8,
+  shadowW: 44 * BODY_SCALE,
+  shadowH: 13 * BODY_SCALE,
   /* The altitude at which a shadow reaches its smallest and faintest; above it
      nothing more happens.
 
@@ -441,7 +455,7 @@ const CONFIG = {
      Height and airtime are separate knobs rather than one derived from the
      other, because the FEEL of a beat 'em up jump is floatiness, and that is
      the ratio between them. */
-  jumpHeight: 118 * 0.8,  // px at the top of the arc — scaled with the body, so
+  jumpHeight: 118 * BODY_SCALE,  // px at the top of the arc — scaled with the body, so
                           // a jump stays the same height IN FIGHTERS
   jumpMs: 620,
   // --- Health --------------------------------------------------------------
@@ -493,14 +507,14 @@ const CONFIG = {
      part of the string. */
   COMBO: [
     { pose: 'combo1', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
-      damage: 4, reachX:  96 * 0.8, reachZ: 46 * 0.8, knockback:  60, lift: 0 },
+      damage: 4, reachX:  96 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  60, lift: 0 },
     { pose: 'combo2', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
-      damage: 5, reachX: 100 * 0.8, reachZ: 46 * 0.8, knockback:  80, lift: 0 },
+      damage: 5, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
     // The leaning punch: the body commits forward, so it reaches further.
     { pose: 'combo3', startupMs: 70, activeMs: 80, recoverMs: 100, cancelMs: 250,
-      damage: 6, reachX: 110 * 0.8, reachZ: 46 * 0.8, knockback: 140, lift: 0 },
+      damage: 6, reachX: 110 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 140, lift: 0 },
     { pose: 'combo4', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 240,
-      damage: 4, reachX: 100 * 0.8, reachZ: 46 * 0.8, knockback:  80, lift: 0 },
+      damage: 4, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
     /* The uppercut KNOCKS DOWN, and that is what the combo is for: the first
        four hits are worth 19 damage between them, this one is worth 9 on its
        own AND takes the enemy off its feet, which buys the player the room to
@@ -511,8 +525,8 @@ const CONFIG = {
        the drawing. Row 6's low lunging punch is the alternative ending and is
        cut but unwired; see POSE_RAGGED. */
     { pose: 'combo5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
-      damage: 9, reachX: 118 * 0.8, reachZ: 52 * 0.8, knockback: 320,
-      lift: 190 * 0.8, knockdown: true },
+      damage: 9, reachX: 118 * BODY_SCALE, reachZ: 52 * BODY_SCALE, knockback: 320,
+      lift: 190 * BODY_SCALE, knockdown: true },
   ],
 
   /* HITSTOP — both fighters freeze for a moment on a connect. It is the single
@@ -567,8 +581,8 @@ const CONFIG = {
   /* How close an enemy gets before it stops walking in. Enemies that walk all
      the way to the player's exact position end up standing inside them, and
      two fighters in the same pixel is a shoving match rather than a fight. */
-  enemyStandoffX: 88 * 0.8,
-  enemyStandoffZ: 16 * 0.8,
+  enemyStandoffX: 88 * BODY_SCALE,
+  enemyStandoffZ: 16 * BODY_SCALE,
   // How long an enemy hangs at the stand-off before it takes a swing, once it
   // holds the token. The randomised half stops a group attacking in lockstep.
   enemyWindupMinMs: 260,
@@ -579,8 +593,8 @@ const CONFIG = {
   enemyCircleSpeed: 0.9,  // rad/sec around the player
   enemySpeedScale: { tomato: 0.72, laranja: 0.88, eggplant: 0.58 },
   enemyDamage: { tomato: 7, laranja: 5, eggplant: 10 },
-  enemyReachX: 92 * 0.8,
-  enemyReachZ: 48 * 0.8,
+  enemyReachX: 92 * BODY_SCALE,
+  enemyReachZ: 48 * BODY_SCALE,
   enemyStartupMs: 200,
   enemyActiveMs: 90,
   enemyRecoverMs: 420,
@@ -735,7 +749,11 @@ const CONFIG = {
   BAR_CELL_W: 333,
   BAR_CELL_H: 50,
   BAR_FRAMES: 23,
-  lifeBarWRel: 0.30 * 0.8, // of canvas width
+  /* NOT scaled by BODY_SCALE: the player's bar across the top of the screen is
+     HUD, not a fighter. It was caught in the original find-and-replace that
+     shrank the characters; this is the value that left it at, kept literal so
+     shrinking the cast never shrinks the interface again. */
+  lifeBarWRel: 0.24,      // of canvas width
   lifeBarLeft: 22,
   lifeBarTop: 18,
 
@@ -743,9 +761,9 @@ const CONFIG = {
   // wide and the hand-drawn bar's 11 squares are illegible at that size.
   hudBarW: 300,
   hudBarH: 18,
-  enemyBarW: 62 * 0.8,
+  enemyBarW: 62 * BODY_SCALE,
   enemyBarH: 6,
-  enemyBarLift: 14 * 0.8, // px above the sprite's top
+  enemyBarLift: 14 * BODY_SCALE, // px above the sprite's top
   enemyBarFadeMs: 1400,   // how long after its last hit an enemy's bar shows
 
   /* --- The GO prompt -------------------------------------------------------

@@ -5,6 +5,7 @@ is still open. Numbers here were read off `src/config.js` at the time of
 writing — **trust the file over this document** if they ever disagree.
 
 ```
+Edit it:     README.md is the knobs — sizes, animation timings, the sprite cut
 Run it:      serve the repo root, open beatemup-dungeon/index.html
 Debug it:    hold C
 Package it:  ./package.sh   →  dist/ + beatemup-dungeon-itch.zip
@@ -67,12 +68,65 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/enemy.js` | the villains, and `Crowd`, which owns **the attack token** |
 | `src/fly-boss.js` | the Mosca Boss: ambush entrance, swoop, ground pass |
 | `src/combat.js` | hit resolution and hitstop |
-| `src/sheets.js` | reads the 9×5 character packs as **six facings** |
+| `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards |
 | `src/debug.js` | everything the C key draws |
 | `tools/build-go-glyph.py` | cuts "GO!" out of the title lettering sheet |
 | `tools/build-manifest.js` | prints & checks what package.sh copies |
+
+## The sprites
+
+**THE COCONUT HAS ITS OWN SHEET NOW.** It was drawn for this game and replaces
+the borrowed 9×5 pack: 13 rows, 74 frame slots, cut by
+`tools/build-beat-coconut-defs.py` into a 45-frame packed atlas. The villains
+are still on the main game's packs, so `sheets.js` carries **two formats** until
+villain sheets exist. See README.md for the row table and the cutter.
+
+⚠️ **TWO FACINGS NOW, NOT SIX.** The diagonals are gone. The new sheet is drawn
+side-on only, and running the player on two facings while the enemies kept six
+reads wrong immediately — enemies angling toward the camera beside a player who
+never does. `up` and `down` were already never selected, for the genre reason:
+fighters face ALONG the belt so the read of who is about to hit whom survives
+three enemies closing at once. Two facings is that rule taken to its end. The
+player can still MOVE diagonally; only the sprite stopped turning.
+
+⚠️ **Which way a sheet faces is recorded in its defs, not assumed in code.** The
+new sheet faces RIGHT; the main game's packs face LEFT. Each pack declares
+`native` and the flip is "not that side". Getting it wrong does not fail loudly —
+the character walks backwards, facing away from where it is going. It shipped
+that way for one build.
+
+⚠️ **Ragged frames need an ANCHOR, not a bbox centre.** Frame widths run 190px
+to 285px because an extended arm is wider than a guard, so centring on the bbox
+drags the body sideways on every punch. Each frame stores a point read off the
+coconut BODY — horizontal centroid, body's lowest row as the ground line.
+
+⚠️ **A knocked-down fighter is rotated ONLY if its pack has no knockdown art.**
+The grid packs have none, so the flattened carry pose gets tipped on its back.
+The coconut has real falling and dying rows; rotating those tips a body that is
+already lying down face-first into the floor.
+
+**Animation clocks, and why there are three.** Attack poses are driven by the
+attack PHASE, so a punch's drawing can never drift from the window that can
+actually hit. `hurt` / `down` / `death` are one-shots that play once and hold.
+`idle` / `walk` loop off a free-running clock. `jump` is driven by the ARC, so
+retiming `jumpMs` retimes the animation for free.
+
+⚠️ **Death needs its own clock, and two things had to be fixed before it played
+at all.** The shell stops updating the world the moment the player dies, so a
+death driven by the normal update never advanced past frame one — it now gets
+`player.tickDeath(dt)` while everything else stays frozen. And `stateT`, the
+obvious clock to use, is RESET when the knockdown goes `land` → `lie`, which
+restarts the animation halfway through. `deathT` starts at death and only counts
+up.
+
+⚠️ **`BODY_SCALE` at the top of `config.js` is the only size knob.** It replaced
+a literal `* 0.8` repeated twenty-odd times under a comment telling you to grep
+for them all. Everything measured against a body scales with it; everything
+measured against the level does not. See README.md.
+
+---
 
 ⚠️ **`index.html` writes its own script tags** with a `?v=` cache-buster, for the
 reason the flying dungeon records: a change landing in source *and* dist and
@@ -126,11 +180,21 @@ connect = overlap in x  AND  overlap in z
 
 | attack | startup | active | recover | cancel | dmg | reachX | reachZ |
 |---|---|---|---|---|---|---|---|
-| jab | 70 | 80 | 110 | 260 | 6 | 77 | ±37 |
-| straight | 85 | 85 | 140 | 280 | 8 | 83 | ±37 |
-| finisher | 120 | 105 | 260 | — | 14 | 94 | ±42 |
+| combo1 | 55 | 70 | 85 | 230 | 4 | 69 | ±33 |
+| combo2 | 55 | 70 | 85 | 230 | 5 | 72 | ±33 |
+| combo3 | 70 | 80 | 100 | 250 | 6 | 79 | ±33 |
+| combo4 | 55 | 70 | 85 | 240 | 4 | 72 | ±33 |
+| combo5 | 110 | 100 | 240 | — | 9 | 85 | ±37 |
 
-Full combo = **28**. Enemy HP: JUIXY 34 (4 hits), TOM 40 (5), ERKPA 55 (6).
+**FIVE HITS, because the coconut's own sheet has five.** The old three were
+faked out of the main game's lift-and-throw poses. Hit 3 is the leaning punch
+and hit 5 the uppercut — the two frames drawn bigger than the rest, so they
+carry the damage and the reach. Hit 5 knocks down and LAUNCHES.
+
+Full combo = **28**, held exactly where it was when the combo was three hits, so
+no enemy's time-to-kill moved. Enemy HP: JUIXY 34, TOM 40, ERKPA 55.
+
+Reaches shrank with `BODY_SCALE` (see below), not with the combo change.
 Player 110 — **a multiple of 22**, so each of the life bar's 22 squares is
 exactly 5 damage. Keep it a multiple.
 
@@ -237,9 +301,16 @@ jump a mook's swing is deliberately not applied to the boss: the answer is depth
 not height, and letting a jump beat it deletes the reason the move exists.
 
 **Reaching it.** It hovers at 150 — above a standing punch, inside a jump's apex.
-At `jumpHeight 94` and `verticalReach 70` the window is **221ms of the 620ms
-jump** (36%), centred on the apex, `dy` closing to 56. You can punch mid-air.
+At `jumpHeight 85` and `verticalReach 70` the window is **136ms of the 620ms
+jump** (22%), centred on the apex, `dy` closing to 65. You can punch mid-air.
 Note the trade: at apex the *mooks* go out of reach.
+
+⚠️ **SHRINKING THE CAST NARROWS THIS WINDOW, and nothing warns you.** The window
+was 221ms at `BODY_SCALE 0.8`; taking the cast 10% down dropped the apex to 85
+and the window to 136ms. `verticalReach` is deliberately NOT scaled by
+`BODY_SCALE` — if it were, a small enough cast could not reach the boss at all
+and the fight would quietly become unwinnable. The knob to reach for instead is
+`flyBossHoverY` (150): **142 restores the old window at 0.72 scale.**
 
 88 HP — a multiple of 22, so exactly 4 damage a bar square.
 
@@ -323,6 +394,16 @@ grepping for others of the same shape.
 ## Open
 
 - **The filmed backdrop.** The whole plate/segment design is waiting on it.
+- **Villain sheets.** TOM, JUIXY and ERKPA are still the main game's 9×5 packs
+  read as punches. Until they are redrawn, `sheets.js` has to carry two formats
+  and the grid path cannot go.
+- **Cut but unwired, waiting on a decision or a mechanic.** `airPunch` (row 4)
+  has no jump-attack state. `comboLow` (row 6) is the same five-hit string
+  ending in a low punch instead of the uppercut — which finisher the player gets,
+  and how they pick, is undecided. `lift` / `liftThrow` / `pickGround` /
+  `carryWalk` (rows 7-10) are a complete pickup loop and this game has no
+  liftable objects at all. All are cut, named and mapped in `POSE_RAGGED`, so
+  each is a wiring job rather than a trip back to the illustrator.
 - **No sound at all.** The flying dungeon's `sound.js` is the model.
 - **`Escape`/`P` are captured but do nothing** — `takePause()` exists, no pause
   state does.
@@ -333,7 +414,5 @@ grepping for others of the same shape.
   `Enemy._think` to branch.
 - **The impact FX is drawn in code** (a starburst), honestly placeholder. There
   is no impact art in any Saborosa pack yet.
-- **`dist/` and the zip are build output** and are not in `.gitignore` — worth
-  adding before committing.
 - **Enemy bars stay plain slabs.** The hand-drawn bar is 11 inked squares in a
   333px frame; at the ~50px a floating bar occupies they turn to mush.
