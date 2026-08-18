@@ -87,8 +87,16 @@ class Input {
      ONE THING IS MERGED BACK: `jump`. The main game has no jump action, so a
      mapping authored over there names no button for it, and a straight replace
      would leave this game unable to jump on a pad that works fine everywhere
-     else. If the loaded map binds no `jump`, the default one is put back on the
-     first button the map has left free. */
+     else. If the loaded map binds no `jump`, it is put on the first button the
+     map has left free.
+
+     THE ORDER OF THAT SEARCH IS THE BINDING, so it is a preference and not an
+     implementation detail. Button 0 -- the BOTTOM face button, A on a standard
+     pad -- is tried first because that is where every player reaches for jump,
+     and it is the first button anyone presses when they pick up a controller.
+     The search used to start at 1, which put jump on B and left A doing
+     nothing at all; the shipped mapping binds neither, so the arbitrary order
+     was the whole difference. */
   applyMapping(cfg) {
     if (!cfg) return;
     if (typeof cfg.deadzone === 'number') this.deadzone = cfg.deadzone;
@@ -107,7 +115,7 @@ class Input {
     }
     if (!Object.keys(map).length) return;
     if (!Object.values(map).includes('jump')) {
-      for (const b of [1, 2, 3, 0]) {
+      for (const b of [0, 1, 2, 3]) {
         if (map[b] === undefined) { map[b] = 'jump'; break; }
       }
     }

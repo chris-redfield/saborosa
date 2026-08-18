@@ -13,8 +13,14 @@ Inspect it:  node tools/build-manifest.js --list
 ```
 
 Controls: **arrows/WASD** move · **J / Z / Space** punch (tap again to combo) ·
-**K / X** jump · **hold C** debug. Gamepad works through the main game's own
-`assets/gamepad-mapping.json`.
+**K / X** jump · **hold C** debug.
+
+On a pad: **A** (bottom face) jump · **X** (left face) punch · **d-pad / left
+stick** move · any button dismisses an end screen. The mapping is the main
+game's own `assets/gamepad-mapping.json`, shared and not copied — but it names
+no `jump`, because the main game has none. `applyMapping` puts jump on the first
+free button and **tries 0 first on purpose**, so it lands on A rather than
+wherever the search order happened to reach.
 
 ---
 
