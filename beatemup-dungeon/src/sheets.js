@@ -62,6 +62,10 @@ class Sheets {
     const pack = (def.pack === 'ragged')
       ? this._buildRagged(img, data)
       : this._buildGrid(img, data);
+    /* A per-character DRAWN size, on top of the shared `fighterSizePx`. Folded
+       into the pack's own scale so everything that measures a sprite -- the
+       draw, `size()`, the floating health bar -- reads the same number. */
+    if (pack && def.drawScale) pack.scale *= def.drawScale;
     if (pack) this.packs[kind] = pack;
     return pack;
   }

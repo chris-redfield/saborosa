@@ -265,6 +265,23 @@ It only goes forward — the left edge of the view is a wall. Making it reverse 
 a real feature, not a free one: the plate is video, and no browser can play a
 video backwards.
 
+## Sizes
+
+```js
+BODY_SCALE: 0.72,                       // every fighter, and everything measured against one
+CHARACTERS.coconut.drawScale: 0.9,      // the player only, DRAWN size
+flyBossSizePx: 253,                     // the Mosca, drawn AND simulated
+```
+
+`drawScale` is a per-character drawn size on top of `fighterSizePx`. It does
+**not** touch the hurtbox, punch reaches or jump, which are global — so it is a
+look, not a rebalance. Keep it near 1: the rule elsewhere in the file is that a
+sprite must not shrink while its reach does not, and far below 0.9 the punches
+start landing across a visible gap.
+
+`flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
+the boss's size in the simulation moves with its drawn size.
+
 ## Dev mode
 
 ```js

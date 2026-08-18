@@ -448,8 +448,16 @@ const CONFIG = {
      When villain sheets are drawn, they get `pack: 'ragged'` and the grid path
      in sheets.js can go. */
   CHARACTERS: {
+    /* `drawScale` is a DRAWN size only, applied on top of `fighterSizePx`, and
+       the coconut is 10% down on everyone else. It does NOT touch the hurtbox,
+       the punch reaches or the jump, which are global and stay exactly as
+       tuned — so this is a look, not a rebalance. Worth knowing because the
+       file's own rule elsewhere is that a sprite must not shrink while its
+       reach does not; at 10% the mismatch is under 6px of reach and was judged
+       worth it, but scale it much further and the punches start landing across
+       a visible gap. */
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
-                name: 'COCONUT' },
+                drawScale: 0.9, name: 'COCONUT' },
     tomato:   { sheet: 'saborosa-elementos-tomato',   name: 'TOM' },
     laranja:  { sheet: 'saborosa-elementos-laranja',  name: 'JUIXY' },
     eggplant: { sheet: 'saborosa-elementos-eggplant', name: 'ERKPA' },
@@ -568,6 +576,12 @@ const CONFIG = {
      The DOWN card is held back for the same span, so the one moment the death
      row was drawn for is not spent behind a piece of UI. */
   deathHoldMs: 1000,
+
+  /* How far PAST the right edge the coconut walks before the level is called,
+     in px. Enough that he is fully gone rather than clipped at the frame edge —
+     a fighter is up to ~137px wide and drawn from its own anchor, so a smaller
+     pad ends the level with a sliver of him still showing. */
+  outroExitPad: 220,
 
   /* How long a pick-up takes, in ms, by weight. ONE BUTTON, TWO ANIMATIONS --
      the object decides which, not the player:
@@ -855,7 +869,12 @@ const CONFIG = {
   // Drawn height in the fixed canvas. Fighters are 152, so at 230 it is half as
   // tall again as the thing fighting it — big enough to read as a boss without
   // filling the belt it has to move along.
-  flyBossSizePx: 230,
+  /* Drawn height of the Mosca, in canvas px. Raised 10% from 230. It is also
+     the boss's size in the SIMULATION -- `halfW()` and `bodyHeight()` are both
+     derived from it -- so a bigger boss is a bigger target and a bigger threat
+     together, which is the pairing `fighterSizePx` deliberately keeps for the
+     fighters too. */
+  flyBossSizePx: 253,
   // A MULTIPLE OF 22 (= BAR_FRAMES − 1), like the player's, so its bar steps
   // evenly: 88 is exactly 4 damage a square.
   flyBossHealth: 88,

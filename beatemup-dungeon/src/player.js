@@ -96,6 +96,24 @@ class Player extends Fighter {
   }
 
   /**
+   * Walk out of frame, under the game's control rather than the player's.
+   *
+   * The level is over: the last enemy is down and the coconut leaves the way it
+   * came in, to the right. INPUT IS NOT READ AT ALL here — this is not "the
+   * player happens to be walking right", it is the game taking the character
+   * back, and a stray key should not be able to stop or steer it.
+   *
+   * `iz` IS ZERO ON PURPOSE. Depth is left exactly where the last fight ended,
+   * so the exit is a straight line across the belt rather than a drift toward
+   * some tidier lane. The walk animation, the facing and the depth scale all
+   * follow from `walk` as they always do.
+   */
+  walkOut(dt) {
+    this.walk(dt, 1, 0, null, 1);
+    super.update(dt, null);
+  }
+
+  /**
    * Is the thing within reach a heavy one?
    *
    * THE SEAM FOR THE LIFT MECHANIC, and deliberately the whole of it. There are

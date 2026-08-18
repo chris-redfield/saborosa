@@ -323,6 +323,30 @@ A sequence of segments, alternating walking and fighting — the genre's spine.
 | 6 | scroll | to x4092 | **100%** |
 | 7 | arena | ERKPA, JUIXY, **TOM behind**, **ERKPA behind**, TOM | |
 
+⚠️ **THE LEVEL ENDS ON A WALK, NOT A FREEZE.** Clearing the last fight no
+longer stops the world and throws up the card. It hands to an `outro` phase: the
+coconut walks out to the RIGHT under the game's control, the camera does not
+follow him, and the CLEAR card comes up once he is `outroExitPad` past the edge.
+
+Two details that are the whole feel of it. **Input is not read at all** during
+the walk-out — this is the game taking the character back, not the player
+happening to hold right, and a stray key must not steer or stop it. And **depth
+is left exactly where the last fight ended** (`iz` is zero), so he leaves in a
+straight line across the belt rather than drifting to some tidier lane.
+
+The camera is deliberately not ticked in that phase: it would chase him and he
+would never reach the edge. **The crowd IS ticked**, and that is not optional —
+the fight ends the instant the last enemy's HP hits zero, which is BEFORE it has
+fallen. Its knockdown arc, its landing and its fade all run off `update`, so
+ticking only the player left the body that had just died hanging in the air
+mid-fall for the whole walk-out.
+
+⚠️ **THAT IS THE THIRD TIME THIS SHAPE HAS BITTEN.** A phase change stops the
+world, and something that was mid-animation stops with it: the player's death
+row froze on frame one, the end screens dismissed themselves, and now the last
+corpse hung in the air. **When adding a phase that does not call `update`, ask
+what was still moving when it started.**
+
 ⚠️ **THE LEVEL OPENS ON A PASSAGE, NOT A FIGHT.** There was a wave at x1080,
 680px in — an inch of walking and the camera locked again, before the player had
 any sense of moving through a place. It was removed and the two opening scrolls

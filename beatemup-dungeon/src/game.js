@@ -29,7 +29,7 @@
   const crowd = new Crowd();
 
   let player = null;
-  let phase = 'boot';          // boot | play | dead | clear
+  let phase = 'boot';          // boot | play | outro | dead | clear
   let phaseT = 0;
   let last = 0;
 
@@ -130,6 +130,26 @@
 
     if (phase === 'play') {
       update(dt);
+    } else if (phase === 'outro') {
+      phaseT += dt;
+      /* THE LAST BEAT OF THE LEVEL: the coconut walks out to the right and the
+         camera does not follow — running it here would chase him and he would
+         never reach the edge.
+
+         THE CROWD IS STILL TICKED, and that is not optional. The fight ends the
+         instant the last enemy's HP hits zero, which is BEFORE it has fallen:
+         its knockdown arc, its landing and its fade all run off `update`. Tick
+         only the player and the body that just died hangs in the air mid-fall
+         for the whole walk-out. A dead enemy skips its own AI (`Enemy.update`
+         guards on `dead`), so this advances the fall and nothing else. */
+      player.walkOut(dt);
+      crowd.update(dt, player, stage.bounds());
+      combat.tick(dt);
+      if (player.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad) {
+        phase = 'clear';
+        phaseT = 0;
+        endScreen();
+      }
     } else {
       phaseT += dt;
       /* THE WORLD IS STOPPED, BUT THE CORPSE IS NOT. Freezing everything the
@@ -172,7 +192,9 @@
     combat.bossHits(stage.boss, player);
 
     const ev = stage.update(dt, player, crowd);
-    if (ev === 'clear') { phase = 'clear'; phaseT = 0; endScreen(); }
+    /* CLEARING THE LAST FIGHT DOES NOT END THE LEVEL, it hands over to the
+       walk-out. The card comes up once he is off the right-hand edge. */
+    if (ev === 'clear') { phase = 'outro'; phaseT = 0; endScreen(); }
 
     if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
   }
