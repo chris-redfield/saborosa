@@ -251,10 +251,15 @@ camDeadzone: 130,      // px either side of that before the camera reacts
 camFollowGain: 1.8,    // px of framing correction bought by one px of WALKING
 ```
 
-**The camera only moves because the player moved.** `camFollowGain` is a budget:
-walk a px, earn 1.8px of correction. Stand still and the camera is still, however
-badly framed the shot is. Raise it to re-frame faster after a fight; too high and
-it stops reading as following and starts reading as a snap.
+**The camera only moves because the player moved forward.** `camFollowGain` is a
+budget: walk a px, earn that many px of camera. Stand still and the camera is
+still.
+
+**At 1.0 the player is never dragged back toward the middle** — the camera
+matches the walk exactly, so their position on screen does not change. Wherever
+they are when they push the edge is where they stay, and where they will be
+standing when the next arena locks. Above 1 the camera outruns them to re-frame
+the shot, which reads as the player sliding backwards under their own feet.
 
 It only goes forward — the left edge of the view is a wall. Making it reverse is
 a real feature, not a free one: the plate is video, and no browser can play a

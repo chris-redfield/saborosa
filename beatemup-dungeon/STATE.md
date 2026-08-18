@@ -314,16 +314,21 @@ A sequence of segments, alternating walking and fighting — the genre's spine.
 
 | # | kind | | film |
 |---|---|---|---|
-| 0 | scroll | to x900 | 7% |
-| 1 | arena | ERKPA, JUIXY, **TOM from behind** | |
-| 2 | scroll | to x2100 | 42% |
-| 3 | arena | JUIXY, TOM, ERKPA, **+ERKPA, JUIXY from behind** | |
-| 4 | scroll | to x3300 | 77% |
-| 5 | **sub-boss** | the Mosca Boss | |
-| 6 | scroll | to x3690 | 88% |
-| 7 | arena | JUIXY, TOM, **ERKPA behind**, TOM, **JUIXY behind** | |
-| 8 | scroll | to x4092 | **100%** |
-| 9 | arena | ERKPA, JUIXY, **TOM behind**, **ERKPA behind**, TOM | |
+| 0 | scroll | to x2100 — **the opening passage, 1880px / 6.3s** | 42% |
+| 1 | arena | JUIXY, TOM, ERKPA, **+ERKPA, JUIXY from behind** | |
+| 2 | scroll | to x3300 | 77% |
+| 3 | **sub-boss** | the Mosca Boss | |
+| 4 | scroll | to x3690 | 88% |
+| 5 | arena | JUIXY, TOM, **ERKPA behind**, TOM, **JUIXY behind** | |
+| 6 | scroll | to x4092 | **100%** |
+| 7 | arena | ERKPA, JUIXY, **TOM behind**, **ERKPA behind**, TOM | |
+
+⚠️ **THE LEVEL OPENS ON A PASSAGE, NOT A FIGHT.** There was a wave at x1080,
+680px in — an inch of walking and the camera locked again, before the player had
+any sense of moving through a place. It was removed and the two opening scrolls
+merged. 1880px of uninterrupted travel now establishes the shot, the belt and
+the walk before anything asks for a fight, and it spends 42% of the film before
+the first lock.
 
 ⚠️ **THE LEVEL IS AS LONG AS THE FILM.** The shot is 29.5s and
 `worldPxPerSecond` is 116, so it is worth 3424px of camera travel. The level
@@ -362,11 +367,22 @@ and kept going while they stood still. After an arena unlocked that was up to
 **572px of travel the player never asked for**, arriving as a lurch, and it
 dragged the film along with it.
 
-The framing error is now closed out of a BUDGET earned by walking:
-`camFollowGain` px of correction per px walked. Stand still and the camera is
-still, however badly framed the shot is; walk, and it comes back to frame as you
-go. A deadzone still sits around the focus point so a single step does not drag
-the background.
+The framing error is now closed out of a BUDGET earned by walking FORWARD:
+`camFollowGain` px of camera per px walked. Stand still and the camera is still.
+A deadzone still sits around the focus point so a single step does not drag the
+background.
+
+⚠️ **`camFollowGain` IS 1.0 AND THAT IS NOT A ROUND-NUMBER DEFAULT.** At 1 the
+camera matches the walk exactly, so the player's position ON SCREEN never
+changes — wherever they are when they push the edge is where they stay, and
+where they will be standing when the next arena locks. Above 1 the camera
+outruns them to re-frame the shot, which sounds tidy and reads as the player
+sliding backwards across the frame under their own feet. It was 1.8, and that
+was the complaint.
+
+⚠️ **Only FORWARD walking earns budget.** It was `Math.abs` of the movement,
+which meant walking left also drove the camera right and the player's screen
+position fell away twice as fast.
 
 ⚠️ **THAT ALSO MADE THE PLATE'S SEEK STORM STRUCTURALLY IMPOSSIBLE.** Camera
 speed is now bounded by `walkSpeedX * camFollowGain` = 540px/s, which is 4.66x

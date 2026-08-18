@@ -306,23 +306,15 @@ const CONFIG = {
      and these enemy positions want re-checking; the arena lock does not,
      because it is derived. */
   SEGMENTS: [
-    { kind: 'scroll', toX: 900 },          // camera ends ≈ 230; view ≈ 230..1510
-    /* THE FIRST WAVE TEACHES THAT THE BELT HAS TWO ENDS. Two walk in from the
-       front, and then TOM comes in from BEHIND -- out of the ground the player
-       has already walked over, which is the one direction they have had no
-       reason to watch. His delay is long on purpose: the player commits to the
-       two in front first, and the third arrives once they have turned their
-       back on the way they came. It is the cheapest lesson in the genre and
-       the first arena is the place to teach it, while a mistake costs almost
-       nothing. */
-    {
-      kind: 'arena',
-      enemies: [
-        { kind: 'eggplant', x: 1080, z: 60 },
-        { kind: 'laranja',  x: 1240, z: 150, delayMs: 700 },
-        { kind: 'tomato',   x: 1010, z: 110, delayMs: 1800, from: 'behind' },
-      ],
-    },
+    /* THE OPENING IS A PASSAGE, NOT A FIGHT. It used to be 680px of walking
+       into an arena that locked the camera again almost immediately — an inch
+       of movement and the screen stops, before the player has any sense of
+       walking through a place at all. The first wave was removed and the two
+       scrolls merged, so the level now opens with ~1900px of uninterrupted
+       travel: long enough to establish the shot, the belt and the walk before
+       anything asks the player to fight. It also spends 42% of the film before
+       the first lock, which is the stretch of footage most worth seeing
+       uninterrupted. */
     { kind: 'scroll', toX: 2100 },         // camera ends ≈ 1430; view ≈ 1430..2710
     /* THE SECOND WAVE IS THE FIRST ONE THAT DOES NOT END WHERE IT LOOKS LIKE IT
        WILL. Three walk in from the front and read as the whole fight; then, five
@@ -416,14 +408,20 @@ const CONFIG = {
      BACKGROUND is the difference between a walk and a treadmill. */
   camDeadzone: 130,       // px either side of the camera's focus point
   camFocusX: 0.42,        // where in the view that focus point sits (0..1)
-  /* How many px of framing correction one px of WALKING buys. The camera moves
-     only out of this budget, so it can never move while the player is still.
+  /* How many px of camera movement one px of FORWARD walking buys. The camera
+     moves only out of this budget, so it can never move while the player is
+     still.
 
-     1.0 means the camera closes the gap exactly as fast as you walk, which for
-     a large gap (after a fight, up to 572px) means walking that far again to
-     re-frame. Above 1 it catches up while you walk; too high and it stops
-     reading as following and starts reading as a snap. */
-  camFollowGain: 1.8,
+     1.0 IS THE VALUE THAT LEAVES THE PLAYER ALONE, and that is why it is set
+     here. The camera matches the walk exactly, so the player's position ON
+     SCREEN never changes: wherever they are when they push the edge of the
+     deadzone is where they stay, and where they will be standing when the next
+     arena locks.
+
+     Above 1 the camera outruns them to re-frame the shot, which sounds tidy and
+     reads as the player sliding backwards across the frame under their own
+     feet. It was 1.8 and that was the complaint. */
+  camFollowGain: 1.0,
 
   camEaseRate: 7,         // still used by the arena lock hand-over         // how quickly it closes the gap, 1/sec
   camLockEaseRate: 4,     // ...and when snapping to an arena lock (slower, so

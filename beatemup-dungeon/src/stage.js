@@ -255,7 +255,10 @@ class Stage {
     const focus = CONFIG.GAME_W * CONFIG.camFocusX;
     const px = player.x;
     if (this.lastPlayerX == null) this.lastPlayerX = px;
-    const walked = Math.abs(px - this.lastPlayerX);
+    /* ONLY WALKING FORWARD EARNS BUDGET. This was `Math.abs` and that was a
+       bug: walking LEFT also earned it, so the camera crept right while the
+       player moved left and their screen position fell away twice as fast. */
+    const forward = Math.max(0, px - this.lastPlayerX);
     this.lastPlayerX = px;
 
     // How far the framing is out, in px. Zero inside the band.
@@ -263,7 +266,14 @@ class Stage {
     const err = sx - (focus + CONFIG.camDeadzone);
     if (err <= 0) return;                 // in frame, or left of it: the wall's job
 
-    const budget = walked * (CONFIG.camFollowGain || 1);
+    /* THE PLAYER IS NOT DRAGGED BACK TO THE MIDDLE. At `camFollowGain` 1 the
+       step is exactly the distance walked, so the camera matches the player and
+       their position on screen DOES NOT CHANGE -- wherever they are when they
+       push the edge is where they stay, and where they will be standing when
+       the next arena locks. Above 1 the camera outruns them and hauls them back
+       toward the focus point, which reads as the player sliding across the
+       frame under their own feet. */
+    const budget = forward * (CONFIG.camFollowGain || 1);
     const step = Math.min(err, budget);
     const maxX = CONFIG.levelEndX - CONFIG.GAME_W;
     this.camX = Math.max(0, Math.min(maxX, this.camX + step));
