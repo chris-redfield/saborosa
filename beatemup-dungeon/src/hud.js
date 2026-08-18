@@ -65,7 +65,7 @@ class Hud {
   drawEnemy(ctx, e, sheets, camX) {
     if (e.dead || e.showBarT <= 0) return;
     const fade = Math.min(1, e.showBarT / 0.4);
-    const size = sheets.size(e.kind, e.facing, e.pose(), e.frameStep(sheets));
+    const size = sheets.size(e.kind, e.pose(sheets), e.frameStep(sheets));
     const x = e.groundX(camX);
     const y = e.groundY() - size.h * e.depthScale() - CONFIG.enemyBarLift;
     const w = CONFIG.enemyBarW, h = CONFIG.enemyBarH;

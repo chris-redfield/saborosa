@@ -242,17 +242,26 @@ const CONFIG = {
   /* =========================================================================
      THE FIGHTERS
      =========================================================================
-     Every character is one of the main game's 9-col x 5-row packs, read
-     through sheets.js. Rows are directions, columns are poses.
+     TWO PACK FORMATS, because only the player has been redrawn. The coconut
+     now has a sheet made FOR this game (`pack: 'ragged'` — named animations,
+     per-frame anchors, cut by tools/build-beat-coconut-defs.py). The villains
+     are still the main game's 9-col x 5-row packs (`pack: 'grid'` — rows are
+     directions, columns are poses), read through the same sheets.js.
 
-     ONLY SIX FACINGS ARE BUILT, and that is a deliberate genre choice, not
-     a gap. The packs carry `down` (row 0) and `up` (row 4) as well, and both
-     are SKIPPED: a beat 'em up's sprites face along the belt, never at or away
-     from the camera, because a fighter turning its back on the player breaks
-     the read of who is about to hit whom. That leaves rows 1-3 —
-     down_left / left / up_left — mirrored into their right-facing twins. */
+     ONLY TWO FACINGS ARE BUILT — left and right. The grid packs do carry
+     diagonals, and this game used to build six facings out of them, but the
+     coconut's new sheet is drawn side-on only. Running the player on two
+     facings while the enemies kept six reads immediately wrong, so the whole
+     game is side-on now. `up` and `down` were already never selected, for the
+     genre reason: fighters face ALONG the belt so the read of who is about to
+     hit whom survives three enemies closing at once. Two facings is that rule
+     taken to its end.
+
+     When villain sheets are drawn, they get `pack: 'ragged'` and the grid path
+     in sheets.js can go. */
   CHARACTERS: {
-    coconut:  { sheet: 'saborosa-elementos-coconut',  name: 'COCONUT' },
+    coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
+                name: 'COCONUT' },
     tomato:   { sheet: 'saborosa-elementos-tomato',   name: 'TOM' },
     laranja:  { sheet: 'saborosa-elementos-laranja',  name: 'JUIXY' },
     eggplant: { sheet: 'saborosa-elementos-eggplant', name: 'ERKPA' },
@@ -286,6 +295,81 @@ const CONFIG = {
     hurt:     [3],
     down:     [3],
   },
+
+  /* Pose → animation, for the RAGGED packs. The coconut's sheet is 13 named
+     animations (the illustrator's 13 rows); this table says which one a pose
+     plays and, where a row holds more than one move, which slice of it.
+
+     THE COMBO IS ONE ROW SLICED INTO FIVE. Row 5 is ten frames — five
+     wind-up/strike PAIRS — so each hit of the combo is a 2-frame slice, and
+     fighter.js's existing startup → active → recover walk lands the wind-up on
+     startup and the strike on active. Nothing in the attack machine had to
+     change to go from three hits to five.
+
+     `comboLow5` is CUT BUT NOT WIRED. Row 6 is the same string ending in a low
+     lunging punch instead of the uppercut; which finisher a player gets, and
+     how they choose, is not decided yet. It is mapped here so that deciding it
+     is a one-line change rather than a trip back to the cutter.
+
+     The same is true of `lift` / `liftThrow` / `pickGround` / `carryWalk`:
+     rows 7-10 are a complete pickup loop, and this game has no liftable
+     objects yet. The art is cut and named, waiting on the mechanic. */
+  POSE_RAGGED: {
+    idle:       { anim: 'idle' },
+    walk:       { anim: 'walk' },
+    jump:       { anim: 'jump' },
+    airPunch:   { anim: 'airPunch' },
+
+    combo1:     { anim: 'combo', from: 0, to: 2 },
+    combo2:     { anim: 'combo', from: 2, to: 4 },
+    combo3:     { anim: 'combo', from: 4, to: 6 },   // the leaning punch
+    combo4:     { anim: 'combo', from: 6, to: 8 },
+    combo5:     { anim: 'combo', from: 8, to: 10 },  // the UPPERCUT
+    comboLow5:  { anim: 'comboLow', from: 8, to: 10 },
+
+    hurt:       { anim: 'hurt' },
+    down:       { anim: 'knockdown' },
+    death:      { anim: 'death' },
+
+    lift:       { anim: 'lift' },
+    liftThrow:  { anim: 'liftThrow' },
+    pickGround: { anim: 'pickGround' },
+    carryWalk:  { anim: 'carryWalk' },
+  },
+
+  /* How long ONE FRAME of a non-attack pose is held, in ms, per pose.
+     Attack poses are not here on purpose: their frames are driven by the
+     attack's own startup/active/recover windows, so a punch's drawing can
+     never drift out of step with the window that can actually hit.
+
+     Idle is slow because it is a breath, not an animation; walk is slow enough
+     that the six frames read as steps rather than a scramble; death is slowest
+     of all, because the last three frames are the dissolve and hurrying them
+     throws the body away before the player registers it died.
+
+     THESE WERE TUNED AGAINST A BUG, so the history is worth one paragraph.
+     `animT` used to be advanced twice per frame, so every looping pose ran at
+     DOUBLE the rate written here -- 95 played as 47, 220 played as 110. A 30%
+     slowdown was asked for against what was on screen; fixing the double-
+     advance and applying the 30% compounded, and idle landed 2.6x slower
+     rather than 1.3x. Walk happened to land right; idle did not.
+
+     Idle ended up at 200 by eye, after trying 110 (too fast), 286 (too slow)
+     and 143 (still too fast). Both numbers are now literal: what is written
+     here is what is drawn. */
+  POSE_MS: { idle: 200, walk: 124, hurt: 100, down: 110, death: 130 },
+
+  /* How long the LANDING frame of a jump is held after the arc has finished,
+     in ms. Purely cosmetic and deliberately outside the jump itself: the six
+     jump frames are spread across `jumpMs`, so buying the last one more time
+     by re-weighting them would have to take that time off the other five, and
+     the rise is not what needed slowing. Holding it past touchdown adds time
+     instead of moving it, and leaves `jumpMs` -- which sets the window the
+     player can punch the Mosca Boss in -- untouched.
+
+     The hold is DROPPED THE MOMENT THE PLAYER MOVES, so it reads as landing
+     rather than as being stuck. */
+  jumpLandHoldMs: 150,
 
   /* Drawn height of a fighter, in the fixed 1280x720 canvas — NOT a fraction
      of it. A fighter is sized against the belt and the other fighters, all of
@@ -392,17 +476,42 @@ const CONFIG = {
      whole difficulty dial of the genre — too tight and the game is a fight
      with the belt, too loose and depth stops meaning anything and it plays
      like a side-scroller with extra steps. */
+  /* FIVE HITS NOW, because the art has five. The coconut's combo row is ten
+     frames — five wind-up/strike pairs — where the old borrowed pack could
+     only fake three punches out of the main game's lift-and-throw poses.
+
+     THE FULL-COMBO TOTAL IS STILL 28 DAMAGE, deliberately. Spreading the same
+     28 over five hits instead of three keeps every enemy's time-to-kill
+     exactly where it was tuned (JUIXY 34, TOM 40, ERKPA 55) — this was a
+     sprite replacement, not a rebalance, and a combo that suddenly hit 40
+     would have quietly made TOM a one-combo enemy. Retune here, on purpose,
+     rather than inheriting it by accident.
+
+     Hit 3 is the LEANING PUNCH and hit 5 the UPPERCUT — the two frames the
+     artist drew bigger than the rest, so they carry more damage and more
+     reach. The three plain punches share one drawing and read as the fast
+     part of the string. */
   COMBO: [
-    { pose: 'jab',      startupMs:  70, activeMs:  80, recoverMs: 110, cancelMs: 260,
-      damage: 6,  reachX: 96 * 0.8,  reachZ: 46 * 0.8, knockback:  70, lift: 0 },
-    { pose: 'straight', startupMs:  85, activeMs:  85, recoverMs: 140, cancelMs: 280,
-      damage: 8,  reachX: 104 * 0.8, reachZ: 46 * 0.8, knockback: 110, lift: 0 },
-    /* The finisher KNOCKS DOWN, and that is what the combo is for: the first
-       two hits are worth 14 damage between them, this one is worth 14 on its
+    { pose: 'combo1', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
+      damage: 4, reachX:  96 * 0.8, reachZ: 46 * 0.8, knockback:  60, lift: 0 },
+    { pose: 'combo2', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
+      damage: 5, reachX: 100 * 0.8, reachZ: 46 * 0.8, knockback:  80, lift: 0 },
+    // The leaning punch: the body commits forward, so it reaches further.
+    { pose: 'combo3', startupMs: 70, activeMs: 80, recoverMs: 100, cancelMs: 250,
+      damage: 6, reachX: 110 * 0.8, reachZ: 46 * 0.8, knockback: 140, lift: 0 },
+    { pose: 'combo4', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 240,
+      damage: 4, reachX: 100 * 0.8, reachZ: 46 * 0.8, knockback:  80, lift: 0 },
+    /* The uppercut KNOCKS DOWN, and that is what the combo is for: the first
+       four hits are worth 19 damage between them, this one is worth 9 on its
        own AND takes the enemy off its feet, which buys the player the room to
-       turn round and deal with whoever else has walked up behind them. */
-    { pose: 'finisher', startupMs: 120, activeMs: 105, recoverMs: 260, cancelMs: 0,
-      damage: 14, reachX: 118 * 0.8, reachZ: 52 * 0.8, knockback: 320,
+       turn round and deal with whoever else has walked up behind them.
+
+       It LAUNCHES — `lift` throws the target off the floor — because the frame
+       is an uppercut and a knockdown that slid along the ground would fight
+       the drawing. Row 6's low lunging punch is the alternative ending and is
+       cut but unwired; see POSE_RAGGED. */
+    { pose: 'combo5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
+      damage: 9, reachX: 118 * 0.8, reachZ: 52 * 0.8, knockback: 320,
       lift: 190 * 0.8, knockdown: true },
   ],
 

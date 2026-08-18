@@ -65,9 +65,23 @@ class Fighter {
     this.launch = 0;           // apex of the current knockdown arc
     this.jumping = false;
     this.jumpT = 0;
+    // Time left holding the landing frame after the arc ends. See
+    // CONFIG.jumpLandHoldMs -- cosmetic only, it blocks nothing.
+    this.landHoldT = 0;
 
-    this.animT = 0;
     this.step = 0;             // frame within the current pose
+    /* Free-running animation clock, in seconds. Looping poses (idle, walk)
+       read it directly; one-shot poses (hurt, down) read `stateT` instead, so
+       they start at frame 0 the moment the state is entered rather than
+       wherever a shared clock happened to be. Death has its own, below. */
+    this.animT = 0;
+    /* THE DEATH ANIMATION NEEDS ITS OWN CLOCK, and this is why it cannot share
+       one. `stateT` is reset every time the knockdown changes phase (land ->
+       lie), so a death driven by it restarts halfway through. `animT` is a
+       free-running loop clock and would start the death wherever it happened
+       to be. `deathT` starts at zero when the fighter dies and only ever goes
+       up, which is exactly what a play-once-and-hold animation wants. */
+    this.deathT = 0;
     this.dead = false;
   }
 
@@ -155,6 +169,7 @@ class Fighter {
       this.stateT = 0;
       this.launch = Math.max(lift || 0, 140);
       this.dead = true;
+      this.deathT = 0;
       return true;
     }
 
@@ -217,6 +232,8 @@ class Fighter {
       this.clamp(bounds);
     }
 
+    if (this.landHoldT > 0) this.landHoldT -= dt;
+    if (this.dead) this.deathT += dt;
     if (this.comboWindow > 0) this.comboWindow -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
 
@@ -233,7 +250,12 @@ class Fighter {
   _updateJump(dt) {
     this.jumpT += dt;
     const p = this.jumpT / (CONFIG.jumpMs / 1000);
-    if (p >= 1) { this.jumping = false; this.jumpY = 0; return; }
+    if (p >= 1) {
+      this.jumping = false;
+      this.jumpY = 0;
+      this.landHoldT = (CONFIG.jumpLandHoldMs || 0) / 1000;
+      return;
+    }
     // A sine arc rather than real gravity: the shape is what matters and a sine
     // gives the float at the apex that a parabola does not.
     this.jumpY = Math.sin(Math.PI * p) * CONFIG.jumpHeight;
@@ -302,27 +324,104 @@ class Fighter {
     }
   }
 
+  /**
+   * Advance ONLY what a corpse needs, for the frames after the world stops.
+   *
+   * The shell freezes the simulation the moment the player dies -- combat, AI
+   * and the stage all stop, which is right, because a dead player should not
+   * still be being punched. But the death animation has to keep playing, or it
+   * freezes on frame one and reads as no death animation at all. So the shell
+   * calls this instead of update(): the clock the death row runs on, and
+   * nothing else.
+   */
+  tickDeath(dt) {
+    if (!this.dead) return;
+    this.deathT += dt;
+    this.animT += dt;
+  }
+
+  /** How long the death row still has to run, in seconds. 0 if it has none. */
+  deathRemaining(sheets) {
+    if (!this.dead || !sheets.has(this.kind, 'death')) return 0;
+    const n = sheets.poseLength(this.kind, 'death');
+    const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
+    return Math.max(0, n * (ms / 1000) - this.deathT);
+  }
+
   /** The pose to draw, derived from state — never stored, so it cannot fall out
       of step with the state that decides it. */
-  pose() {
+  pose(sheets) {
+    /* DEATH IS ITS OWN ANIMATION when the pack has one. The coconut's sheet
+       draws being knocked down and dying as two different rows, so a dead
+       fighter plays the death row rather than holding the knockdown pose and
+       fading. The grid packs have neither, so they fall through to `down` and
+       keep the old behaviour. */
+    if (this.dead && sheets && sheets.has(this.kind, 'death')) return 'death';
     if (this.state === 'down') return 'down';
     if (this.state === 'hurt') return 'hurt';
     if (this.atk) return this.atk.def.pose;
+    /* IN THE AIR, BUT BELOW THE ATTACK — punching while jumping draws the
+       punch, because that is the thing with a hitbox on it.
+
+       `this.jumping` rather than `jumpY > 0`: a fighter LAUNCHED by the
+       uppercut also has height, and that is a knockdown, which the `down`
+       branch above has already claimed. */
+    if ((this.jumping || (this.landHoldT > 0 && this.state !== 'walk'))
+        && sheets && sheets.has(this.kind, 'jump')) return 'jump';
     if (this.state === 'walk') return 'walk';
     return 'idle';
   }
 
-  /** Which frame of that pose. Multi-frame poses (the finisher) march through
-      startup/active/recover; single-frame poses ignore it. */
+  /**
+   * Which frame of the current pose to draw. THREE KINDS OF POSE, and which
+   * one a pose is decides what clock drives it:
+   *
+   *   attack   driven by the attack PHASE, not by time — so a punch's frames
+   *            are always in step with the window that can actually hit. Each
+   *            combo hit is a 2-frame slice: wind-up on startup, strike on
+   *            active and recover.
+   *   one-shot hurt / down / death. Driven by `stateT`, played forward once and
+   *            HELD on the last frame. Holding matters: a death that looped
+   *            would resurrect the corpse every second.
+   *   looping  idle / walk. Driven by the free-running `animT` and wrapped.
+   *
+   * The borrowed grid packs give every pose a length of 1, so all three
+   * branches collapse to frame 0 for them and nothing changes.
+   */
   frameStep(sheets) {
-    const p = this.pose();
-    const n = sheets.poseLength(p);
+    const p = this.pose(sheets);
+    const n = sheets.poseLength(this.kind, p);
     if (n <= 1) return 0;
+
     if (this.atk) {
       const a = this.atk;
       return a.phase === 'startup' ? 0 : a.phase === 'active' ? Math.min(1, n - 1) : n - 1;
     }
-    return 0;
+
+    /* THE JUMP IS DRIVEN BY THE ARC, NOT BY A CLOCK, and it is the only pose
+       that is. Its frames are leaving the floor, apex, and coming down, so
+       they have to stay married to the height the fighter is actually at — a
+       fixed frame rate would drift the apex drawing into the descent the
+       moment `jumpMs` is retuned. Spreading n frames over the arc means the
+       jump animation retimes itself for free.
+
+       At the current jumpMs 620 over six frames that is ~103ms a frame; it is
+       NOT a POSE_MS entry, so changing the walk or idle rate leaves it alone. */
+    if (p === 'jump') {
+      if (!this.jumping) return n - 1;      // the landing hold
+      const t = Math.min(1, this.jumpT / (CONFIG.jumpMs / 1000));
+      return Math.min(n - 1, Math.floor(t * n));
+    }
+
+    const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS[p]) || 110;
+    // Death reads its own clock; the other one-shots reset with their state.
+    if (p === 'death') {
+      return Math.min(n - 1, Math.floor(this.deathT / (ms / 1000)));
+    }
+    if (p === 'hurt' || p === 'down') {
+      return Math.min(n - 1, Math.floor(this.stateT / (ms / 1000)));
+    }
+    return Math.floor(this.animT / (ms / 1000)) % n;
   }
 
   draw(ctx, sheets, camX) {
@@ -343,11 +442,15 @@ class Fighter {
     }
 
     /* A knocked-down fighter is ROTATED rather than given a lying-down frame,
-       because the packs have no such frame. It reads correctly: the squashed
-       carry pose (col 3) tipped onto its back is a body on the floor. Rotation
-       goes the way the blow pushed. */
+       because the GRID packs have no such frame. It reads correctly: the
+       squashed carry pose (col 3) tipped onto its back is a body on the floor.
+       Rotation goes the way the blow pushed.
+
+       THE ROTATION IS SKIPPED FOR A PACK THAT DRAWS ITS OWN KNOCKDOWN. The
+       coconut's sheet has real falling and dying rows, and spinning a sprite
+       that is already drawn lying down tips it face into the floor. */
     let rotate = 0;
-    if (this.state === 'down') {
+    if (this.state === 'down' && !sheets.has(this.kind, 'down')) {
       const dir = this.vx >= 0 ? 1 : -1;
       const p = this.downPhase === 'land'
         ? Math.min(1, this.stateT / (CONFIG.downLandMs / 1000))
@@ -357,7 +460,7 @@ class Fighter {
       rotate = dir * p * (Math.PI / 2) * 0.85;
     }
 
-    sheets.draw(ctx, this.kind, this.facing, this.pose(), this.frameStep(sheets),
+    sheets.draw(ctx, this.kind, this.facing, this.pose(sheets), this.frameStep(sheets),
                 gx, gy, { alpha, rotate, flash: this.flash * 0.55, scale: this.depthScale() });
   }
 

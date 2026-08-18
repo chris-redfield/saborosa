@@ -125,10 +125,24 @@
       return;
     }
 
-    if (phase === 'play') update(dt);
-    else phaseT += dt;
+    if (phase === 'play') {
+      update(dt);
+    } else {
+      phaseT += dt;
+      /* THE WORLD IS STOPPED, BUT THE CORPSE IS NOT. Freezing everything the
+         moment the player dies is right -- nothing should still be punching a
+         dead player -- but the death animation runs on the player's own clock,
+         and a frozen clock holds it on frame one. That reads as no death
+         animation at all, which is exactly how it looked. */
+      if (phase === 'dead') player.tickDeath(dt);
+    }
 
-    if ((phase === 'dead' || phase === 'clear') && phaseT > 1.2 && input.takeAnyPress()) {
+    /* The restart prompt WAITS FOR THE DEATH TO FINISH PLAYING. Otherwise the
+       card fades up over a body that is still falling, and the one moment the
+       death row was drawn for is spent behind a piece of UI. */
+    const deathHold = (phase === 'dead') ? player.deathRemaining(sheets) : 0;
+    if ((phase === 'dead' || phase === 'clear') && deathHold <= 0
+        && phaseT > 1.2 && input.takeAnyPress()) {
       start();
       return;
     }
@@ -200,7 +214,12 @@
     if (phase === 'clear') {
       hud.drawCard(ctx, ['CLEAR', 'press anything'], Math.min(1, phaseT / 0.6));
     } else if (phase === 'dead') {
-      hud.drawCard(ctx, ['DOWN', 'press anything'], Math.min(1, phaseT / 0.6), '#E4463A');
+      // Held back until the death row has played; see `deathHold` in loop().
+      // Length comes from the pack, not a literal -- the row is 8 frames today
+      // and a redraw that adds one must not start clipping the card.
+      const t = phaseT - sheets.poseLength(player.kind, 'death')
+                         * (CONFIG.POSE_MS.death / 1000);
+      hud.drawCard(ctx, ['DOWN', 'press anything'], Math.max(0, Math.min(1, t / 0.6)), '#E4463A');
     }
   }
 

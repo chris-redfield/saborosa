@@ -1,59 +1,56 @@
 /**
- * Sheets — reads the main game's 9-col x 5-row character packs and presents
- * them as the SIX FACINGS a beat 'em up uses.
+ * Sheets — turns a character pack into drawable frames.
  *
- * The defs (tools/build-character-defs.py) are a flat `frames` array in reading
- * order, so frame (row, col) is `frames[row * cols + col]`. Rows are
- * directions, columns are poses.
+ * TWO PACK FORMATS LIVE HERE AT ONCE, and that is the current state of the art
+ * rather than an indulgence. The coconut has its own beat 'em up sheet, drawn
+ * for this game; TOM, JUIXY and ERKPA are still read out of the MAIN GAME's
+ * 9x5 packs. Until villain sheets exist, both have to work.
  *
- *     row 0   down        SKIPPED
- *     row 1   down_left   → down_left, and mirrored → down_right
- *     row 2   left        → left,      and mirrored → right
- *     row 3   up_left     → up_left,   and mirrored → up_right
- *     row 4   up          SKIPPED
+ *   'ragged'  the coconut. Not a grid: 13 rows of 3..10 frames, every frame its
+ *             own size, cut by tools/build-beat-coconut-defs.py into a packed
+ *             atlas plus a per-frame ANCHOR. Poses are named animations.
+ *   'grid'    the villains. 9 cols x 5 rows, frame (row, col) is
+ *             frames[row * cols + col]. Poses are columns.
  *
- * ROWS 0 AND 4 ARE SKIPPED ON PURPOSE and this is the genre rule, not a
- * shortcut. A beat 'em up's fighters face ALONG the belt — a sprite facing the
- * camera, or its back to it, destroys the read of who is about to hit whom,
- * which in a game where three enemies are closing at once is the only thing
- * keeping the screen legible. So `up` and `down` are never selected however
- * hard the player pushes the stick: see `facingFor()`, which folds a pure
- * vertical push onto whichever horizontal facing the fighter already had.
+ * TWO FACINGS, LEFT AND RIGHT. The diagonals are gone. The old packs carried
+ * down_left and up_left rows and this file built six facings out of them, but
+ * the coconut's new sheet is drawn side-on only, so the diagonals could not be
+ * kept for the player. Rather than run the player on two facings and everyone
+ * else on six -- which shows up immediately, as enemies angling toward the
+ * camera next to a player who never does -- the whole game is side-on now.
+ * `up` and `down` were already never selected, for the genre reason: fighters
+ * face ALONG the belt so the read of who is about to hit whom survives three
+ * enemies closing at once. Two facings is that rule taken to its end.
  *
- * MIRRORING IS A DRAW-TIME FLIP, not a second set of frames. The packs only
- * carry the left-facing halves, and building right-facing copies at load would
- * double the texture memory for something a negative x-scale does for free.
+ * MIRRORING IS A DRAW-TIME FLIP, not a second set of frames. Each pack stores
+ * the art for ONE side and a negative x-scale does the other.
  *
- * ALIGNMENT. Frames are bottom-aligned to the fighter's ground line, because
- * the poses vary a lot in height (79px to 149px across a row) and the one thing
- * that must not move is the feet. The main game does something cleverer — a
- * body-colour centroid scan, src/entities/spritesheet.js — which is worth
- * porting if a pose ever visibly floats; `CONFIG.poseNudge` is the hand-tuned
- * stopgap until then.
+ * WHICH SIDE THAT IS DIFFERS BY PACK, and it is not a detail. The main game's
+ * grid packs are drawn facing LEFT; the coconut's new sheet is drawn facing
+ * RIGHT. Hard-coding either one flips the other pack backwards — the player
+ * moonwalks, facing away from the direction they are walking — so every pack
+ * declares its own `native` side and the flip is simply "not that side".
+ *
+ * ALIGNMENT DIFFERS BY FORMAT, and this is the part worth reading.
+ *   grid    frames are bottom-aligned and centred on their own bbox.
+ *   ragged  frames carry an anchor read off the coconut BODY -- horizontal
+ *           centroid, and the body's lowest row as the ground line. Bbox
+ *           centring is WRONG for this sheet: an extended arm makes the frame
+ *           wider on one side, so the bbox centre slides toward the punch and
+ *           the body wobbles away from it on every hit. The anchor is the fix,
+ *           and it is why the cutter exists.
  */
-const FACINGS = ['left', 'right', 'down_left', 'down_right', 'up_left', 'up_right'];
-
-// facing → { row, flip }. The three rows the packs actually give us, each
-// serving one left-facing direction and its mirrored twin.
-const FACING_SRC = {
-  left:       { row: 2, flip: false },
-  right:      { row: 2, flip: true },
-  down_left:  { row: 1, flip: false },
-  down_right: { row: 1, flip: true },
-  up_left:    { row: 3, flip: false },
-  up_right:   { row: 3, flip: true },
-};
+const FACINGS = ['left', 'right'];
 
 class Sheets {
   constructor(assets) {
     this.assets = assets;
-    this.packs = {};      // kind → { img, frames, cols, scale, refH }
+    this.packs = {};      // kind -> pack
   }
 
   /**
-   * Prepare one character kind for drawing. Cheap — it only measures and
-   * caches; the frames themselves are read straight out of the defs at draw
-   * time.
+   * Prepare one character kind for drawing. Cheap -- it only measures and
+   * caches; frames themselves are read straight out of the defs at draw time.
    */
   build(kind) {
     const def = CONFIG.CHARACTERS[kind];
@@ -62,6 +59,14 @@ class Sheets {
     const data = this.assets.getJSON(kind);
     if (!img || !data || !data.frames) return null;
 
+    const pack = (def.pack === 'ragged')
+      ? this._buildRagged(img, data)
+      : this._buildGrid(img, data);
+    if (pack) this.packs[kind] = pack;
+    return pack;
+  }
+
+  _buildGrid(img, data) {
     const cols = data.cols || 9;
     /* One scale for the whole pack, derived from the SIDE-ON IDLE pose (row 2,
        col 0). Every other frame is scaled by the same factor, so the poses keep
@@ -70,65 +75,112 @@ class Sheets {
        squash every pose to the same size and kill the animation. */
     const ref = data.frames[2 * cols];
     const refH = (ref && ref.h) || 1;
-    const pack = {
-      img, cols,
-      frames: data.frames,
-      scale: CONFIG.fighterSizePx / refH,
-      refH,
-    };
-    this.packs[kind] = pack;
-    return pack;
+    // The main game's packs are drawn facing LEFT.
+    return { kind: 'grid', img, cols, frames: data.frames, native: 'left',
+             scale: CONFIG.fighterSizePx / refH, refH };
   }
 
-  /** Source rect for a (kind, facing, pose, frame-in-pose). */
-  rect(kind, facing, pose, step) {
+  _buildRagged(img, data) {
+    // Same rule as the grid: one scale for the pack, measured off the idle.
+    const idle = (data.anims && data.anims.idle) || [0];
+    const ref = data.frames[idle[0]];
+    const refH = (ref && ref.h) || 1;
+    /* The coconut's beat 'em up sheet is drawn facing RIGHT — the opposite of
+       the grid packs. `native` comes from the defs when the cutter records it,
+       so a future villain sheet drawn the other way needs no code change. */
+    return { kind: 'ragged', img, frames: data.frames, anims: data.anims || {},
+             native: data.native || 'right',
+             scale: CONFIG.fighterSizePx / refH, refH };
+  }
+
+  /**
+   * Does this kind have REAL DRAWN art for a pose?
+   *
+   * Deliberately false for anything the grid packs only fake. `POSE.down`
+   * exists there, but it is the main game's flattened carry pose standing in
+   * for a body on the floor — the caller still has to rotate it. Answering
+   * "yes, there is a down pose" would switch that rotation off and leave the
+   * villains standing upright while knocked out.
+   */
+  has(kind, pose) {
+    const pack = this.packs[kind];
+    if (!pack || pack.kind !== 'ragged') return false;
+    const m = CONFIG.POSE_RAGGED[pose];
+    return !!(m && pack.anims[m.anim]);
+  }
+
+  /** The atlas indices a pose plays through, for the ragged packs. */
+  _seq(pack, pose) {
+    const m = CONFIG.POSE_RAGGED[pose] || CONFIG.POSE_RAGGED.idle;
+    const all = pack.anims[m.anim] || pack.anims.idle || [0];
+    return all.slice(m.from || 0, m.to == null ? all.length : m.to);
+  }
+
+  /** Source rect for a (kind, pose, frame-in-pose). */
+  rect(kind, pose, step) {
     const pack = this.packs[kind];
     if (!pack) return null;
-    const src = FACING_SRC[facing] || FACING_SRC.left;
+    if (pack.kind === 'ragged') {
+      const seq = this._seq(pack, pose);
+      return pack.frames[seq[Math.min(step | 0, seq.length - 1)]] || null;
+    }
     const seq = CONFIG.POSE[pose] || CONFIG.POSE.idle;
     const col = seq[Math.min(step | 0, seq.length - 1)];
-    return pack.frames[src.row * pack.cols + col] || null;
+    // Row 2 is the side-on row -- the only one still used now the diagonals
+    // are gone. Right-facing is the same row, flipped at draw time.
+    return pack.frames[2 * pack.cols + col] || null;
   }
 
-  /** How many frames a pose has — what the animation clocks count against. */
-  poseLength(pose) {
+  /** How many frames a pose has -- what the animation clocks count against. */
+  poseLength(kind, pose) {
+    const pack = this.packs[kind];
+    if (pack && pack.kind === 'ragged') return this._seq(pack, pose).length;
     const seq = CONFIG.POSE[pose];
     return seq ? seq.length : 1;
   }
 
   /**
-   * Draw a fighter. (gx, gy) is its GROUND POINT on screen — the spot its feet
-   * stand on — so the caller does the belt projection and this does not need to
-   * know the world model at all.
+   * Draw a fighter. (gx, gy) is its GROUND POINT on screen -- the spot its feet
+   * stand on -- so the caller does the belt projection and this does not need
+   * to know the world model at all.
    *
-   * `alpha` and `tint` carry the flinch: a hit fighter blinks, and a dead one
+   * `alpha` and `flash` carry the flinch: a hit fighter blinks, and a dead one
    * fades. Both are applied here rather than by the caller so there is one
    * place a fighter's appearance is decided.
    */
   draw(ctx, kind, facing, pose, step, gx, gy, opts) {
     const pack = this.packs[kind];
     if (!pack) return;
-    const f = this.rect(kind, facing, pose, step);
+    const f = this.rect(kind, pose, step);
     if (!f) return;
     const o = opts || {};
-    const src = FACING_SRC[facing] || FACING_SRC.left;
-
+    const flip = facing !== (pack.native || 'left');
     const s = pack.scale * (o.scale || 1);
     const w = f.w * s, h = f.h * s;
+
+    /* Where the frame sits relative to the ground point. The ragged pack knows
+       its own anchor; the grid pack has none, so it falls back to bbox-centred
+       and bottom-aligned, which is what it was always drawn with. */
+    const ox = (f.ax != null ? -f.ax * s : -w / 2);
+    const oy = (f.ay != null ? -f.ay * s : -h);
     const nudge = (CONFIG.poseNudge && CONFIG.poseNudge[pose]) || 0;
+
+    // The whole transform is built around the ground point so the flip mirrors
+    // the sprite about its own anchor rather than sliding it sideways.
+    const blit = () => {
+      ctx.translate(gx, gy + nudge * (o.scale || 1));
+      if (o.rotate) ctx.rotate(o.rotate);
+      if (flip) ctx.scale(-1, 1);
+      ctx.drawImage(pack.img, f.x, f.y, f.w, f.h, ox, oy, w, h);
+    };
 
     ctx.save();
     if (o.alpha != null) ctx.globalAlpha = o.alpha;
-    // The whole transform is built around the ground point so the flip mirrors
-    // the sprite about its own centre line rather than sliding it sideways.
-    ctx.translate(gx, gy + nudge * (o.scale || 1));
-    if (o.rotate) ctx.rotate(o.rotate);
-    if (src.flip) ctx.scale(-1, 1);
-    ctx.drawImage(pack.img, f.x, f.y, f.w, f.h, -w / 2, -h, w, h);
+    blit();
     ctx.restore();
 
     /* The hit flash. Drawn as a second pass in `lighter` over the same frame,
-       clipped to the sprite by using the sprite itself as the source — so it
+       clipped to the sprite by using the sprite itself as the source -- so it
        lights the character and not a rectangle of the floor behind it. Cheap,
        and it fails safe: an unsupported composite op just draws the sprite
        again at low alpha, which still reads as a flash. */
@@ -136,45 +188,36 @@ class Sheets {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = Math.min(1, o.flash);
-      ctx.translate(gx, gy + nudge * (o.scale || 1));
-      if (o.rotate) ctx.rotate(o.rotate);
-      if (src.flip) ctx.scale(-1, 1);
-      ctx.drawImage(pack.img, f.x, f.y, f.w, f.h, -w / 2, -h, w, h);
+      blit();
       ctx.restore();
     }
   }
 
   /** Drawn size of a pose, for the health bar and the debug boxes. */
-  size(kind, facing, pose, step) {
+  size(kind, pose, step) {
     const pack = this.packs[kind];
-    const f = pack && this.rect(kind, facing, pose, step);
+    const f = pack && this.rect(kind, pose, step);
     if (!f) return { w: 0, h: 0 };
     return { w: f.w * pack.scale, h: f.h * pack.scale };
   }
 }
 
 /**
- * Pick a facing from a movement vector, honouring the six-facing rule.
+ * Pick a facing from a movement vector. Left or right, nothing else.
  *
- * A PURE VERTICAL PUSH KEEPS THE CURRENT HORIZONTAL SIDE. Walking straight
- * up or down the belt has no left/right component to read a facing from, and
- * the packs have no forward/backward frames to fall back on — so the fighter
- * holds whichever way it was already facing and walks sideways-on. That is what
- * the genre does, and it is also what the player wants: turning to face the
- * camera the moment they step back would swing the sprite round mid-fight.
- *
- * `prev` is the facing to keep in that case.
+ * DEPTH DOES NOT CHOOSE A FACING any more -- there are no diagonal frames to
+ * choose. A pure vertical push therefore KEEPS THE CURRENT SIDE: walking
+ * straight up or down the belt has no left/right component to read, and
+ * turning to face the camera the moment the player steps back would swing the
+ * sprite round mid-fight. `prev` is the facing held in that case.
  */
 function facingFor(dx, dz, prev) {
-  const side = dx > 0.01 ? 'right' : dx < -0.01 ? 'left'
-    : (prev && prev.indexOf('right') >= 0 ? 'right' : 'left');
-  // Positive dz is toward the camera (down the screen) = the `down_` rows.
-  if (dz > 0.01) return 'down_' + side;
-  if (dz < -0.01) return 'up_' + side;
-  return side;
+  if (dx > 0.01) return 'right';
+  if (dx < -0.01) return 'left';
+  return (prev === 'right') ? 'right' : 'left';
 }
 
 /** Which way along the belt a facing points: -1 left, +1 right. */
 function facingSign(facing) {
-  return facing && facing.indexOf('right') >= 0 ? 1 : -1;
+  return facing === 'right' ? 1 : -1;
 }
