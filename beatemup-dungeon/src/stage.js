@@ -38,6 +38,11 @@ class Stage {
     this.boss = null;       // the Mosca Boss, during a 'boss' segment only
     this.spawned = false;
     this.done = false;
+    this.roomIndex = 0;
+    /* Put the backdrop back on the first room's footage. A restart from the
+       boss room would otherwise replay the street against the boss's shot. */
+    const first = CONFIG.ROOMS && CONFIG.ROOMS[0];
+    if (first && this.backdrop) this.backdrop.setPlate(first.plate);
     this.banner = 0;        // seconds left on the "GO" arrow
     /* The follow reference. Null means "re-seed from wherever the player is on
        the next frame" — which is what a restart wants, since the player jumps
@@ -46,7 +51,44 @@ class Stage {
     this.lastPlayerX = null;
   }
 
-  segment() { return CONFIG.SEGMENTS[this.index] || null; }
+  /** The room being played, and the segment within it. */
+  room() { return (CONFIG.ROOMS && CONFIG.ROOMS[this.roomIndex]) || null; }
+  segment() {
+    const r = this.room();
+    return (r && r.segments[this.index]) || null;
+  }
+  /** Is there another room after this one? */
+  hasNextRoom() { return !!(CONFIG.ROOMS && CONFIG.ROOMS[this.roomIndex + 1]); }
+  /** The right-hand end of the room, in world x. */
+  endX() {
+    const r = this.room();
+    return (r && r.endX) || CONFIG.GAME_W;
+  }
+
+  /**
+   * Move into a room: its footage, its origin, its segments.
+   *
+   * The camera and the player BOTH reset to the room's own origin rather than
+   * continuing a single world x. A room is a place, not a stretch of the same
+   * street, and its plate is a different shot that starts at its own beginning.
+   */
+  enterRoom(i, player) {
+    this.roomIndex = i;
+    this.index = 0;
+    this.camX = 0;
+    this.camTarget = 0;
+    this.lockX = null;
+    this.boss = null;
+    this.spawned = false;
+    this.banner = 0;
+    this.lastPlayerX = null;
+    const r = this.room();
+    if (r && this.backdrop) this.backdrop.setPlate(r.plate);
+    if (player && r) {
+      player.x = r.startX != null ? r.startX : 220;
+      player.z = CONFIG.beltDepth * 0.6;
+    }
+  }
   isArena() {
     const s = this.segment();
     // A boss segment IS an arena — same locked camera, same walls, one very
@@ -58,7 +100,7 @@ class Stage {
   bounds() {
     const w = CONFIG.GAME_W;
     const s = this.segment();
-    if (s && this.isArena()) {
+    if (s && this.isArena() && s.lock !== false) {
       return {
         minX: this.camX + CONFIG.gateMarginX,
         maxX: this.camX + w - CONFIG.gateMarginX,
@@ -69,7 +111,7 @@ class Stage {
        because the camera does not follow them backwards past ground it has
        already cleared and they would simply disappear. The right edge is open:
        walking right is what advances the level. */
-    return { minX: this.camX + CONFIG.gateMarginX, maxX: CONFIG.levelEndX };
+    return { minX: this.camX + CONFIG.gateMarginX, maxX: this.endX() };
   }
 
   /**
@@ -133,7 +175,7 @@ class Stage {
         this.spawned = false;
         this.lockX = null;
         const r = this._enter(player, crowd);
-        if (r !== 'clear') this.banner = (CONFIG.goMs || 1600) / 1000;
+        if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
         return r || 'advance';
       }
       return null;
@@ -154,6 +196,32 @@ class Stage {
        backdrop will want, since a locked shot is a composed one. Then the
        number has to be picked against where the camera actually is, not against
        where the player is. */
+    /* A FIGHT THE CAMERA FOLLOWS INSTEAD OF LOCKING. `lock: false` is what the
+       boss room is: small enough that penning the player to one screen would
+       leave no room to move, and the whole point of it is a camera that trails
+       them back and forth. Everything else about an arena is unchanged -- the
+       spawn, the token, clearing it -- so this is a camera decision, not a new
+       kind of segment.
+
+       The walls come from `bounds()`, which gives a non-locking fight the whole
+       ROOM rather than the current screen. */
+    if (s.lock === false) {
+      this.banner = 0;
+      this._followCamera(dt, player);
+      if (!this.spawned) {
+        this.spawned = true;
+        this._spawn(s, crowd);
+      }
+      if (crowd.cleared()) {
+        this.index++;
+        this.spawned = false;
+        const r = this._enter(player, crowd);
+        if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
+        return r || 'advance';
+      }
+      return null;
+    }
+
     if (this.lockX == null) {
       this.lockX = s.camX != null ? s.camX : this.camX;
       /* LOCKING THE CAMERA CANCELS THE GO ARROW. The prompt lasts `goMs`
@@ -180,11 +248,12 @@ class Stage {
       this.spawned = false;
       this.lockX = null;
       const r = this._enter(player, crowd);
-      /* THE ARROW ONLY MEANS SOMETHING IF THERE IS SOMEWHERE TO GO. It used to
-         be set before asking, so clearing the LAST arena pointed the player
-         onward into the end of the level -- a GO over the clear card. Length is
-         CONFIG.goMs; the fade is the tail of it, not extra. */
-      if (r !== 'clear') this.banner = (CONFIG.goMs || 1600) / 1000;
+      /* THE ARROW ONLY MEANS SOMETHING IF THERE IS SOMEWHERE TO WALK. `_enter`
+         returns null when a next segment exists and an event when the room is
+         over -- 'clear' at the end of the game, 'room' at a door. Neither is a
+         walk the player controls, so neither gets an arrow. It used to be set
+         before asking at all, which put a GO over the clear card. */
+      if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
       return r || 'advance';
     }
     return null;
@@ -192,7 +261,14 @@ class Stage {
 
   _enter(player, crowd) {
     const s = this.segment();
-    if (!s) { this.done = true; return 'clear'; }
+    /* OUT OF SEGMENTS. If another room follows, this is a door rather than the
+       end of the game -- game.js walks the player out and fades into it. Only
+       the last room clears. */
+    if (!s) {
+      if (this.hasNextRoom()) return 'room';
+      this.done = true;
+      return 'clear';
+    }
     return null;
   }
 
@@ -258,13 +334,26 @@ class Stage {
     /* ONLY WALKING FORWARD EARNS BUDGET. This was `Math.abs` and that was a
        bug: walking LEFT also earned it, so the camera crept right while the
        player moved left and their screen position fell away twice as fast. */
-    const forward = Math.max(0, px - this.lastPlayerX);
+    /* The signed distance walked since the last follow frame. Both directions
+       are kept: the budget must be earned in the direction the camera needs to
+       go, so a step left can never drive the camera right. */
+    const moved = px - this.lastPlayerX;
     this.lastPlayerX = px;
 
     // How far the framing is out, in px. Zero inside the band.
     const sx = px - this.camX;
-    const err = sx - (focus + CONFIG.camDeadzone);
-    if (err <= 0) return;                 // in frame, or left of it: the wall's job
+    const dz = CONFIG.camDeadzone;
+    let err = sx - (focus + dz);
+    if (err <= 0) {
+      /* GOING BACK, IN A ROOM THAT ALLOWS IT. Only some do: the camera can
+         only reverse where the plate can be scrubbed backwards, which is a
+         property of the footage (see CONFIG.ROOMS and `allowReverse`). Where it
+         cannot, the left edge of the view stays a wall and `bounds` handles it. */
+      const r = this.room();
+      if (!r || !r.reverse) return;
+      err = sx - (focus - dz);
+      if (err >= 0) return;               // inside the band
+    }
 
     /* THE PLAYER IS NOT DRAGGED BACK TO THE MIDDLE. At `camFollowGain` 1 the
        step is exactly the distance walked, so the camera matches the player and
@@ -273,9 +362,10 @@ class Stage {
        the next arena locks. Above 1 the camera outruns them and hauls them back
        toward the focus point, which reads as the player sliding across the
        frame under their own feet. */
-    const budget = forward * (CONFIG.camFollowGain || 1);
-    const step = Math.min(err, budget);
-    const maxX = CONFIG.levelEndX - CONFIG.GAME_W;
+    const walked = (err > 0) ? Math.max(0, moved) : Math.max(0, -moved);
+    const budget = walked * (CONFIG.camFollowGain || 1);
+    const step = (err > 0) ? Math.min(err, budget) : Math.max(err, -budget);
+    const maxX = this.endX() - CONFIG.GAME_W;
     this.camX = Math.max(0, Math.min(maxX, this.camX + step));
     this.camTarget = this.camX;           // kept in step for _lockCamera's hand-over
   }

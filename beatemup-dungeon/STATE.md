@@ -308,6 +308,47 @@ the crowd for the length of a stun.
 
 ---
 
+## Rooms
+
+A **room** is a place with its own footage, its own length, and its own rule
+about which way the camera may go. The level used to be one flat list of
+segments against one plate; the boss room made that insufficient.
+
+| room | travel | plate | film | camera |
+|---|---|---|---|---|
+| `street` | 3424px | the 29.5s dolly | 100% | forward only |
+| `boss-room` | 337px | a 5.2s clip | 100% | **both ways** |
+
+Rooms hand over through the walk-out and a **fade**: the player leaves the right
+edge, the screen goes black, and the room swaps **at the blackest point** —
+shot, camera origin and player position all move unseen. Anything switched
+before or after shows as a cut on one side of the fade.
+
+⚠️ **`reverse` IS PER ROOM BECAUSE IT IS NOT FREE.** The camera can only run
+backwards where the plate can be scrubbed backwards, and video cannot PLAY
+backwards — no browser implements a negative `playbackRate`, so reverse means
+seeking, and a seek decodes from the previous keyframe. The street's shot has
+keyframes eleven seconds apart and could never do it. The boss room's clip is
+re-encoded at a keyframe every THIRD frame for exactly this, which is what makes
+a backward step cost three frames instead of hundreds.
+
+⚠️ **THE BOSS ROOM'S SHOT HAD TO BE CROPPED, AND THE CUT WAS FOUND, NOT
+GUESSED.** The source pans right for 5.2s, rests, then returns to where it
+started; played whole it would walk the player into the room and then drag the
+room back past them. `tools/build-boss-plate.py` locates the turn by phase
+correlation — frame 156, t=5.206s, after 224px — and cuts at the PEAK rather
+than at the end of the twelve-frame plateau after it. A plateau left in is
+camera travel that shows no movement: the room would feel stuck against its own
+wall.
+
+⚠️ **A FIGHT CAN FOLLOW INSTEAD OF LOCK.** `lock: false` on an arena keeps the
+camera trailing the player and gives them the whole ROOM as walls instead of the
+current screen. The boss room is 337px of travel — locking it would leave
+nowhere to move, and a camera that goes back and forth is the entire reason its
+footage was cut to be reversible. Everything else about an arena is unchanged.
+
+---
+
 ## The level
 
 A sequence of segments, alternating walking and fighting — the genre's spine.

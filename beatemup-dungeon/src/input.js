@@ -28,6 +28,7 @@ class Input {
     this._jumpQueued = false;
     this._pauseQueued = false;
     this._pickupQueued = false;
+    this._roomJump = -1;       // dev: room index requested by a number key
     this._anyPress = false;
 
     this._kb = { left: false, right: false, up: false, down: false };
@@ -65,6 +66,14 @@ class Input {
       } else if (e.code === 'KeyL' || e.code === 'KeyE') {
         e.preventDefault(); this._pickupQueued = true; this._anyPress = true;
       } else if (e.code === 'KeyC') { this.debug = true; }
+      /* DEV: the number keys jump straight to a room. Captured unconditionally
+         and acted on only when CONFIG.DEV.on, so the shipping build reads them
+         as "press anything" like any other key and nothing else. */
+      else if (e.code.slice(0, 5) === 'Digit' && e.code.length === 6) {
+        const n = +e.code[5];
+        if (n >= 1) this._roomJump = n - 1;
+        this._anyPress = true;
+      }
       else if (e.code === 'Escape' || e.code === 'KeyP') { this._pauseQueued = true; }
       else { this._anyPress = true; }
     });
@@ -198,6 +207,8 @@ class Input {
   takeAttack() { const a = this._attackQueued; this._attackQueued = false; return a; }
   takeJump() { const j = this._jumpQueued; this._jumpQueued = false; return j; }
   takePickup() { const p = this._pickupQueued; this._pickupQueued = false; return p; }
+  /** Dev: the room a number key asked for, or -1. Consumed on read. */
+  takeRoomJump() { const r = this._roomJump; this._roomJump = -1; return r; }
   takePause() { const p = this._pauseQueued; this._pauseQueued = false; return p; }
   takeAnyPress() { const a = this._anyPress; this._anyPress = false; return a; }
 
@@ -206,5 +217,6 @@ class Input {
   flush() {
     this._attackQueued = this._jumpQueued = this._pickupQueued = false;
     this._pauseQueued = this._anyPress = false;
+    this._roomJump = -1;
   }
 }

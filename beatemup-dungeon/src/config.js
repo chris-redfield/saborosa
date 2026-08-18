@@ -45,6 +45,15 @@ const CONFIG = {
   DEV: {
     on: true,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
+
+    /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
+       the boss room. Testing a late room by playing to it is how a late room
+       stops getting tested; this is the shortcut.
+
+       The NUMBER KEYS do the same thing live -- 1 for the first room, 2 for the
+       second -- so a room can be jumped to mid-session without touching this
+       file. Both are dev-only and dead when `on` is false. */
+    startRoom: 0,
   },
 
   /* The MAIN GAME's assets — the character packs live here, and we read them
@@ -270,6 +279,34 @@ const CONFIG = {
       maxRate: 10,
       tint: '',
     },
+
+    /* THE BOSS ROOM'S PLATE. Same treatment as the street's, with two
+       differences that both come from the room being small and two-way.
+
+       IT IS CROPPED AT THE TURN. The source pans right for 5.2s, rests, then
+       comes back to where it started; played whole it would walk the player
+       into the room and then drag the room back past them.
+       tools/build-boss-plate.py finds that turn by phase correlation rather
+       than by eye -- frame 156 -- and cuts there.
+
+       IT IS RE-ENCODED FOR SCRUBBING. `allowReverse` lets the camera run this
+       shot backwards, and a video cannot PLAY backwards, so going back means
+       seeking. The clip therefore carries a keyframe every third frame, which
+       makes a backward step decode three frames instead of the several hundred
+       the original's eleven-second keyframe spacing would have cost. That is
+       the whole reason the boss room can have a camera that follows the player
+       both ways and the street cannot. */
+    bossPlate: {
+      kind: 'video',
+      src: 'v2:beatemup-dungeon/boss-room-plate.mp4',
+      /* 337 screen px of pan across 5.206s. Measured, like the street's. */
+      worldPxPerSecond: 64.8,
+      allowReverse: true,
+      resyncS: 2.0,          // the room is small; a big drift here is visible
+      trackGain: 1.2,
+      maxRate: 8,
+      tint: '',
+    },
     // Declared but unused until there is art — see the LAYERS note.
     foreground: { kind: 'image', src: '', scale: 1 },
   },
@@ -305,7 +342,34 @@ const CONFIG = {
      tuning — and the view is the 1280 to the right of that. Retune the camera
      and these enemy positions want re-checking; the arena lock does not,
      because it is derived. */
-  SEGMENTS: [
+  /* ===== ROOMS ===============================================================
+     A room is a PLACE with its own footage, its own length and its own rules
+     about which way the camera may go. The level used to be one flat list of
+     segments against one plate; the boss room made that insufficient, because
+     it is a different shot, a different size, and the only place the camera is
+     allowed to run backwards.
+
+     Rooms hand over through a FADE (see game.js): the player walks out of the
+     right-hand edge of one and fades in at the start of the next. That is why
+     each carries its own `startX` -- the camera and the player both reset to
+     the new room's origin rather than continuing a single world x.
+
+     `reverse` IS PER ROOM AND NOT A GLOBAL SETTING, because it is not free. It
+     costs a plate that can be scrubbed backwards, which costs a re-encode with
+     dense keyframes. The street's shot is eight megabytes at eleven-second
+     keyframe spacing and could never do it; the boss room's is a five-second
+     clip cut for exactly this. */
+  ROOMS: [
+    {
+      name: 'street',
+      plate: 'plate',
+      startX: 220,
+      /* Far enough right that the camera can reach 3424 — the end of the film
+         at `worldPxPerSecond` 116. `camX` is clamped to `endX - GAME_W`, so
+         this is a hard ceiling on how much of the shot can ever be seen. */
+      endX: 4704,
+      reverse: false,
+      segments: [
     /* THE OPENING IS A PASSAGE, NOT A FIGHT. It used to be 680px of walking
        into an arena that locked the camera again almost immediately — an inch
        of movement and the screen stops, before the player has any sense of
@@ -391,6 +455,38 @@ const CONFIG = {
         { kind: 'tomato',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
         { kind: 'eggplant', x: 4100, z: 180, delayMs: 4200, from: 'behind' },
         { kind: 'tomato',   x: 4300, z: 40,  delayMs: 7000 },
+      ],
+    },],
+    },
+
+    /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter
+       of a screen, so the camera barely moves and mostly just breathes with the
+       player. The fight is what the room is for, not the walk. */
+    {
+      name: 'boss-room',
+      plate: 'bossPlate',
+      startX: 220,
+      /* 337px of pan + one screen. The camera crosses the whole shot and
+         stops, which is the room's right-hand wall. */
+      endX: 1617,
+      reverse: true,
+      segments: [
+        /* PLACEHOLDER OCCUPANT. The room, its shot and its camera are the
+           feature; what actually fights here is not decided yet. Three mooks
+           keep it playable until it is. */
+        {
+          kind: 'arena',
+          /* THE CAMERA FOLLOWS THIS FIGHT, it does not lock. The room is 337px
+             of travel — penning the player to one screen would leave nowhere to
+             move, and a camera that trails them back and forth is the whole
+             reason the room's footage was cut to be scrubbable in reverse. */
+          lock: false,
+          enemies: [
+            { kind: 'eggplant', x: 900,  z: 70 },
+            { kind: 'tomato',   x: 1100, z: 150, delayMs: 900 },
+            { kind: 'laranja',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
+          ],
+        },
       ],
     },
   ],
@@ -582,6 +678,12 @@ const CONFIG = {
      a fighter is up to ~137px wide and drawn from its own anchor, so a smaller
      pad ends the level with a sliver of him still showing. */
   outroExitPad: 220,
+
+  /* The room-to-room fade, in ms, for the WHOLE thing: down to black over the
+     first half and back up over the second. The room swaps at the blackest
+     point so the change of shot, camera origin and player position all happen
+     unseen. */
+  fadeMs: 900,
 
   /* How long a pick-up takes, in ms, by weight. ONE BUTTON, TWO ANIMATIONS --
      the object decides which, not the player:

@@ -51,6 +51,10 @@ class Backdrop {
     this.assets = assets;
     this.sources = {};
     this.time = 0;
+    /* WHICH SOURCE THE `plate` LAYER ACTUALLY DRAWS. The layer stack names a
+       logical 'plate' and every room points that name at its own footage, so a
+       room change is one call here rather than a rewrite of CONFIG.LAYERS. */
+    this.plateAlias = 'plate';
   }
 
   /** Build every source declared in CONFIG.SOURCES that has something to draw. */
@@ -73,9 +77,19 @@ class Backdrop {
     return cfg.src ? [{ key: name, src: cfg.src, big: true }] : [];
   }
 
+  /** Point the 'plate' layer at a different source. See plateAlias. */
+  setPlate(name) {
+    if (name && this.sources[name]) this.plateAlias = name;
+  }
+
+  /** Resolve a layer's logical source name to the one it draws right now. */
+  resolve(name) {
+    return name === 'plate' ? this.plateAlias : name;
+  }
+
   /** Put a film source into 'scrub' or 'play'. No-op for the other kinds. */
   setMode(name, mode) {
-    const s = this.sources[name];
+    const s = this.sources[this.resolve(name)];
     if (s && s.cfg.kind === 'film') s.mode = mode;
   }
 
@@ -87,14 +101,15 @@ class Backdrop {
    * the layer.
    */
   drawLayer(ctx, layer, camX, w, h, dt) {
-    const s = this.sources[layer.source];
+    const key = this.resolve(layer.source);
+    const s = this.sources[key];
     if (!s) return;
     const scrollX = camX * (layer.parallax != null ? layer.parallax : 1);
     const cfg = s.cfg;
-    if (cfg.kind === 'tile') this._drawTile(ctx, layer.source, cfg, scrollX, w, h);
-    else if (cfg.kind === 'film') this._drawFilm(ctx, layer.source, s, scrollX, w, h, dt);
-    else if (cfg.kind === 'video') this._drawVideo(ctx, layer.source, s, scrollX, w, h, dt);
-    else this._drawImage(ctx, layer.source, cfg, scrollX, w, h);
+    if (cfg.kind === 'tile') this._drawTile(ctx, key, cfg, scrollX, w, h);
+    else if (cfg.kind === 'film') this._drawFilm(ctx, key, s, scrollX, w, h, dt);
+    else if (cfg.kind === 'video') this._drawVideo(ctx, key, s, scrollX, w, h, dt);
+    else this._drawImage(ctx, key, cfg, scrollX, w, h);
   }
 
   /**
@@ -107,7 +122,7 @@ class Backdrop {
    * the bounds are drawn.
    */
   layerBounds(layer, camX, w, h) {
-    const s = this.sources[layer.source];
+    const s = this.sources[this.resolve(layer.source)];
     if (!s) return null;
     const cfg = s.cfg;
     if (cfg.kind === 'film') return { x: 0, y: 0, w, h, note: 'film fills the frame' };
@@ -255,6 +270,21 @@ class Backdrop {
           keepFrame();                      // hold this one while we jump
           try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
           if (!v.paused) v.pause();
+        }
+      } else if (camSpeed < -1 && cfg.allowReverse) {
+        /* GOING BACKWARDS, WHICH A VIDEO CANNOT PLAY. No browser implements a
+           negative playbackRate, so the only way back is to SEEK, and a seek
+           costs a decode from the previous keyframe. That is why the room this
+           is enabled for ships re-encoded with a keyframe every third frame
+           (tools/build-boss-plate.py): a step back decodes at most three.
+
+           Still one seek at a time -- issuing another while one is in flight
+           cancels it, and nothing ever decodes. Same storm that blacked out the
+           main level's plate. */
+        if (!v.paused) v.pause();
+        if (!v.seeking) {
+          keepFrame();
+          try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
         }
       } else if (camSpeed > 1) {
         /* Rate = what the camera's own speed asks for, plus a term that closes

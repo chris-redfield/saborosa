@@ -243,6 +243,32 @@ counting, and mashing would be optimal on every other chain.
 
 ---
 
+## Rooms
+
+```js
+ROOMS: [
+  { name: 'street',    plate: 'plate',     startX: 220, endX: 4704, reverse: false, segments: [...] },
+  { name: 'boss-room', plate: 'bossPlate', startX: 220, endX: 1617, reverse: true,  segments: [...] },
+],
+fadeMs: 900,   // the whole room-to-room fade; the swap happens at its midpoint
+```
+
+Each room has its own footage and its own camera origin. To add one: add a
+`SOURCES` entry for its plate, a `ROOMS` entry pointing at it, and set `endX` so
+the camera crosses exactly as much of the shot as exists.
+
+**`reverse: true` needs a plate that can be scrubbed backwards.** Video cannot
+play backwards, so reverse means seeking, and a seek decodes from the previous
+keyframe. Re-encode the clip with dense keyframes first:
+
+```
+python3 tools/build-boss-plate.py     # crops at the pan's turn, keyframe every 3 frames
+```
+
+**`lock: false` on an arena** makes the camera follow that fight instead of
+locking, with the whole room as walls rather than one screen. That is what a
+small room wants.
+
 ## The camera
 
 ```js
@@ -297,6 +323,21 @@ It is applied at the one place the player's damage is read (`combat.playerHits`)
 rather than by rewriting `CONFIG.COMBO` — the table documents a 28-damage string
 that every enemy's HP is tuned against, and a config that lies about that is
 worse than a branch.
+
+**Jumping straight to a room.** Testing a late room by playing to it is how a
+late room stops getting tested.
+
+```js
+DEV: { startRoom: 1 },   // which room the game boots into
+```
+
+The **number keys do the same thing live** — `1` for the street, `2` for the
+boss room — with no fade, because sitting through the fade is exactly the
+waiting the shortcut exists to avoid. It rebuilds the player from scratch, so a
+key pressed mid-combo or on the death screen cannot carry that state into the
+new room. The marker shows which room you are in.
+
+Both are dead when `on` is false.
 
 **It is loud on purpose.** The HUD draws a `DEV 50 dmg` marker in the top right
 while it is on, and **`package.sh` refuses to build** until `on` is false. A

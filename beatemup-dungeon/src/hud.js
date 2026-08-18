@@ -138,16 +138,20 @@ class Hud {
    * punch does 50 looks broken rather than switched on, and by then the person
    * looking at it is usually not the person who left it on.
    */
-  drawDev(ctx) {
+  drawDev(ctx, roomName) {
     if (!(CONFIG.DEV && CONFIG.DEV.on)) return;
     ctx.save();
     ctx.font = '700 14px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
+    // The room is on the marker because the number keys can change it, and a
+    // dev who has jumped rooms should not have to guess which one they are in.
+    const label = 'DEV  ' + CONFIG.DEV.punchDamage + ' dmg'
+      + (roomName ? '  ·  ' + roomName + '  (1-9 to jump)' : '');
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillText('DEV  ' + CONFIG.DEV.punchDamage + ' dmg', CONFIG.GAME_W - 9, 9);
+    ctx.fillText(label, CONFIG.GAME_W - 9, 9);
     ctx.fillStyle = '#E4463A';
-    ctx.fillText('DEV  ' + CONFIG.DEV.punchDamage + ' dmg', CONFIG.GAME_W - 10, 8);
+    ctx.fillText(label, CONFIG.GAME_W - 10, 8);
     ctx.restore();
   }
 

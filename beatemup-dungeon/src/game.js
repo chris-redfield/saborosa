@@ -29,8 +29,9 @@
   const crowd = new Crowd();
 
   let player = null;
-  let phase = 'boot';          // boot | play | outro | dead | clear
+  let phase = 'boot';          // boot | play | outro | fade | dead | clear
   let phaseT = 0;
+  let faded = false;           // has the room swap inside a fade happened yet
   let last = 0;
 
   const bar = document.getElementById('bar');
@@ -99,6 +100,11 @@
     stage.reset();
     crowd.clear();
     player = new Player(220, CONFIG.beltDepth * 0.6);
+    /* DEV: start somewhere other than the beginning. Applied after the player
+       exists, because entering a room places them at its own origin. */
+    if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
+      stage.enterRoom(CONFIG.DEV.startRoom, player);
+    }
     phase = 'play';
     phaseT = 0;
     input.flush();
@@ -117,6 +123,24 @@
     input.poll();
 
     if (input.takePause() && (phase === 'play')) { /* reserved */ }
+
+    /* DEV: jump straight to a room with the number keys. Instant rather than
+       faded — this is a shortcut for testing, and sitting through the fade is
+       exactly the waiting it exists to avoid. Consumed either way so the key
+       cannot queue up and fire later in a shipping build. */
+    const jump = input.takeRoomJump();
+    if (CONFIG.DEV && CONFIG.DEV.on && jump >= 0 && CONFIG.ROOMS[jump]) {
+      /* A FRESH PLAYER, not the one standing there. The key can be pressed
+         mid-combo, mid-knockdown or on the death screen, and carrying any of
+         that into the new room is how a shortcut starts producing bugs that
+         only a shortcut can produce. */
+      crowd.clear();
+      player = new Player(220, CONFIG.beltDepth * 0.6);
+      stage.enterRoom(jump, player);
+      phase = 'play';
+      phaseT = 0;
+      input.flush();
+    }
 
     /* HITSTOP FREEZES THE SIMULATION, NOT THE RENDERER. Time stops
        advancing; the frame is still drawn, at the full rate. Skipping the draw
@@ -145,11 +169,26 @@
       player.walkOut(dt);
       crowd.update(dt, player, stage.bounds());
       combat.tick(dt);
+      // Out of frame, and the outro is only ever entered with a room to go to.
       if (player.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad) {
-        phase = 'clear';
+        phase = 'fade';
+        faded = false;
         phaseT = 0;
-        endScreen();
       }
+    } else if (phase === 'fade') {
+      phaseT += dt;
+      /* THE ROOM CHANGES AT THE BLACKEST POINT, halfway through, so the swap
+         itself is never seen: the shot, the camera origin and the player's
+         position all move behind the black. Anything switched before or after
+         shows as a cut on one side of the fade. */
+      const half = (CONFIG.fadeMs || 900) / 2000;
+      if (!faded && phaseT >= half) {
+        faded = true;
+        crowd.clear();
+        stage.enterRoom(stage.roomIndex + 1, player);
+        input.flush();
+      }
+      if (phaseT >= (CONFIG.fadeMs || 900) / 1000) { phase = 'play'; phaseT = 0; }
     } else {
       phaseT += dt;
       /* THE WORLD IS STOPPED, BUT THE CORPSE IS NOT. Freezing everything the
@@ -192,9 +231,13 @@
     combat.bossHits(stage.boss, player);
 
     const ev = stage.update(dt, player, crowd);
-    /* CLEARING THE LAST FIGHT DOES NOT END THE LEVEL, it hands over to the
-       walk-out. The card comes up once he is off the right-hand edge. */
-    if (ev === 'clear') { phase = 'outro'; phaseT = 0; endScreen(); }
+    /* THE WALK-OUT IS A DOOR, NOT AN ENDING. Running out of segments with
+       another room to go ('room') walks him off the right-hand edge and fades
+       into it -- he is leaving for somewhere. Running out in the LAST room
+       ('clear') is the end of the game, and walking him off the edge there
+       would be walking him out of the level into nothing. */
+    if (ev === 'room') { phase = 'outro'; phaseT = 0; endScreen(); }
+    else if (ev === 'clear') { phase = 'clear'; phaseT = 0; endScreen(); }
 
     if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
   }
@@ -243,7 +286,21 @@
       });
     }
     hud.drawGo(ctx, stage.banner, assets.getDrawable('go'), assets.getDrawable('hand'));
-    hud.drawDev(ctx);
+
+    /* THE ROOM FADE, drawn over everything including the HUD -- a health bar
+       floating over black would give the cut away. Down to black across the
+       first half, back up across the second. */
+    if (phase === 'fade') {
+      const full = (CONFIG.fadeMs || 900) / 1000;
+      const t = Math.min(1, phaseT / full);
+      ctx.save();
+      ctx.globalAlpha = 1 - Math.abs(t - 0.5) * 2;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
+      ctx.restore();
+    }
+
+    hud.drawDev(ctx, stage.room() ? stage.room().name : '');
 
     /* Hold C. Everything the overlay draws is read from the same code the
        resolver uses — see the header of debug.js. The boss is included so its
