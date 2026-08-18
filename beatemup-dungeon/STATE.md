@@ -619,6 +619,24 @@ Three changes, in order of importance:
    is hold a frame. It is captured at the start, before a seek, and on pause,
    never every frame.
 
+⚠️ **THE BOSS ROOM FLASHED ITS FIRST FRAME AT THE END OF THE ROOM.** Walk to
+the right-hand wall, nudge right again, and the shot cut to its opening frame
+for a few frames before snapping back.
+
+**`play()` ON AN ENDED VIDEO RESTARTS IT FROM ZERO.** That is the whole bug. The
+plate had run to the end of the clip, so the element was `ended`; the next
+forward nudge called `play()` to track the camera, the browser rewound it to 0
+and started playing, and the resync only noticed a frame or two later — long
+enough to see the room's beginning. An ended video is now moved with a SEEK,
+never with `play()`.
+
+It should not have reached the end at all, and that was the second fault: the
+playback rate was floored at 0.1, so a shot that had already caught up with the
+camera kept inching forward until it ran off the end of the clip. It now PAUSES
+when the computed rate goes non-positive. In a big room that creep is invisible;
+in a small one, where the camera crosses the whole shot, it happens every time
+the player reaches the wall.
+
 ⚠️ **THE GO ARROW LIED, TWICE, AND BOTH WERE THE SAME LINE IN THE WRONG PLACE.**
 
 The prompt is set when a fight clears and lasts `goMs` (2.6s). It was set

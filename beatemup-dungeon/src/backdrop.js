@@ -291,10 +291,29 @@ class Backdrop {
            whatever drift has accumulated. Without the correction the shot stays
            permanently offset by however much it lagged during the last start. */
         const rate = camSpeed / pps + err * (cfg.trackGain || 1.2);
-        v.playbackRate = Math.max(0.1, Math.min(cfg.maxRate || 10, rate));
-        if (v.paused && !v.seeking) {
-          const pr = v.play();
-          if (pr && pr.catch) pr.catch(() => {});
+
+        if (rate <= 0.05) {
+          /* AT OR AHEAD OF WHERE THE CAMERA WANTS IT: hold, do not creep. The
+             rate used to be floored at 0.1, so a shot that had caught up kept
+             inching forward and eventually ran off the END of the clip. In a
+             small room, where the camera crosses the whole shot, that happens
+             every time the player reaches the right-hand wall. */
+          if (!v.paused) v.pause();
+        } else if (v.ended) {
+          /* PLAY() ON AN ENDED VIDEO RESTARTS IT FROM ZERO, and that was the
+             flash: reach the end of the room, nudge right, and the shot cut to
+             its first frame for the frames it took the resync to notice and
+             seek back. An ended video is moved with a seek, never with play. */
+          if (!v.seeking) {
+            keepFrame();
+            try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
+          }
+        } else {
+          v.playbackRate = Math.max(0.1, Math.min(cfg.maxRate || 10, rate));
+          if (v.paused && !v.seeking) {
+            const pr = v.play();
+            if (pr && pr.catch) pr.catch(() => {});
+          }
         }
       } else if (!v.paused) {
         v.pause();          // the player stopped: freeze the frame
