@@ -40,6 +40,48 @@ class Assets {
   /** Fraction of the declared work that has finished, 0..1. */
   progress() { return this.total ? Math.min(1, this.loaded / this.total) : 1; }
 
+  /**
+   * Load a VIDEO as a drawable. The element itself is stored, because a
+   * `<video>` is a valid source for `drawImage` and the backdrop wants to blit
+   * whatever frame it is currently showing.
+   *
+   * IT RESOLVES ON `canplay`, NOT ON THE WHOLE FILE. Waiting for the entire
+   * clip would sit the loading bar on a several-MB download while every sprite
+   * was already decoded; `canplay` means there is enough buffered to start, and
+   * the plate only ever needs the frame it is on. It also resolves on `error`
+   * rather than rejecting, for the reason loadImage does: one missing asset
+   * should cost its own layer, not the whole game.
+   *
+   * MUTED AND playsInline ARE LOAD-BEARING, not hygiene. An unmuted video
+   * cannot be played without a user gesture on any current browser, and on iOS
+   * a video without `playsinline` takes over the screen with the native player
+   * the moment it plays.
+   */
+  loadVideo(key, src) {
+    this.total++;
+    return new Promise(res => {
+      const v = document.createElement('video');
+      v.muted = true;
+      v.defaultMuted = true;
+      v.playsInline = true;
+      v.loop = false;
+      v.preload = 'auto';
+      v.crossOrigin = 'anonymous';
+      let done = false;
+      const finish = ok => {
+        if (done) return;
+        done = true;
+        if (ok) this.store[key] = v;
+        this._tick();
+        res(ok ? v : null);
+      };
+      v.addEventListener('canplay', () => finish(true), { once: true });
+      v.addEventListener('error', () => finish(false), { once: true });
+      v.src = this.resolve(src);
+      v.load();
+    });
+  }
+
   loadImage(key, src) {
     this.total++;
     return new Promise(res => {

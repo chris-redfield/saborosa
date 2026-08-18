@@ -15,8 +15,15 @@
  *
  *     tile    an image repeated forever along x. What is in the game now: the
  *             infinite dungeon floor tile, standing in until footage exists.
- *     image   one long painted strip, drawn at an offset.
- *     film    A FRAME SEQUENCE. The one this is all for.
+ *     image   one long strip, drawn at an offset. Painted, or -- as now -- a
+ *             filmed dolly STITCHED into a single panorama; see
+ *             tools/build-plate-panorama.py for why that beat a frame
+ *             sequence by an order of magnitude of VRAM.
+ *     video   THE SHOT ITSELF, projected behind the fighters and scrubbed by
+ *             the camera: walking winds it forward, standing still freezes it.
+ *             What the plate is now.
+ *     film    A FRAME SEQUENCE. What `scrub` was designed around before a
+ *             video element turned out to do it for a fraction of the VRAM.
  *
  * A FILM SOURCE RUNS IN ONE OF TWO MODES AND THE SEGMENT CHOOSES, not the
  * config — because the same footage means different things in a scrolling
@@ -61,6 +68,9 @@ class Backdrop {
     if (cfg.kind === 'film') {
       return (cfg.frames || []).map((src, i) => ({ key: `${name}#${i}`, src, big: true }));
     }
+    if (cfg.kind === 'video') {
+      return cfg.src ? [{ key: name, src: cfg.src, video: true }] : [];
+    }
     return cfg.src ? [{ key: name, src: cfg.src, big: true }] : [];
   }
 
@@ -84,6 +94,7 @@ class Backdrop {
     const cfg = s.cfg;
     if (cfg.kind === 'tile') this._drawTile(ctx, layer.source, cfg, scrollX, w, h);
     else if (cfg.kind === 'film') this._drawFilm(ctx, layer.source, s, scrollX, w, h, dt);
+    else if (cfg.kind === 'video') this._drawVideo(ctx, layer.source, s, scrollX, w, h, dt);
     else this._drawImage(ctx, layer.source, cfg, scrollX, w, h);
   }
 
@@ -101,10 +112,11 @@ class Backdrop {
     if (!s) return null;
     const cfg = s.cfg;
     if (cfg.kind === 'film') return { x: 0, y: 0, w, h, note: 'film fills the frame' };
+    if (cfg.kind === 'video') return { x: 0, y: 0, w, h, note: 'video fills the frame' };
     const img = this.assets.getDrawable(
       cfg.kind === 'tile' ? layer.source : layer.source);
     if (!img) return null;
-    const scale = cfg.scale || 1;
+    const scale = this.imageScale(cfg, img, h);
     const th = img.height * scale;
     const oy = cfg.offsetY || 0;
     if (cfg.kind === 'tile') {
@@ -146,10 +158,98 @@ class Backdrop {
     }
   }
 
+  /**
+   * The scale an image source is drawn at.
+   *
+   * `fitH` MAKES THE TEXTURE'S PIXEL SIZE A PURE QUALITY KNOB. A plate is the
+   * whole picture by definition, so any row of canvas it fails to reach shows
+   * the clear colour through -- and `loadBig` may hand back a SMALLER bitmap
+   * than the file, because it downscales anything over its cap. A fixed
+   * `scale` silently stops covering the moment that happens. Deriving the
+   * scale from the canvas height instead means capping the texture costs
+   * sharpness and nothing else.
+   *
+   * ONE FUNCTION, so the debug view's layer bounds cannot disagree with what
+   * is actually painted.
+   */
+  imageScale(cfg, img, h) {
+    if (cfg.fitH && img.height) return h / img.height;
+    return cfg.scale || 1;
+  }
+
+  /**
+   * A VIDEO SOURCE — the shot projected behind the fighters, and the closest
+   * thing to what this backdrop actually is.
+   *
+   * THE FOOTAGE DOES NOT SCROLL; IT PLAYS. The pan is inside the frame, so the
+   * video is drawn stationary filling the canvas and the shot's own camera move
+   * supplies the parallax. Sliding it as well would move the picture twice.
+   *
+   * IT IS DRIVEN BY THE CAMERA, NOT BY A CLOCK. Walking winds the shot forward;
+   * standing still freezes it on a frame; there is no idling backdrop. That is
+   * `scrub`, the mode the film source was designed around, done with a video
+   * element instead of a pile of decoded stills.
+   *
+   * `worldPxPerSecond` IS THE SYNC, and it is a measurement, not a preference:
+   * how many px of CAMERA travel one second of the shot's own pan is worth. Set
+   * it right and the background moves 1:1 with the world, which is what
+   * parallax 1.0 means. Too low and the film races the player; too high and
+   * they slide across a still.
+   *
+   * WHY RATE CONTROL RATHER THAN SEEKING. The honest implementation of "frame
+   * indexed by camera position" is to set `currentTime` every frame, and it
+   * stutters badly: a seek has to decode from the nearest keyframe, and there
+   * are keyframes every couple of seconds, not every frame. So the video is
+   * PLAYED at whatever rate keeps it level with the camera, and `currentTime`
+   * is only ever written when the two are more than `resyncS` apart -- a fresh
+   * level, or a camera that moved in one jump. Continuous decode, one seek.
+   *
+   * The camera in this game never runs backwards (`stage._followCamera` clamps
+   * it), which is what makes this safe: a rate can only ever chase forward.
+   */
+  _drawVideo(ctx, key, s, scrollX, w, h, dt) {
+    const v = this.assets.getDrawable(key);
+    if (!v || !v.videoWidth) return;
+    const cfg = s.cfg;
+    const dur = v.duration;
+
+    if (isFinite(dur) && dur > 0) {
+      const pps = cfg.worldPxPerSecond || 116;
+      // Where the shot should be for this camera position. Held a hair short of
+      // the end: running past it pauses on a black frame in some browsers.
+      const target = Math.max(0, Math.min(dur - 0.05, scrollX / pps));
+      const err = target - v.currentTime;
+
+      const last = (s.lastScroll == null) ? scrollX : s.lastScroll;
+      s.lastScroll = scrollX;
+      const camSpeed = dt > 0 ? (scrollX - last) / dt : 0;
+
+      if (Math.abs(err) > (cfg.resyncS || 0.75)) {
+        // Too far out of step to catch up by playing. Take the one visible cut.
+        try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
+        if (!v.paused) v.pause();
+      } else if (camSpeed > 1) {
+        /* Rate = what the camera's own speed asks for, plus a term that closes
+           whatever drift has accumulated. Without the correction the shot stays
+           permanently offset by however much it lagged during the last start. */
+        const rate = camSpeed / pps + err * (cfg.trackGain || 1.2);
+        v.playbackRate = Math.max(0.1, Math.min(cfg.maxRate || 6, rate));
+        if (v.paused) {
+          const pr = v.play();
+          if (pr && pr.catch) pr.catch(() => {});
+        }
+      } else if (!v.paused) {
+        v.pause();          // the player stopped: freeze the frame
+      }
+    }
+
+    ctx.drawImage(v, 0, 0, w, h);
+  }
+
   _drawImage(ctx, key, cfg, scrollX, w, h) {
     const img = this.assets.getDrawable(key);
     if (!img) return;
-    const scale = cfg.scale || 1;
+    const scale = this.imageScale(cfg, img, h);
     ctx.drawImage(img, Math.round(-scrollX), Math.round(cfg.offsetY || 0),
                   Math.ceil(img.width * scale), Math.ceil(img.height * scale));
   }

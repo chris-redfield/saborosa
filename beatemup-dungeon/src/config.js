@@ -54,6 +54,19 @@ const CONFIG = {
   GAME_W: 1280,
   GAME_H: 720,
   fitMarginPx: 0,
+  /* The longest side a `big` asset is allowed to keep, in px. Anything over it
+     is downscaled AS IT DECODES, before it ever reaches VRAM -- so this is the
+     one number standing between a backdrop and the thrash PERFORMANCE.md
+     records.
+
+     3200 rather than 2400 so the filmed plate keeps its native 3114x478. At
+     that size it is 6MB decoded, which is affordable; capping it to 2400 would
+     have cost a quarter of the vertical resolution to save 2MB. Lower it if a
+     future backdrop is genuinely large -- `fitH` means the plate keeps covering
+     the frame whatever this does to it, so the only thing at stake is
+     sharpness. */
+  bigTextureCap: 3200,
+
   fitMaxScale: 0,        // 0 = uncapped, so itch's fullscreen button can fill a
                          // big monitor — see flying-dungeon/STATE.md for why
 
@@ -85,7 +98,17 @@ const CONFIG = {
 
      They are what stops the player walking up off the floor and into the
      scenery, which stays true whatever the plate turns out to be. */
-  beltTopY: 430,         // screen y of z = 0 — the FAR edge of the walkable band
+  /* MEASURED OFF THE FILMED PLATE, which is what these numbers were always
+     waiting for. The rubbish pile the shot tracks past bottoms out between y
+     480 and 540 across the strip, and the sand floor is over 70% of every row
+     below y 586. 430 put the belt's FAR edge inside the pile, so fighters at
+     z = 0 stood in the rubbish rather than in front of it.
+
+     `beltDepth` is DELIBERATELY UNCHANGED. It is the depth dial of the whole
+     genre — `reachZ` gives about 49px of slack on this 190px belt — and moving
+     the band down onto the sand is a placement question, not a difficulty one.
+     Change one at a time or neither change can be judged. */
+  beltTopY: 520,         // screen y of z = 0 — the FAR edge of the walkable band
   beltDepth: 190,        // its height in px; z runs 0..this
   /* Optional perspective: how much smaller a fighter is drawn at the FAR edge
      than at the near one. 1.0 = off, which is the classic arcade look (Final
@@ -174,18 +197,61 @@ const CONFIG = {
 
        No tint on it. The old two-layer version dimmed its far half to fake a
        distance the single plate simply has. */
+    /* THE FILMED PLATE, AND IT IS NOT A FRAME SEQUENCE. The footage arrived as
+       a pure horizontal dolly across a still subject — 3px of sideways travel a
+       frame, never more than 2px vertical, and nothing in the scene moving on
+       its own. So it is STITCHED into one panorama strip by
+       tools/build-plate-panorama.py and drawn as a single image.
+
+       The arithmetic is why. As a frame sequence the level needs ~113 frames,
+       which is ~46MB decoded at a resolution already soft enough to notice, or
+       220MB at native. As a panorama it is 3114x478 — 6MB decoded, native
+       resolution, and it scrolls continuously instead of cutting between
+       frames. PERFORMANCE.md is the reason that gap matters.
+
+       WHAT THIS GIVES UP is the film source's `play` mode, the world carrying
+       on around a locked fight. Nothing is actually given up here: this shot is
+       a still life the camera walks past. A later shot with drifting smoke or a
+       crowd would want `kind: 'film'`, which is still there and still wired.
+
+       `fitH` rather than a fixed scale: the strip is 478 tall and the canvas is
+       720, and deriving the scale from the canvas means `loadBig`'s cap can be
+       lowered later to buy VRAM without the plate quietly stopping short of the
+       bottom of the frame. Drawn at 720 tall the strip is 4691px wide, against
+       the 4000px of world the camera crosses — it covers, with room over.
+
+       Still ONE layer at parallax 1.0, which was always the rule: the far
+       scenery and the ground are the same photograph. */
     plate: {
-      kind: 'tile',
-      src: 'v2:rafe-saborosa-escaladalow-01.png',
-      /* The tile is 820x1169 native. 0.65 makes it 533x760, which COVERS the
-         720-high canvas with a little to spare and repeats every 533px across.
-         Covering matters: a plate is the whole picture by definition, and any
-         row of canvas it fails to reach shows the clear colour behind it. */
-      scale: 0.65,
-      repeatY: false,
-      // Small lift so the seam at the tile's top edge sits off-screen.
-      // PLACEHOLDER-ONLY — a film source fills the frame and ignores this.
-      offsetY: -30,
+      kind: 'video',
+      src: 'v2:beatemup-dungeon/batidao-de-coco-background-original.mp4',
+
+      /* THE SYNC, AND IT IS A MEASUREMENT. How many px of CAMERA travel one
+         second of the shot's own pan is worth, so the background moves 1:1
+         with the world — which is what parallax 1.0 means.
+
+         Derived, not guessed: phase correlation over all 887 frames puts the
+         pan at 2266px of the 848-wide source across 29.52s. Drawn at 720 tall
+         the source scales by 720/478 = 1.506, so that is 3413 screen px in
+         29.52s = 116 px/s.
+
+         Too low and the film races the player; too high and they slide across
+         a still. If it looks wrong while walking, this is the only number.
+
+         At walkSpeedX 300 the shot plays at about 2.6x, which reads as normal
+         because nothing in the scene moves on its own — the only motion is the
+         pan, and 2.6x is exactly what makes it match the walk. The level needs
+         23.4s of the 29.5s, so it never runs out. */
+      worldPxPerSecond: 116,
+
+      /* How far out of step the shot may drift before it is SEEKED rather than
+         caught up by playing faster. Seeks stutter — a decoder has to start
+         from the nearest keyframe — so this wants to be large enough that
+         normal play never trips it and small enough that a real jump is fixed
+         at once. */
+      resyncS: 0.75,
+      trackGain: 1.2,        // how hard drift is corrected, in rate per second
+      maxRate: 6,            // ceiling on playbackRate; browsers get choppy past this
       tint: '',
     },
     // Declared but unused until there is art — see the LAYERS note.

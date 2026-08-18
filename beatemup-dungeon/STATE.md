@@ -27,33 +27,73 @@ wherever the search order happened to reach.
 
 ## The one constraint that will break things if forgotten
 
-**The backdrop will be FILMED FOOTAGE, and it is a single shot.** The far
-scenery and the ground the fighters stand on are the same photograph. So the
-render stack has exactly **one `plate` layer at parallax 1.0**.
+**The backdrop is FILMED FOOTAGE, and it is a single shot.** THE FOOTAGE HAS
+LANDED — `batidao-de-coco-background-original.mp4`, a 29.5s dolly tracking past
+a wall of rubbish and produce on sand. The far scenery and the ground the
+fighters stand on are the same photograph, so the render stack has exactly
+**one `plate` layer at parallax 1.0**. That constraint held and still holds.
 
 It began as two tiled layers at 0.35 and 1.0, and that was wrong: real footage
 would have put a second copy of a shot that already contains its own floor
 sliding underneath itself. Parallax 1.0 is also the only honest value for a
 plate — a real camera move already carries its own parallax inside the frame.
 
-When the footage lands, the **only** edit is `SOURCES.plate`:
+⚠️ **IT IS THE VIDEO ITSELF — `kind: 'video'`, projected behind the fighters.**
+Not the frame sequence this file originally planned for, and not the panorama
+that briefly replaced it. `SOURCES.plate` points straight at the mp4.
 
-```js
-plate: { kind: 'film', frames: [...], pxPerFrame: 24, holdMs: 66 }
-```
+**The footage does not scroll; it plays.** The pan is inside the frame, so the
+video is drawn stationary filling the canvas and the shot's own camera move
+supplies the parallax. Sliding it as well would move the picture twice.
 
-`backdrop.js` already runs a film source in two modes, and **the segment picks
-which**, not the config:
+**It is driven by the camera, not by a clock.** Walking winds the shot forward,
+standing still freezes it on a frame. That is `scrub` — the mode the film source
+was designed around — done with a video element instead of a pile of decoded
+stills.
+
+⚠️ **RATE CONTROL, NOT SEEKING, AND THAT IS THE WHOLE IMPLEMENTATION.** The
+honest reading of "frame indexed by camera position" is to write `currentTime`
+every frame, and it stutters badly: a seek decodes from the nearest keyframe,
+and keyframes are seconds apart, not frames. So the video is PLAYED at whatever
+rate keeps it level with the camera, and `currentTime` is written only when the
+two drift more than `resyncS` apart — a fresh level, or a camera that moved in
+one jump. Continuous decode, one seek. The camera never runs backwards
+(`_followCamera` clamps it), which is what makes a chase-forward rate safe.
+
+⚠️ **`worldPxPerSecond` IS A MEASUREMENT, NOT A PREFERENCE.** Phase correlation
+over all 887 frames puts the pan at 2266px of the 848-wide source across 29.52s;
+drawn at 720 tall that is 3413 screen px in 29.52s = **116 px of camera travel
+per second of shot**. Set right, the background moves 1:1 with the world, which
+is what parallax 1.0 means. At `walkSpeedX 300` the shot runs at about 2.6x,
+which reads as normal because the only motion in it is the pan. The level uses
+23.4s of the 29.5s, so it never runs out.
+
+**The alternative is still on disk.** `tools/build-plate-panorama.py` stitches
+the whole shot into one 3114x478 strip (507 KB, 6 MB decoded) drawn as
+`kind: 'image'` with `fitH`. It was built, worked, and was replaced because a
+projected video is what this backdrop actually is. **Keep it in mind if the
+video ever costs too much on the old card** — PERFORMANCE.md's machine has a
+few tens of MB of texture budget, and a panorama is one static texture against a
+per-frame video blit. A frame sequence, for the record, was never viable: ~113
+frames is ~46 MB decoded soft, ~220 MB native.
+
+**A later shot with real motion in it** — smoke, a crowd, anything that moves
+while the camera is still — wants `kind: 'film'`, which is still wired:
 
 | segment | mode | what it means |
 |---|---|---|
 | `scroll` | `scrub` | frame indexed by CAMERA POSITION — a dolly. Walking winds the footage forward, stopping stops it. |
 | `arena` / `boss` | `play` | frame indexed by TIME, looping — the world alive around a locked fight. |
 
-**The belt survives that swap.** `beltTopY` / `beltDepth` are a lane defined
-*over* the plate, not derived from it — they are the only thing to re-measure
-when footage arrives. Read the ground band off one frame, set them, done. Hit
-tests, draw sorting, camera and AI are all expressed in `z` and follow.
+**The belt survived every one of those swaps, exactly as planned.** `beltTopY` /
+`beltDepth` are a lane defined *over* the plate, not derived from it, and they
+were the only thing that needed re-measuring. Hit tests, draw sorting, camera
+and AI are all expressed in `z` and followed for free.
+
+⚠️ **THE BUILD IS NOW 11.3 MB, up from 3.7.** The mp4 is 8.3 MB of it. That is
+the price of the projection and it is worth knowing before shipping to itch;
+re-encoding the shot smaller, or with denser keyframes to make the rare resync
+seek cheaper, are both open.
 
 Footage will be downscaled before shipping. `loadBig`'s cap is the knob; a frame
 sequence is the most expensive thing this game will ever load — see
@@ -166,13 +206,20 @@ fighter in world space it could clear another's depth slab and land somewhere
 the walk could not reach, and every question about who can hit whom would need a
 third axis in it.
 
-Current frame at `beltTopY 430`, `beltDepth 190`:
+Current frame at `beltTopY 520`, `beltDepth 190` — **measured off the filmed
+plate**. The rubbish pile the shot tracks past bottoms out between y 480 and
+540, and sand is over 70% of every row below 586. At the old 430 the belt's FAR
+edge sat inside the pile and fighters at `z = 0` stood in the rubbish.
 
 | region | y | height |
 |---|---|---|
-| no-walk | 0–430 | 430px — lower `beltTopY` to eat into it |
-| **walkable belt** | 430–620 | 190px |
-| no-walk | 620–720 | 100px — raise `beltDepth` to eat into it |
+| no-walk | 0–520 | 520px — lower `beltTopY` to eat into it |
+| **walkable belt** | 520–710 | 190px |
+| no-walk | 710–720 | 10px — raise `beltDepth` to eat into it |
+
+⚠️ **`beltDepth` was deliberately NOT moved** when the belt came down onto the
+sand. It is the depth dial of the whole genre; placing the band and changing the
+difficulty are two edits, and doing both at once makes neither judgeable.
 
 ---
 
@@ -433,7 +480,9 @@ reader is the shape to look for.
 
 ## Open
 
-- **The filmed backdrop.** The whole plate/segment design is waiting on it.
+- **The backdrop is IN** (see above) but unjudged in motion — the belt sits at
+  520 from a measurement, not from play. Hold C: the magenta bands are the
+  no-walk regions, each labelled with the knob that resizes it.
 - **Villain sheets.** TOM, JUIXY and ERKPA are still the main game's 9×5 packs
   read as punches. Until they are redrawn, `sheets.js` has to carry two formats
   and the grid path cannot go.

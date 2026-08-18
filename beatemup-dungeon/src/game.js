@@ -67,7 +67,10 @@
     for (const a of assetManifest()) {
       if (a.optional) continue;          // handled below, deliberately un-awaited
       if (a.how === 'json') jobs.push(assets.loadJSON(a.key, a.src));
-      else if (a.how === 'big') jobs.push(assets.loadBig(a.key, a.src, 2400));
+      else if (a.how === 'video') jobs.push(assets.loadVideo(a.key, a.src));
+      else if (a.how === 'big') {
+        jobs.push(assets.loadBig(a.key, a.src, CONFIG.bigTextureCap || 2400));
+      }
       else jobs.push(assets.loadImage(a.key, a.src));
     }
 

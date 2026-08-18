@@ -60,6 +60,62 @@ If that gets too tight, lower **`flyBossHoverY`** (150) rather than touching
 
 ---
 
+## The backdrop
+
+One layer, parallax 1.0, and it is the **video itself**, projected behind the
+fighters. Walking winds the shot forward; standing still freezes it on a frame.
+
+```js
+SOURCES.plate: {
+  kind: 'video',
+  src: 'v2:beatemup-dungeon/batidao-de-coco-background-original.mp4',
+  worldPxPerSecond: 116,  // THE SYNC -- see below
+  resyncS: 0.75,          // drift allowed before it seeks instead of catching up
+  trackGain: 1.2,         // how hard drift is corrected
+  maxRate: 6,             // playbackRate ceiling
+},
+beltTopY: 520,   // where the walkable band starts -- measured off the plate
+beltDepth: 190,  // how deep it is; THE difficulty dial, change alone
+```
+
+**`worldPxPerSecond` is the only number that matters here**, and it is measured,
+not chosen: how many px of camera travel one second of the shot's own pan is
+worth. Get it right and the background moves 1:1 with the world. Too low and the
+film races you; too high and you slide across a still. If walking looks wrong,
+change this and nothing else.
+
+For this shot: the pan is 2266px of the 848-wide source over 29.52s, which at
+720 tall is 3413 screen px — 116 px/s. At `walkSpeedX 300` that plays it at
+about 2.6x, which reads as normal because the only motion in the shot is the
+pan itself.
+
+**The video does not scroll**; it is drawn stationary filling the canvas and the
+shot's own pan supplies the parallax. Sliding it as well would move the picture
+twice.
+
+**It is played, not seeked.** Writing `currentTime` every frame is the obvious
+implementation and it stutters — seeks decode from the nearest keyframe, seconds
+apart. Instead the rate is set to whatever keeps it level with the camera, and
+it only seeks when drift exceeds `resyncS`.
+
+**The panorama is still there as a fallback.** `tools/build-plate-panorama.py`
+stitches the whole shot into one 3114x478 strip (507 KB, 6 MB decoded) drawn as
+`kind: 'image'` with `fitH: true`. Worth reaching for if the video proves
+expensive on an old GPU — one static texture against a per-frame video blit.
+
+**If a future shot has motion in it** — smoke, a crowd, anything that moves
+while the camera is still — `kind: 'film'` is still wired, with a scrub mode for
+scrolling and a play mode for arenas. See STATE.md.
+
+**To move the belt onto the ground of a new plate**, hold **C**: the magenta
+bands are where the player cannot stand, each labelled with the knob that
+resizes it.
+
+**To move the belt onto the ground of a new plate**, hold **C**: the magenta
+bands are where the player cannot stand, each labelled with the knob that
+resizes it. Move `beltTopY` alone first — `beltDepth` is the depth dial of the
+genre and changing both at once makes neither judgeable.
+
 ## How fast the animations play
 
 Three separate systems. Only the first is free to change.

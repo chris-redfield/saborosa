@@ -56,6 +56,8 @@ function assetManifest() {
     if (cfg.kind === 'film') {
       (cfg.frames || []).forEach((src, i) =>
         out.push({ key: `${name}#${i}`, src: src, how: 'big' }));
+    } else if (cfg.kind === 'video') {
+      out.push({ key: name, src: cfg.src, how: 'video' });
     } else if (cfg.src) {
       out.push({ key: name, src: cfg.src, how: 'big' });
     }
