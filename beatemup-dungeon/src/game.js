@@ -221,6 +221,7 @@
       });
     }
     hud.drawGo(ctx, stage.banner, assets.getDrawable('go'), assets.getDrawable('hand'));
+    hud.drawDev(ctx);
 
     /* Hold C. Everything the overlay draws is read from the same code the
        resolver uses — see the header of debug.js. The boss is included so its

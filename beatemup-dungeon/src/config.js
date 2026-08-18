@@ -31,6 +31,22 @@
 const BODY_SCALE = 0.72;
 
 const CONFIG = {
+  /* DEV MODE. Off is the shipping state; on is for getting through the level
+     quickly while building it.
+
+     IT CHANGES DAMAGE AND NOTHING ELSE. Reach, timing, knockdown, the combo,
+     the attack token and every enemy's HP behave exactly as they ship, so what
+     is being tested is the real fight at speed rather than a different game.
+
+     IT IS LOUD ON PURPOSE. The HUD draws a DEV marker while it is on and
+     `package.sh` REFUSES TO BUILD, because the one thing a dev switch must
+     never do is ship silently -- a build where every punch does 50 would look
+     like a balance disaster rather than a forgotten flag. */
+  DEV: {
+    on: true,
+    punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
+  },
+
   /* The MAIN GAME's assets — the character packs live here, and we read them
      rather than copying them, so a re-run of tools/build-character-defs.py
      updates both games at once. */
@@ -197,31 +213,14 @@ const CONFIG = {
 
        No tint on it. The old two-layer version dimmed its far half to fake a
        distance the single plate simply has. */
-    /* THE FILMED PLATE, AND IT IS NOT A FRAME SEQUENCE. The footage arrived as
-       a pure horizontal dolly across a still subject — 3px of sideways travel a
-       frame, never more than 2px vertical, and nothing in the scene moving on
-       its own. So it is STITCHED into one panorama strip by
-       tools/build-plate-panorama.py and drawn as a single image.
+    /* THE FILMED PLATE: THE MOVIE ITSELF, projected behind the fighters. One
+       layer at parallax 1.0, which was always the rule — the far scenery and
+       the ground the fighters stand on are the same photograph.
 
-       The arithmetic is why. As a frame sequence the level needs ~113 frames,
-       which is ~46MB decoded at a resolution already soft enough to notice, or
-       220MB at native. As a panorama it is 3114x478 — 6MB decoded, native
-       resolution, and it scrolls continuously instead of cutting between
-       frames. PERFORMANCE.md is the reason that gap matters.
-
-       WHAT THIS GIVES UP is the film source's `play` mode, the world carrying
-       on around a locked fight. Nothing is actually given up here: this shot is
-       a still life the camera walks past. A later shot with drifting smoke or a
-       crowd would want `kind: 'film'`, which is still there and still wired.
-
-       `fitH` rather than a fixed scale: the strip is 478 tall and the canvas is
-       720, and deriving the scale from the canvas means `loadBig`'s cap can be
-       lowered later to buy VRAM without the plate quietly stopping short of the
-       bottom of the frame. Drawn at 720 tall the strip is 4691px wide, against
-       the 4000px of world the camera crosses — it covers, with room over.
-
-       Still ONE layer at parallax 1.0, which was always the rule: the far
-       scenery and the ground are the same photograph. */
+       A STITCHED PANORAMA WAS TRIED HERE AND REJECTED. It is cheaper on
+       paper — one static texture instead of a per-frame video blit — and it
+       looked wrong. DO NOT PROPOSE IT AGAIN FOR THIS LEVEL. The plate is the
+       moving footage; that is the point of it. */
     plate: {
       kind: 'video',
       src: 'v2:beatemup-dungeon/batidao-de-coco-background-original.mp4',
@@ -244,14 +243,31 @@ const CONFIG = {
          23.4s of the 29.5s, so it never runs out. */
       worldPxPerSecond: 116,
 
-      /* How far out of step the shot may drift before it is SEEKED rather than
-         caught up by playing faster. Seeks stutter — a decoder has to start
-         from the nearest keyframe — so this wants to be large enough that
-         normal play never trips it and small enough that a real jump is fixed
-         at once. */
-      resyncS: 0.75,
-      trackGain: 1.2,        // how hard drift is corrected, in rate per second
-      maxRate: 6,            // ceiling on playbackRate; browsers get choppy past this
+      /* How far out of step the shot may drift before it SEEKS rather than
+         catching up by playing faster.
+
+         6s LOOKS ENORMOUS AND IS DELIBERATE. When an arena hands over, the
+         camera unlocks and yanks forward to re-acquire the player — up to 572px
+         in one movement, which is 4.93s of film. At the old 0.75s that tripped
+         a seek, and because the camera keeps moving for another half second it
+         tripped one EVERY FRAME, each cancelling the last, so no frame ever
+         decoded. That was the black backdrop in Firefox and the frozen one in
+         Chrome, both at the moment the GO arrow appeared.
+
+         Above the size of that yank, the handoff is absorbed by playing fast
+         instead: the shot whips forward to catch up, which is what the camera
+         is doing anyway. A seek is now reserved for a genuine discontinuity —
+         a restart, where the camera returns to 0 and the film is 23s along. */
+      resyncS: 6.0,
+
+      /* How hard drift is corrected, in rate per second of error. */
+      trackGain: 1.2,
+
+      /* Ceiling on playbackRate. Raised from 6 so the 4.93s handoff gap closes
+         in about half a second rather than lingering as a visibly wrong
+         background. Browsers get choppy well before their nominal 16x limit,
+         and the decode cost is real, so this is not free to raise further. */
+      maxRate: 10,
       tint: '',
     },
     // Declared but unused until there is art — see the LAYERS note.
@@ -332,13 +348,66 @@ const CONFIG = {
       ],
     },
     { kind: 'scroll', toX: 3300 },
-    /* THE BOSS. Last segment before the level is clear. Locks the camera like
-       an arena — it is one, with one very large occupant — and ends when the
-       Mosca Boss is dead. */
+    /* THE MOSCA. Locks the camera like an arena — it is one, with one very
+       large occupant — and ends when the boss is dead. It is a SUB-boss: the
+       level carries on past it. */
     { kind: 'boss' },
+
+    /* ===== PAST THE SUB-BOSS ==================================================
+       THE LEVEL IS AS LONG AS THE FILM, and this stretch is what makes it so.
+       The shot is 29.5s and `worldPxPerSecond` is 116, so it is worth 3424px of
+       camera travel. The level used to give the camera 2632 and stop, which
+       left the last quarter of the footage unseen. These segments spend the
+       missing 792px.
+
+       WAVES ARE FREE, SCROLLS ARE NOT, and that is the useful fact here. An
+       arena LOCKS the camera, so a fight costs no footage at all — only walking
+       moves the film on. So the number of waves is unconstrained; it is only
+       the three short scrolls between them that have to add up.
+
+       The last scroll's `toX` is set so the camera lands on 3424 as the player
+       crosses it — the final frame — and the last fight plays out against it.
+       The camera trails the player by `camFocusX` + `camDeadzone` (~668px), so
+       retuning those moves where the film lands and these numbers move with
+       them. */
+    { kind: 'scroll', toX: 3690 },        // camera 2632 -> 3022   (film 88%)
+    /* MORE ENEMIES, NOT MORE ARENAS. There are only 792px of film left after
+       the sub-boss, and it was first spent as three 260px walks — under a
+       second each, which is shorter than the GO prompt, so the arrow was still
+       on screen when the next fight penned the player in. Two longer stretches
+       read as walking; the extra enemies go INSIDE the fights instead, staged
+       by `delayMs`, which costs no film at all because an arena locks the
+       camera. */
+    {
+      kind: 'arena',
+      enemies: [
+        { kind: 'laranja',  x: 3600, z: 70 },
+        { kind: 'tomato',   x: 3800, z: 150, delayMs: 600 },
+        { kind: 'eggplant', x: 3500, z: 110, delayMs: 2400, from: 'behind' },
+        { kind: 'tomato',   x: 3900, z: 50,  delayMs: 5200 },
+        { kind: 'laranja',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
+      ],
+    },
+    { kind: 'scroll', toX: 4092 },        // camera 3022 -> 3424   (film 100%)
+    /* THE LAST STAND, fought against the final frame of the shot. Two of the
+       five come from behind, which by now the player has been taught twice. */
+    {
+      kind: 'arena',
+      enemies: [
+        { kind: 'eggplant', x: 4000, z: 60 },
+        { kind: 'laranja',  x: 4230, z: 150, delayMs: 500 },
+        { kind: 'tomato',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
+        { kind: 'eggplant', x: 4100, z: 180, delayMs: 4200, from: 'behind' },
+        { kind: 'tomato',   x: 4300, z: 40,  delayMs: 7000 },
+      ],
+    },
   ],
   /* How far past the last segment the level runs before it is won. */
-  levelEndX: 4000,
+  /* Far enough right that the camera can reach 3424 — the end of the film at
+     `worldPxPerSecond` 116. `camX` is clamped to `levelEndX - GAME_W`, so this
+     number is a hard ceiling on how much of the shot can ever be seen, and at
+     4000 it stopped the level 792px short whatever the segments asked for. */
+  levelEndX: 4704,
 
   // --- Camera --------------------------------------------------------------
   /* A DEADZONE, not a hard follow: the camera only moves once the player has
@@ -347,7 +416,16 @@ const CONFIG = {
      BACKGROUND is the difference between a walk and a treadmill. */
   camDeadzone: 130,       // px either side of the camera's focus point
   camFocusX: 0.42,        // where in the view that focus point sits (0..1)
-  camEaseRate: 7,         // how quickly it closes the gap, 1/sec
+  /* How many px of framing correction one px of WALKING buys. The camera moves
+     only out of this budget, so it can never move while the player is still.
+
+     1.0 means the camera closes the gap exactly as fast as you walk, which for
+     a large gap (after a fight, up to 572px) means walking that far again to
+     re-frame. Above 1 it catches up while you walk; too high and it stops
+     reading as following and starts reading as a snap. */
+  camFollowGain: 1.8,
+
+  camEaseRate: 7,         // still used by the arena lock hand-over         // how quickly it closes the gap, 1/sec
   camLockEaseRate: 4,     // ...and when snapping to an arena lock (slower, so
                           // the lock reads as the world stopping, not a cut)
 

@@ -98,10 +98,11 @@ implementation and it stutters — seeks decode from the nearest keyframe, secon
 apart. Instead the rate is set to whatever keeps it level with the camera, and
 it only seeks when drift exceeds `resyncS`.
 
-**The panorama is still there as a fallback.** `tools/build-plate-panorama.py`
-stitches the whole shot into one 3114x478 strip (507 KB, 6 MB decoded) drawn as
-`kind: 'image'` with `fitH: true`. Worth reaching for if the video proves
-expensive on an old GPU — one static texture against a per-frame video blit.
+**A stitched panorama was tried here and rejected — do not propose it again for
+this level.** The whole shot stitched into one strip drawn as `kind: 'image'` is
+cheaper on every countable measure and it looked bad. The plate is the moving
+footage; that is the point of it. `tools/build-plate-panorama.py` and its output
+remain on disk, unused.
 
 **If a future shot has motion in it** — smoke, a crowd, anything that moves
 while the camera is still — `kind: 'film'` is still wired, with a scrub mode for
@@ -241,6 +242,45 @@ rotation to track — if one ending hit harder the string would become worth
 counting, and mashing would be optimal on every other chain.
 
 ---
+
+## The camera
+
+```js
+camFocusX: 0.42,       // where in the frame the player sits, 0..1
+camDeadzone: 130,      // px either side of that before the camera reacts
+camFollowGain: 1.8,    // px of framing correction bought by one px of WALKING
+```
+
+**The camera only moves because the player moved.** `camFollowGain` is a budget:
+walk a px, earn 1.8px of correction. Stand still and the camera is still, however
+badly framed the shot is. Raise it to re-frame faster after a fight; too high and
+it stops reading as following and starts reading as a snap.
+
+It only goes forward — the left edge of the view is a wall. Making it reverse is
+a real feature, not a free one: the plate is video, and no browser can play a
+video backwards.
+
+## Dev mode
+
+```js
+DEV: { on: true, punchDamage: 50 },   // top of config.js
+```
+
+Every player punch does `punchDamage` instead of its own. **Damage and nothing
+else** — reach, timing, knockdown, the combo and every enemy's HP behave exactly
+as they ship, so what you are testing is the real fight at speed rather than a
+different game. At 50: JUIXY and TOM die in one hit, ERKPA and the Mosca in two.
+
+It is applied at the one place the player's damage is read (`combat.playerHits`)
+rather than by rewriting `CONFIG.COMBO` — the table documents a 28-damage string
+that every enemy's HP is tuned against, and a config that lies about that is
+worse than a branch.
+
+**It is loud on purpose.** The HUD draws a `DEV 50 dmg` marker in the top right
+while it is on, and **`package.sh` refuses to build** until `on` is false. A
+shipped build where every punch does 50 reads as a balance disaster rather than
+a forgotten switch, and by then the person looking at it is usually not the
+person who left it on.
 
 ## How hard everyone hits
 

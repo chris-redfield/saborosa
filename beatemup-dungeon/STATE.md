@@ -39,8 +39,8 @@ sliding underneath itself. Parallax 1.0 is also the only honest value for a
 plate — a real camera move already carries its own parallax inside the frame.
 
 ⚠️ **IT IS THE VIDEO ITSELF — `kind: 'video'`, projected behind the fighters.**
-Not the frame sequence this file originally planned for, and not the panorama
-that briefly replaced it. `SOURCES.plate` points straight at the mp4.
+Not the frame sequence this file originally planned for. `SOURCES.plate` points
+straight at the mp4.
 
 **The footage does not scroll; it plays.** The pan is inside the frame, so the
 video is drawn stationary filling the canvas and the shot's own camera move
@@ -65,17 +65,19 @@ over all 887 frames puts the pan at 2266px of the 848-wide source across 29.52s;
 drawn at 720 tall that is 3413 screen px in 29.52s = **116 px of camera travel
 per second of shot**. Set right, the background moves 1:1 with the world, which
 is what parallax 1.0 means. At `walkSpeedX 300` the shot runs at about 2.6x,
-which reads as normal because the only motion in it is the pan. The level uses
-23.4s of the 29.5s, so it never runs out.
+which reads as normal because the only motion in it is the pan. The level is now
+cut to the full 29.5s, so the shot is used end to end and never runs out.
 
-**The alternative is still on disk.** `tools/build-plate-panorama.py` stitches
-the whole shot into one 3114x478 strip (507 KB, 6 MB decoded) drawn as
-`kind: 'image'` with `fitH`. It was built, worked, and was replaced because a
-projected video is what this backdrop actually is. **Keep it in mind if the
-video ever costs too much on the old card** — PERFORMANCE.md's machine has a
-few tens of MB of texture budget, and a panorama is one static texture against a
-per-frame video blit. A frame sequence, for the record, was never viable: ~113
-frames is ~46 MB decoded soft, ~220 MB native.
+⚠️ **A STITCHED PANORAMA WAS TRIED HERE AND REJECTED. DO NOT PROPOSE IT AGAIN
+FOR THIS LEVEL.** The whole shot stitched into one strip and drawn as
+`kind: 'image'` is cheaper on every measure that can be counted — 507 KB against
+8.3 MB, one static texture against a per-frame video blit — and it looked bad.
+The plate is the MOVING footage; that is the point of it. The numbers are not
+the argument and were not accepted as one. `tools/build-plate-panorama.py` and
+its output are still on disk, unused and unreferenced.
+
+A frame sequence, for the record, was never viable either: ~113 frames is ~46 MB
+decoded at a resolution soft enough to notice, ~220 MB native.
 
 **A later shot with real motion in it** — smoke, a crowd, anything that moves
 while the camera is still — wants `kind: 'film'`, which is still wired:
@@ -310,14 +312,37 @@ the crowd for the length of a stun.
 
 A sequence of segments, alternating walking and fighting — the genre's spine.
 
-| # | kind | |
-|---|---|---|
-| 0 | scroll | to x900 |
-| 1 | arena | TOM, JUIXY |
-| 2 | scroll | to x2100 |
-| 3 | arena | JUIXY, TOM, ERKPA |
-| 4 | scroll | to x3300 |
-| 5 | **boss** | the Mosca Boss |
+| # | kind | | film |
+|---|---|---|---|
+| 0 | scroll | to x900 | 7% |
+| 1 | arena | ERKPA, JUIXY, **TOM from behind** | |
+| 2 | scroll | to x2100 | 42% |
+| 3 | arena | JUIXY, TOM, ERKPA, **+ERKPA, JUIXY from behind** | |
+| 4 | scroll | to x3300 | 77% |
+| 5 | **sub-boss** | the Mosca Boss | |
+| 6 | scroll | to x3690 | 88% |
+| 7 | arena | JUIXY, TOM, **ERKPA behind**, TOM, **JUIXY behind** | |
+| 8 | scroll | to x4092 | **100%** |
+| 9 | arena | ERKPA, JUIXY, **TOM behind**, **ERKPA behind**, TOM | |
+
+⚠️ **THE LEVEL IS AS LONG AS THE FILM.** The shot is 29.5s and
+`worldPxPerSecond` is 116, so it is worth 3424px of camera travel. The level
+used to give the camera 2632 and stop, leaving the last quarter of the footage
+unseen. The segments past the sub-boss spend the missing 792px, and the last
+fight plays out against the final frame.
+
+⚠️ **WAVES ARE FREE, SCROLLS ARE NOT.** An arena LOCKS the camera, so a fight
+costs no footage at all — only walking moves the film on. The number of waves is
+therefore unconstrained; only the scrolls between them have to add up.
+
+⚠️ **`levelEndX` IS A HARD CEILING ON HOW MUCH SHOT CAN BE SEEN.** `camX` is
+clamped to `levelEndX - GAME_W`, so at 4000 the level stopped 792px short
+whatever the segments asked for. It is 4704 now.
+
+⚠️ **The boss no longer ends the level.** It used to set `done` and return
+'clear' directly, which made it permanently the last thing in the game and
+silently ignored anything placed after it. It hands off like any other segment
+now, and still ends the level when nothing follows.
 
 ⚠️ **Arenas carry no `camX`, on purpose** — each locks wherever the camera had
 got to when the scroll handed over, which can never disagree with it. The camera
@@ -328,6 +353,31 @@ backdrop will want, since a locked shot is a composed one.
 
 The camera locking **is** the message that a fight has started; every player of
 this genre already reads it. That is why the arena walls are invisible.
+
+⚠️ **THE CAMERA ONLY EVER MOVES BECAUSE THE PLAYER MOVED.** It used to ease
+toward a target POSITION, and that is the wrong quantity: any time the player
+was outside the deadzone — which is most of the time after a fight, since they
+finish it wherever they happened to be standing — the camera set off on its own
+and kept going while they stood still. After an arena unlocked that was up to
+**572px of travel the player never asked for**, arriving as a lurch, and it
+dragged the film along with it.
+
+The framing error is now closed out of a BUDGET earned by walking:
+`camFollowGain` px of correction per px walked. Stand still and the camera is
+still, however badly framed the shot is; walk, and it comes back to frame as you
+go. A deadzone still sits around the focus point so a single step does not drag
+the background.
+
+⚠️ **THAT ALSO MADE THE PLATE'S SEEK STORM STRUCTURALLY IMPOSSIBLE.** Camera
+speed is now bounded by `walkSpeedX * camFollowGain` = 540px/s, which is 4.66x
+of film — under `maxRate` and nowhere near `resyncS`. Camera motion can no
+longer provoke a seek at all; only a genuine discontinuity like a restart can.
+
+⚠️ **`lastPlayerX` MUST BE NULLED WHENEVER THE CAMERA IS NOT FOLLOWING.** The
+budget is the distance walked since the last follow frame, and `_followCamera`
+does not run while an arena is locked — so a whole fight's movement would sit in
+that budget and buy exactly the lurch it exists to prevent. It is nulled on both
+locks and on `reset()`, and re-seeds on the next frame.
 
 ---
 
@@ -440,7 +490,7 @@ Embed settings: **1280×720**, fullscreen **on**, mobile **off**, autostart
 
 ---
 
-## Two bugs whose causes are not guessable
+## Bugs whose causes are not guessable
 
 ⚠️ **A missing config knob made the boss invisible.** `flyBossTurnMs` was
 undefined; it divides into the turn rate, so `facing` went NaN → the pose index
@@ -456,6 +506,57 @@ which throws. It threw in the shadow pass, which runs *before* the sprite pass,
 so no fighters and no HUD were drawn — and the exception escaped `loop()` before
 scheduling the next frame. One bad radius froze the game. There is now a separate
 `shadowLiftRef` (240) and a clamp.
+
+⚠️ **THE BACKDROP WENT BLACK IN FIREFOX AND FROZE IN CHROME, at the exact
+moment the GO arrow appeared. One cause, two symptoms, and neither is the
+video's fault.**
+
+When an arena hands over, the camera unlocks and yanks forward to re-acquire the
+player — up to **572px in one movement, which is 4.93s of film**. `resyncS` was
+0.75s, so the plate decided it was too far out of step to catch up by playing
+and SEEKED. The camera then kept moving for another half second, so it seeked
+again on the next frame, and the next: **each seek cancelled the one before it
+and no frame was ever decoded.**
+
+A video mid-seek has no frame to give. `drawImage` on it is a **silent no-op** —
+so the plate painted nothing, the canvas kept the `#0b0714` it is wiped with
+every frame, and the backdrop was black. Chrome holds the previously decoded
+frame instead of nothing, so the same storm read as the shot freezing. The
+divergence between the two browsers is the whole reason this looked like two
+bugs.
+
+Three changes, in order of importance:
+
+1. **Never issue a seek while one is in flight** (`if (!v.seeking)`). This is the
+   actual fix; the storm cannot form.
+2. **`resyncS` raised to 6s**, above the size of that yank, so a handoff is
+   absorbed by playing fast — the shot whips forward, which is what the camera
+   is doing anyway. `maxRate` 10 closes the 4.93s gap in about half a second. A
+   seek is now reserved for a genuine discontinuity, like a restart.
+3. **A kept copy of the last good frame.** Whatever else goes wrong — a
+   buffering stall, a seek that takes its time — the worst the plate can now do
+   is hold a frame. It is captured at the start, before a seek, and on pause,
+   never every frame.
+
+⚠️ **THE GO ARROW LIED, TWICE, AND BOTH WERE THE SAME LINE IN THE WRONG PLACE.**
+
+The prompt is set when a fight clears and lasts `goMs` (2.6s). It was set
+*before* asking what came next, and nothing ever took it down early. So:
+
+- **It pointed the way out of a fight the player was locked into.** The walks
+  between the post-boss fights were 260px — under a second — so the arrow was
+  still on screen when the next arena penned the player in. They read "GO",
+  walked into an invisible wall, and then the camera moved "out of nowhere" when
+  the wave they had not noticed was finally cleared.
+- **It appeared over the end of the level.** Clearing the LAST arena still set
+  the banner, pointing onward at nothing.
+
+Fixes: locking the camera sets `banner = 0`, because the arrow means the way is
+OPEN and the moment it is not, it goes; and the banner is only set when
+`_enter` did not return 'clear'. The post-boss stretch was also rebuilt from
+three cramped 260px walks into two of ~400px, with the extra enemies moved
+INSIDE the fights as staged `delayMs` arrivals — which cost no film, because an
+arena locks the camera.
 
 ⚠️ **THE END SCREENS DISMISSED THEMSELVES, and no input was involved.**
 "press anything" was already satisfied before it was drawn. `_anyPress` is set

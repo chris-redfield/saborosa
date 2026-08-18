@@ -30,6 +30,20 @@ zipname="beatemup-dungeon-itch.zip"
 
 command -v node >/dev/null 2>&1 || { echo "ERROR: node is required (it runs the manifest)"; exit 1; }
 
+# DEV MODE MUST NOT SHIP. A build where every punch does 50 damage reads as a
+# balance disaster rather than a forgotten switch, and by the time anyone is
+# looking at it they are usually not the person who left it on. Cheaper to
+# refuse here than to explain it later.
+node -e '
+  const fs = require("fs");
+  const CONFIG = eval(fs.readFileSync(process.argv[1], "utf8") + "; CONFIG");
+  if (CONFIG.DEV && CONFIG.DEV.on) {
+    console.error("ERROR: CONFIG.DEV.on is true — set it false before building.");
+    process.exit(1);
+  }
+' "$here/src/config.js" || exit 1
+
+
 echo "==> cleaning"
 rm -rf "$dist" "$here/$zipname"
 mkdir -p "$dist/src"

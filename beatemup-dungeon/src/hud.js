@@ -130,6 +130,27 @@ class Hud {
   }
 
   /** A full-screen card: the two endings, and the pause. */
+  /**
+   * The DEV MODE marker.
+   *
+   * Small, permanent and in the corner, because the only job it has is to stop
+   * a forgotten flag being mistaken for a balance problem. A build where every
+   * punch does 50 looks broken rather than switched on, and by then the person
+   * looking at it is usually not the person who left it on.
+   */
+  drawDev(ctx) {
+    if (!(CONFIG.DEV && CONFIG.DEV.on)) return;
+    ctx.save();
+    ctx.font = '700 14px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillText('DEV  ' + CONFIG.DEV.punchDamage + ' dmg', CONFIG.GAME_W - 9, 9);
+    ctx.fillStyle = '#E4463A';
+    ctx.fillText('DEV  ' + CONFIG.DEV.punchDamage + ' dmg', CONFIG.GAME_W - 10, 8);
+    ctx.restore();
+  }
+
   drawCard(ctx, lines, alpha, color) {
     ctx.save();
     ctx.globalAlpha = alpha;

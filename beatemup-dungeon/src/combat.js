@@ -92,7 +92,17 @@ class Combat {
     }
     if (!best) return;
     player.atk.hasHit = true;
-    best.hurt(box.def.damage, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+    /* DEV MODE overrides the damage and nothing else -- the reach, the timing,
+       the knockdown and the combo all behave normally, so what is being tested
+       is still the real fight, just a shorter one. It is applied HERE, at the
+       one place the player's damage is read, rather than by rewriting
+       CONFIG.COMBO: the table documents a 28-damage string that every enemy's
+       HP is tuned against, and a config that lies about that is worse than a
+       branch. */
+    const dmg = (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.punchDamage != null)
+      ? CONFIG.DEV.punchDamage
+      : box.def.damage;
+    best.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
     this._impact(player, best, box.def.pose);
   }
 

@@ -39,6 +39,11 @@ class Stage {
     this.spawned = false;
     this.done = false;
     this.banner = 0;        // seconds left on the "GO" arrow
+    /* The follow reference. Null means "re-seed from wherever the player is on
+       the next frame" — which is what a restart wants, since the player jumps
+       back to the start of the level and the distance between the two is not a
+       walk. See _followCamera. */
+    this.lastPlayerX = null;
   }
 
   segment() { return CONFIG.SEGMENTS[this.index] || null; }
@@ -95,7 +100,11 @@ class Stage {
       // Same locked, living shot an arena gets — the world carries on around a
       // fight the player cannot walk away from.
       this.backdrop.setMode('plate', 'play');
-      if (this.lockX == null) this.lockX = s.camX != null ? s.camX : this.camX;
+      if (this.lockX == null) {
+        this.lockX = s.camX != null ? s.camX : this.camX;
+        this.banner = 0;         // penned in; see the arena branch
+        this.lastPlayerX = null; // and the follow budget; see the arena branch
+      }
       this._lockCamera(dt, this.lockX);
 
       if (!this.spawned) {
@@ -109,13 +118,23 @@ class Stage {
       /* Waits for `finished()`, not for `dead` — the death fall and fade play
          out before the level is called, so the boss is not deleted out from
          under its own last beat. */
+      /* THE BOSS HANDS OFF LIKE ANY OTHER SEGMENT -- it does not end the level
+         itself. It used to set `done` and return 'clear' directly, which made
+         it permanently the last thing in the game and SILENTLY IGNORED anything
+         placed after it. Advancing instead makes it a sub-boss when segments
+         follow, and still ends the level when they do not, because `_enter`
+         returns 'clear' once there is no next segment.
+
+         It gets the GO prompt for the same reason an arena does: the camera
+         unlocking is the message that the way forward has opened. */
       if (this.boss && this.boss.finished()) {
         this.boss = null;
         this.index++;
         this.spawned = false;
         this.lockX = null;
-        this.done = true;
-        return 'clear';
+        const r = this._enter(player, crowd);
+        if (r !== 'clear') this.banner = (CONFIG.goMs || 1600) / 1000;
+        return r || 'advance';
       }
       return null;
     }
@@ -135,7 +154,21 @@ class Stage {
        backdrop will want, since a locked shot is a composed one. Then the
        number has to be picked against where the camera actually is, not against
        where the player is. */
-    if (this.lockX == null) this.lockX = s.camX != null ? s.camX : this.camX;
+    if (this.lockX == null) {
+      this.lockX = s.camX != null ? s.camX : this.camX;
+      /* LOCKING THE CAMERA CANCELS THE GO ARROW. The prompt lasts `goMs`
+         (2.6s) and the walks between fights are under a second, so it was
+         routinely still on screen when the next arena penned the player in --
+         an arrow saying "this way" over a fight they cannot walk away from.
+         The arrow means the way is OPEN; the moment it is not, it goes. */
+      this.banner = 0;
+      /* And drop the follow reference. `_followCamera` spends a budget earned
+         by walking, and it is not called while the camera is locked -- so a
+         fight's worth of movement would otherwise be sitting in that budget the
+         instant the lock lifts, and buy exactly the lurch the budget exists to
+         prevent. Nulled here, re-seeded on the first frame after the fight. */
+      this.lastPlayerX = null;
+    }
     this._lockCamera(dt, this.lockX);
 
     if (!this.spawned) {
@@ -146,10 +179,12 @@ class Stage {
       this.index++;
       this.spawned = false;
       this.lockX = null;
-      // The arrow that says "this way". Length is CONFIG.goMs, with everything
-      // else about the prompt; the fade out is the tail of it, not extra.
-      this.banner = (CONFIG.goMs || 1600) / 1000;
       const r = this._enter(player, crowd);
+      /* THE ARROW ONLY MEANS SOMETHING IF THERE IS SOMEWHERE TO GO. It used to
+         be set before asking, so clearing the LAST arena pointed the player
+         onward into the end of the level -- a GO over the clear card. Length is
+         CONFIG.goMs; the fade is the tail of it, not extra. */
+      if (r !== 'clear') this.banner = (CONFIG.goMs || 1600) / 1000;
       return r || 'advance';
     }
     return null;
@@ -190,24 +225,49 @@ class Stage {
     }
   }
 
+  /**
+   * Follow the player. THE CAMERA ONLY EVER MOVES BECAUSE THE PLAYER MOVED.
+   *
+   * It used to ease toward a target POSITION, and that is the wrong quantity.
+   * Any time the player was outside the band -- which is most of the time after
+   * a fight, since they finish it wherever they were standing -- the camera set
+   * off on its own and kept going while they stood still. Worst after an arena
+   * unlocked: up to 572px of travel that the player never asked for, arriving
+   * as a lurch. It also drove the plate, so the film whipped along with it.
+   *
+   * Now the framing error is closed out of a BUDGET earned by walking. Stand
+   * still and the camera is still, however badly framed the shot is; walk, and
+   * it comes back to frame as you go. `camFollowGain` is how many px of
+   * correction a px of walking buys.
+   *
+   * A DEADZONE STILL SITS AROUND THE FOCUS POINT, and it is what keeps a step
+   * or the back-and-forth of a fight from dragging the whole background along.
+   * A camera glued to the player makes the backdrop twitch on every step, which
+   * on filmed footage -- where every twitch is a frame change -- is the
+   * difference between a walk and a treadmill.
+   *
+   * IT STILL ONLY GOES FORWARD. The left edge of the view is a wall (see
+   * `bounds`), so a player pushing left is stopped rather than followed. Making
+   * the camera reverse is a real feature and not a free one: the plate is
+   * video, and no browser can play a video backwards.
+   */
   _followCamera(dt, player) {
-    /* A DEADZONE, not a hard follow. The camera only moves once the player has
-       walked out of a band around its focus point, so small adjustments and the
-       back-and-forth of a fight do not drag the whole background with them. A
-       camera glued to the player makes the backdrop twitch on every step, which
-       on a SCROLLING BACKGROUND — and even more on filmed footage, where every
-       twitch is a frame change — is the difference between a walk and a
-       treadmill. */
     const focus = CONFIG.GAME_W * CONFIG.camFocusX;
-    const sx = player.x - this.camX;
-    if (sx > focus + CONFIG.camDeadzone) this.camTarget = player.x - focus - CONFIG.camDeadzone;
-    else if (sx < focus - CONFIG.camDeadzone) this.camTarget = player.x - focus + CONFIG.camDeadzone;
+    const px = player.x;
+    if (this.lastPlayerX == null) this.lastPlayerX = px;
+    const walked = Math.abs(px - this.lastPlayerX);
+    this.lastPlayerX = px;
 
-    // Never scrolls back past ground already cleared: the genre's rule, and
-    // what makes the left edge a wall rather than a suggestion.
-    this.camTarget = Math.max(this.camTarget, this.camX);
-    this.camTarget = Math.min(this.camTarget, CONFIG.levelEndX - CONFIG.GAME_W);
-    this.camX += (this.camTarget - this.camX) * Math.min(1, CONFIG.camEaseRate * dt);
+    // How far the framing is out, in px. Zero inside the band.
+    const sx = px - this.camX;
+    const err = sx - (focus + CONFIG.camDeadzone);
+    if (err <= 0) return;                 // in frame, or left of it: the wall's job
+
+    const budget = walked * (CONFIG.camFollowGain || 1);
+    const step = Math.min(err, budget);
+    const maxX = CONFIG.levelEndX - CONFIG.GAME_W;
+    this.camX = Math.max(0, Math.min(maxX, this.camX + step));
+    this.camTarget = this.camX;           // kept in step for _lockCamera's hand-over
   }
 
   _lockCamera(dt, target) {

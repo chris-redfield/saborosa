@@ -15,10 +15,9 @@
  *
  *     tile    an image repeated forever along x. What is in the game now: the
  *             infinite dungeon floor tile, standing in until footage exists.
- *     image   one long strip, drawn at an offset. Painted, or -- as now -- a
- *             filmed dolly STITCHED into a single panorama; see
- *             tools/build-plate-panorama.py for why that beat a frame
- *             sequence by an order of magnitude of VRAM.
+ *     image   one long painted strip, drawn at an offset. NOT what this game's
+ *             plate uses -- a stitched panorama was tried there and rejected;
+ *             see CONFIG.SOURCES.plate.
  *     video   THE SHOT ITSELF, projected behind the fighters and scrubbed by
  *             the camera: walking winds it forward, standing still freezes it.
  *             What the plate is now.
@@ -213,6 +212,27 @@ class Backdrop {
     const cfg = s.cfg;
     const dur = v.duration;
 
+    /* THE LAST GOOD FRAME. A video that is seeking has no frame to give, and
+       `drawImage` on it is a SILENT NO-OP -- so the plate draws nothing, the
+       canvas keeps the clear colour it was wiped with, and the backdrop goes
+       black. That is what it looked like in Firefox; Chrome holds the previous
+       frame instead, which looked like the shot freezing. Same cause.
+       Keeping a copy means the worst a stall can ever do is hold a frame. */
+    const keepFrame = () => {
+      if (v.readyState < 2 || v.seeking) return;
+      if (!s.frozen) {
+        s.frozen = document.createElement('canvas');
+        s.frozen.width = v.videoWidth;
+        s.frozen.height = v.videoHeight;
+        s.frozenCtx = s.frozen.getContext('2d');
+      }
+      s.frozenCtx.drawImage(v, 0, 0);
+      s.hasFrozen = true;
+    };
+    // Cheap on purpose: captured once at the start and again only around the
+    // moments a frame is about to become unavailable, never every frame.
+    if (!s.hasFrozen) keepFrame();
+
     if (isFinite(dur) && dur > 0) {
       const pps = cfg.worldPxPerSecond || 116;
       // Where the shot should be for this camera position. Held a hair short of
@@ -224,26 +244,39 @@ class Backdrop {
       s.lastScroll = scrollX;
       const camSpeed = dt > 0 ? (scrollX - last) / dt : 0;
 
-      if (Math.abs(err) > (cfg.resyncS || 0.75)) {
-        // Too far out of step to catch up by playing. Take the one visible cut.
-        try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
-        if (!v.paused) v.pause();
+      if (Math.abs(err) > (cfg.resyncS || 6)) {
+        /* NEVER ISSUE A SEEK WHILE ONE IS IN FLIGHT, and this guard is the
+           actual bug fix. Writing `currentTime` every frame during a camera
+           catch-up cancels the seek before it can land, so no frame is ever
+           decoded and the plate has nothing to draw for as long as the camera
+           keeps moving -- black in Firefox, frozen in Chrome. One seek at a
+           time, and it is allowed to finish. */
+        if (!v.seeking) {
+          keepFrame();                      // hold this one while we jump
+          try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
+          if (!v.paused) v.pause();
+        }
       } else if (camSpeed > 1) {
         /* Rate = what the camera's own speed asks for, plus a term that closes
            whatever drift has accumulated. Without the correction the shot stays
            permanently offset by however much it lagged during the last start. */
         const rate = camSpeed / pps + err * (cfg.trackGain || 1.2);
-        v.playbackRate = Math.max(0.1, Math.min(cfg.maxRate || 6, rate));
-        if (v.paused) {
+        v.playbackRate = Math.max(0.1, Math.min(cfg.maxRate || 10, rate));
+        if (v.paused && !v.seeking) {
           const pr = v.play();
           if (pr && pr.catch) pr.catch(() => {});
         }
       } else if (!v.paused) {
         v.pause();          // the player stopped: freeze the frame
+        keepFrame();
       }
     }
 
-    ctx.drawImage(v, 0, 0, w, h);
+    /* Draw the shot if it has a frame, and the kept copy if it does not.
+       `seeking` is checked as well as `readyState` because a browser may report
+       data while the frame it holds belongs to the position we just left. */
+    if (!v.seeking && v.readyState >= 2) ctx.drawImage(v, 0, 0, w, h);
+    else if (s.hasFrozen) ctx.drawImage(s.frozen, 0, 0, w, h);
   }
 
   _drawImage(ctx, key, cfg, scrollX, w, h) {
