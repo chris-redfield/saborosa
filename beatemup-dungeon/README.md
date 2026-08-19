@@ -41,6 +41,21 @@ furniture rather than a fighter.
 > saying "grep it and move them all together". Missing one did not fail — it
 > just made a punch land across a visible gap.
 
+
+**Per-character overrides**, on top of `BODY_SCALE`:
+
+```js
+CHARACTERS.coconut.drawScale: 0.9,   // the player only, DRAWN size
+flyBossSizePx: 253,                  // the Mosca, drawn AND simulated
+```
+
+`drawScale` is a drawn size only — it does not touch the hurtbox, punch reaches
+or jump, so it is a look and not a rebalance. Keep it near 1: the rule below is
+that a sprite must not shrink while its reach does not.
+
+`flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
+the boss's size in the simulation moves with its drawn size.
+
 ### One thing BODY_SCALE does NOT scale, on purpose
 
 `verticalReach: 70` — how far up or down a punch connects. If it scaled with the
@@ -139,8 +154,19 @@ gameplay. Multiply by the row's frame count for the full pass:
 | death | 8 | 130 | 1040ms |
 
 Looping poses (idle, walk) run off a free-running clock and wrap. One-shot
-poses (hurt, down, death) play forward once and **hold the last frame** —
-holding matters, or a death would loop and resurrect the corpse every second.
+poses (down, death) play forward once and **hold the last frame** — holding
+matters, or a death would loop and resurrect the corpse every second.
+
+**`hurt` cycles rather than holding**, and it is the exception on purpose. A
+flinch drawn as two poses is a shudder, and a shudder frozen on its second frame
+reads as a fighter that got stuck. Every other one-shot ends in a state worth
+holding — dead, or on the floor; this one ends by standing back up. At `hurtMs`
+260 and 100ms a frame that is two frames and a repeat of the first.
+
+**A pack whose knockdown row also stands up** does not use the `down` row above
+at all: it is sliced by phase and each slice is spread across its own phase
+(`downLandMs` / `downLieMs` / `downRiseMs`), the way the jump is spread across
+its arc. That is the cigarette; see his sprite section.
 
 **Picking up** spreads its frames across the action rather than running at a
 fixed rate, so the drawing always fills exactly the time the player is committed
@@ -291,22 +317,6 @@ It only goes forward — the left edge of the view is a wall. Making it reverse 
 a real feature, not a free one: the plate is video, and no browser can play a
 video backwards.
 
-## Sizes
-
-```js
-BODY_SCALE: 0.72,                       // every fighter, and everything measured against one
-CHARACTERS.coconut.drawScale: 0.9,      // the player only, DRAWN size
-flyBossSizePx: 253,                     // the Mosca, drawn AND simulated
-```
-
-`drawScale` is a per-character drawn size on top of `fighterSizePx`. It does
-**not** touch the hurtbox, punch reaches or jump, which are global — so it is a
-look, not a rebalance. Keep it near 1: the rule elsewhere in the file is that a
-sprite must not shrink while its reach does not, and far below 0.9 the punches
-start landing across a visible gap.
-
-`flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
-the boss's size in the simulation moves with its drawn size.
 
 ## Dev mode
 
@@ -349,9 +359,34 @@ person who left it on.
 
 ```
 COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
-enemy HP       JUIXY 34   TOM 40   ERKPA 55
+enemy HP       CIGARRO 34   TOM 40   ERKPA 55
 player HP      110
+
+CIGARRO's string   3 + 3 + 5  =  11 if all three land
+TOM / ERKPA        one swing, 7 / 10   (enemyDamage)
 ```
+
+**One enemy throws a combo.** The cigarette has three punches drawn for him, so
+his attack is a string rather than a swing — `CONFIG.ENEMY_COMBOS.cigarro`, one
+attack def per hit, same four numbers and a box as any other attack. TOM and
+ERKPA have no entry there and keep the single swing built from
+`enemyStartupMs` / `enemyActiveMs` / `enemyRecoverMs`.
+
+`enemyDamage` is **ignored for a kind that has a combo** — those hits carry
+their own damage. Changing `enemyDamage.cigarro` does nothing.
+
+How long a string he throws is rolled once, before the wind-up:
+
+```js
+enemyComboWeights: { cigarro: [4, 3, 3] }   // 1 hit : 2 hits : 3 hits
+```
+
+Two rules worth keeping if you retune those defs. **No hit's startup may go
+under `hurtMs` (260)** — a player stunned by hit one would otherwise be unable
+to leave before hit two, and the whole string becomes unavoidable the moment it
+starts. And **the last hit's recovery is the punish window**; at 460ms it is
+more than double the others, which is the entire reason backing out of a string
+is worth doing.
 
 **Keep the player's HP a multiple of 22.** The hand-drawn life bar is 22 squares,
 so 110 makes each square exactly 5 damage. The boss's 88 is a multiple for the
@@ -365,8 +400,9 @@ it is a real rebalance, not a tweak: at 40 damage a full string one-combos TOM.
 
 ## The coconut's sprites
 
-The player has a sheet drawn for this game. The villains are still the main
-game's 9x5 packs, so `sheets.js` carries both formats until villain sheets exist.
+The player has a sheet drawn for this game, and so does **the cigarette** — see
+the next section. TOM and ERKPA are still the main game's 9x5 packs, so
+`sheets.js` carries both formats until they are redrawn too.
 
 ### Re-cutting the sheet
 
@@ -453,6 +489,96 @@ _liftTargetHeavy() { return false; }
 
 Give it something to find and the hoist starts appearing on its own. Carrying
 and throwing still need `carryWalk` and `liftThrow` wired on top.
+
+---
+
+## The cigarette's sprites
+
+**CIGARRO replaced JUIXY wave for wave.** The orange is gone from the cast and
+its pack is no longer loaded; every `kind: 'laranja'` in the level is now
+`kind: 'cigarro'`, with the same HP, speed and placement.
+
+### Cutting the sheet
+
+```
+python3 tools/build-beat-enemy-defs.py cigarro     # from the REPO ROOT
+```
+
+```
+assets-v2/beatemup-dungeon/cigarro-sprites-fim.png   the illustrator's file
+  ->  cigarro-beat-game.png       packed atlas, 41 unique frames for 44 slots
+  ->  cigarro-beat-sprites.json   per-frame rects, anchors, bodyH, animations
+```
+
+A second villain sheet is a new entry in that tool's `SHEETS` table — source,
+output name, which way it faces, and the row list. Nothing else.
+
+Same failure rule as the coconut's cutter: it **fails loudly** if a row's frame
+count does not match, rather than cutting something plausible and wrong.
+
+### The 8 rows
+
+| row | meaning | frames | animation |
+|---|---|---|---|
+| 1 | idle | 3 | `idle` |
+| 2 | andando | 6 | `walk` |
+| 3 | pulando | 6 | `jump` — **cut, not wired** (no enemy jumps) |
+| 4 | pulando e socando | 7 | `airPunch` — **cut, not wired** |
+| 5 | socando | 6 | `combo` — 3 wind-up/strike PAIRS, his string |
+| 6 | apanhando | 2 | `hurt` — both frames **cycle**, they do not hold |
+| 7 | cai e levanta | 6 | `knockdown` — sliced by phase, see below |
+| 8 | morrendo | 8 | `death` |
+
+His punch row needs no pose entries of its own: `combo1`/`combo2`/`combo3` in
+the shared `POSE_RAGGED` already slice a row into pairs, and his three pairs land
+on them exactly. **Those three entries are now read by two characters with
+different rows behind them** — worth knowing before editing them.
+
+### The knockdown row is three poses, not one
+
+Row 7 falls over *and* stands back up, which the coconut's does not. So it is
+cut by the knockdown PHASE, in `CONFIG.CHARACTERS.cigarro.poses`:
+
+| pose | frames | driven by |
+|---|---|---|
+| `downLand` | 0–2 | `downLandMs` — the launch arc |
+| `downLie` | 3 | `downLieMs` — flat on the floor |
+| `downRise` | 4–5 | `downRiseMs` — getting up |
+
+Each is spread across its own phase, like the jump is across its arc, so
+retiming a phase retimes its drawing for free. A pack that declares no phase
+poses (the coconut) keeps the single `down` and is untouched.
+
+### Three things about this sheet that will bite
+
+**The smoke is part of the animation and must not count as part of him.** It
+rises off his ember, it is drawn in the same white as his body, and it is a
+third of the frame's height. It is drawn — it is just excluded from the two
+measurements it would wreck:
+
+- **how tall he is.** `sheets.js` scales a pack so its idle frame is
+  `fighterSizePx`; done on the raw frame that is a two-thirds-height cigarette
+  under a full-height plume. The defs carry **`bodyH`** — the idle frame without
+  the smoke — and the pack scales on that.
+- **where the health bar floats.** `hud.js` puts an enemy's bar above
+  `sheets.size().h`; each frame carries **`bh`**, the body's height above its own
+  anchor, and `size()` reports that instead of the frame's.
+
+**What separates smoke from body is connectedness, not colour.** No palette test
+can tell them apart. The body is the component containing the *lowest* opaque
+pixel — a cigarette stands on the belt, a wisp never does — and every detached
+wisp and puff is some other component.
+
+**His anchor is his BASE, not his whole body.** The coconut's anchor is the
+centroid of all of him; a cigarette *leans*, and on the lunging punch his top
+travels most of a body-width forward. Taking the centroid of all of him would
+slide his feet backwards to pay for the lean, and the punch would visibly lose
+reach. The horizontal anchor reads the bottom `BASE_FRAC` (30%) of him only, on
+body white, so neither a thrown arm (tan) nor a leaning head (black) can move
+his feet.
+
+He faces **right**, like the coconut and unlike the main game's packs. Recorded
+in the defs as `native`, never assumed.
 
 ---
 

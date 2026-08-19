@@ -383,7 +383,7 @@ const CONFIG = {
     /* THE SECOND WAVE IS THE FIRST ONE THAT DOES NOT END WHERE IT LOOKS LIKE IT
        WILL. Three walk in from the front and read as the whole fight; then, five
        seconds after the last of them has arrived, a SECOND ERKPA comes in from
-       the left, and three seconds after that a second JUIXY behind him.
+       the left, and three seconds after that a second CIGARRO behind him.
 
        The reinforcements come from the left for the same reason TOM does in the
        first arena -- it is the direction the player has stopped watching -- but
@@ -396,11 +396,11 @@ const CONFIG = {
     {
       kind: 'arena',
       enemies: [
-        { kind: 'laranja',  x: 2280, z: 40 },
+        { kind: 'cigarro',  x: 2280, z: 40 },
         { kind: 'tomato',   x: 2450, z: 120, delayMs: 500 },
         { kind: 'eggplant', x: 2360, z: 175, delayMs: 1400 },
         { kind: 'eggplant', x: 2200, z: 90,  delayMs: 6400, from: 'behind' },
-        { kind: 'laranja',  x: 2240, z: 160, delayMs: 9400, from: 'behind' },
+        { kind: 'cigarro',  x: 2240, z: 160, delayMs: 9400, from: 'behind' },
       ],
     },
     { kind: 'scroll', toX: 3300 },
@@ -437,11 +437,11 @@ const CONFIG = {
     {
       kind: 'arena',
       enemies: [
-        { kind: 'laranja',  x: 3600, z: 70 },
+        { kind: 'cigarro',  x: 3600, z: 70 },
         { kind: 'tomato',   x: 3800, z: 150, delayMs: 600 },
         { kind: 'eggplant', x: 3500, z: 110, delayMs: 2400, from: 'behind' },
         { kind: 'tomato',   x: 3900, z: 50,  delayMs: 5200 },
-        { kind: 'laranja',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
+        { kind: 'cigarro',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
       ],
     },
     { kind: 'scroll', toX: 4092 },        // camera 3022 -> 3424   (film 100%)
@@ -451,7 +451,7 @@ const CONFIG = {
       kind: 'arena',
       enemies: [
         { kind: 'eggplant', x: 4000, z: 60 },
-        { kind: 'laranja',  x: 4230, z: 150, delayMs: 500 },
+        { kind: 'cigarro',  x: 4230, z: 150, delayMs: 500 },
         { kind: 'tomato',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
         { kind: 'eggplant', x: 4100, z: 180, delayMs: 4200, from: 'behind' },
         { kind: 'tomato',   x: 4300, z: 40,  delayMs: 7000 },
@@ -484,7 +484,7 @@ const CONFIG = {
           enemies: [
             { kind: 'eggplant', x: 900,  z: 70 },
             { kind: 'tomato',   x: 1100, z: 150, delayMs: 900 },
-            { kind: 'laranja',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
+            { kind: 'cigarro',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
           ],
         },
       ],
@@ -554,8 +554,34 @@ const CONFIG = {
        a visible gap. */
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
                 drawScale: 0.9, name: 'COCONUT' },
+
+    /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
+       wave for wave rather than joining the cast: the orange was the main
+       game's grab-and-throw pack read as punches, and this is a fighter drawn
+       as a fighter. His stats are JUIXY's untouched (34 HP, 0.88 speed) so no
+       fight's time-to-kill moved when the art did; what changed is that he
+       THROWS A STRING — see ENEMY_COMBOS.
+
+       `poses` overrides the shared ragged table only where his rows are not
+       the coconut's, which is the knockdown alone: his falls over AND stands
+       back up, so it is sliced by phase. His punch row needs no override — it
+       is three wind-up/strike PAIRS, and `combo1`..`combo3` already slice a
+       row in pairs, so the shared entries land on his hits exactly. That is
+       worth knowing before editing them: those three are now read by two
+       characters with different rows behind them. */
+    cigarro:  { sheet: 'v2:beatemup-dungeon/cigarro-beat', pack: 'ragged',
+                name: 'CIGARRO',
+                poses: {
+                  /* The knockdown row, cut where the motion changes: three
+                     frames of going over, one flat on the floor, two getting
+                     up. These bounds are read off the ART — see the row table
+                     in README.md — not chosen to divide evenly. */
+                  downLand: { anim: 'knockdown', from: 0, to: 3 },
+                  downLie:  { anim: 'knockdown', from: 3, to: 4 },
+                  downRise: { anim: 'knockdown', from: 4, to: 6 },
+                } },
+
     tomato:   { sheet: 'saborosa-elementos-tomato',   name: 'TOM' },
-    laranja:  { sheet: 'saborosa-elementos-laranja',  name: 'JUIXY' },
     eggplant: { sheet: 'saborosa-elementos-eggplant', name: 'ERKPA' },
   },
 
@@ -775,7 +801,7 @@ const CONFIG = {
      being something a player can count in hits. Was 100 before the hand-drawn
      bar landed; the bar is what makes the number matter. */
   playerHealth: 110,
-  enemyHealth: { tomato: 40, laranja: 34, eggplant: 55 },
+  enemyHealth: { tomato: 40, cigarro: 34, eggplant: 55 },
 
   /* =========================================================================
      COMBAT
@@ -805,7 +831,8 @@ const CONFIG = {
 
      THE FULL-COMBO TOTAL IS STILL 28 DAMAGE, deliberately. Spreading the same
      28 over five hits instead of three keeps every enemy's time-to-kill
-     exactly where it was tuned (JUIXY 34, TOM 40, ERKPA 55) — this was a
+     exactly where it was tuned (34 / TOM 40 / ERKPA 55; the 34 was JUIXY's and
+     is now the cigarette's, who took his waves) — this was a
      sprite replacement, not a rebalance, and a combo that suddenly hit 40
      would have quietly made TOM a one-combo enemy. Retune here, on purpose,
      rather than inheriting it by accident.
@@ -923,13 +950,72 @@ const CONFIG = {
   // still — the circling that makes a crowd read as alive.
   enemyCircleRadius: 210,
   enemyCircleSpeed: 0.9,  // rad/sec around the player
-  enemySpeedScale: { tomato: 0.72, laranja: 0.88, eggplant: 0.58 },
-  enemyDamage: { tomato: 7, laranja: 5, eggplant: 10 },
+  enemySpeedScale: { tomato: 0.72, cigarro: 0.88, eggplant: 0.58 },
+  /* IGNORED FOR A KIND THAT HAS A COMBO — its hits carry their own damage, in
+     ENEMY_COMBOS below. The cigarette's entry is kept as the number his string
+     was balanced against (JUIXY's old swing), and because dropping him out of
+     these three tables would make him look like a kind that has no stats. */
+  enemyDamage: { tomato: 7, cigarro: 5, eggplant: 10 },
   enemyReachX: 92 * BODY_SCALE,
   enemyReachZ: 48 * BODY_SCALE,
   enemyStartupMs: 200,
   enemyActiveMs: 90,
   enemyRecoverMs: 420,
+
+  /* =========================================================================
+     ENEMY COMBOS
+     =========================================================================
+     AN ENEMY WITH A COMBO IS NORMALLY A BOSS, and this file said so until the
+     cigarette arrived with three punches drawn for him. What keeps him a mook
+     rather than a small boss is that the STRING IS DECLARED BEFORE IT IS
+     THROWN: `Enemy` rolls its length at the top of the wind-up, so a two-hit
+     string and a three-hit string open identically and the player is never
+     asked to react to a decision made mid-swing.
+
+     A kind with no entry here keeps the single swing built from
+     `enemyStartupMs` and friends, which is TOM and ERKPA — they have no punch
+     art to chain and reading the main game's grab pack as a three-hit string
+     would show immediately.
+
+     THE DAMAGE IS SPREAD, NOT ADDED. JUIXY hit for 5 and the cigarette
+     replaced him wave for wave, so his string is 3 + 3 + 5: any single hit
+     costs the player less than the orange's did, and only the full string
+     costs more. A player who eats all three has stood still for 900ms.
+
+     THE LAST HIT IS THE PUNISH WINDOW. Its recovery is more than double the
+     others' — that is what the player is buying by backing out of the string,
+     and it is the only reason walking away from one is worth doing. Shorten it
+     and the cigarette becomes a wall that is never safe to approach.
+
+     Startup shortens as the string goes on (200 → 150 → 190) so it reads as
+     momentum. It never goes below the length of a flinch: at `hurtMs` 260 a
+     player hit by the first punch is still stunned when the second lands, and
+     dropping startup under that would make the whole string unavoidable once
+     the first one connects. */
+  ENEMY_COMBOS: {
+    cigarro: [
+      { pose: 'combo1', startupMs: 200, activeMs: 90, recoverMs: 200,
+        cancelMs: 0, damage: 3, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 110, lift: 0 },
+      { pose: 'combo2', startupMs: 150, activeMs: 90, recoverMs: 200,
+        cancelMs: 0, damage: 3, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 110, lift: 0 },
+      /* The lunge. It reaches further because the drawing does — his body goes
+         with the fist on that frame, and a hitbox that stopped where the other
+         two stop would leave the punch visibly passing through the player. */
+      { pose: 'combo3', startupMs: 190, activeMs: 110, recoverMs: 460,
+        cancelMs: 0, damage: 5, reachX: 108 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 210, lift: 0 },
+    ],
+  },
+  /* How likely a string is to be one, two or three hits — rolled once, at the
+     start of the wind-up. Weights rather than a length so the shape of the
+     fight is one line to change.
+
+     WEIGHTED TOWARD THE SHORT ONE ON PURPOSE. Three hits every time is a
+     rhythm the player stops reading and starts waiting out; a single jab that
+     might be the start of a string is what makes them respect the wind-up. */
+  enemyComboWeights: { cigarro: [4, 3, 3] },
   // Enemies spawn by WALKING IN from the nearest side of the screen rather
   // than appearing — a fighter that materialises in front of the player reads
   // as a bug even when it is the design.

@@ -2,15 +2,21 @@
  * Sheets — turns a character pack into drawable frames.
  *
  * TWO PACK FORMATS LIVE HERE AT ONCE, and that is the current state of the art
- * rather than an indulgence. The coconut has its own beat 'em up sheet, drawn
- * for this game; TOM, JUIXY and ERKPA are still read out of the MAIN GAME's
- * 9x5 packs. Until villain sheets exist, both have to work.
+ * rather than an indulgence. The coconut and the CIGARETTE have sheets drawn
+ * for this game; TOM and ERKPA are still read out of the MAIN GAME's 9x5 packs.
+ * The formats will both be needed until every villain has been redrawn.
  *
- *   'ragged'  the coconut. Not a grid: 13 rows of 3..10 frames, every frame its
- *             own size, cut by tools/build-beat-coconut-defs.py into a packed
- *             atlas plus a per-frame ANCHOR. Poses are named animations.
- *   'grid'    the villains. 9 cols x 5 rows, frame (row, col) is
+ *   'ragged'  the coconut, the cigarette. Not a grid: rows of 2..10 frames,
+ *             every frame its own size, cut by tools/build-beat-coconut-defs.py
+ *             and tools/build-beat-enemy-defs.py into a packed atlas plus a
+ *             per-frame ANCHOR. Poses are named animations.
+ *   'grid'    the rest. 9 cols x 5 rows, frame (row, col) is
  *             frames[row * cols + col]. Poses are columns.
+ *
+ * TWO RAGGED PACKS DO NOT HAVE TO HOLD THE SAME MOVES IN THE SAME ROWS, which
+ * is why the pose table is per pack (`pack.poses`) rather than read straight
+ * out of CONFIG: the shared `CONFIG.POSE_RAGGED` is the default and a character
+ * overrides the entries its own art contradicts.
  *
  * TWO FACINGS, LEFT AND RIGHT. The diagonals are gone. The old packs carried
  * down_left and up_left rows and this file built six facings out of them, but
@@ -60,7 +66,7 @@ class Sheets {
     if (!img || !data || !data.frames) return null;
 
     const pack = (def.pack === 'ragged')
-      ? this._buildRagged(img, data)
+      ? this._buildRagged(img, data, def)
       : this._buildGrid(img, data);
     /* A per-character DRAWN size, on top of the shared `fighterSizePx`. Folded
        into the pack's own scale so everything that measures a sprite -- the
@@ -84,16 +90,28 @@ class Sheets {
              scale: CONFIG.fighterSizePx / refH, refH };
   }
 
-  _buildRagged(img, data) {
+  _buildRagged(img, data, def) {
     // Same rule as the grid: one scale for the pack, measured off the idle.
     const idle = (data.anims && data.anims.idle) || [0];
     const ref = data.frames[idle[0]];
-    const refH = (ref && ref.h) || 1;
+    /* MEASURED ON THE BODY WHERE THE DEFS SAY WHAT THE BODY IS, and the frame
+       otherwise. The cigarette's frames are a third SMOKE — it rises off his
+       ember and is part of the animation — so scaling his pack by the frame
+       height draws a two-thirds-size cigarette under a full-height plume. His
+       cutter records `bodyH`, the idle frame without the smoke. The coconut's
+       defs carry no such field and fall back to the frame, unchanged. */
+    const refH = data.bodyH || (ref && ref.h) || 1;
     /* The coconut's beat 'em up sheet is drawn facing RIGHT — the opposite of
        the grid packs. `native` comes from the defs when the cutter records it,
        so a future villain sheet drawn the other way needs no code change. */
     return { kind: 'ragged', img, frames: data.frames, anims: data.anims || {},
              native: data.native || 'right',
+             /* POSE MAP PER PACK. `CONFIG.POSE_RAGGED` is the shared table, but
+                two ragged sheets do not have to hold the same moves in the same
+                rows: the coconut's knockdown row is six frames of falling over,
+                the cigarette's is a fall AND a stand-up, so the same `down`
+                slice cannot serve both. A pack overrides only what differs. */
+             poses: Object.assign({}, CONFIG.POSE_RAGGED, (def && def.poses) || {}),
              scale: CONFIG.fighterSizePx / refH, refH };
   }
 
@@ -109,15 +127,21 @@ class Sheets {
   has(kind, pose) {
     const pack = this.packs[kind];
     if (!pack || pack.kind !== 'ragged') return false;
-    const m = CONFIG.POSE_RAGGED[pose];
-    return !!(m && pack.anims[m.anim]);
+    const m = pack.poses[pose];
+    return !!(m && pack.anims[m.anim] && this._seq(pack, pose).length);
   }
 
   /** The atlas indices a pose plays through, for the ragged packs. */
   _seq(pack, pose) {
-    const m = CONFIG.POSE_RAGGED[pose] || CONFIG.POSE_RAGGED.idle;
+    const m = pack.poses[pose] || pack.poses.idle;
     const all = pack.anims[m.anim] || pack.anims.idle || [0];
-    return all.slice(m.from || 0, m.to == null ? all.length : m.to);
+    const cut = all.slice(m.from || 0, m.to == null ? all.length : m.to);
+    /* AN EMPTY SLICE WOULD DRAW NOTHING AT ALL. The pose table is shared and
+       the rows are not: asking for the coconut's fifth combo hit of a villain
+       whose punch row holds three gives a slice past the end, `rect` returns
+       null and `draw` quietly returns — an invisible fighter, still solid,
+       still hitting. Falling back to the whole row is visibly wrong instead. */
+    return cut.length ? cut : all;
   }
 
   /** Source rect for a (kind, pose, frame-in-pose). */
@@ -197,12 +221,19 @@ class Sheets {
     }
   }
 
-  /** Drawn size of a pose, for the health bar and the debug boxes. */
+  /**
+   * Drawn size of a pose, for the health bar and the debug boxes.
+   *
+   * THE HEIGHT IS THE BODY'S WHERE THE DEFS KNOW IT (`bh`), not the frame's.
+   * hud.js floats an enemy's bar above this number, and the cigarette's frames
+   * carry a plume of smoke above his head — measured on the frame, his bar
+   * hovers a third of a screen over an empty patch of sky.
+   */
   size(kind, pose, step) {
     const pack = this.packs[kind];
     const f = pack && this.rect(kind, pose, step);
     if (!f) return { w: 0, h: 0 };
-    return { w: f.w * pack.scale, h: f.h * pack.scale };
+    return { w: f.w * pack.scale, h: (f.bh != null ? f.bh : f.h) * pack.scale };
   }
 }
 

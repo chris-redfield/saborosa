@@ -25,6 +25,45 @@ wherever the search order happened to reach.
 
 ---
 
+## Where this got to on 2026-08-18
+
+A long session. Everything below is the detail; this is the map of what moved,
+so a fresh reader knows which sections are new.
+
+**The coconut got its own sprite sheet** and stopped borrowing the main game's.
+13 illustrator rows, ragged (not a grid), per-frame anchors, and the game went
+from six facings to **two**. The combo went from three faked punches to a real
+five, and the two combo rows now intercalate off one button — uppercut, low
+punch, uppercut. See *The sprites* and *Combat*.
+
+**The filmed backdrop landed and is the plate.** It is the mp4 itself, projected
+behind the fighters and scrubbed by the camera. A stitched panorama was tried
+and **rejected — do not re-propose it.** See *The one constraint*.
+
+**The level became rooms.** The street runs the whole 29.5s shot; the Mosca
+became a **sub-boss** mid-street; and a **boss room** follows it through a fade,
+with its own 5.2s clip cut at the pan's turn and re-encoded so its camera can go
+**both ways**. See *Rooms*.
+
+**The camera was rewritten** to move only because the player moved. See *The
+level*.
+
+**Dev mode exists and is ON.** 50 damage a punch, number keys jump rooms,
+`package.sh` refuses to build. See *Open*.
+
+**The first villain with art of his own.** JUIXY is gone; **CIGARRO** — a lit
+cigarette, 8 rows drawn for this game — took his waves and his stats. He is the
+first enemy in the game that throws a **combo** rather than a swing, and his
+smoke forced two new measurements into the sprite pipeline. See *The sprites*
+and *Combat*.
+
+**Six bugs, all documented** in *Bugs whose causes are not guessable*, and five
+of them are the same shape: something was mid-state — playing, falling, seeking,
+queued — when the thing driving it changed underneath. That is the family to
+suspect first in this codebase.
+
+---
+
 ## The one constraint that will break things if forgotten
 
 **The backdrop is FILMED FOOTAGE, and it is a single shot.** THE FOOTAGE HAS
@@ -110,8 +149,8 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/game.js` | the disposable SHELL — canvas, loop, phases, wiring |
 | `src/config.js` | every tunable, plain data, no logic |
 | `src/manifest.js` | **the one list of every asset**; the game AND the build read it |
-| `src/backdrop.js` | the layer stack and its sources (tile / image / **film**) |
-| `src/stage.js` | the level director: segments, camera, arena locks, spawning |
+| `src/backdrop.js` | the layer stack and its sources (tile / image / film / **video**) |
+| `src/stage.js` | the level director: **rooms**, segments, camera, locks, spawning |
 | `src/fighter.js` | the shared body: belt position, health, attacks, knockdowns |
 | `src/player.js` | the coconut — input → intent, and nothing else |
 | `src/enemy.js` | the villains, and `Crowd`, which owns **the attack token** |
@@ -121,16 +160,67 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards |
 | `src/debug.js` | everything the C key draws |
+| `src/input.js` | keyboard + pad; owns the pad mapping merge-back |
 | `tools/build-go-glyph.py` | cuts "GO!" out of the title lettering sheet |
 | `tools/build-manifest.js` | prints & checks what package.sh copies |
+| `tools/build-beat-coconut-defs.py` | cuts the coconut's ragged sheet + anchors |
+| `tools/build-beat-enemy-defs.py` | the same for a VILLAIN sheet, plus the smoke rules |
+| `tools/build-boss-plate.py` | crops the boss shot at its turn, re-encodes for reverse |
+| `tools/build-plate-panorama.py` | **unused** — the rejected panorama; see the plate note |
 
 ## The sprites
 
 **THE COCONUT HAS ITS OWN SHEET NOW.** It was drawn for this game and replaces
 the borrowed 9×5 pack: 13 rows, 74 frame slots, cut by
-`tools/build-beat-coconut-defs.py` into a 45-frame packed atlas. The villains
-are still on the main game's packs, so `sheets.js` carries **two formats** until
-villain sheets exist. See README.md for the row table and the cutter.
+`tools/build-beat-coconut-defs.py` into a 45-frame packed atlas. See README.md
+for the row table and the cutter.
+
+**AND SO DOES THE FIRST VILLAIN.** JUIXY — the main game's orange, read as a
+puncher — was replaced wave for wave by **CIGARRO**, a lit
+cigarette drawn for this game: 8 rows, 44 slots, 41 unique frames, cut by
+`tools/build-beat-enemy-defs.py`. His stats are the orange's untouched (34 HP,
+0.88 speed, same placements), so no fight's time-to-kill moved when the art
+did. What is new is that **he throws a combo** — see *Combat*. TOM and ERKPA
+are still on the 9×5 packs, so `sheets.js` still carries two formats.
+
+⚠️ **THE POSE TABLE IS NOW PER PACK, and it had to be.** `CONFIG.POSE_RAGGED`
+was one shared map of pose → row-slice, which was correct while exactly one
+sheet was ragged. Two ragged sheets do not hold the same moves in the same rows:
+the coconut's knockdown row is six frames of falling over, the cigarette's is a
+fall AND a stand-up. A character now overrides only the entries its own art
+contradicts (`CHARACTERS.<kind>.poses`), and the shared table is the default.
+
+⚠️ **HIS PUNCH ROW NEEDED NO OVERRIDE, AND THAT IS LUCK WORTH KNOWING ABOUT.**
+`combo1`..`combo3` slice a row into wind-up/strike PAIRS, and his six-frame
+punch row is three pairs, so the coconut's existing entries land on his hits
+exactly. Those three entries are now read by two characters with different rows
+behind them.
+
+⚠️ **THE SMOKE IS PART OF HIM AND MUST NOT BE COUNTED AS PART OF HIM.** It
+rises off his ember, it is drawn in the same white as his body, and it is a
+third of the frame's height. It is drawn like any other pixel — it is excluded
+from the two MEASUREMENTS it would wreck, and both had to be added:
+
+- **`bodyH`**, the idle frame's height without the smoke. `sheets.js` scales a
+  pack so its idle frame is `fighterSizePx` tall; measured on the raw frame that
+  is a two-thirds-height cigarette standing under a full-height plume.
+- **`bh`** per frame, the body's height above its own anchor, which is what
+  `size()` now reports. `hud.js` floats an enemy's health bar above that number;
+  on the frame it hovers a plume's height over an empty patch of sky.
+
+⚠️ **WHAT SEPARATES SMOKE FROM BODY IS CONNECTEDNESS, NOT COLOUR.** They are the
+same white, so no palette test can do it. The body is the component containing
+the LOWEST opaque pixel — a cigarette stands on the belt, a wisp never does —
+and every detached wisp and puff is some other component. No threshold, no
+palette, nothing to tune.
+
+⚠️ **A LEANING BODY MUST NOT DRAG ITS OWN FEET.** The coconut's anchor is the
+centroid of its whole body, which is right for a ball. A cigarette LEANS: on the
+lunging punch his top travels most of a body-width forward, and a whole-body
+centroid would slide his feet backwards to pay for it — the punch would visibly
+cost reach. His horizontal anchor reads the bottom 30% of him only, on body
+white, so neither a thrown arm (tan) nor a leaning head (black) can move his
+feet.
 
 ⚠️ **TWO FACINGS NOW, NOT SIX.** The diagonals are gone. The new sheet is drawn
 side-on only, and running the player on two facings while the enemies kept six
@@ -284,6 +374,64 @@ dropped frame rather than a held moment.
 ⚠️ **No screen shake.** Built, then removed by request — the effect is not
 wanted. Hitstop carries the weight of a blow. It was deleted rather than zeroed
 so it does not read as an unfinished feature and get "fixed" back in.
+
+---
+
+## The enemy combo
+
+⚠️ **AN ENEMY WITH A COMBO IS NORMALLY A BOSS, and this file said exactly that
+until the cigarette arrived with three punches drawn for him.** What keeps him a
+mook rather than a small boss is that **the string is declared before it is
+thrown**: `Enemy` rolls its length at the top of the wind-up and then honours
+it, so a one-hit jab and a three-hit string open identically and the player is
+never asked to react to a decision made mid-swing.
+
+| hit | startup | active | recover | dmg | reachX |
+|---|---|---|---|---|---|
+| combo1 | 200 | 90 | 200 | 3 | 66 |
+| combo2 | 150 | 90 | 200 | 3 | 66 |
+| combo3 — the lunge | 190 | 110 | **460** | 5 | 78 |
+
+Weights `[4, 3, 3]` — one hit, two, or three. Weighted toward the SHORT one on
+purpose: three hits every time is a rhythm the player stops reading and starts
+waiting out, and it is the jab that *might* be the start of a string that makes
+them respect the wind-up.
+
+⚠️ **THE DAMAGE IS SPREAD, NOT ADDED.** JUIXY hit for 5 and the cigarette took
+his waves, so the string is 3 + 3 + 5: any single hit costs the player *less*
+than the orange's did, and only the full string costs more. Eating all three
+means having stood still for 900ms.
+
+⚠️ **NO HIT'S STARTUP MAY DROP BELOW `hurtMs` (260).** A player stunned by hit
+one would then be unable to leave before hit two lands, and the whole string
+becomes unavoidable the moment it starts — a mook that is a guaranteed 11
+damage on contact rather than a fight.
+
+⚠️ **THE LAST HIT'S RECOVERY IS THE PUNISH WINDOW.** 460ms against the others'
+200 is what the player buys by backing out of a string, and the only reason
+doing so is worth anything. Shorten it and the cigarette becomes a wall that is
+never safe to approach.
+
+⚠️ **THE STRING DOES NOT RE-CHECK RANGE BETWEEN HITS.** A committed string that
+stopped when the player stepped out of it would be a fighter that can never be
+made to miss, and the recovery above would never be paid. Whiffing into empty
+air is the point of committing.
+
+⚠️ **`attack()` TAKES A FORCED INDEX NOW, and the AI is the only caller that
+passes one.** A player's chain advances because their press landed inside the
+cancel window — that window IS the mechanic. An enemy has no presses; reading
+its own combo window would silently drop it back to hit one whenever the window
+lapsed between two hits, and the string would loop instead of ending.
+
+⚠️ **THE TOKEN IS HELD FOR THE WHOLE STRING.** Between two hits `atk` is
+momentarily null, and an enemy that stopped counting as committed for that one
+frame could have its turn handed to somebody else while it is still visibly
+punching. `ai === 'combo'` counts as busy for exactly that frame.
+
+**A mook's blow still cannot floor the player** — `crowdHits()` passes lift 0
+and knockdown false for the whole crowd, so the lunge shoves rather than
+knocks down. That is one line if the finisher should ever put the player on the
+floor.
 
 ---
 
@@ -680,9 +828,22 @@ reader is the shape to look for.
 
 ## Open
 
-- **The backdrop is IN** (see above) but unjudged in motion — the belt sits at
-  520 from a measurement, not from play. Hold C: the magenta bands are the
-  no-walk regions, each labelled with the knob that resizes it.
+- ⚠️ **DEV MODE IS ON** (`CONFIG.DEV.on`), so every punch does 50. `package.sh`
+  refuses to build until it is off. Number keys 1-9 jump rooms; the marker in
+  the top right says which room you are in.
+- ⚠️ **THE BOSS ROOM HAS NO BOSS.** The room, its footage, its fade and its
+  two-way camera are all built and working; what fights there is not decided.
+  Three placeholder mooks keep it playable. The Mosca is already spent as the
+  street's sub-boss, so this wants something new.
+- **The belt is unjudged in motion** — 520 came from measuring the plate, not
+  from play. Hold C: the magenta bands are the no-walk regions, each labelled
+  with the knob that resizes it.
+- **The street's camera cannot reverse and the boss room's can.** That asymmetry
+  is a property of the FOOTAGE, not a decision — see the Rooms section. Making
+  the street reversible means re-encoding its 8.3MB shot with dense keyframes.
+- **The first fight is now what used to be the second one** — 5 enemies incl.
+  ERKPA and two from behind, tuned as an escalation rather than an opener. Worth
+  replaying once dev mode is off.
 - **Villain sheets.** TOM, JUIXY and ERKPA are still the main game's 9×5 packs
   read as punches. Until they are redrawn, `sheets.js` has to carry two formats
   and the grid path cannot go.

@@ -128,10 +128,19 @@ class Fighter {
   /**
    * Throw a punch. `defs` is the combo table; which entry comes out depends on
    * whether the previous one is still inside its cancel window.
+   *
+   * `index` FORCES A HIT, and exists for the AI rather than the player. A
+   * player's chain is driven by their presses landing inside the cancel window
+   * — that window IS the mechanic. An enemy has no presses: it decides how long
+   * a string it is throwing before it throws the first hit, and then owes the
+   * player the same rhythm every time. Reading its own combo window instead
+   * would silently drop it back to hit one whenever the window happened to lapse
+   * between two hits, and the string would loop rather than end.
    */
-  attack(defs) {
+  attack(defs, index) {
     if (!this.canAct()) return false;
-    const i = this.comboWindow > 0 ? Math.min(this.comboIndex + 1, defs.length - 1) : 0;
+    const i = index != null ? Math.min(index, defs.length - 1)
+            : this.comboWindow > 0 ? Math.min(this.comboIndex + 1, defs.length - 1) : 0;
     const def = defs[i];
     if (!def) return false;
     this.comboIndex = i;
@@ -406,7 +415,19 @@ class Fighter {
        fading. The grid packs have neither, so they fall through to `down` and
        keep the old behaviour. */
     if (this.dead && sheets && sheets.has(this.kind, 'death')) return 'death';
-    if (this.state === 'down') return 'down';
+    /* A KNOCKDOWN IS THREE POSES WHERE THE ART DRAWS THREE. The cigarette's
+       row is a fall AND a stand-up, so which part of it plays is decided by
+       the knockdown PHASE — the same rule as the attack poses, and for the
+       same reason: the drawing can then never disagree with the state the
+       fighter is actually in, whatever `downLandMs` and friends are retuned to.
+       A pack whose row only falls over (the coconut's) declares no phase poses
+       and keeps the single `down`. */
+    if (this.state === 'down') {
+      const phase = this.downPhase === 'lie' ? 'downLie'
+                  : this.downPhase === 'rise' ? 'downRise' : 'downLand';
+      if (sheets && sheets.has(this.kind, phase)) return phase;
+      return 'down';
+    }
     if (this.state === 'hurt') return 'hurt';
     if (this.atk) return this.atk.def.pose;
     if (this.state === 'pickup') return this.pickupPose;
@@ -472,12 +493,34 @@ class Fighter {
       return Math.min(n - 1, Math.floor(t * n));
     }
 
+    /* THE KNOCKDOWN PHASES ARE SPREAD ACROSS THEIR OWN PHASE, like the jump is
+       across its arc: the fall's frames run out exactly as the body lands, and
+       the stand-up's exactly as the fighter gets control back. A fixed frame
+       rate would either finish the drawing early and hold — a fighter lying
+       still while he is still visibly falling — or still be getting up after
+       he can already be hit. */
+    const phaseMs = p === 'downLand' ? CONFIG.downLandMs
+                  : p === 'downLie' ? CONFIG.downLieMs
+                  : p === 'downRise' ? CONFIG.downRiseMs : 0;
+    if (phaseMs) {
+      const t = Math.min(1, this.stateT / (phaseMs / 1000));
+      return Math.min(n - 1, Math.floor(t * n));
+    }
+
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS[p]) || 110;
     // Death reads its own clock; the other one-shots reset with their state.
     if (p === 'death') {
       return Math.min(n - 1, Math.floor(this.deathT / (ms / 1000)));
     }
-    if (p === 'hurt' || p === 'down') {
+    /* HURT CYCLES, IT DOES NOT HOLD. A flinch drawn as two poses is a shudder,
+       and a shudder that plays once and freezes on its second frame reads as a
+       fighter that got stuck rather than one being hit. Every other one-shot
+       here ends in a state worth holding — dead, or on the floor — and this one
+       ends by standing back up, so there is nothing to hold. */
+    if (p === 'hurt') {
+      return Math.floor(this.stateT / (ms / 1000)) % n;
+    }
+    if (p === 'down') {
       return Math.min(n - 1, Math.floor(this.stateT / (ms / 1000)));
     }
     return Math.floor(this.animT / (ms / 1000)) % n;

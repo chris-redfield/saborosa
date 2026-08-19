@@ -1,5 +1,5 @@
 /**
- * Enemy — TOM, JUIXY and ERKPA, doing the villain's job.
+ * Enemy — TOM, CIGARRO and ERKPA, doing the villain's job.
  *
  * READ THE ATTACK TOKEN NOTE BEFORE CHANGING ANY OF THIS. It is in
  * `Crowd.update()` below and it is the single most important rule in the file:
@@ -16,7 +16,13 @@
  *     approach   closing on the player's stand-off spot
  *     circle     in range but WITHOUT the token: orbiting, waiting a turn
  *     wind       has the token, hesitating before the swing (the tell)
+ *     combo      throwing a string; Fighter drives each hit, this counts them
  *     attack     Fighter's own attack state does the work
+ *
+ * ONE OF THEM THROWS A COMBO NOW. The cigarette has three punches drawn for
+ * him, so his attack is a STRING rather than a swing — see CONFIG.ENEMY_COMBOS
+ * for the rule that keeps that a mook's move and not a boss's, and `_think`'s
+ * 'combo' branch for how the hits are counted out.
  */
 class Enemy extends Fighter {
   constructor(kind, x, z, opts) {
@@ -42,9 +48,12 @@ class Enemy extends Fighter {
     // reshuffles itself on every attempt cannot be learned.
     this.orbit = ((x * 0.017 + z * 0.031) % (Math.PI * 2));
     this.showBarT = 0;
-    // The attack this enemy throws. One entry rather than a combo: an enemy
-    // with a combo is a boss, and this is a mook.
-    this.swing = {
+    /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
+       from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
+       from the shared knobs. The two are the same shape — a list of attack
+       defs — so nothing downstream has to know which it got, and a one-entry
+       list is simply a string of length one. */
+    this.combo = (CONFIG.ENEMY_COMBOS && CONFIG.ENEMY_COMBOS[kind]) || [{
       pose: 'straight',
       startupMs: CONFIG.enemyStartupMs,
       activeMs: CONFIG.enemyActiveMs,
@@ -55,7 +64,28 @@ class Enemy extends Fighter {
       reachZ: CONFIG.enemyReachZ,
       knockback: 150,
       lift: 0,
-    };
+    }];
+    this.chainStep = 0;      // which hit of the string is out
+    this.chainLen = 1;       // how many it committed to, rolled at the wind-up
+  }
+
+  /**
+   * How long a string this one is about to throw. Rolled ONCE, before the
+   * wind-up, and then honoured — see CONFIG.ENEMY_COMBOS for why an enemy must
+   * not decide mid-swing whether to keep going.
+   */
+  _rollChain() {
+    const w = (CONFIG.enemyComboWeights && CONFIG.enemyComboWeights[this.kind]);
+    if (!w || this.combo.length < 2) return 1;
+    const n = Math.min(w.length, this.combo.length);
+    let total = 0;
+    for (let i = 0; i < n; i++) total += w[i];
+    let r = Math.random() * total;
+    for (let i = 0; i < n; i++) {
+      r -= w[i];
+      if (r <= 0) return i + 1;
+    }
+    return n;
   }
 
   hurt(dmg, dir, knockback, lift, knockdown) {
@@ -108,6 +138,27 @@ class Enemy extends Fighter {
 
     if (this.atk) return;      // mid-swing; Fighter is driving
 
+    /* BETWEEN THE HITS OF A STRING. Fighter clears `atk` at the end of each
+       hit's recovery, so this runs on the first frame the enemy is free again:
+       throw the next hit, or end the string and hand the token on.
+
+       IT DOES NOT RE-CHECK RANGE. A committed string that stopped when the
+       player stepped out of it would be a fighter that can never be made to
+       miss, and the recovery on the last hit — the whole punish for throwing
+       one — would never be paid. Whiffing into empty air is the point.
+
+       Nothing here has to unwind the string on an interruption: being hit,
+       knocked down or killed all clear `atk` through `hurt()`, which puts the
+       ai back to 'approach', and this branch is not reached at all. */
+    if (this.ai === 'combo') {
+      this.chainStep++;
+      if (this.chainStep < this.chainLen
+          && this.attack(this.combo, this.chainStep)) return;
+      this.ai = 'approach';
+      this.aiT = 0;
+      this.hasToken = false;
+    }
+
     const dx = player.x - this.x;
     const dz = player.z - this.z;
 
@@ -130,10 +181,15 @@ class Enemy extends Fighter {
         // Swing. If the player has moved out of reach in the meantime it will
         // simply miss, which is correct — the wind-up is the tell, and a tell
         // you can walk out of is the whole point of having one.
-        this.attack([this.swing]);
-        this.ai = 'approach';
+        this.chainStep = 0;
+        this.chainLen = this._rollChain();
+        this.attack(this.combo, 0);
+        /* THE TOKEN IS HELD FOR THE WHOLE STRING, not just the first hit. It
+           is a reservation on the right to be attacking the player, and an
+           enemy three punches into a combo is more obviously using it than one
+           that has just started. Released above, when the string ends. */
+        this.ai = 'combo';
         this.aiT = 0;
-        this.hasToken = false;
       }
       return;
     }
@@ -224,7 +280,11 @@ class Crowd {
     let committed = 0;
     for (const e of this.list) {
       if (e.dead) { e.hasToken = false; continue; }
-      const busy = e.ai === 'wind' || !!e.atk;
+      /* `combo` counts as busy for the same reason `wind` does: between two
+         hits of a string `atk` is momentarily null, and an enemy that stopped
+         counting for that one frame could have its turn handed to somebody
+         else while it is still visibly punching. */
+      const busy = e.ai === 'wind' || e.ai === 'combo' || !!e.atk;
       if (!busy && (e.state === 'hurt' || e.state === 'down' || e.ai === 'enter')) {
         e.hasToken = false;
       }
