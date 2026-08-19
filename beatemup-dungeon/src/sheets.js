@@ -2,11 +2,11 @@
  * Sheets — turns a character pack into drawable frames.
  *
  * TWO PACK FORMATS LIVE HERE AT ONCE, and that is the current state of the art
- * rather than an indulgence. The coconut and the CIGARETTE have sheets drawn
- * for this game; TOM and ERKPA are still read out of the MAIN GAME's 9x5 packs.
- * The formats will both be needed until every villain has been redrawn.
+ * rather than an indulgence. The coconut and BOTH CIGARETTES have sheets drawn
+ * for this game; only ERKPA is still read out of the MAIN GAME's 9x5 packs.
+ * One villain left, and then the grid path can go.
  *
- *   'ragged'  the coconut, the cigarette. Not a grid: rows of 2..10 frames,
+ *   'ragged'  the coconut, both cigarettes. Not a grid: rows of 2..10 frames,
  *             every frame its own size, cut by tools/build-beat-coconut-defs.py
  *             and tools/build-beat-enemy-defs.py into a packed atlas plus a
  *             per-frame ANCHOR. Poses are named animations.

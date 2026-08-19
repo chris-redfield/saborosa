@@ -45,13 +45,27 @@ furniture rather than a fighter.
 **Per-character overrides**, on top of `BODY_SCALE`:
 
 ```js
-CHARACTERS.coconut.drawScale: 0.9,   // the player only, DRAWN size
-flyBossSizePx: 253,                  // the Mosca, drawn AND simulated
+CHARACTERS.coconut.drawScale:  0.9,     // the player, DRAWN size
+CHARACTERS.cigarro2.drawScale: 1.164,   // the stub, the big one
+flyBossSizePx: 253,                     // the Mosca, drawn AND simulated
 ```
 
 `drawScale` is a drawn size only — it does not touch the hurtbox, punch reaches
 or jump, so it is a look and not a rebalance. Keep it near 1: the rule below is
-that a sprite must not shrink while its reach does not.
+that a sprite must not shrink while its reach does not, and the same holds
+upward — much past 1.2 and the fist visibly outruns the reach behind it.
+
+**Why the stub needs one at all.** A ragged pack is scaled so its idle BODY is
+`fighterSizePx` tall, which is what stops a sheet drawn at a different size
+arriving as a giant — but it also flattens size differences the illustrator drew
+on purpose. In the masters his body is 405px against the first cigarette's 348,
+so 1.164 restores exactly that and nothing more. Drawn heights end up:
+
+| | body drawn |
+|---|---|
+| COCONUT | 123px |
+| CIGARRO | 137px |
+| the stub | 159px |
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
 the boss's size in the simulation moves with its drawn size.
@@ -122,10 +136,6 @@ remain on disk, unused.
 **If a future shot has motion in it** — smoke, a crowd, anything that moves
 while the camera is still — `kind: 'film'` is still wired, with a scrub mode for
 scrolling and a play mode for arenas. See STATE.md.
-
-**To move the belt onto the ground of a new plate**, hold **C**: the magenta
-bands are where the player cannot stand, each labelled with the knob that
-resizes it.
 
 **To move the belt onto the ground of a new plate**, hold **C**: the magenta
 bands are where the player cannot stand, each labelled with the knob that
@@ -327,7 +337,7 @@ DEV: { on: true, punchDamage: 50 },   // top of config.js
 Every player punch does `punchDamage` instead of its own. **Damage and nothing
 else** — reach, timing, knockdown, the combo and every enemy's HP behave exactly
 as they ship, so what you are testing is the real fight at speed rather than a
-different game. At 50: JUIXY and TOM die in one hit, ERKPA and the Mosca in two.
+different game. At 50: both cigarettes die in one hit, ERKPA and the Mosca in two.
 
 It is applied at the one place the player's damage is read (`combat.playerHits`)
 rather than by rewriting `CONFIG.COMBO` — the table documents a 28-damage string
@@ -359,18 +369,25 @@ person who left it on.
 
 ```
 COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
-enemy HP       CIGARRO 34   TOM 40   ERKPA 55
+enemy HP       CIGARRO 34   CIGARRO2 40   ERKPA 55
 player HP      110
 
-CIGARRO's string   3 + 3 + 5  =  11 if all three land
-TOM / ERKPA        one swing, 7 / 10   (enemyDamage)
+CIGARRO's string    3 + 3 + 5  =  11    quick, light
+CIGARRO2's string   4 + 4 + 7  =  15    slow, heavy
+ERKPA               one swing, 10       (enemyDamage)
 ```
 
-**One enemy throws a combo.** The cigarette has three punches drawn for him, so
-his attack is a string rather than a swing — `CONFIG.ENEMY_COMBOS.cigarro`, one
-attack def per hit, same four numbers and a box as any other attack. TOM and
-ERKPA have no entry there and keep the single swing built from
-`enemyStartupMs` / `enemyActiveMs` / `enemyRecoverMs`.
+**Both cigarettes throw combos.** They have three punches drawn for them, so
+their attack is a string rather than a swing — `CONFIG.ENEMY_COMBOS`, one attack
+def per hit, same four numbers and a box as any other attack. ERKPA has no entry
+there and keeps the single swing built from `enemyStartupMs` / `enemyActiveMs` /
+`enemyRecoverMs`.
+
+**The pair is one gang with two tempos.** Each kept the stats of the enemy it
+replaced — CIGARRO took JUIXY's 34 HP and 0.88 speed, CIGARRO2 took TOM's 40 and
+0.72 — so the difference between them is tempo and weight, not a new system.
+Every window in the stub's string is longer and every hit costs more, and his
+weights lean shorter (`[5,3,2]` against `[4,3,3]`).
 
 `enemyDamage` is **ignored for a kind that has a combo** — those hits carry
 their own damage. Changing `enemyDamage.cigarro` does nothing.
@@ -380,6 +397,45 @@ How long a string he throws is rolled once, before the wind-up:
 ```js
 enemyComboWeights: { cigarro: [4, 3, 3] }   // 1 hit : 2 hits : 3 hits
 ```
+
+### He also jumps at you
+
+```js
+ENEMY_LEAP.cigarro   { pose:'airPunch', startup 420, active 200, recover 150,
+                       damage 6, reachX 75, knockback 300 }
+enemyLeapChance      { cigarro: 0.10, cigarro2: 0.05 }   // per TURN
+enemyLeapMinX        90                // closest he will leap from
+enemyLeapMaxX        520               // furthest he will leap from
+enemyLeapMaxZ        34                // how lined up in depth he must be first
+enemyLeapLandX       50                // px from the player he aims to land
+enemyLeapMaxSpeed    2.6               // cap, as a multiple of walk speed
+```
+
+**`enemyLeapChance` is rolled once per TURN** — on the frame he is handed the
+attack token — and that is the only place a per-turn decision may be made. The
+same number evaluated per frame would be 10% sixty times a second: a certainty
+inside two frames, and the ground combo would never come out again. It is a rate
+of surprise, not a difficulty dial; it works because his ordinary approach is a
+walk.
+
+A turn that rolls a leap while he is already inside 90px is **not** re-rolled —
+he walks in and throws the ground combo instead. The alternative is an enemy who
+backs off to make room for a jump, which telegraphs it completely.
+
+**`startupMs` is 420 for BOTH of them, and that is not laziness.** `verticalReach` is 70 and the jump
+apex is 85, so a fighter at the top of his own jump *cannot reach the floor* —
+an air attack timed to the apex passes through a standing player every time and
+reads as broken hit detection. The hitbox opens as he drops back through the
+reachable band (`p >= 0.69` of `jumpMs`, 429ms) and stays open until he lands.
+**Retiming `jumpMs` or `jumpHeight` moves that band and this number has to move
+with it** — for every kind at once, since they all jump on the same global arc.
+What may differ per kind is the damage and the landing recovery: the stub hits
+for 8 and is stuck for 260ms afterwards against the other's 6 and 150ms.
+
+The leap **speed is derived, not set**: distance to cover ÷ time in the air, so
+he lands beside the player rather than at a fixed hop length. He commits to a
+lane before take-off and cannot steer — stepping out of it in depth is the
+answer to the move.
 
 Two rules worth keeping if you retune those defs. **No hit's startup may go
 under `hurtMs` (260)** — a player stunned by hit one would otherwise be unable
@@ -394,15 +450,16 @@ same reason.
 
 The full-combo total was held at 28 when the combo went from three hits to five,
 deliberately — so every enemy's time-to-kill stayed where it was tuned. Raising
-it is a real rebalance, not a tweak: at 40 damage a full string one-combos TOM.
+it is a real rebalance, not a tweak: at 40 damage a full string one-combos the
+stub (40 HP), and at 34 it already one-combos CIGARRO.
 
 ---
 
 ## The coconut's sprites
 
 The player has a sheet drawn for this game, and so does **the cigarette** — see
-the next section. TOM and ERKPA are still the main game's 9x5 packs, so
-`sheets.js` carries both formats until they are redrawn too.
+the next section — and so does his partner, the stub. Only ERKPA is still on a
+main-game 9x5 pack, so `sheets.js` carries both formats until he is redrawn too.
 
 ### Re-cutting the sheet
 
@@ -492,38 +549,50 @@ and throwing still need `carryWalk` and `liftThrow` wired on top.
 
 ---
 
-## The cigarette's sprites
+## The cigarettes' sprites
 
-**CIGARRO replaced JUIXY wave for wave.** The orange is gone from the cast and
-its pack is no longer loaded; every `kind: 'laranja'` in the level is now
-`kind: 'cigarro'`, with the same HP, speed and placement.
+**They replaced JUIXY and TOM wave for wave.** The orange and the tomato are
+gone from the cast and their packs are no longer loaded; every `kind: 'laranja'`
+in the level is now `kind: 'cigarro'` and every `kind: 'tomato'` is
+`kind: 'cigarro2'`, each with the HP, speed and placements it inherited.
 
-### Cutting the sheet
+### Cutting the sheets
 
 ```
-python3 tools/build-beat-enemy-defs.py cigarro     # from the REPO ROOT
+python3 tools/build-beat-enemy-defs.py cigarro      # from the REPO ROOT
+python3 tools/build-beat-enemy-defs.py cigarro2
 ```
 
 ```
 assets-v2/beatemup-dungeon/cigarro-sprites-fim.png   the illustrator's file
-  ->  cigarro-beat-game.png       packed atlas, 41 unique frames for 44 slots
+  ->  cigarro-beat-game.png       packed atlas, 40 unique frames for 44 slots
   ->  cigarro-beat-sprites.json   per-frame rects, anchors, bodyH, animations
 ```
 
-A second villain sheet is a new entry in that tool's `SHEETS` table — source,
-output name, which way it faces, and the row list. Nothing else.
+A further villain sheet is a new entry in that tool's `SHEETS` table — source,
+output name, which way it faces, its atlas scale, and the row list. Nothing else.
 
-Same failure rule as the coconut's cutter: it **fails loudly** if a row's frame
-count does not match, rather than cutting something plausible and wrong.
+**Match the tool's printed `body` figure, not its `SCALE` constant.** The two
+sheets are drawn at different sizes, so `cigarro2` carries `'scale': 0.42` where
+`cigarro` uses the shared 0.49; both land near 170px of body, which is what
+keeps the sprite downscaled on screen and the texture near the coconut's.
+
+Same failure rule as the coconut's cutter: it **fails loudly** if the body count
+or a row's frame count does not match, rather than cutting something plausible
+and wrong.
 
 ### The 8 rows
+
+**Both sheets have the same eight**, same counts, same order — the illustrator
+drew the pair to one plan, which is why the second entry in `SHEETS` is a copy
+with two paths and a scale changed.
 
 | row | meaning | frames | animation |
 |---|---|---|---|
 | 1 | idle | 3 | `idle` |
 | 2 | andando | 6 | `walk` |
-| 3 | pulando | 6 | `jump` — **cut, not wired** (no enemy jumps) |
-| 4 | pulando e socando | 7 | `airPunch` — **cut, not wired** |
+| 3 | pulando | 6 | `jump` — cut; he never jumps without punching |
+| 4 | pulando e socando | 7 | `airPunch` — **wired**, the jump-in |
 | 5 | socando | 6 | `combo` — 3 wind-up/strike PAIRS, his string |
 | 6 | apanhando | 2 | `hurt` — both frames **cycle**, they do not hold |
 | 7 | cai e levanta | 6 | `knockdown` — sliced by phase, see below |
@@ -549,6 +618,25 @@ Each is spread across its own phase, like the jump is across its arc, so
 retiming a phase retimes its drawing for free. A pack that declares no phase
 poses (the coconut) keeps the single `down` and is untouched.
 
+### The sheet is cut on BODIES, not on ink
+
+The first version banded rows and split frames on empty pixel rows and columns.
+That works only while nothing reaches outside its own frame — and the **second**
+cigarette's smoke does: it bridges two pairs of rows vertically and welds two
+frames horizontally. That method found 6 rows where the art has 8, and a 534px
+frame that was two. No gap threshold fixes it; the pixels genuinely touch.
+
+So the sheet is labelled into connected components, and everything over
+`BODY_AREA` (15000px) is a character. Measured on both sheets: smallest body
+36417px, largest wisp 6312px — a 5.8x gap, and exactly 44 bodies for 44 frame
+slots. Rows and frames are found on the **bodies alone**, which never touch each
+other, and every loose wisp is then given back to the body nearest it in both
+axes. The tool prints how many were re-attached; it should always be all of them.
+
+Frame rectangles **overlap** once smoke is included, so each tile is masked to
+its own components rather than cropped out of the sheet — a plain crop would
+carry a neighbour's plume into the tile and draw it on the wrong character.
+
 ### Three things about this sheet that will bite
 
 **The smoke is part of the animation and must not count as part of him.** It
@@ -564,10 +652,12 @@ measurements it would wreck:
   `sheets.size().h`; each frame carries **`bh`**, the body's height above its own
   anchor, and `size()` reports that instead of the frame's.
 
-**What separates smoke from body is connectedness, not colour.** No palette test
-can tell them apart. The body is the component containing the *lowest* opaque
-pixel — a cigarette stands on the belt, a wisp never does — and every detached
-wisp and puff is some other component.
+**What separates smoke from body is connectedness and SIZE, not colour.** No
+palette test can tell them apart. Inside a tile the body is the **biggest**
+component — not the lowest one, which is the obvious rule and is wrong: in the
+frames where the stub picks himself up off the floor there is a puff of smoke
+drawn *below* him, and anchoring on it drew him hanging in the air above the
+ground line.
 
 **His anchor is his BASE, not his whole body.** The coconut's anchor is the
 centroid of all of him; a cigarette *leans*, and on the lunging punch his top

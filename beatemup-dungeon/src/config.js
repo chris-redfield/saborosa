@@ -397,7 +397,7 @@ const CONFIG = {
       kind: 'arena',
       enemies: [
         { kind: 'cigarro',  x: 2280, z: 40 },
-        { kind: 'tomato',   x: 2450, z: 120, delayMs: 500 },
+        { kind: 'cigarro2',   x: 2450, z: 120, delayMs: 500 },
         { kind: 'eggplant', x: 2360, z: 175, delayMs: 1400 },
         { kind: 'eggplant', x: 2200, z: 90,  delayMs: 6400, from: 'behind' },
         { kind: 'cigarro',  x: 2240, z: 160, delayMs: 9400, from: 'behind' },
@@ -438,9 +438,9 @@ const CONFIG = {
       kind: 'arena',
       enemies: [
         { kind: 'cigarro',  x: 3600, z: 70 },
-        { kind: 'tomato',   x: 3800, z: 150, delayMs: 600 },
+        { kind: 'cigarro2',   x: 3800, z: 150, delayMs: 600 },
         { kind: 'eggplant', x: 3500, z: 110, delayMs: 2400, from: 'behind' },
-        { kind: 'tomato',   x: 3900, z: 50,  delayMs: 5200 },
+        { kind: 'cigarro2',   x: 3900, z: 50,  delayMs: 5200 },
         { kind: 'cigarro',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
       ],
     },
@@ -452,9 +452,9 @@ const CONFIG = {
       enemies: [
         { kind: 'eggplant', x: 4000, z: 60 },
         { kind: 'cigarro',  x: 4230, z: 150, delayMs: 500 },
-        { kind: 'tomato',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
+        { kind: 'cigarro2',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
         { kind: 'eggplant', x: 4100, z: 180, delayMs: 4200, from: 'behind' },
-        { kind: 'tomato',   x: 4300, z: 40,  delayMs: 7000 },
+        { kind: 'cigarro2',   x: 4300, z: 40,  delayMs: 7000 },
       ],
     },],
     },
@@ -483,7 +483,7 @@ const CONFIG = {
           lock: false,
           enemies: [
             { kind: 'eggplant', x: 900,  z: 70 },
-            { kind: 'tomato',   x: 1100, z: 150, delayMs: 900 },
+            { kind: 'cigarro2',   x: 1100, z: 150, delayMs: 900 },
             { kind: 'cigarro',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
           ],
         },
@@ -581,7 +581,35 @@ const CONFIG = {
                   downRise: { anim: 'knockdown', from: 4, to: 6 },
                 } },
 
-    tomato:   { sheet: 'saborosa-elementos-tomato',   name: 'TOM' },
+    /* THE STUB — TOM's replacement, and the pair to CIGARRO. Same eight rows,
+       drawn bigger and cut at his own atlas scale; in the fight he is the
+       HEAVIER of the two, because he inherited TOM's numbers exactly (40 HP,
+       0.72 speed) the same way CIGARRO inherited JUIXY's. So the pair reads as
+       one gang with two tempos: the white one is quick and comes at you, the
+       stub is slow and costs more when it lands. */
+    cigarro2: { sheet: 'v2:beatemup-dungeon/cigarro2-beat', pack: 'ragged',
+                name: 'BAGANA',
+                /* HE IS BIGGER, AND THE NUMBER IS MEASURED OFF THE ART RATHER
+                   THAN CHOSEN. Packs are scaled so their idle BODY is
+                   `fighterSizePx` tall, which is what stops a sheet drawn at a
+                   different size from arriving as a giant — but it also flattens
+                   a size difference the illustrator drew ON PURPOSE. In the
+                   masters his body is 405px against the first cigarette's 348:
+                   16.4% bigger, and that is this number.
+
+                   It is a DRAWN size only. His hurtbox, his reaches and the
+                   jump are global and unchanged, so this is a look and not a
+                   rebalance — but that is also its limit. Push it much past
+                   1.2 and his fist visibly outruns the reach it actually has;
+                   past that point his `ENEMY_COMBOS` entry has to grow with
+                   him. */
+                drawScale: 1.164,
+                poses: {
+                  downLand: { anim: 'knockdown', from: 0, to: 3 },
+                  downLie:  { anim: 'knockdown', from: 3, to: 4 },
+                  downRise: { anim: 'knockdown', from: 4, to: 6 },
+                } },
+
     eggplant: { sheet: 'saborosa-elementos-eggplant', name: 'ERKPA' },
   },
 
@@ -801,7 +829,7 @@ const CONFIG = {
      being something a player can count in hits. Was 100 before the hand-drawn
      bar landed; the bar is what makes the number matter. */
   playerHealth: 110,
-  enemyHealth: { tomato: 40, cigarro: 34, eggplant: 55 },
+  enemyHealth: { cigarro2: 40, cigarro: 34, eggplant: 55 },
 
   /* =========================================================================
      COMBAT
@@ -950,12 +978,12 @@ const CONFIG = {
   // still — the circling that makes a crowd read as alive.
   enemyCircleRadius: 210,
   enemyCircleSpeed: 0.9,  // rad/sec around the player
-  enemySpeedScale: { tomato: 0.72, cigarro: 0.88, eggplant: 0.58 },
+  enemySpeedScale: { cigarro2: 0.72, cigarro: 0.88, eggplant: 0.58 },
   /* IGNORED FOR A KIND THAT HAS A COMBO — its hits carry their own damage, in
      ENEMY_COMBOS below. The cigarette's entry is kept as the number his string
      was balanced against (JUIXY's old swing), and because dropping him out of
      these three tables would make him look like a kind that has no stats. */
-  enemyDamage: { tomato: 7, cigarro: 5, eggplant: 10 },
+  enemyDamage: { cigarro2: 7, cigarro: 5, eggplant: 10 },
   enemyReachX: 92 * BODY_SCALE,
   enemyReachZ: 48 * BODY_SCALE,
   enemyStartupMs: 200,
@@ -1007,7 +1035,115 @@ const CONFIG = {
         cancelMs: 0, damage: 5, reachX: 108 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
         knockback: 210, lift: 0 },
     ],
+    /* THE STUB'S STRING IS THE SAME SHAPE, PLAYED SLOWER AND HEAVIER, which is
+       the whole of the difference between the two of them. He took TOM's 7
+       damage and 0.72 speed, so his string is 4 + 4 + 7 against the white one's
+       3 + 3 + 5 — the same ~2.2x spread over the swing each replaced — and
+       every window is longer. Two enemies throwing the identical string at
+       different HP would be one enemy in two colours.
+
+       His startups are well clear of `hurtMs` 260, so there is more room to
+       leave between his hits than between the other's; his last hit's recovery
+       is longer again, because a slow heavy fighter that recovers quickly is
+       just a fast one. */
+    cigarro2: [
+      { pose: 'combo1', startupMs: 260, activeMs: 100, recoverMs: 240,
+        cancelMs: 0, damage: 4, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 130, lift: 0 },
+      { pose: 'combo2', startupMs: 200, activeMs: 100, recoverMs: 240,
+        cancelMs: 0, damage: 4, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 130, lift: 0 },
+      { pose: 'combo3', startupMs: 240, activeMs: 120, recoverMs: 540,
+        cancelMs: 0, damage: 7, reachX: 108 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 260, lift: 0 },
+    ],
   },
+  /* =========================================================================
+     THE JUMP-IN
+     =========================================================================
+     THE ENEMY LEAPS AT YOU AND PUNCHES ON THE WAY DOWN, and the "on the way
+     down" is not flavour — it is the only part of the arc where the attack can
+     legally connect. `verticalReach` is 70 and the jump apex is 85, so a
+     fighter at the top of his own jump is OUT OF REACH OF THE FLOOR. An air
+     attack timed to the apex would pass cleanly through a standing player every
+     single time, and would look like a hit detection bug rather than a miss.
+
+         jumpY = sin(PI * p) * 85        <= 70  when  p <= 0.27 or p >= 0.73
+         p 0.73 of jumpMs 620            =  451ms after take-off
+
+     So `startupMs` is 420 — the hitbox opens just before he drops back through
+     the reachable band, and stays open until he lands. Retiming `jumpMs` or
+     `jumpHeight` moves that band and this number has to move with it.
+
+     THE RECOVERY IS THE WHOLE COST OF THE MOVE. 150ms of it happens after he
+     has landed, so a leap that misses leaves him standing in front of the
+     player unable to act. Take that away and jumping in becomes free.
+
+     HE MUST LINE UP IN DEPTH BEFORE HE LEAVES THE GROUND (`enemyLeapMaxZ`) —
+     the leap is along x only. That is the same bargain the Mosca Boss's ground
+     pass makes: the answer to a committed charge is to step out of the LANE,
+     not to out-run it, and a leap that tracked the player through the air would
+     have no answer at all. */
+  ENEMY_LEAP: {
+    cigarro: {
+      pose: 'airPunch', startupMs: 420, activeMs: 200, recoverMs: 150,
+      cancelMs: 0, damage: 6, reachX: 104 * BODY_SCALE, reachZ: 52 * BODY_SCALE,
+      knockback: 300, lift: 0,
+    },
+    /* THE STUB JUMPS IN TOO, and `startupMs` is the SAME 420 — it has to be.
+       That number is not a feel, it is where the arc drops back inside
+       `verticalReach`, and both of them jump on the same global `jumpMs` and
+       `jumpHeight`. What differs is what the landing costs: 8 damage, and 260ms
+       of recovery on the floor afterwards against the other's 150. */
+    cigarro2: {
+      pose: 'airPunch', startupMs: 420, activeMs: 200, recoverMs: 260,
+      cancelMs: 0, damage: 8, reachX: 104 * BODY_SCALE, reachZ: 52 * BODY_SCALE,
+      knockback: 340, lift: 0,
+    },
+  },
+  /* HOW OFTEN HE JUMPS IN, PER TURN. 0.10 — roughly one turn in ten — chosen in
+     play after watching it at 1, where the leap was the only thing he did.
+
+     ⚠️ **PER TURN, NOT PER FRAME**, and the difference is not small. This is
+     rolled once, on the frame the attack token is handed to him
+     (`Enemy.takeTurn()`); the same number evaluated every frame would be 10%
+     sixty times a second, which is not "sometimes he jumps" — it is a certainty
+     inside two frames, and the ground combo would never come out again.
+
+     THE VALUE IS A RATE OF SURPRISE, NOT A DIFFICULTY DIAL. Raise it far and
+     the jump-in stops being a thing that happens to you and becomes the fight;
+     the reason it works at all is that his ordinary approach is a walk. */
+  enemyLeapChance: {
+    cigarro:  0.10,
+    // The stub jumps in HALF as often. He is the slow one; a heavy fighter who
+    // closes the distance as readily as the quick one is not a second enemy,
+    // and the leap is the one move that hides how slowly he walks.
+    cigarro2: 0.05,
+  },
+  /* The band he will leap from. Under `enemyLeapMinX` there is nothing to leap
+     over and he simply walks in; over `enemyLeapMaxX` he would be crossing most
+     of the screen in the air, which no longer reads as a jump-in.
+
+     A TURN THAT ROLLED A LEAP AND IS TOO CLOSE FOR ONE IS NOT WASTED — he falls
+     through to the ordinary walk-in and ground combo, and the roll is spent.
+     That is deliberate: the alternative is an enemy who backs away to make room
+     for a jump, which telegraphs it completely. */
+  enemyLeapMinX: 90,
+  enemyLeapMaxX: 520,
+  enemyLeapMaxZ: 34,      // how lined up in depth he has to be before take-off
+  /* Where he AIMS TO LAND, in px from the player. Deliberately tighter than
+     `enemyStandoffX` (63) and not the same knob: the punch is only live for the
+     last stretch of the arc — he has to be both low enough to reach the floor
+     and close enough at the same moment — so landing a little inside the walking
+     stand-off is what gives that overlap any width at all. Land him further out
+     and the leap becomes a move that can only connect on the landing frame. */
+  enemyLeapLandX: 50,
+  /* Cap on how fast the leap may carry him, as a multiple of walk speed. The
+     speed is otherwise DERIVED — distance to cover divided by the time in the
+     air — so he lands where the player was standing rather than at some fixed
+     hop length that only occasionally reaches. */
+  enemyLeapMaxSpeed: 2.6,
+
   /* How likely a string is to be one, two or three hits — rolled once, at the
      start of the wind-up. Weights rather than a length so the shape of the
      fight is one line to change.
@@ -1015,7 +1151,15 @@ const CONFIG = {
      WEIGHTED TOWARD THE SHORT ONE ON PURPOSE. Three hits every time is a
      rhythm the player stops reading and starts waiting out; a single jab that
      might be the start of a string is what makes them respect the wind-up. */
-  enemyComboWeights: { cigarro: [4, 3, 3] },
+  enemyComboWeights: {
+    cigarro:  [4, 3, 3],
+    // The stub leans SHORTER. His hits cost more and commit him for longer, so
+    // a full string from him is a bigger promise than the white one's -- at the
+    // same weights he would be reliably worth more than his 40 HP is meant to
+    // buy, and the fights he opens would swing on whether he happened to roll
+    // three.
+    cigarro2: [5, 3, 2],
+  },
   // Enemies spawn by WALKING IN from the nearest side of the screen rather
   // than appearing — a fighter that materialises in front of the player reads
   // as a bug even when it is the design.

@@ -24,6 +24,26 @@ below exists because of it, and none of it applies to the coconut:
     component containing the lowest opaque pixel, and every floating wisp and
     puff is some other component. That test needs no threshold and no palette.
 
+  * THE SHEET IS CUT ON BODIES, NOT ON INK, and this is the part that took a
+    second sheet to learn. The first cutter banded rows and split frames on
+    empty pixel rows and columns, which works only while nothing reaches out of
+    its own frame. The second cigarette's smoke does: it BRIDGES TWO PAIRS OF
+    ROWS vertically and WELDS TWO FRAMES horizontally, so that method found 6
+    row bands where the art has 8, and one 534px-wide frame that was two.
+    No gap threshold fixes it -- the pixels genuinely touch.
+
+    So the sheet is labelled into connected components first, and the ones over
+    `BODY_AREA` are the characters. Measured on both sheets: every body is at
+    least 36000px and every wisp at most 6400, a gap of 5.8x, and each sheet has
+    exactly 44 bodies for its 44 frame slots. Rows and frames are then found on
+    the BODIES ALONE, which cannot touch each other, and every loose wisp is
+    given back to the body it rises from.
+
+  * FRAME RECTANGLES OVERLAP once smoke is included, so each tile is MASKED to
+    its own components rather than cropped out of the sheet. Cropping would
+    carry a neighbour's plume into the tile, and it would be drawn in game
+    attached to the wrong character.
+
   * THE FRAMES ARE TALLER THAN THEY LOOK, so the health bar needs telling.
     hud.js floats an enemy's bar above `size().h`; on the raw frame it hovers a
     plume's height over an empty patch of sky. Each frame carries `bh`, the
@@ -49,25 +69,30 @@ pack:
 """
 import json
 import sys
-from collections import deque
 
 import numpy as np
 from PIL import Image
 
 OUT = 'assets-v2/beatemup-dungeon/'
 
-# Shipped smaller than the master, same bargain as the coconut's, but measured
-# on the BODY rather than the frame: he draws 137px tall (fighterSizePx) and
-# this leaves the atlas about 170px of body to draw it from, so the sprite is
-# always downscaled and never stretched, while the texture comes in near the
-# coconut's. See PERFORMANCE.md for what happens when sheet textures get away.
+# Default atlas downscale, overridable per sheet. Same bargain as the coconut's
+# but measured on the BODY rather than the frame: a fighter draws 137px tall
+# (fighterSizePx) and this aims to leave the atlas about 170px of body to draw
+# him from, so the sprite is always downscaled and never stretched while the
+# texture stays near the coconut's. The two sheets are drawn at different sizes,
+# which is why it is a per-sheet number -- match `body` in the tool's output, not
+# this constant. See PERFORMANCE.md for what happens when textures get away.
 SCALE = 0.49
 PAD = 2            # transparent gutter between packed frames
 ALPHA = 8          # alpha above this counts as content
-# Both gaps are TIGHT, for the reason the coconut's cutter records: a generous
-# threshold silently welds two frames into one and the counts stop matching.
-# BAND_GAP is 2 here because this sheet's smoke reaches up into the row above
-# and leaves a one-pixel bridge between bands on two of the rows.
+# Smallest component that counts as a CHARACTER rather than a puff of smoke.
+# Not a fine judgement: measured across both sheets, the smallest body is
+# 36417px and the largest wisp 6312px, so anything between them separates them.
+# The tool asserts the body count against the row table, so a sheet this is
+# wrong for fails loudly instead of cutting something plausible.
+BODY_AREA = 15000
+# Applied to the BODY MASK, not to the ink -- see the header. Bodies never touch
+# each other on either sheet, so both can stay at their tightest.
 BAND_GAP = 2       # empty rows tolerated inside one row band
 GAP = 0            # empty columns tolerated inside one frame
 SAME = 2.5         # mean abs channel difference below which two frames are one
@@ -105,7 +130,94 @@ SHEETS = {
             ('death',     8, 8),   # morrendo
         ],
     },
+    # The stub: a shorter, fatter, tan cigarette with yellow gloves. SAME EIGHT
+    # ROWS, same counts, same order -- the illustrator drew the pair to one
+    # plan, which is why the whole entry is a copy with two paths changed.
+    'cigarro2': {
+        'src': 'assets-v2/beatemup-dungeon/cigarro2-sprites-fim.png',
+        'base': 'cigarro2-beat',
+        'native': 'right',
+        # He is drawn BIGGER than the first one -- 198px of body at the shared
+        # 0.49 against his 170 -- so his own scale brings the atlas back to the
+        # same ~170px of body per fighter. Sizing is `bodyH` in the defs, not
+        # this, but leaving it at 0.49 would ship a third more texture for a
+        # sprite drawn at exactly the same size on screen.
+        'scale': 0.42,
+        'rows': [
+            ('idle',      1, 3),
+            ('walk',      2, 6),
+            ('jump',      3, 6),
+            ('airPunch',  4, 7),
+            ('combo',     5, 6),
+            ('hurt',      6, 2),
+            ('knockdown', 7, 6),
+            ('death',     8, 8),
+        ],
+    },
 }
+
+
+def components(mask):
+    """Connected components (8-way), as (labels, stats).
+
+    `labels` is a per-pixel int array; `stats` maps label -> [y0,y1,x0,x1,area].
+
+    Written by ROW RUNS with a union-find rather than a per-pixel flood, because
+    these sheets are 3500x6300 and a Python-level flood over them takes minutes.
+    scipy.ndimage would do it in one call and is deliberately not used: it is not
+    importable in this environment, and none of the other tools in this repo need
+    it either.
+    """
+    h, w = mask.shape
+    parent = [0]
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    rows, prev = [], []
+    for y in range(h):
+        edges = np.flatnonzero(np.diff(np.concatenate(
+            ([0], mask[y].view(np.int8), [0]))))
+        cur = []
+        for i in range(0, len(edges), 2):
+            a, b = int(edges[i]), int(edges[i + 1]) - 1
+            lab = 0
+            for (pa, pb, pl) in prev:
+                if pa <= b + 1 and a <= pb + 1:      # 8-way: touching diagonally counts
+                    if lab == 0:
+                        lab = pl
+                    else:
+                        union(lab, pl)
+            if lab == 0:
+                parent.append(len(parent))
+                lab = len(parent) - 1
+            cur.append((a, b, lab))
+        rows.append(cur)
+        prev = cur
+
+    labels = np.zeros((h, w), np.int32)
+    stats = {}
+    for y, cur in enumerate(rows):
+        for (a, b, l) in cur:
+            r = find(l)
+            labels[y, a:b + 1] = r
+            e = stats.get(r)
+            if e is None:
+                stats[r] = [y, y, a, b, b - a + 1]
+            else:
+                e[1] = y
+                e[2] = min(e[2], a)
+                e[3] = max(e[3], b)
+                e[4] += b - a + 1
+    return labels, stats
 
 
 def runs(flags, gap):
@@ -129,32 +241,26 @@ def runs(flags, gap):
 
 
 def body_mask(opaque):
-    """The character, without the smoke.
+    """The character inside one tile, without the smoke.
 
     THE TEST IS CONNECTEDNESS, NOT COLOUR, and that is the point. The smoke is
     the same white as the body, so no palette test can separate them -- but it
-    floats. The body is the component containing the LOWEST opaque pixel (a
-    cigarette stands on the belt; a wisp never does), and every detached wisp
-    and puff is some other component and is dropped.
-    """
-    h, w = opaque.shape
-    ys, xs = np.nonzero(opaque)
-    if not len(ys):
-        return opaque
-    bottom = ys.max()
-    seed_x = int(xs[ys == bottom][0])
+    is DETACHED, and it is small.
 
-    seen = np.zeros((h, w), bool)
-    seen[bottom, seed_x] = True
-    q = deque([(bottom, seed_x)])
-    while q:
-        y, x = q.popleft()
-        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            ny, nx = y + dy, x + dx
-            if 0 <= ny < h and 0 <= nx < w and opaque[ny, nx] and not seen[ny, nx]:
-                seen[ny, nx] = True
-                q.append((ny, nx))
-    return seen
+    ⚠️ THE BODY IS THE BIGGEST COMPONENT, NOT THE LOWEST ONE. Taking the
+    component that owns the lowest opaque pixel is the obvious rule -- a
+    cigarette stands on the belt and a wisp does not -- and it is wrong twice on
+    the second sheet, in the frames where he picks himself up off the floor:
+    there is a puff of smoke drawn BELOW him. The anchor was then read off that
+    puff, so its bottom became the ground line and the character was drawn
+    hanging in the air above it. The size test cannot make that mistake; on
+    both sheets the smallest body outweighs the largest wisp by 5.8x.
+    """
+    if not opaque.any():
+        return opaque
+    labels, stats = components(opaque)
+    big = max(stats, key=lambda l: stats[l][4])
+    return labels == big
 
 
 def anchor(tile):
@@ -200,9 +306,21 @@ def main():
     rows = spec['rows']
 
     im = Image.open(spec['src']).convert('RGBA')
-    a = np.array(im)[:, :, 3] > ALPHA
+    px = np.array(im)
+    a = px[:, :, 3] > ALPHA
+    want_total = sum(n for _, _, n in rows)
 
-    bands = runs(a.any(axis=1), BAND_GAP)
+    # THE SHEET IS CUT ON BODIES, NOT ON INK -- see the module header.
+    labels, stats = components(a)
+    bodies = {l: s for l, s in stats.items() if s[4] >= BODY_AREA}
+    if len(bodies) != want_total:
+        big = sorted((s[4] for s in stats.values()), reverse=True)
+        raise SystemExit(
+            f'expected {want_total} bodies over {BODY_AREA}px, found {len(bodies)}. '
+            f'Areas around the cut: {big[max(0, want_total - 3):want_total + 3]}')
+
+    body_px = np.isin(labels, list(bodies))
+    bands = runs(body_px.any(axis=1), BAND_GAP)
     if len(bands) != len(rows):
         raise SystemExit(f'expected {len(rows)} rows, found {len(bands)}')
 
@@ -229,19 +347,70 @@ def main():
         tiles.append(tile)
         return len(tiles) - 1
 
+    # Every body, as (row index, its label), found by the band it falls in.
+    frames_of = []                              # row -> [labels, left to right]
     for (name, human, want), (y0, y1) in zip(rows, bands):
-        cols = runs(a[y0:y1 + 1].any(axis=0), GAP)
-        if len(cols) != want:
+        here = [l for l, s in bodies.items() if y0 <= (s[0] + s[1]) // 2 <= y1]
+        here.sort(key=lambda l: bodies[l][2])
+        if len(here) != want:
             raise SystemExit(
-                f'row {human} ({name}): expected {want} frames, found {len(cols)}')
+                f'row {human} ({name}): expected {want} frames, found {len(here)}')
+        frames_of.append(here)
+
+    # EVERY WISP GOES BACK TO THE FRAME IT CAME OFF, which is the other half of
+    # cutting on bodies: the bodies say where the frames are, and this says which
+    # frame each loose piece of smoke belongs to. Nothing is discarded -- a wisp
+    # that found no owner would simply vanish from the sheet, so the count is
+    # printed at the end where it can be seen.
+    owner = {}
+    for l, s in stats.items():
+        if l in bodies:
+            continue
+        # NEAREST BODY BY THE GAP BETWEEN THE TWO BOXES, IN BOTH AXES, WITH NO
+        # ASSUMPTION ABOUT WHICH WAY THE SMOKE LIES. Two narrower rules were
+        # tried and both quietly mangled the atlas rather than failing:
+        #
+        #   horizontal distance only -- a plume is adopted by whichever body
+        #     anywhere below it lines up in x, often three rows down, because
+        #     the frames sit in a grid. The frame then spans from the wisp to a
+        #     body far beneath it: the atlas went 1745px tall to 5116.
+        #   "the body must start below the wisp" -- true of a rising plume, false
+        #     of the impact puffs, which sit BESIDE the head and start above it.
+        #     Their own body is excluded, they are adopted across the sheet, and
+        #     one tile came out 1100px wide.
+        #
+        # A gap of zero in an axis means the boxes overlap in it, so a puff
+        # beside its own head scores 0 vertically and a few px horizontally,
+        # and nothing further away can beat that.
+        best, bestd = None, None
+        for row in frames_of:
+            for b in row:
+                bs = bodies[b]
+                dy = max(0, bs[0] - s[1], s[0] - bs[1])
+                dx = max(0, s[2] - bs[3], bs[2] - s[3])
+                d = (dy + dx, dy)
+                if bestd is None or d < bestd:
+                    bestd, best = d, b
+        owner.setdefault(best, []).append(l)
+
+    for (name, human, want), here in zip(rows, frames_of):
         seq = []
-        for (x0, x1) in cols:
-            tile = im.crop((x0, y0, x1 + 1, y1 + 1))
-            # Tighten vertically too: the band is as tall as its tallest pose.
-            t = np.array(tile)[:, :, 3] > ALPHA
-            ys = np.nonzero(t.any(axis=1))[0]
-            tile = tile.crop((0, int(ys[0]), tile.width, int(ys[-1]) + 1))
-            seq.append(intern(tile))
+        for b in here:
+            group = [b] + owner.get(b, [])
+            ys0 = min(stats[l][0] for l in group)
+            ys1 = max(stats[l][1] for l in group)
+            xs0 = min(stats[l][2] for l in group)
+            xs1 = max(stats[l][3] for l in group)
+            # THE TILE IS MASKED TO ITS OWN PIXELS, NOT MERELY CROPPED, and on
+            # this sheet that is not a nicety. Frame rectangles now OVERLAP --
+            # one frame's smoke drifts over the next frame's body, and the rows
+            # are close enough that a plume reaches into the row above. A plain
+            # crop would carry the neighbour's ink into the tile and it would be
+            # drawn in game, attached to the wrong character.
+            sub = px[ys0:ys1 + 1, xs0:xs1 + 1].copy()
+            keep = np.isin(labels[ys0:ys1 + 1, xs0:xs1 + 1], group)
+            sub[~keep] = 0
+            seq.append(intern(Image.fromarray(sub, 'RGBA')))
         anims[name] = seq
 
     # Shelf pack, as square as the ragged frames allow.
@@ -275,25 +444,29 @@ def main():
     # two-thirds-height cigarette under a full-height plume.
     body_h = frames[anims['idle'][0]]['bh']
 
-    if SCALE != 1.0:
-        nw, nh = int(round(W * SCALE)), int(round(H * SCALE))
+    scale = spec.get('scale', SCALE)
+    if scale != 1.0:
+        nw, nh = int(round(W * scale)), int(round(H * scale))
         atlas = atlas.resize((nw, nh), Image.LANCZOS)
         for f in frames:
             for k in ('x', 'y', 'w', 'h'):
-                f[k] = int(round(f[k] * SCALE))
+                f[k] = int(round(f[k] * scale))
             for k in ('ax', 'ay', 'bh'):
-                f[k] = round(f[k] * SCALE, 1)
-        body_h = round(body_h * SCALE, 1)
+                f[k] = round(f[k] * scale, 1)
+        body_h = round(body_h * scale, 1)
 
     base = spec['base']
     atlas.save(OUT + base + '-game.png')
     with open(OUT + base + '-sprites.json', 'w') as fh:
-        json.dump({'scale': SCALE, 'native': spec['native'], 'bodyH': body_h,
+        json.dump({'scale': scale, 'native': spec['native'], 'bodyH': body_h,
                    'frames': frames, 'anims': anims}, fh, indent=1)
 
+    wisps = sum(len(v) for v in owner.values())
     slots = sum(len(v) for v in anims.values())
     print(f'{base}-game.png  {atlas.size[0]}x{atlas.size[1]}  '
           f'{len(tiles)} unique frames for {slots} slots, body {body_h}px')
+    print(f'  {len(bodies)} bodies, {wisps} of {len(stats) - len(bodies)} loose '
+          f'pieces of smoke re-attached')
     for name, human, _ in rows:
         print(f'  row {human:2d}  {name:10s} {len(anims[name]):2d} slots  '
               f'-> {anims[name]}')

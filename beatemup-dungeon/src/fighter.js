@@ -464,6 +464,21 @@ class Fighter {
     const n = sheets.poseLength(this.kind, p);
     if (n <= 1) return 0;
 
+    /* AN AIR ATTACK BELONGS TO THE ARC, NOT TO THE ATTACK PHASES, and it is
+       the one attack that does. The row is drawn as a whole jump — take-off,
+       rise, the punch, the fall — so it has to stay married to the height the
+       fighter is actually at, exactly like the plain jump below it. Read off
+       the three attack phases instead, seven drawings would collapse to three
+       and the punch would be thrown at a height it was never drawn for.
+
+       This sits ABOVE the attack branch on purpose: while he is in the air the
+       arc wins, and the moment he lands the attack's own recovery takes over
+       and holds the last frame. */
+    if (this.jumping && p === 'airPunch') {
+      const t = Math.min(1, this.jumpT / (CONFIG.jumpMs / 1000));
+      return Math.min(n - 1, Math.floor(t * n));
+    }
+
     if (this.atk) {
       const a = this.atk;
       return a.phase === 'startup' ? 0 : a.phase === 'active' ? Math.min(1, n - 1) : n - 1;

@@ -51,11 +51,13 @@ level*.
 **Dev mode exists and is ON.** 50 damage a punch, number keys jump rooms,
 `package.sh` refuses to build. See *Open*.
 
-**The first villain with art of his own.** JUIXY is gone; **CIGARRO** — a lit
-cigarette, 8 rows drawn for this game — took his waves and his stats. He is the
-first enemy in the game that throws a **combo** rather than a swing, and his
-smoke forced two new measurements into the sprite pipeline. See *The sprites*
-and *Combat*.
+**Two villains with art of their own.** JUIXY and TOM are gone; **CIGARRO** and
+the **stub** — a pair of cigarettes, 8 rows each, drawn for this game — took
+their waves and their stats. They are the first enemies in the game that throw a
+**combo** rather than a swing, and the first that **jump in**. Their smoke forced
+two new measurements into the sprite pipeline and then forced the cutter to stop
+cutting on ink altogether. See *The sprites*, *The enemy combo* and *The
+jump-in*.
 
 **Six bugs, all documented** in *Bugs whose causes are not guessable*, and five
 of them are the same shape: something was mid-state — playing, falling, seeking,
@@ -175,13 +177,62 @@ the borrowed 9×5 pack: 13 rows, 74 frame slots, cut by
 `tools/build-beat-coconut-defs.py` into a 45-frame packed atlas. See README.md
 for the row table and the cutter.
 
-**AND SO DOES THE FIRST VILLAIN.** JUIXY — the main game's orange, read as a
+**AND SO DO TWO OF THE VILLAINS.** JUIXY — the main game's orange, read as a
 puncher — was replaced wave for wave by **CIGARRO**, a lit
-cigarette drawn for this game: 8 rows, 44 slots, 41 unique frames, cut by
+cigarette drawn for this game: 8 rows, 44 slots, 40 unique frames, cut by
 `tools/build-beat-enemy-defs.py`. His stats are the orange's untouched (34 HP,
-0.88 speed, same placements), so no fight's time-to-kill moved when the art
-did. What is new is that **he throws a combo** — see *Combat*. TOM and ERKPA
-are still on the 9×5 packs, so `sheets.js` still carries two formats.
+0.88 speed, same placements), so no fight's time-to-kill moved when the art did.
+What is new is that **he throws a combo** and **jumps in** — see those sections.
+
+**TOM went the same way**, replaced by the second sheet: a shorter, fatter tan
+stub with yellow gloves, same eight rows, who took TOM's 40 HP and 0.72 speed.
+The two of them are one gang with two tempos — the white one is quick and light
+(3+3+5, leaps 10% of turns), the stub is slow and heavy (4+4+7, leaps 5%) — and
+that difference is entirely numbers, not a second system.
+
+⚠️ **NORMALISING BY `bodyH` ALSO FLATTENS SIZE DIFFERENCES THE ARTIST DREW.**
+Scaling every pack so its idle body is `fighterSizePx` tall is what stops a
+sheet drawn at another size arriving as a giant, and it made the two cigarettes
+exactly the same height on screen — which was wrong, and read in play as the
+stub being too small. In the masters his body is 405px against the other's 348,
+so his `drawScale` is **1.164**: the artist's own difference, measured rather
+than chosen. Drawn heights are now COCONUT 123, CIGARRO 137, the stub 159. **Only ERKPA is still
+on a borrowed 9×5 pack**, so `sheets.js` carries two formats for one more
+character.
+
+⚠️ **THE SECOND SHEET FORCED THE CUTTER TO STOP CUTTING ON INK.** Banding rows
+and splitting frames on empty pixel rows and columns works only while nothing
+reaches outside its own frame, and the stub's smoke does: it BRIDGES TWO PAIRS
+OF ROWS vertically and WELDS TWO FRAMES horizontally. That method found 6 rows
+where the art has 8, and a 534px frame that was two. **No gap threshold fixes
+it — the pixels genuinely touch.**
+
+So the sheet is labelled into connected components and everything over
+`BODY_AREA` is a character. On both sheets the smallest body is 36417px and the
+largest wisp 6312px — a 5.8x gap — and each has exactly 44 bodies for its 44
+frame slots. Rows and frames are found on the BODIES ALONE, which never touch
+each other, and every loose wisp is then given back to the body nearest it.
+
+⚠️ **TWO NARROWER RULES FOR "WHICH FRAME DOES THIS WISP BELONG TO" BOTH MANGLED
+THE ATLAS WITHOUT FAILING.** Nearest in x only: a plume is adopted by whichever
+body anywhere below it lines up horizontally, often three rows down, and the
+atlas went from 1745px tall to 5116. Then "the body must start below the wisp",
+which is true of a rising plume and false of the impact puffs — they sit BESIDE
+the head and start above it, so their own body was excluded and one tile came
+out 1100px wide. The rule that works is the nearest body by the GAP BETWEEN THE
+BOXES in both axes, with no assumption about which way the smoke lies.
+
+⚠️ **FRAME RECTANGLES OVERLAP once smoke is included**, so each tile is MASKED
+to its own components rather than cropped. A plain crop carries the neighbour's
+plume into the tile and draws it attached to the wrong character.
+
+⚠️ **THE BODY INSIDE A TILE IS THE BIGGEST COMPONENT, NOT THE LOWEST ONE.** The
+lowest-pixel rule reads well — a cigarette stands on the belt and a wisp does
+not — and it is wrong in the frames where the stub picks himself up off the
+floor, because there is a puff of smoke drawn BELOW him. The anchor came off the
+puff, so its bottom became the ground line and he was drawn hanging in the air.
+Caught by drawing every frame against one ground line before wiring anything;
+it would have been invisible in a still and obvious only in play.
 
 ⚠️ **THE POSE TABLE IS NOW PER PACK, and it had to be.** `CONFIG.POSE_RAGGED`
 was one shared map of pose → row-slice, which was correct while exactly one
@@ -355,7 +406,7 @@ and hit 5 the uppercut — the two frames drawn bigger than the rest, so they
 carry the damage and the reach. Hit 5 knocks down and LAUNCHES.
 
 Full combo = **28**, held exactly where it was when the combo was three hits, so
-no enemy's time-to-kill moved. Enemy HP: JUIXY 34, TOM 40, ERKPA 55.
+no enemy's time-to-kill moved. Enemy HP: CIGARRO 34, STUB 40, ERKPA 55.
 
 Reaches shrank with `BODY_SCALE` (see below), not with the combo change.
 Player 110 — **a multiple of 22**, so each of the life bar's 22 squares is
@@ -427,6 +478,78 @@ lapsed between two hits, and the string would loop instead of ending.
 momentarily null, and an enemy that stopped counting as committed for that one
 frame could have its turn handed to somebody else while it is still visibly
 punching. `ai === 'combo'` counts as busy for exactly that frame.
+
+## The jump-in
+
+⚠️ **HE PUNCHES ON THE WAY DOWN, AND THAT IS GEOMETRY RATHER THAN TASTE.**
+`verticalReach` is 70 and the jump apex is 85, so **a fighter at the top of his
+own jump cannot reach the floor**. An air attack timed to the apex — which is
+where you would put it — passes cleanly through a standing player every single
+time, and reads as broken hit detection rather than as a miss.
+
+```
+jumpY = sin(PI * p) * 85   <= 70   when p <= 0.31 or p >= 0.69
+p 0.69 of jumpMs 620       =  429ms after take-off
+```
+
+So `startupMs` is 420: the hitbox opens just before he drops back through the
+reachable band and stays live until he lands. **Retiming `jumpMs` or
+`jumpHeight` moves that band, and this number has to move with it or the move
+silently stops connecting.**
+
+⚠️ **THE LEAP IS AN APPROACH, SO IT IS DECIDED BEFORE HE CLOSES IN.** A fighter
+who walks all the way into punching range and only then decides to jump has
+nothing left to jump over. The roll happens when the attack token arrives, and
+the leap fires from 90..520px out.
+
+⚠️ **THE CHANCE IS ROLLED ONCE PER TURN, NOT PER FRAME.** At 60fps a 2%
+per-frame roll is a certainty inside a second — it would not be a rare surprise,
+it would be his entire personality.
+
+⚠️ **AND IT IS ROLLED ON A CALLBACK FROM CROWD, NOT BY WATCHING `hasToken`
+CHANGE. This cost a build, and the symptom pointed the wrong way.** Watching for
+the token going false→true means keeping last frame's value, and the token is
+RELEASED from three places that run at different points of the frame: `_think`
+(a string or a leap ending), `hurt()` (called by Combat, which runs *after* the
+crowd has updated) and Crowd itself. Wherever in `update()` the snapshot is
+taken, one of those three releases lands on the other side of it — the `false`
+is never recorded, so the next grant does not look like a new turn. He leapt on
+the first turn of the fight and then never again, which reads as a broken random
+roll rather than as a missed edge. `Crowd` now TELLS the enemy its turn has
+begun (`takeTurn()`), because a grant is one event in one place and cannot go
+stale.
+
+**That is the sixth time this game's recurring shape has bitten** — something
+changed underneath a value that had already been read. Anything watching for a
+change in a flag `_think` writes has to be read after `_think` has run, and
+anything watching a flag COMBAT writes cannot be read inside the update at all.
+
+⚠️ **THE SPEED IS DERIVED, NOT SET.** Distance to cover divided by the time in
+the air, capped, so he lands beside the player instead of at a fixed hop length
+that only occasionally reaches. He also commits to a LANE before take-off and
+cannot steer in depth — the same bargain the Mosca's ground pass makes, and the
+reason there is an answer to it at all.
+
+⚠️ **THE FRAMES BELONG TO THE ARC, NOT TO THE ATTACK PHASES.** Every other
+attack in the game draws off startup/active/recover, which is three frames. The
+air-punch row is drawn as a whole jump — take-off, rise, the punch, the fall —
+so seven drawings would collapse to three and the punch would be thrown at a
+height it was never drawn for. `frameStep` spreads it across `jumpMs` while he
+is airborne, and the attack's own recovery takes over the moment he lands.
+
+**`enemyLeapChance` is 0.10 — one turn in ten — and that number came out of
+play.** It was built and judged at 1, where the leap was the only thing he did
+and the ground combo never appeared, then set to a rate. It is a rate of
+SURPRISE rather than a difficulty dial: the reason the move lands at all is that
+his ordinary approach is a walk, so raising it far stops the jump-in being
+something that happens to you and makes it the fight.
+
+A turn that rolls a leap while he is already inside `enemyLeapMinX` is not
+re-rolled — he walks in and throws the ground combo instead, and the roll is
+spent. The alternative is an enemy who backs away to make room for a jump, which
+telegraphs it completely.
+
+---
 
 **A mook's blow still cannot floor the player** — `crowdHits()` passes lift 0
 and knockdown false for the whole crowd, so the lunge shoves rather than
@@ -504,13 +627,13 @@ A sequence of segments, alternating walking and fighting — the genre's spine.
 | # | kind | | film |
 |---|---|---|---|
 | 0 | scroll | to x2100 — **the opening passage, 1880px / 6.3s** | 42% |
-| 1 | arena | JUIXY, TOM, ERKPA, **+ERKPA, JUIXY from behind** | |
+| 1 | arena | CIGARRO, STUB, ERKPA, **+ERKPA, CIGARRO from behind** | |
 | 2 | scroll | to x3300 | 77% |
 | 3 | **sub-boss** | the Mosca Boss | |
 | 4 | scroll | to x3690 | 88% |
-| 5 | arena | JUIXY, TOM, **ERKPA behind**, TOM, **JUIXY behind** | |
+| 5 | arena | CIGARRO, STUB, **ERKPA behind**, STUB, **CIGARRO behind** | |
 | 6 | scroll | to x4092 | **100%** |
-| 7 | arena | ERKPA, JUIXY, **TOM behind**, **ERKPA behind**, TOM | |
+| 7 | arena | ERKPA, CIGARRO, **STUB behind**, **ERKPA behind**, STUB | |
 
 ⚠️ **THE LEVEL ENDS ON A WALK, NOT A FREEZE.** Clearing the last fight no
 longer stops the world and throws up the card. It hands to an `outro` phase: the
@@ -844,9 +967,20 @@ reader is the shape to look for.
 - **The first fight is now what used to be the second one** — 5 enemies incl.
   ERKPA and two from behind, tuned as an escalation rather than an opener. Worth
   replaying once dev mode is off.
-- **Villain sheets.** TOM, JUIXY and ERKPA are still the main game's 9×5 packs
-  read as punches. Until they are redrawn, `sheets.js` has to carry two formats
-  and the grid path cannot go.
+- **Villain sheets: one left.** ERKPA is the last character still on a main-game
+  9×5 pack read as punches. Until he is redrawn, `sheets.js` has to carry two
+  formats and the grid path cannot go — and he is the only enemy with no combo
+  and no jump-in, because he has no art for either.
+- **The stub has no name yet.** He is `cigarro2` in the code and carries
+  `name: 'BAGANA'` as a placeholder next to COCONUT / CIGARRO / ERKPA. Nothing
+  draws it — the field is documentation — so renaming him is one line.
+- **The jump-in is in and tuned** at `enemyLeapChance` 0.10, judged in play.
+  His plain `jump` row (row 3) is still cut and unwired — he never jumps
+  without punching.
+- **His combo is unjudged in play.** It was built with dev mode ON, which
+  changes the PLAYER's damage only — so his string does hit for the real 3/3/5,
+  but every fight it happens in is over in one combo. The weights and the
+  460ms punish window are the two knobs to feel out with dev off.
 - **The lift mechanic is HALF WIRED.** The button exists (L/E, pad B), the
   `pickup` state exists, and BOTH animations are wired and chosen by weight —
   `pickGround` (row 9, a stoop) for a light thing, `lift` (row 7, a hoist) for a

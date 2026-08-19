@@ -1,5 +1,5 @@
 /**
- * Enemy — TOM, CIGARRO and ERKPA, doing the villain's job.
+ * Enemy — CIGARRO, the stub and ERKPA, doing the villain's job.
  *
  * READ THE ATTACK TOKEN NOTE BEFORE CHANGING ANY OF THIS. It is in
  * `Crowd.update()` below and it is the single most important rule in the file:
@@ -17,12 +17,16 @@
  *     circle     in range but WITHOUT the token: orbiting, waiting a turn
  *     wind       has the token, hesitating before the swing (the tell)
  *     combo      throwing a string; Fighter drives each hit, this counts them
+ *     leap       in the air, mid jump-in; the only state that MOVES mid-attack
  *     attack     Fighter's own attack state does the work
  *
- * ONE OF THEM THROWS A COMBO NOW. The cigarette has three punches drawn for
- * him, so his attack is a STRING rather than a swing — see CONFIG.ENEMY_COMBOS
+ * TWO OF THEM THROW COMBOS NOW. Both cigarettes have three punches drawn for
+ * them, so their attack is a STRING rather than a swing — see CONFIG.ENEMY_COMBOS
  * for the rule that keeps that a mook's move and not a boss's, and `_think`'s
- * 'combo' branch for how the hits are counted out.
+ * 'combo' branch for how the hits are counted out. They also JUMP IN: see
+ * `takeTurn()` for when that is decided and CONFIG.ENEMY_LEAP for why the
+ * punch has to be thrown on the way down. ERKPA has neither and keeps the
+ * single swing — he is still on a borrowed grid pack with no punch art.
  */
 class Enemy extends Fighter {
   constructor(kind, x, z, opts) {
@@ -67,6 +71,12 @@ class Enemy extends Fighter {
     }];
     this.chainStep = 0;      // which hit of the string is out
     this.chainLen = 1;       // how many it committed to, rolled at the wind-up
+    // The jump-in. `leap` is the attack def; `wantsLeap` is rolled once per
+    // turn by takeTurn() and spent by taking off. See _startLeap().
+    this.leap = (CONFIG.ENEMY_LEAP && CONFIG.ENEMY_LEAP[kind]) || null;
+    this.wantsLeap = false;
+    this.leapIx = 1;
+    this.leapScale = 1;
   }
 
   /**
@@ -102,6 +112,62 @@ class Enemy extends Fighter {
     return took;
   }
 
+  /**
+   * A TURN HAS JUST BEEN HANDED TO THIS ONE. Called by Crowd at the single
+   * moment the attack token is granted — see the note there — and the only
+   * place a per-turn decision may be made.
+   *
+   * ⚠️ THIS IS A CALLBACK RATHER THAN AN EDGE WATCHED IN `update()`, AND THAT
+   * IS THE FIX TO A REAL BUG. Watching for `hasToken` going false→true means
+   * keeping last frame's value, and the token is RELEASED from three places
+   * that run at different points of the frame: `_think` (a string or a leap
+   * ending), `hurt()` (called by Combat, which runs after the crowd has
+   * updated), and Crowd itself. Whichever end of `update()` the snapshot is
+   * taken at, one of those three releases lands on the other side of it, the
+   * false is never recorded, and the next grant does not look like a new turn.
+   * The symptom was exact and misleading: he leapt on the very first turn of
+   * the fight and then never again, which reads as a broken random roll.
+   *
+   * The token being GRANTED is a single event in a single place. Rolling on the
+   * event cannot go stale.
+   *
+   * ROLLED PER TURN, NOT PER FRAME. A 2% chance evaluated every frame is 2%
+   * sixty times a second, which is a certainty inside a second — one roll per
+   * turn is what "2% of the time he jumps at you" actually means.
+   *
+   * It is also decided BEFORE he starts closing in, so the approach and the
+   * take-off are one continuous movement rather than a walk that suddenly
+   * turns into a jump.
+   */
+  takeTurn() {
+    const c = (CONFIG.enemyLeapChance && CONFIG.enemyLeapChance[this.kind]) || 0;
+    this.wantsLeap = !!this.leap && Math.random() < c;
+  }
+
+  /**
+   * Take off. Everything about the leap is fixed HERE, on the last frame he is
+   * still on the ground, and nothing is re-read while he is in the air.
+   *
+   * THE SPEED IS DERIVED, NOT A CONSTANT: the distance he has to cover divided
+   * by the time he will be airborne, so he lands beside the player instead of
+   * at some fixed hop length that only occasionally reaches. He aims at
+   * `enemyLeapLandX` rather than at the player, for the same reason the walk-in
+   * stops short — landing on top of somebody is a shoving match, not a punch.
+   */
+  _startLeap(dx) {
+    const air = CONFIG.jumpMs / 1000;
+    const travel = Math.max(0, Math.abs(dx) - CONFIG.enemyLeapLandX);
+    this.leapIx = dx >= 0 ? 1 : -1;
+    this.leapScale = Math.min(CONFIG.enemyLeapMaxSpeed,
+                              travel / air / CONFIG.walkSpeedX);
+    this.facing = this.leapIx > 0 ? 'right' : 'left';
+    this.wantsLeap = false;
+    this.ai = 'leap';
+    this.aiT = 0;
+    this.jump();
+    this.attack([this.leap], 0);
+  }
+
   update(dt, player, bounds) {
     if (this.showBarT > 0) this.showBarT -= dt;
     this.aiT += dt;
@@ -133,6 +199,27 @@ class Enemy extends Fighter {
         return;
       }
       this.walk(dt, target > this.x ? 1 : -1, 0, null, this.speedScale);
+      return;
+    }
+
+    /* IN THE AIR. This sits ABOVE the mid-swing return because a leap is the
+       one attack that has to keep MOVING while it runs: the punch is thrown at
+       the end of an arc that is already in flight, and Fighter drives only the
+       height. The direction and the speed were fixed at take-off and are not
+       re-read, so he cannot steer toward a player who has stepped aside.
+
+       He is released a frame after landing, once the attack's own recovery has
+       run out — that recovery is the price of a leap that missed, and handing
+       the token on before it has been paid would hide it. */
+    if (this.ai === 'leap') {
+      if (this.jumping) {
+        this.walk(dt, this.leapIx, 0, bounds, this.leapScale);
+        return;
+      }
+      if (this.atk) return;
+      this.ai = 'approach';
+      this.aiT = 0;
+      this.hasToken = false;
       return;
     }
 
@@ -191,6 +278,20 @@ class Enemy extends Fighter {
         this.ai = 'combo';
         this.aiT = 0;
       }
+      return;
+    }
+
+    /* THE JUMP-IN IS AN APPROACH, WHICH IS WHY IT IS TESTED BEFORE THE WIND-UP
+       AND BEFORE CLOSING IN. It is the way he covers the last stretch of ground
+       — a fighter who walks all the way into range and only then decides to
+       jump has nothing left to jump over. He must already be lined up in DEPTH:
+       the leap is along x only, so stepping out of his lane is the answer to it
+       and he has to commit to a lane before leaving the floor. */
+    if (this.wantsLeap && this.hasToken && !this.jumping
+        && Math.abs(dz) < CONFIG.enemyLeapMaxZ
+        && Math.abs(dx) > CONFIG.enemyLeapMinX
+        && Math.abs(dx) < CONFIG.enemyLeapMaxX) {
+      this._startLeap(dx);
       return;
     }
 
@@ -284,7 +385,7 @@ class Crowd {
          hits of a string `atk` is momentarily null, and an enemy that stopped
          counting for that one frame could have its turn handed to somebody
          else while it is still visibly punching. */
-      const busy = e.ai === 'wind' || e.ai === 'combo' || !!e.atk;
+      const busy = e.ai === 'wind' || e.ai === 'combo' || e.ai === 'leap' || !!e.atk;
       if (!busy && (e.state === 'hurt' || e.state === 'down' || e.ai === 'enter')) {
         e.hasToken = false;
       }
@@ -299,7 +400,15 @@ class Crowd {
         const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
         if (d < bestD) { bestD = d; best = e; }
       }
-      if (best) best.hasToken = true;
+      /* ⚠️ THE ONE PLACE A TURN BEGINS, which is why the enemy is TOLD about it
+         here rather than left to notice `hasToken` change under it. Three
+         different places release the token, at three different points of the
+         frame, so no snapshot of last frame's value can see every hand-over —
+         see `Enemy.takeTurn()` for what that cost. */
+      if (best) {
+        best.hasToken = true;
+        best.takeTurn();
+      }
     }
 
     for (const e of this.list) e.update(dt, player, bounds);
