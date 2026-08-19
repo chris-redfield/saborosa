@@ -38,6 +38,16 @@ function assetManifest() {
     out.push({ key: kind, src: base + '-sprites.json', how: 'json' });
   }
 
+  /* The title screen. `big` rather than `image` for the crawl frames: they are
+     3002px wide and drawn at 1280, and handing the GPU the full-size texture
+     for that is the VRAM thrash that cost the main game its frame rate once
+     already (see PERFORMANCE.md). The logo is small and goes through as-is. */
+  if (CONFIG.title) {
+    (CONFIG.TITLE_FRAMES || []).forEach((src, i) =>
+      out.push({ key: 'title' + i, src: src, how: 'big' }));
+    out.push({ key: 'logo', src: CONFIG.LOGO_SHEET, how: 'image' });
+  }
+
   // The GO prompt: the main game's pointing hand, and the hand-lettered word.
   out.push({ key: 'hand', src: 'intro-hand.png', how: 'image' });
   out.push({ key: 'go', src: CONFIG.GO_SHEET, how: 'image' });

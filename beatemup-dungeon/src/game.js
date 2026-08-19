@@ -22,6 +22,7 @@
   /* Built early because Combat takes it: the resolver is where a blow is
      decided, so it is where the blow is heard. */
   const sound = new Sound(assets);
+  const title = new Title(assets);
   const sheets = new Sheets(assets);
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
@@ -33,7 +34,7 @@
   const crowd = new Crowd();
 
   let player = null;
-  let phase = 'boot';          // boot | play | outro | fade | dead | clear
+  let phase = 'boot';          // boot | title | play | outro | fade | dead | clear
   let phaseT = 0;
   let faded = false;           // has the room swap inside a fade happened yet
   let boardSkip = 0;           // >0 = the CLEAR tally was skipped to its end
@@ -99,7 +100,20 @@
 
     for (const kind of Object.keys(CONFIG.CHARACTERS)) sheets.build(kind);
     backdrop.build();
-    start();
+
+    /* ⚠️ BOOT SCHEDULES THE FIRST FRAME ITSELF when it opens on the title, and
+       must NOT also call start(). start() schedules a frame of its own -- that
+       is the contract every caller inside loop() relies on -- so doing both
+       would leave TWO requestAnimationFrame chains running the same loop, and a
+       game that ran at double speed with every dt halved. It would look like a
+       physics bug and it would not be one. */
+    if (CONFIG.title) {
+      phase = 'title';
+      last = performance.now();
+      requestAnimationFrame(loop);
+    } else {
+      start();
+    }
   }
 
   function start() {
@@ -137,7 +151,26 @@
     input.poll();
 
     if (input.takePause() && (phase === 'play')) { /* reserved */ }
+    /* Mute is read in EVERY phase, not only in play: a player who wants the
+       sound off wants it off now, not once they have got past the title. */
     if (input.takeMute()) sound.toggleMute();
+
+    /* THE TITLE SCREEN. It sits above everything else in the loop because it is
+       not the game: no simulation, no hitstop, no room jumps, nothing to draw
+       but itself.
+
+       ⚠️ BOTH EXITS FROM HERE SCHEDULE A FRAME -- the branch that carries on
+       showing the title, and the one that hands over to start(), which
+       schedules its own and is why this returns immediately after it. Leaving
+       loop() without scheduling is this game's recurring bug: it presents as
+       input being dead on a screen that looks completely normal. */
+    if (phase === 'title') {
+      const finished = title.update(dt, input);
+      title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
+      if (finished) { start(); return; }
+      requestAnimationFrame(loop);
+      return;
+    }
 
     /* DEV: jump straight to a room with the number keys. Instant rather than
        faded — this is a shortcut for testing, and sitting through the fade is

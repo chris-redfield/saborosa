@@ -43,7 +43,7 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    on: false,
+    on: true,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
@@ -1425,6 +1425,30 @@ const CONFIG = {
      that choosing to flicker later is a draw-code change rather than another
      trip through the tool. */
   GO_SHEET: 'v2:beatemup-dungeon/saborosa-go.png',
+
+  /* --- The title screen ----------------------------------------------------
+     The first thing the game shows: the flying dungeon's crawling vermin as a
+     backdrop with the SABOROSA logo over it. Any button starts the fight.
+
+     BOTH IMAGES ARE READ IN PLACE out of that game's folder rather than copied
+     here -- the same three frames its endings crawl on and the same logo its
+     finale lands on. Two copies of a picture drift the moment one is recut.
+
+     The frames are pre-cropped to a shared 16:9 band (3002x1687) so they
+     stretch to fill the canvas and stay aligned with each other; that cropping
+     is tools/build-game-over-frames.py's, over in the other game. The holds are
+     that game's too, tuned in tools/game-over-anim.html -- roughly 9.5fps,
+     cycling 1-2-3. Do not re-derive them by eye. */
+  title: true,           // false = straight into the fight
+  TITLE_FRAMES: [
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-001.webp',
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-002.webp',
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-003.webp',
+  ],
+  TITLE_HOLDS_MS: [105, 105, 105],
+  LOGO_SHEET: 'v2:flying-dungeon/saborosa-logo.webp',
+  titleLogoWRel: 0.52,   // logo width as a fraction of the canvas
+  titleFadeOutMs: 600,   // to black, once dismissed
 
   /* --- Music ---------------------------------------------------------------
      ONE FILE, ONE LOOP, NO MIXER AT RUNTIME. The track is three of the five
