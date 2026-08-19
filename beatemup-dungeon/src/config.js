@@ -43,7 +43,7 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    on: true,
+    on: false,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
@@ -1445,6 +1445,52 @@ const CONFIG = {
   MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
   musicLoopSec: 6.146,
   musicVolume: 0.55,
+
+  /* --- Sound effects -------------------------------------------------------
+     name -> file. The name is what the game asks for (`sound.play('hit')`);
+     everything else follows from this map, so adding an effect is one line
+     here and one call at the moment it should be heard. manifest.js walks it,
+     so the build carries whatever is listed.
+
+     ⚠️ THESE ARE THE CUT FILES, under audio/sfx/, NOT the takes beside them.
+     The takes are performances into a phone: single-hit.ogg is 2.17 seconds
+     long and the hit is 300ms of it starting at 958ms, so playing the take on
+     a connect would sound the punch almost a second after it landed.
+     tools/build-beat-sfx.py finds the event and cuts it out. Re-run it, do not
+     hand-trim, and never point this at the raw take. */
+  SFX: {
+    hit: 'v2:beatemup-dungeon/audio/sfx/single-hit.ogg',
+    /* THE FINISHER, cut out of combo-1-4-hits.ogg -- a take of three ordinary
+       punches and a different sound at the end. Only the end is in here:
+       `build-beat-sfx.py combo-1-4-hits --gap 50 --event last --out combo-finish`.
+       It is a genuinely different sound rather than a louder punch (it
+       correlates at -0.00 with single-hit), which is why it gets its own entry
+       instead of a pitch on the existing one. */
+    comboFinish: 'v2:beatemup-dungeon/audio/sfx/combo-finish.ogg',
+  },
+  /* Effects sit ABOVE the music: a punch that the bed swallows reads as a
+     punch that did not connect. Both are under the mute. */
+  sfxVolume: 0.9,
+
+  /* Per-effect trim, multiplied onto sfxVolume. Anything not listed plays at 1.
+
+     ⚠️ IT HAS TO BE HERE RATHER THAN IN THE FILE. The cut clips are normalised
+     to -1 dBFS, so there is no room left to make one louder by re-cutting it --
+     a finisher rendered 20% hotter would just be a finisher with its peaks
+     flattened. Gain at playback has the headroom the file does not: Web Audio
+     mixes in float and only meets the fixed point at the output.
+
+     THE CEILING IS REAL THOUGH. sfxVolume 0.9 x 1.2 against a -0.94 dBFS clip
+     comes to 0.97, which fits; push much past 1.3 here and the effect will
+     clip against the music instead of getting louder. If it needs to dominate
+     more than that, the thing to turn down is musicVolume. */
+  SFX_GAIN: {
+    comboFinish: 1.2,      // the last hit of a string reads as the biggest one
+  },
+  /* How much higher each successive hit of a combo is pitched. 0 turns it off
+     and gives every punch the identical sample. At 0.045 the fifth hit is about
+     20% up, which is a different punch rather than a different instrument. */
+  sfxHitDetune: 0.045,
   goY: 150,
   goH: 74 * 1.3,          // on-screen height of the GO! art; width follows aspect
   goHandH: 54 * 1.3,      // on-screen height of the hand; width follows its aspect

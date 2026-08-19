@@ -145,7 +145,14 @@ class Fighter {
     if (!def) return false;
     this.comboIndex = i;
     this.comboWindow = 0;
-    this.atk = { def, phase: 'startup', t: 0, hasHit: false };
+    /* `last` IS DECIDED HERE, NOT READ BACK LATER. The string and the index are
+       both in hand at this moment; a frame later `comboIndex` is still around
+       but the array it indexed is not, and anything wanting to know whether
+       this is the finisher would have to go and find the string again -- and
+       get it wrong on the chain that flips to the alternate ending. One
+       comparison, made where both halves are known. */
+    this.atk = { def, phase: 'startup', t: 0, hasHit: false,
+                 last: i === defs.length - 1 };
     this.state = 'attack';
     this.step = 0;
     this.animT = 0;

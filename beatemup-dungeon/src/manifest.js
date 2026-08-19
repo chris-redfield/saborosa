@@ -69,6 +69,8 @@ function assetManifest() {
      suspended until the player has interacted with the page. Fetching is not
      gated on that; decoding is. */
   out.push({ key: 'music', src: CONFIG.MUSIC_TRACK, how: 'audio' });
+  for (const [name, src] of Object.entries(CONFIG.SFX || {}))
+    out.push({ key: 'sfx:' + name, src: src, how: 'audio' });
 
   /* The controller mapping. OPTIONAL — the game must never sit on a loading bar
      waiting for a pad profile, so game.js does not await it and it is not part

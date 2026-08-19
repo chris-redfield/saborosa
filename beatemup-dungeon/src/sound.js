@@ -40,10 +40,20 @@
  * The graph is one gain per bus, so mute is a single knob and the balance
  * underneath it is untouched:
  *
- *      music ──→ musicGain ──→ master ──→ destination
+ *      music ─→ musicGain ─┐
+ *                          ├─→ master ─→ destination
+ *      effects ─→ sfxGain ─┘
  *
- * There is no sfx bus yet. When the hit sounds land they hang off `master`
- * beside `musicGain`, which is why the split exists this early.
+ * EFFECTS ARE ONE-SHOTS AND ARE NEVER TRACKED. Each play builds its own source,
+ * starts it and forgets it; the node is collected when it ends. Nothing needs
+ * stopping, because nothing here is a state -- a punch is an event and it is
+ * over when the sound is. That is not true of every game sound (a held weapon
+ * is a state and has to be turned off by whoever turned it on) and this file
+ * will need a second shape when one arrives. It does not have one yet.
+ *
+ * THEY MUST OVERLAP. Two punches 80ms apart are two sounds, so a play never
+ * cuts the previous one -- with a 300ms effect and a five-hit combo, reusing
+ * one source would silence most of the string.
  */
 class Sound {
   constructor(assets) {
@@ -53,6 +63,9 @@ class Sound {
     this.musicGain = null;
     this.buffer = null;
     this.source = null;
+    this.sfxGain = null;
+    this.sfx = {};             // name -> decoded AudioBuffer
+    this._sfxPending = {};     // name -> true while a decode is in flight
     this.muted = false;
     this.volume = (typeof CONFIG !== 'undefined' && CONFIG.musicVolume != null)
       ? CONFIG.musicVolume : 0.55;
@@ -86,6 +99,9 @@ class Sound {
     this.musicGain = this.ctx.createGain();
     this.musicGain.gain.value = this.volume;
     this.musicGain.connect(this.master);
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.value = (CONFIG.sfxVolume != null) ? CONFIG.sfxVolume : 0.9;
+    this.sfxGain.connect(this.master);
     return this.ctx;
   }
 
@@ -97,6 +113,7 @@ class Sound {
       if (p && p.then) p.then(() => this._startIfReady(), () => {});
     }
     this._startIfReady();
+    this.primeSfx();
   }
 
   /**
@@ -132,11 +149,73 @@ class Sound {
     } catch (e) { this._decoding = false; }
   }
 
+  /**
+   * Decode every effect in CONFIG.SFX, ahead of anyone asking for one.
+   *
+   * ⚠️ AHEAD OF TIME IS THE WHOLE POINT. decodeAudioData is asynchronous, so a
+   * clip decoded on the first punch is a clip that is not ready ON the first
+   * punch -- the sound would be missing exactly once, at the moment a player is
+   * most likely to conclude there is no sound. Decoding at level start costs a
+   * few ms of a frame nobody is looking at.
+   */
+  primeSfx() {
+    const ctx = this._ensure();
+    if (!ctx || !CONFIG.SFX) return;
+    for (const name of Object.keys(CONFIG.SFX)) {
+      if (this.sfx[name] || this._sfxPending[name]) continue;
+      const bytes = this.assets && this.assets.getBytes('sfx:' + name);
+      if (!bytes) continue;
+      this._sfxPending[name] = true;
+      const done = buf => { delete this._sfxPending[name]; if (buf) this.sfx[name] = buf; };
+      const fail = () => { delete this._sfxPending[name]; };
+      try {
+        const p = ctx.decodeAudioData(bytes.slice(0), done, fail);
+        if (p && p.then) p.then(done, fail);
+      } catch (e) { delete this._sfxPending[name]; }
+    }
+  }
+
+  /**
+   * Fire an effect, now.
+   *
+   * SILENT RATHER THAN THROWING when the clip is not ready or audio is still
+   * locked. This is called from the middle of hit resolution, sixty times a
+   * second in a busy fight, and a missing sound must never be able to take the
+   * fight down with it.
+   *
+   * `rate` detunes a repeat so a five-hit combo is not the same 300ms sample
+   * five times, which reads as a stuck record rather than as five punches.
+   */
+  play(name, rate) {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;
+    const buf = this.sfx[name];
+    if (!buf) { this.primeSfx(); return; }
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    if (rate) s.playbackRate.value = rate;
+    /* A per-effect trim gets its OWN gain node rather than moving the bus:
+       the bus is the balance between all effects and the music, and nudging it
+       for one clip would move every other clip with it -- and leave it moved,
+       because nothing puts it back. The node dies with the source. */
+    const trim = (CONFIG.SFX_GAIN && CONFIG.SFX_GAIN[name]) || 1;
+    if (trim !== 1) {
+      const g = ctx.createGain();
+      g.gain.value = trim;
+      g.connect(this.sfxGain);
+      s.connect(g);
+    } else {
+      s.connect(this.sfxGain);
+    }
+    s.start(0);
+  }
+
   /** The game wants music. Everything after this is the browser's timing. */
   playMusic() {
     this.wanted = true;
     this._ensure();
     this._decode();
+    this.primeSfx();
     this._resume();
   }
 

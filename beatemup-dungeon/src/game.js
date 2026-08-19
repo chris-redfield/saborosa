@@ -19,16 +19,18 @@
 
   const assets = new Assets();
   const input = new Input(window);
+  /* Built early because Combat takes it: the resolver is where a blow is
+     decided, so it is where the blow is heard. */
+  const sound = new Sound(assets);
   const sheets = new Sheets(assets);
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
   const stats = new Stats();
-  const combat = new Combat(stats);
+  const combat = new Combat(stats, sound);
   const hud = new Hud();
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
   const crowd = new Crowd();
-  const sound = new Sound(assets);
 
   let player = null;
   let phase = 'boot';          // boot | play | outro | fade | dead | clear

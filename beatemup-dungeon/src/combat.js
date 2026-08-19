@@ -26,8 +26,14 @@ class Combat {
      so nothing here has to be guarded by "is there a scoreboard". It is passed
      in rather than reached for because this file is the one place every hit in
      the game is decided, which makes it the only honest place to count them. */
-  constructor(stats) {
+  constructor(stats, sound) {
     this.stats = stats || null;
+    /* `sound` is optional for the same reason `stats` is: the resolver decides
+       hits and must keep working without a mixer attached. It is passed in
+       rather than reached for because THIS is the one place in the game where a
+       blow is known to have connected -- anywhere else would be guessing from
+       an animation frame. */
+    this.sound = sound || null;
     this.stop = 0;        // hitstop remaining, seconds
     this.events = [];     // { x, y, kind } — impact points, for the FX pass
   }
@@ -120,6 +126,36 @@ class Combat {
       : box.def.damage;
     const wasDead = best.dead;
     best.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+    /* THE SOUND OF IT, fired here rather than in _impact() because _impact is
+       shared with the blows the ENEMIES land on the player, and this one is the
+       player connecting.
+
+       IT IS NOT AFFECTED BY THE HITSTOP that starts a few lines below. Web
+       Audio runs on its own clock, so the effect plays through the freeze at
+       full speed -- which is right: the freeze is the picture holding on the
+       moment of impact, and the impact is what is being heard.
+
+       DETUNED PER LINK IN THE COMBO. The same 300ms sample five times in a row
+       reads as a stuck record rather than as five punches, so each hit of a
+       string comes out slightly higher than the last. `comboIndex` is already
+       the position in the string, so this costs nothing to know. */
+    if (this.sound) {
+      /* THE LAST LINK OF A STRING LANDS DIFFERENTLY, so it sounds different --
+         its own recording, not the punch pitched up. `atk.last` was decided
+         when the attack started (see Fighter.attack), which is the only moment
+         the string and the position in it are both known.
+
+         THE FINISHER IS NOT DETUNED. The rising pitch exists to keep four
+         copies of one sample from reading as a stuck record; the finisher is
+         heard once, against three that were not it, so there is nothing for it
+         to be told apart from. */
+      if (player.atk.last) {
+        this.sound.play('comboFinish');
+      } else {
+        const step = (CONFIG.sfxHitDetune != null) ? CONFIG.sfxHitDetune : 0.045;
+        this.sound.play('hit', 1 + step * (player.comboIndex || 0));
+      }
+    }
     if (this.stats) {
       this.stats.hit(dmg);
       // The kill is read AFTER the blow, and only on the transition: `dead`
