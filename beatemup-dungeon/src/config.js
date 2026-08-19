@@ -727,6 +727,72 @@ const CONFIG = {
      row was drawn for is not spent behind a piece of UI. */
   deathHoldMs: 1000,
 
+  /* =========================================================================
+     THE CLEAR BOARD
+     =========================================================================
+     What the run looked like, counted up a row at a time when the last room is
+     cleared. `src/stats.js` gathers the figures, `Hud.drawResults` draws them.
+
+     ⚠️ THE WHOLE TALLY MUST STAY UNDER ABOUT TWO SECONDS. Seven rows at
+     `rowMs` each, started `rowStaggerMs` apart, then the rank: long enough to
+     watch a number climb, short enough that nobody reaches for the button. A
+     count-up is a reward, and a reward that outstays its welcome is a loading
+     bar. A press part-way through SKIPS to the finished board rather than
+     dismissing it -- a player must never lose their figures by being early.
+
+     THE RANK JUDGES THREE THINGS AT ONCE, because any one alone is farmable:
+     accuracy alone rewards poking at one enemy from safety, damage taken alone
+     rewards running away, and time alone rewards skipping the fights alto-
+     gether. Weighted together they describe a player who hit what they aimed
+     at, did not get hit back, and kept moving.
+
+     Both budgets are deliberately generous. `rankDamageBudget` is two full
+     health bars and `rankParS` a comfortable clear, so C still reads as having
+     finished the level and S is worth chasing. Retune S downward only after
+     watching somebody who is not you play it. */
+  RESULTS: {
+    /* ⚠️ THESE TWO SET THE LENGTH OF THE WHOLE COUNT-UP, AND IT IS 4.0s:
+       the last row STARTS at (rows - 1) staggers in and then takes `rowMs`, so
+       with seven rows it is 6 x 500 + 1000 = 4000ms to the last number landing.
+       Retiming means solving that again — a stagger raised on its own moves the
+       finish by six times what it looks like.
+
+       THE SPLIT BETWEEN THEM IS THE FEEL, not just the total. At 500/1000 each
+       row gets its own beat before the next arrives while its number is still
+       climbing, so the eye has somewhere to be and the board reads as a tally
+       rather than seven counters running at once. Pushed the other way — a
+       short stagger and a long roll — every number moves at the same time and
+       it reads as noise, which is what 195/806 was starting to do.
+
+       They were 620/150 (2.4s), then 806/195 (3.0s), now this. */
+    rowMs: 1000,            // how long one number takes to roll up
+    rowStaggerMs: 500,      // gap between rows starting
+    rankDelayMs: 400,       // beat between the LAST ROW FINISHING and the stamp
+    rankMs: 420,
+    /* LAID OUT DOWNWARD FROM THE TITLE, and the whole column has to clear the
+       rank stamp: seven rows at `rowStep` from `rowsY`, plus `noteStep` for the
+       one row that carries a breakdown line, plus the stamp's own half-height
+       above `rankY`. At the first numbers tried the breakdown line landed
+       directly under the word RANK. If a row is added, move `rankY` down with
+       it -- nothing here is computed from the row count. */
+    titleY: 100,
+    rowsY: 190,
+    rowStep: 42,
+    noteStep: 30,
+    labelX: 366,
+    valueX: 914,
+    rowSize: 27,
+    noteSize: 17,
+    rankY: 588,
+    rankSize: 76,
+    rankColors: { S: '#FFD23F', A: '#7BD389', B: '#6FB3E0', C: '#E8E8E8' },
+    // score >= min, first match wins. Keep it sorted downward.
+    rankTiers: [['S', 0.90], ['A', 0.75], ['B', 0.55], ['C', 0]],
+    rankWeights: [0.40, 0.40, 0.20],   // accuracy, health kept, pace
+    rankDamageBudget: 220,             // two full bars of damage taken = 0
+    rankParS: 150,                     // a comfortable clear, in seconds
+  },
+
   /* How far PAST the right edge the coconut walks before the level is called,
      in px. Enough that he is fully gone rather than clipped at the frame edge —
      a fighter is up to ~137px wide and drawn from its own anchor, so a smaller

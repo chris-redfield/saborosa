@@ -22,7 +22,12 @@
  * standing in it.
  */
 class Combat {
-  constructor() {
+  /* `stats` is the run's tally and is OPTIONAL — the resolver works without one,
+     so nothing here has to be guarded by "is there a scoreboard". It is passed
+     in rather than reached for because this file is the one place every hit in
+     the game is decided, which makes it the only honest place to count them. */
+  constructor(stats) {
+    this.stats = stats || null;
     this.stop = 0;        // hitstop remaining, seconds
     this.events = [];     // { x, y, kind } — impact points, for the FX pass
   }
@@ -76,6 +81,17 @@ class Combat {
   playerHits(player, crowd, boss) {
     const box = player.hitbox();
     if (!box) return;
+    /* COUNTED HERE, AFTER THE BOX EXISTS — the order of these two lines is the
+       whole definition of accuracy. `hitbox()` is null until the active window
+       opens, so a punch the player was knocked out of during its start-up never
+       counts against them: they did not miss it, they never threw it. Counted
+       above the guard instead, every wind-up interrupted by a hit would score as
+       a miss, and accuracy would measure how often they were interrupted.
+
+       Stats dedupes by the attack OBJECT, so the several frames a window stays
+       live are still one swing — and a swing that connects is counted here
+       before `hasHit` closes the box below. */
+    if (this.stats) this.stats.countSwing(player.atk);
     /* The boss is just another target. It answers vulnerable()/overlaps()/hurt()
        with the same shapes a Fighter does, which is why it needs no special case
        here — the one place the resolver would otherwise have grown a branch. */
@@ -102,7 +118,15 @@ class Combat {
     const dmg = (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.punchDamage != null)
       ? CONFIG.DEV.punchDamage
       : box.def.damage;
+    const wasDead = best.dead;
     best.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+    if (this.stats) {
+      this.stats.hit(dmg);
+      // The kill is read AFTER the blow, and only on the transition: `dead`
+      // stays true while the body falls and fades, so testing it alone would
+      // score one death every frame of the fall.
+      if (!wasDead && best.dead) this.stats.killed(best.kind);
+    }
     this._impact(player, best, box.def.pose);
   }
 
@@ -133,6 +157,7 @@ class Combat {
        move — and hardcoding here would quietly flatten it into an ordinary hit. */
     player.hurt(box.def.damage, box.dir, box.def.knockback,
                 box.def.lift || 0, !!box.def.knockdown);
+    if (this.stats) this.stats.tookHit(box.def.damage);
     this._impact(boss, player, 'finisher');
   }
 
@@ -146,6 +171,7 @@ class Combat {
       if (!player.overlaps(box)) continue;
       e.atk.hasHit = true;
       player.hurt(box.def.damage, box.dir, box.def.knockback, 0, false);
+      if (this.stats) this.stats.tookHit(box.def.damage);
       this._impact(e, player, 'straight');
     }
   }

@@ -203,6 +203,72 @@ goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
 So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
 place, size, bob and fade are the other `go*` knobs in the same block.
 
+## The CLEAR board
+
+Clearing the last room no longer writes CLEAR and stops — it counts the run up,
+a row at a time. `src/stats.js` gathers the figures, `Hud.drawResults` draws
+them, and every knob is in `CONFIG.RESULTS`.
+
+```js
+RESULTS: {
+  rowMs: 1000,         // how long one number takes to roll up
+  rowStaggerMs: 500,   // gap between rows starting
+  rankDelayMs: 400,    // beat between the last row FINISHING and the stamp
+  rankMs: 420,
+  rankWeights: [0.40, 0.40, 0.20],   // accuracy, health kept, pace
+  rankDamageBudget: 220,             // damage taken for a 0 on that third
+  rankParS: 150,                     // a comfortable clear, in seconds
+  rankTiers: [['S',0.90], ['A',0.75], ['B',0.55], ['C',0]],
+}
+```
+
+Rows: hits landed / swings, accuracy, hits taken, damage dealt, damage taken,
+time, enemies downed (with a by-name breakdown underneath). Then the rank.
+
+**Where the time goes.** The count-up is **4.0s** end to end — rows start 0.5s
+apart and each number rolls for 1.0s, so the last row starts at 3.0s and lands
+on 4.0s. On the board's own clock (which starts 0.45s after CLEAR appears, so
+the black is down first):
+
+| | board clock | from CLEAR |
+|---|---|---|
+| last number finishes | 4.00s | 4.45s |
+| rank stamp lands | 4.82s | 5.27s |
+| "press anything" | 5.17s | 5.62s |
+
+**To retime, solve for the finish:** the last row starts at `(rows - 1)` staggers
+in and then takes `rowMs`, so with seven rows it is `6 x stagger + rowMs`. A
+stagger raised on its own moves the finish by six times what it looks like.
+
+**The split between them is the feel, not just the total.** A long stagger and a
+short roll gives each row its own beat; a short stagger and a long roll has every
+number climbing at once, which reads as noise. You can skip from 1.2s onward
+regardless.
+
+**A press part-way through SKIPS to the finished board; it does not dismiss it.**
+The next press restarts. A player must never lose their figures by being early.
+
+**The rank judges three things at once** because any one alone is farmable:
+accuracy alone rewards poking at one enemy from safety, damage taken alone
+rewards running away, time alone rewards skipping the fights. Both budgets are
+deliberately generous, so C still reads as having finished the level.
+
+**Adding a row** is one entry in `Stats.rows()` — `value` is the number the
+count-up rolls to and `text(n)` formats it, so the animation never learns about
+percent signs or clocks. A row with no `value` is not rolled. **Move `rankY`
+down when you add one**: the layout is written out, not computed from the row
+count, and the first numbers tried put the breakdown line under the word RANK.
+
+**Accuracy counts a swing when its hitbox goes LIVE**, not when the button is
+pressed — a punch the player was knocked out of during its start-up was never
+thrown, and charging them for it would make accuracy a measure of how often they
+were interrupted. In `combat.playerHits`, that is the order of two lines.
+
+**In dev mode the damage figures are inflated** (every punch does 50) and the
+board says so on itself. Hit counts, accuracy and time are unaffected.
+
+---
+
 **After you die**, the death row plays out and then *holds*, before the game
 will accept a restart or fade up the DOWN card:
 

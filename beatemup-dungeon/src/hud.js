@@ -155,6 +155,139 @@ class Hud {
     ctx.restore();
   }
 
+  /**
+   * THE CLEAR BOARD: the run, counted up a row at a time.
+   *
+   * `t` is seconds since the board appeared, and EVERYTHING IS DERIVED FROM IT
+   * rather than stepped — no row holds its own progress, nothing accumulates.
+   * That is what makes `skip` a single number: setting the clock past the end
+   * finishes the tally exactly as if it had run, with no state to reconcile.
+   *
+   * ⚠️ THE ROWS ROLL FROM ZERO, WHICH MEANS THE LAST ROW IS THE SLOWEST THING
+   * ON SCREEN. A board of seven rows at `rowMs` each, staggered by
+   * `rowStaggerMs`, is over in about two seconds — worth keeping it there. Long
+   * enough to watch, short enough that nobody reaches for the button; the tally
+   * is a reward, and a reward that outstays its welcome becomes a loading bar.
+   *
+   * Rows are drawn as a LABEL COLUMN and a VALUE COLUMN, left and right aligned
+   * against two x positions rather than centred as one string — centring makes
+   * the numbers wander as they grow, and a column of digits that shifts while it
+   * counts is unreadable.
+   */
+  drawResults(ctx, stats, t, alpha) {
+    const R = CONFIG.RESULTS;
+    const rows = stats.rows();
+    const W = CONFIG.GAME_W;
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(0, 0, W, CONFIG.GAME_H);
+
+    ctx.fillStyle = CONFIG.hudColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = this._font(76, 900);
+    ctx.fillText('CLEAR', W / 2, R.titleY);
+
+    const ease = (p) => 1 - Math.pow(1 - p, 3);       // fast, then settling
+    let y = R.rowsY;
+    rows.forEach((row, i) => {
+      const start = (i * R.rowStaggerMs) / 1000;
+      const p = Math.max(0, Math.min(1, (t - start) / (R.rowMs / 1000)));
+      if (p <= 0) { y += R.rowStep + (row.note ? R.noteStep : 0); return; }
+
+      // The row itself fades in over its first fifth, so it arrives rather than
+      // appearing — the count-up is already carrying the eye.
+      ctx.globalAlpha = alpha * Math.min(1, p * 5);
+      ctx.font = this._font(R.rowSize, 'bold');
+      ctx.textAlign = 'left';
+      ctx.fillStyle = CONFIG.hudColor;
+      ctx.fillText(row.label, R.labelX, y);
+
+      ctx.textAlign = 'right';
+      const shown = row.value == null ? 0 : row.value * ease(p);
+      /* A ROLLING NUMBER MUST NOT LAND SHORT. `ease` reaches 1 exactly, but the
+         value is rounded for display all the way up, so the final frame has to
+         be the real figure and not a rounding of it. */
+      ctx.fillText(row.text(p >= 1 ? row.value : Math.round(shown)), R.valueX, y);
+      y += R.rowStep;
+
+      if (row.note) {
+        ctx.font = this._font(R.noteSize, 'bold');
+        ctx.globalAlpha = alpha * Math.min(1, p * 5) * 0.72;
+        ctx.textAlign = 'right';
+        ctx.fillText(row.note, R.valueX, y);
+        y += R.noteStep;
+      }
+    });
+
+    /* THE RANK IS STAMPED, NOT ROLLED, and it lands after every number is in.
+       It is the one line that judges the run, so it has to arrive as a verdict
+       on figures the player has already read — rolling it alongside them would
+       make it just another statistic. */
+    const { stampAt, promptAt } = this._resultsTimes(stats);
+    const sp = Math.max(0, Math.min(1, (t - stampAt) / (R.rankMs / 1000)));
+    if (sp > 0) {
+      const letter = stats.rank();
+      ctx.globalAlpha = alpha * Math.min(1, sp * 3);
+      ctx.textAlign = 'center';
+      ctx.save();
+      ctx.translate(W / 2, R.rankY);
+      // Overshoot and settle: 1.6x down to 1. A stamp that scales up from
+      // nothing reads as a fade; one that comes down onto the board reads as a
+      // stamp, and that is the whole difference.
+      ctx.scale(1 + 0.6 * (1 - ease(sp)), 1 + 0.6 * (1 - ease(sp)));
+      ctx.fillStyle = R.rankColors[letter] || CONFIG.hudColor;
+      ctx.font = this._font(R.rankSize, 900);
+      ctx.fillText(letter, 0, 0);
+      ctx.font = this._font(R.rowSize * 0.8, 'bold');
+      ctx.fillText('RANK', 0, -R.rankSize * 0.62);
+      ctx.restore();
+
+      if (CONFIG.DEV && CONFIG.DEV.on) {
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = '#E4463A';
+        ctx.font = this._font(16, 'bold');
+        ctx.fillText('DEV MODE: damage figures are not real', W / 2, R.rankY + 54);
+      }
+    }
+
+    if (t >= promptAt) {
+      ctx.globalAlpha = alpha * (0.55 + 0.45 * Math.abs(Math.sin(t * 2.2)));
+      ctx.fillStyle = CONFIG.hudColor;
+      ctx.textAlign = 'center';
+      ctx.font = this._font(22, 'bold');
+      ctx.fillText('press anything', W / 2, CONFIG.GAME_H - 46);
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The board's two moments, in seconds on its own clock.
+   *
+   * ⚠️ ONE SOURCE FOR BOTH, AND THE SHELL READS THE SAME ONE. `promptAt` is
+   * when the board is finished and asks to be dismissed, and it is ALSO the
+   * shell's test for whether a press should skip the tally or restart the game.
+   * Computed separately they drift, and the gap between them is a window where
+   * the board says "press anything" and then eats the press — which is exactly
+   * the bug this replaced: 150ms of a visible prompt doing nothing.
+   *
+   * `stampAt` is measured from the last row FINISHING; the last row starts at
+   * (n-1) staggers in, not n, so counting a stagger per row put an extra beat
+   * of silence in front of the rank and made `rankDelayMs` mean 410 when it
+   * said 260.
+   */
+  _resultsTimes(stats) {
+    const R = CONFIG.RESULTS;
+    const stampAt = ((stats.rows().length - 1) * R.rowStaggerMs + R.rowMs
+                     + R.rankDelayMs) / 1000;
+    return { stampAt, promptAt: stampAt + R.rankMs / 1000 + 0.35 };
+  }
+
+  /** When the board is finished: the shell's skip-or-restart line. */
+  resultsRunS(stats) { return this._resultsTimes(stats).promptAt; }
+
   drawCard(ctx, lines, alpha, color) {
     ctx.save();
     ctx.globalAlpha = alpha;

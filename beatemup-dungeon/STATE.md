@@ -59,6 +59,9 @@ two new measurements into the sprite pipeline and then forced the cutter to stop
 cutting on ink altogether. See *The sprites*, *The enemy combo* and *The
 jump-in*.
 
+**Clearing the level now shows a BOARD**, not the word CLEAR: the run counted
+up a row at a time, ending in a rank. See *The CLEAR board*.
+
 **Six bugs, all documented** in *Bugs whose causes are not guessable*, and five
 of them are the same shape: something was mid-state — playing, falling, seeking,
 queued — when the thing driving it changed underneath. That is the family to
@@ -160,7 +163,8 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/combat.js` | hit resolution and hitstop |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
-| `src/hud.js` | health, GO prompt, end cards |
+| `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |
+| `src/stats.js` | the run's tally: what the CLEAR board counts up |
 | `src/debug.js` | everything the C key draws |
 | `src/input.js` | keyboard + pad; owns the pad mapping merge-back |
 | `tools/build-go-glyph.py` | cuts "GO!" out of the title lettering sheet |
@@ -786,6 +790,76 @@ and the fight would quietly become unwinnable. The knob to reach for instead is
 `flyBossHoverY` (150): **142 restores the old window at 0.72 scale.**
 
 88 HP — a multiple of 22, so exactly 4 damage a bar square.
+
+---
+
+## The CLEAR board
+
+Clearing the last room used to write CLEAR and stop. It now counts the run up a
+row at a time: hits landed of swings thrown, accuracy, hits taken, damage dealt
+and taken, time, enemies downed with a by-name breakdown, and then a RANK.
+
+⚠️ **EVERY FIGURE COMES FROM `combat.js`, WHICH IS THE ONE PLACE HITS ARE
+RESOLVED.** `src/stats.js` is counters and formatting with no knowledge of the
+fight; the resolver tells it what happened. Counting swings in player.js and
+hits in combat.js would be two sources for one ratio, and accuracy would drift
+the first time either changed.
+
+⚠️ **A SWING IS COUNTED WHEN ITS HITBOX GOES LIVE, NOT WHEN THE BUTTON IS
+PRESSED, and in `playerHits` that is the order of two lines.** A punch the
+player was knocked out of during its own start-up never became a punch. Counted
+before the `if (!box) return`, every wind-up interrupted by a hit scores as a
+miss and accuracy stops measuring aim and starts measuring how often they were
+interrupted. It is deduped by the attack OBJECT, because the active window is
+several frames long and Fighter builds a fresh attack per swing.
+
+⚠️ **THE KILL IS READ ON THE TRANSITION, NOT THE FLAG.** `dead` stays true while
+the body falls and fades, so testing it alone scores one death every frame of
+the fall.
+
+⚠️ **THE WHOLE BOARD IS DERIVED FROM ONE CLOCK.** No row holds its own progress
+and nothing accumulates, which is what makes the SKIP a single number: setting
+the clock past the end finishes the tally exactly as if it had run, with no
+state to reconcile. `boardSkip` in game.js is that number.
+
+**The count-up is 4.0s end to end**, asked for after watching it at 2.4s and
+3.0s. Rows start 0.5s apart and each number rolls for 1.0s, so the last row
+starts at 3.0s and lands on 4.0s; the rank follows at 4.8s and the prompt at
+5.2s. Add the 0.45s the board waits before starting for the times from CLEAR.
+
+⚠️ **THE TOTAL IS `(rows - 1) x stagger + rowMs`, so a stagger raised on its own
+moves the finish by six times what it looks like.** And the split between the
+two is the FEEL rather than just the total: a long stagger with a short roll
+gives every row its own beat, while a short stagger with a long roll has all
+seven numbers climbing at once, which reads as noise.
+
+⚠️ **`rankDelayMs` USED TO LIE ABOUT ITS OWN UNITS.** The stamp time counted one
+stagger per row, but the last row STARTS at (n-1) staggers in — so a knob set to
+260 produced a 410ms gap. Fixed with the retime; if the rank ever feels early or
+late, that knob now means exactly what it says.
+
+⚠️ **THE FIRST PRESS SKIPS THE TALLY, IT DOES NOT DISMISS IT.** A player
+pressing during the count-up has said "get on with it", not "I have finished
+reading numbers I have not been shown yet". The next press restarts.
+
+**THE RANK JUDGES THREE THINGS AT ONCE, because any one alone is farmable:**
+accuracy rewards poking at one enemy from safety, damage taken rewards running
+away, and time rewards skipping the fights. Weighted 40/40/20 they describe a
+player who hit what they aimed at, did not get hit back, and kept moving. Both
+budgets are deliberately generous — two full health bars of damage, a 150s par —
+because a rank that is hard to read is a participation letter. Measured on
+sample runs: 87% accuracy and 22 damage taken clears S; a middling run lands B;
+40% accuracy with 165 taken lands C.
+
+**The run clock is ticked in `update()` and nowhere else**, so it is time spent
+PLAYING — fades between rooms, the walk-out and every end screen are outside it.
+
+**Under dev mode the damage figures are inflated and the board says so**, since
+every punch does 50. The hit counts, accuracy and time are unaffected.
+
+**The layout is written out, not computed.** Seven rows plus a breakdown line
+have to clear the stamp; at the first numbers tried the breakdown landed
+directly under the word RANK. Add a row and `rankY` moves with it.
 
 ---
 

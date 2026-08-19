@@ -22,7 +22,8 @@
   const sheets = new Sheets(assets);
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
-  const combat = new Combat();
+  const stats = new Stats();
+  const combat = new Combat(stats);
   const hud = new Hud();
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
@@ -32,6 +33,7 @@
   let phase = 'boot';          // boot | play | outro | fade | dead | clear
   let phaseT = 0;
   let faded = false;           // has the room swap inside a fade happened yet
+  let boardSkip = 0;           // >0 = the CLEAR tally was skipped to its end
   let last = 0;
 
   const bar = document.getElementById('bar');
@@ -99,6 +101,7 @@
   function start() {
     stage.reset();
     crowd.clear();
+    stats.reset();
     player = new Player(220, CONFIG.beltDepth * 0.6);
     /* DEV: start somewhere other than the beginning. Applied after the player
        exists, because entering a room places them at its own origin. */
@@ -107,6 +110,7 @@
     }
     phase = 'play';
     phaseT = 0;
+    boardSkip = 0;
     input.flush();
     last = performance.now();
     requestAnimationFrame(loop);
@@ -205,10 +209,31 @@
        the game a heartbeat after the animation ended, so they never found out
        what happened to them. */
     const deathLock = (phase === 'dead') ? player.deathLock(sheets) : 0;
+    // Is the CLEAR tally still counting up? Derived from the same clock the
+    // board draws itself from, so the two can never disagree about it.
+    const rolling = phase === 'clear'
+      && Math.max(boardSkip, phaseT - 0.45) < hud.resultsRunS(stats);
     if ((phase === 'dead' || phase === 'clear') && deathLock <= 0
         && phaseT > 1.2 && input.takeAnyPress()) {
-      start();
-      return;
+      /* ⚠️ A PRESS ON A **ROLLING** BOARD SKIPS IT, IT DOES NOT DISMISS IT.
+         The CLEAR board counts its figures up, and a player who presses during
+         that has said "get on with it", not "I have finished reading numbers I
+         have not been shown yet". So the press is spent finishing the tally —
+         `boardSkip` is just the clock jumped forward, because drawResults
+         derives everything from that one value — and the NEXT press restarts.
+
+         ⚠️ IT MUST TEST WHETHER THE TALLY IS STILL RUNNING, not merely whether
+         it has been skipped once. Written as `!boardSkip` this ate the first
+         press on a FINISHED board — the player pressed, nothing whatsoever
+         happened, and only a second press restarted.
+
+         ⚠️ AND IT MUST NOT RETURN. Everything below this schedules the next
+         frame; a `return` here left the loop unscheduled, so the game stopped
+         dead on the board and no press after it was ever read. That is the same
+         shape as the shadow exception in the bug list — anything that leaves
+         loop() early has to have called start(), which schedules its own. */
+      if (rolling) boardSkip = hud.resultsRunS(stats);
+      else { start(); return; }
     }
 
     render();
@@ -216,6 +241,12 @@
   }
 
   function update(dt) {
+    /* THE RUN CLOCK RUNS HERE AND NOWHERE ELSE, which is what makes it the time
+       the player was PLAYING: `update` is only called in the play phase, so
+       fades between rooms, the walk-out and every end screen are outside it. A
+       clock started at boot would mostly measure how long the CLEAR board was
+       left on screen. */
+    stats.tick(dt);
     combat.tick(dt);
     backdrop.update(dt);
 
@@ -314,7 +345,9 @@
     ctx.restore();
 
     if (phase === 'clear') {
-      hud.drawCard(ctx, ['CLEAR', 'press anything'], Math.min(1, phaseT / 0.6));
+      hud.drawResults(ctx, stats,
+                      Math.max(boardSkip, phaseT - 0.45),
+                      Math.min(1, phaseT / 0.6));
     } else if (phase === 'dead') {
       /* Held back for the whole watch -- the row playing plus the hold after it.
          Length comes from the pack and the knob, never a literal, so a redraw
