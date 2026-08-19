@@ -1425,6 +1425,26 @@ const CONFIG = {
      that choosing to flicker later is a draw-code change rather than another
      trip through the tool. */
   GO_SHEET: 'v2:beatemup-dungeon/saborosa-go.png',
+
+  /* --- Music ---------------------------------------------------------------
+     ONE FILE, ONE LOOP, NO MIXER AT RUNTIME. The track is three of the five
+     takes layered and aligned in tools/beat-music-lab.html; the game does none
+     of that. Three <audio> elements started together drift apart within a
+     minute and the browser gives no way to bind them, so the layering is
+     resolved offline or not attempted -- the flying dungeon's finding,
+     inherited whole.
+
+     ⚠️ musicLoopSec IS NOT DECORATION AND MUST MATCH THE MIX. Opus stores its
+     length in a container field that decoders disagree about by a few
+     milliseconds, and `AudioBufferSourceNode.loop` with no bounds wraps at
+     whatever the DECODED buffer happens to be. A few ms of codec padding at
+     the end is a few ms of silence inserted every 6.1 seconds -- a tick you
+     will hear and will look for in the music. sound.js pins loopEnd to this
+     number instead, so the wrap is where the mix says it is whatever decoded
+     the file. It is the `loopMs` of DEFAULT_MASTER in the lab, in seconds. */
+  MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
+  musicLoopSec: 6.146,
+  musicVolume: 0.55,
   goY: 150,
   goH: 74 * 1.3,          // on-screen height of the GO! art; width follows aspect
   goHandH: 54 * 1.3,      // on-screen height of the hand; width follows its aspect

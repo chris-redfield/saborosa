@@ -51,21 +51,41 @@ level*.
 **Dev mode exists and is ON.** 50 damage a punch, number keys jump rooms,
 `package.sh` refuses to build. See *Open*.
 
-**Two villains with art of their own.** JUIXY and TOM are gone; **CIGARRO** and
-the **stub** — a pair of cigarettes, 8 rows each, drawn for this game — took
-their waves and their stats. They are the first enemies in the game that throw a
-**combo** rather than a swing, and the first that **jump in**. Their smoke forced
-two new measurements into the sprite pipeline and then forced the cutter to stop
-cutting on ink altogether. See *The sprites*, *The enemy combo* and *The
-jump-in*.
-
-**Clearing the level now shows a BOARD**, not the word CLEAR: the run counted
-up a row at a time, ending in a rank. See *The CLEAR board*.
-
 **Six bugs, all documented** in *Bugs whose causes are not guessable*, and five
 of them are the same shape: something was mid-state — playing, falling, seeking,
 queued — when the thing driving it changed underneath. That is the family to
 suspect first in this codebase.
+
+---
+
+## And then on 2026-08-19
+
+The villains, and the screen that ends the level.
+
+**TWO VILLAINS WITH ART OF THEIR OWN, and the cast is nearly redrawn.** JUIXY
+and TOM are gone; **CIGARRO** and the **stub** — a pair of cigarettes, 8 rows
+each — took their waves and their stats, so no fight's time-to-kill moved when
+the art did. Only ERKPA is still on a borrowed main-game pack. See *The sprites*.
+
+**THEY FIGHT DIFFERENTLY FROM ANYTHING BEFORE THEM.** They throw a three-hit
+STRING rather than a single swing, and they JUMP IN — the first enemy in the
+game to leave the floor. Both are per-kind data, so ERKPA is untouched. See
+*The enemy combo* and *The jump-in*.
+
+**THE SMOKE REWROTE THE CUTTER.** It sizes nothing, anchors nothing, and on the
+second sheet it welds frames and bridges rows — so the sheet is now cut on
+BODIES found by connected components, not on empty pixel rows and columns. Three
+separate rules for "which frame does this wisp belong to" mangled the atlas
+without ever failing. See *The sprites*.
+
+**THE LEVEL ENDS ON A BOARD**, not the word CLEAR: hits, accuracy, damage both
+ways, time and enemies downed, counted up over 4 seconds and stamped with a
+rank. `src/stats.js` is new. See *The CLEAR board*.
+
+**Seventh bug in the list, and it is a new shape** — an early `return` out of
+`loop()` that never scheduled the next frame. Everything else in that list is
+something changing under a value already read; this one is the loop simply
+stopping. Worth knowing both shapes exist.
 
 ---
 
@@ -434,6 +454,9 @@ so it does not read as an unfinished feature and get "fixed" back in.
 
 ## The enemy combo
 
+*Knobs: `CONFIG.ENEMY_COMBOS` (one attack def per hit, per kind) and
+`CONFIG.enemyComboWeights`. Code: `Enemy._think`'s 'combo' branch.*
+
 ⚠️ **AN ENEMY WITH A COMBO IS NORMALLY A BOSS, and this file said exactly that
 until the cigarette arrived with three punches drawn for him.** What keeps him a
 mook rather than a small boss is that **the string is declared before it is
@@ -484,6 +507,9 @@ frame could have its turn handed to somebody else while it is still visibly
 punching. `ai === 'combo'` counts as busy for exactly that frame.
 
 ## The jump-in
+
+*Knobs: `CONFIG.ENEMY_LEAP`, `enemyLeapChance` and the `enemyLeap*` band. Code:
+`Enemy.takeTurn` / `_startLeap` and the 'leap' branch of `_think`.*
 
 ⚠️ **HE PUNCHES ON THE WAY DOWN, AND THAT IS GEOMETRY RATHER THAN TASTE.**
 `verticalReach` is 70 and the jump apex is 85, so **a fighter at the top of his
@@ -795,6 +821,9 @@ and the fight would quietly become unwinnable. The knob to reach for instead is
 
 ## The CLEAR board
 
+*Knobs: `CONFIG.RESULTS`. Code: `src/stats.js` (the tally) and
+`Hud.drawResults` / `Hud._resultsTimes` (the drawing and the two moments).*
+
 Clearing the last room used to write CLEAR and stop. It now counts the run up a
 row at a time: hits landed of swings thrown, accuracy, hits taken, damage dealt
 and taken, time, enemies downed with a by-name breakdown, and then a RANK.
@@ -1002,6 +1031,26 @@ three cramped 260px walks into two of ~400px, with the extra enemies moved
 INSIDE the fights as staged `delayMs` arrivals — which cost no film, because an
 arena locks the camera.
 
+⚠️ **THE CLEAR BOARD FROZE THE WHOLE GAME ON THE FIRST PRESS, and every press
+after it did nothing.** The board's skip branch — a press part-way through
+finishes the tally instead of dismissing it — was written as `{ boardSkip = ...;
+return; }`. But `render()` and `requestAnimationFrame(loop)` are BELOW that
+branch, and the only other early return there is a `start()`, which schedules
+its own frame. So the skip left the loop unscheduled: the game stopped dead on a
+board that looked completely normal, and no input was ever read again. It reads
+exactly like an input bug and is not one.
+
+**Anything leaving `loop()` early must have scheduled a frame.** This is the same
+lesson as the shadow exception above, arrived at from the other direction: that
+one escaped the loop by throwing, this one by returning.
+
+Next to it was a second fault of the same family — the "still rolling" test used
+`!boardSkip` where it meant "is the tally still running", so a press on a
+FINISHED board was eaten as a pointless skip and only the second press worked.
+Both the board and the shell now read one `promptAt` from `Hud._resultsTimes`;
+computed separately they drift, and the gap between them is a window where the
+screen says "press anything" and ignores you.
+
 ⚠️ **THE END SCREENS DISMISSED THEMSELVES, and no input was involved.**
 "press anything" was already satisfied before it was drawn. `_anyPress` is set
 by every keydown of the whole fight, and the ONLY consumer is the end screen's
@@ -1048,13 +1097,16 @@ reader is the shape to look for.
 - **The stub has no name yet.** He is `cigarro2` in the code and carries
   `name: 'BAGANA'` as a placeholder next to COCONUT / CIGARRO / ERKPA. Nothing
   draws it — the field is documentation — so renaming him is one line.
-- **The jump-in is in and tuned** at `enemyLeapChance` 0.10, judged in play.
-  His plain `jump` row (row 3) is still cut and unwired — he never jumps
+- **The strings and the jump-ins have been watched and liked**, at
+  `enemyLeapChance` 0.10 / 0.05. What is still unjudged is the fight ECONOMY,
+  because dev mode changes the player's damage only: their blows land for real,
+  but every fight they land in is over in one combo. The combo weights, the
+  460ms punish window and the leap chances are the knobs to feel out with dev
+  off. Neither cigarette's plain `jump` row (row 3) is wired — they never jump
   without punching.
-- **His combo is unjudged in play.** It was built with dev mode ON, which
-  changes the PLAYER's damage only — so his string does hit for the real 3/3/5,
-  but every fight it happens in is over in one combo. The weights and the
-  460ms punish window are the two knobs to feel out with dev off.
+- **`rankParS` (150s) is a guess.** The CLEAR board now prints the clear time,
+  so one honest run with dev off settles whether the pace third of the rank is
+  generous or brutal. It is the only number on that board I could not derive.
 - **The lift mechanic is HALF WIRED.** The button exists (L/E, pad B), the
   `pickup` state exists, and BOTH animations are wired and chosen by weight —
   `pickGround` (row 9, a stoop) for a light thing, `lift` (row 7, a hoist) for a
@@ -1062,17 +1114,22 @@ reader is the shape to look for.
   is the entire seam: it returns false, so the stoop always plays. Objects,
   carrying (`carryWalk`, row 10) and throwing (`liftThrow`, row 8) are still to
   do.
-- **Cut but unwired.** `airPunch` (row 4) has no jump-attack state. It is cut,
-  named and mapped in `POSE_RAGGED`, so it is a wiring job rather than a trip
-  back to the illustrator.
+- **Cut but unwired — the PLAYER's air punch.** The coconut's row 4 has no
+  jump-attack state; it is cut, named and mapped, so it is a wiring job rather
+  than a trip back to the illustrator. Note the enemies' equivalent row IS wired
+  now (it is their jump-in), so `airPunch` being in `POSE_RAGGED` no longer
+  means "unused" — check per character.
 - **No sound at all.** The flying dungeon's `sound.js` is the model.
 - **`Escape`/`P` are captured but do nothing** — `takePause()` exists, no pause
   state does.
 - **The font.** Futura is not bundled; the stack falls through geometric sans.
   Same open decision as the other two games.
-- **Enemy variety.** All three villains differ only in speed, HP and damage —
-  they share one AI and one swing. A grappler or a thrower would need
-  `Enemy._think` to branch.
+- **Enemy variety, and it moved a long way.** The two cigarettes differ from
+  each other in tempo and weight (3+3+5 against 4+4+7, 10% leaps against 5%) and
+  from ERKPA in kind — he has no string and no jump-in, because he has no art
+  for either. What they still SHARE is one `_think`: approach, circle, wind,
+  commit. A grappler, a thrower or anything that keeps its distance would need
+  that to branch.
 - **The impact FX is drawn in code** (a starburst), honestly placeholder. There
   is no impact art in any Saborosa pack yet.
 - **Enemy bars stay plain slabs.** The hand-drawn bar is 11 inked squares in a

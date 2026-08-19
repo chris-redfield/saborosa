@@ -63,6 +63,13 @@ function assetManifest() {
     }
   }
 
+  /* The music. It is in the manifest so the BUILD copies it -- that is what
+     this list is for -- but it is loaded as raw BYTES and decoded later by
+     sound.js, because decoding needs an AudioContext and a browser keeps one
+     suspended until the player has interacted with the page. Fetching is not
+     gated on that; decoding is. */
+  out.push({ key: 'music', src: CONFIG.MUSIC_TRACK, how: 'audio' });
+
   /* The controller mapping. OPTIONAL — the game must never sit on a loading bar
      waiting for a pad profile, so game.js does not await it and it is not part
      of the progress total. It is in the manifest anyway because the BUILD still

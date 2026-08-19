@@ -27,6 +27,7 @@ class Input {
     this._attackQueued = false;
     this._jumpQueued = false;
     this._pauseQueued = false;
+    this._muteQueued = false;
     this._pickupQueued = false;
     this._roomJump = -1;       // dev: room index requested by a number key
     this._anyPress = false;
@@ -74,7 +75,11 @@ class Input {
         if (n >= 1) this._roomJump = n - 1;
         this._anyPress = true;
       }
-      else if (e.code === 'Escape' || e.code === 'KeyP') { this._pauseQueued = true; }
+      else if (e.code === 'KeyP' || e.code === 'Escape') { this._pauseQueued = true; }
+      /* MUTE, AND DELIBERATELY NOT AN "ANY PRESS". Every end screen in this
+         game is dismissed by pressing anything, so a mute that fell through to
+         the branch below would skip the board you muted the music to read. */
+      else if (e.code === 'KeyM') { this._muteQueued = true; }
       else { this._anyPress = true; }
     });
     t.addEventListener('keyup', e => {
@@ -210,6 +215,7 @@ class Input {
   /** Dev: the room a number key asked for, or -1. Consumed on read. */
   takeRoomJump() { const r = this._roomJump; this._roomJump = -1; return r; }
   takePause() { const p = this._pauseQueued; this._pauseQueued = false; return p; }
+  takeMute() { const m = this._muteQueued; this._muteQueued = false; return m; }
   takeAnyPress() { const a = this._anyPress; this._anyPress = false; return a; }
 
   /** Drop anything queued — used when a screen changes, so a key pressed on the

@@ -20,12 +20,16 @@ class Assets {
   constructor() {
     this.store = {};
     this.json = {};
+    /* Undecoded audio, kept apart from `store` because it is not a drawable and
+       nothing may hand it to drawImage by mistake. See loadAudio. */
+    this.bytes = {};
     this.loaded = 0;
     this.total = 0;
   }
 
   getDrawable(key) { return this.store[key] || null; }
   getJSON(key) { return this.json[key] || null; }
+  getBytes(key) { return this.bytes[key] || null; }
 
   /** Turn a config `src` into a URL. `v2:foo.png` → ASSET_V2_BASE + foo.png. */
   resolve(src) {
@@ -93,6 +97,26 @@ class Assets {
       i.onerror = () => { this._tick(); res(null); };
       i.src = this.resolve(src);
     });
+  }
+
+  /**
+   * An AUDIO file, fetched as bytes and NOT decoded.
+   *
+   * Decoding needs an AudioContext, and browsers keep one suspended until the
+   * page has been interacted with -- so decoding here would either fail or
+   * force the loading bar to wait on a user gesture that may never come. The
+   * bytes are what the loading bar can honestly account for; sound.js decodes
+   * them the moment it has a context.
+   *
+   * Resolves rather than rejects, like every other loader here: a missing
+   * track must cost the music, not the game.
+   */
+  loadAudio(key, src) {
+    this.total++;
+    return fetch(this.resolve(src), { cache: 'force-cache' })
+      .then(r => (r.ok ? r.arrayBuffer() : null))
+      .then(b => { if (b) this.bytes[key] = b; this._tick(); return b; })
+      .catch(() => { this._tick(); return null; });
   }
 
   loadJSON(key, src) {

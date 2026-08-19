@@ -28,6 +28,7 @@
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
   const crowd = new Crowd();
+  const sound = new Sound(assets);
 
   let player = null;
   let phase = 'boot';          // boot | play | outro | fade | dead | clear
@@ -70,6 +71,7 @@
     for (const a of assetManifest()) {
       if (a.optional) continue;          // handled below, deliberately un-awaited
       if (a.how === 'json') jobs.push(assets.loadJSON(a.key, a.src));
+      else if (a.how === 'audio') jobs.push(assets.loadAudio(a.key, a.src));
       else if (a.how === 'video') jobs.push(assets.loadVideo(a.key, a.src));
       else if (a.how === 'big') {
         jobs.push(assets.loadBig(a.key, a.src, CONFIG.bigTextureCap || 2400));
@@ -111,6 +113,12 @@
     phase = 'play';
     phaseT = 0;
     boardSkip = 0;
+    /* MUSIC STARTS WITH THE LEVEL, not with the page -- boot() sits on a
+       progress bar while the art decodes and a bed under a bar that might stall
+       reads as the game having begun when it has not. Asking twice is harmless:
+       Sound only ever holds one source, and on a restart the old one was
+       already released by stopMusic(). */
+    sound.playMusic();
     input.flush();
     last = performance.now();
     requestAnimationFrame(loop);
@@ -127,6 +135,7 @@
     input.poll();
 
     if (input.takePause() && (phase === 'play')) { /* reserved */ }
+    if (input.takeMute()) sound.toggleMute();
 
     /* DEV: jump straight to a room with the number keys. Instant rather than
        faded — this is a shortcut for testing, and sitting through the fade is

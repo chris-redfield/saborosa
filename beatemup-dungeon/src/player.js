@@ -23,6 +23,13 @@ class Player extends Fighter {
         : CONFIG.COMBO,
     ];
     this.comboVariant = 1;   // flipped before the first chain, so chain 1 is 0
+
+    /* THE LAST DIRECTION ASKED FOR, kept so a jump does not lose its momentum
+       the instant it throws a punch. There is no horizontal velocity in a jump
+       -- `vx`/`vz` are knockback and nothing else -- so every bit of airborne
+       motion comes from calling `walk()` once a frame. See `update`. */
+    this.airIx = 0;
+    this.airIz = 0;
   }
 
   /**
@@ -56,6 +63,15 @@ class Player extends Fighter {
       const iz = (input.down ? 1 : 0) - (input.up ? 1 : 0);
       this.walk(dt, ix, iz, bounds);
 
+      /* LATCHED EVERY FRAME HE CAN ACT, which is the only place it can be. On
+         the ground this is just bookkeeping; on the frame a jump or an air
+         punch starts it is the direction he was travelling, and the airborne
+         branch below flies it out for him. It is read AFTER `walk` and BEFORE
+         the buttons on purpose -- a punch pressed this frame inherits the
+         direction of this frame. */
+      this.airIx = ix;
+      this.airIz = iz;
+
       /* MOVEMENT IS READ BUT THE PRESSES ARE NOT CONSUMED HERE when the
          player cannot act — they stay queued. A punch pressed during the
          recovery of the last one is the player asking for the next link in the
@@ -83,13 +99,21 @@ class Player extends Fighter {
         input.takeJump();
         input.takePickup();
       }
-      // Still steerable in the air: a jump you cannot influence is a commitment
-      // the genre does not ask for.
-      if (this.jumping && !this.atk) {
-        const ix = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-        const iz = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-        this.walk(dt, ix * 0.7, iz * 0.5, bounds);
-      }
+      /* AIR PUNCHES KEEP FLYING. This is the ONLY branch an airborne fighter
+         can reach with his hands busy: `canAct` does not test `jumping`, so a
+         jump with the hands free is steered by the block above at full walking
+         speed and never gets here at all. Throwing a punch is what drops him
+         down here -- and until this existed, nothing moved him, so he stopped
+         dead in x and z the moment he swung and fell straight down out of his
+         own arc.
+
+         THE DIRECTION IS THE LATCHED ONE, NOT THE HELD ONE. Input is not read
+         here, so the swing is committed: he flies out the line he was on when
+         he threw it and cannot turn on a dime mid-punch. That is the enemies'
+         jump-in rule and deliberately the same one -- they latch `leapIx` on
+         the tell and keep walking through their own `atk` (Enemy `_step`, the
+         `ai === 'leap'` branch, the one state that moves mid-attack). */
+      if (this.jumping) this.walk(dt, this.airIx, this.airIz, bounds);
     }
 
     super.update(dt, bounds);

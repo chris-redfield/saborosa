@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Saborosa — Beat Music Lab</title>
+<style>
+  :root { --bg:#1a1a2e; --panel:#16213e; --accent:#53d8fb; --hot:#e94560; --ok:#8fce8f; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:#e6e6e6;
+              font:13px/1.4 monospace; overflow:hidden; }
+  #top { display:flex; align-items:center; gap:12px; padding:8px 12px;
+         background:var(--panel); border-bottom:1px solid #0c1226; }
+  #top b { color:var(--accent); letter-spacing:.5px; }
+  .hint { color:#7a8aa8; font-size:11px; }
+  #state { margin-left:auto; color:var(--ok); }
+  #main { display:flex; height:calc(100% - 39px); }
+  #left { flex:1; display:flex; flex-direction:column; min-width:0; }
+  #wrap { flex:1; position:relative; background:#0b1020; overflow-y:auto; overflow-x:hidden; }
+  canvas#wave { display:block; cursor:crosshair; }
+  #loadmsg { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+             color:#7a8aa8; font-size:12px; z-index:5; }
+  #transport { height:44px; display:flex; align-items:center; gap:9px; padding:0 12px;
+               background:var(--panel); border-top:1px solid #0c1226; }
+  #transport .read { color:var(--ok); margin-left:auto; }
+
+  #side { width:360px; background:var(--panel); border-left:1px solid #0c1226;
+          overflow-y:auto; padding-bottom:30px; }
+  .group { padding:9px 12px; border-bottom:1px solid #0c1226; }
+  .group h3 { margin:2px 0 8px; font-size:11px; letter-spacing:1px; color:var(--accent);
+              display:flex; align-items:center; gap:7px; }
+  .group h3 .sw { width:9px; height:9px; border-radius:2px; }
+  .group h3 .key { color:#0b1020; background:#7a8aa8; border-radius:3px; padding:0 5px;
+                   font-size:10px; letter-spacing:0; }
+  .group h3 .dur { margin-left:auto; color:#6d7e9e; letter-spacing:0; font-size:10px; }
+  .row { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+  button { padding:5px 9px; border:1px solid #3a4a6a; border-radius:4px;
+           background:#22304f; color:#cfe; cursor:pointer; font:12px monospace; }
+  button:hover { background:#2c3e63; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.on { background:var(--hot); border-color:var(--hot); color:#fff; }
+  button.ok { background:#2c5a3a; border-color:#3e7a52; color:#dfe; }
+
+  /* Typed number, steppers, arrow keys. No sliders in this project's tools --
+     these are values you want to set exactly and read back, and a slider gives
+     you neither. */
+  .nf { display:flex; align-items:center; gap:6px; margin:6px 0; }
+  .nf > span.lbl { flex:1; color:#9ab; font-size:11px; }
+  .nf .stepper { display:flex; }
+  .nf button.st { padding:2px 8px; border-radius:0; border-right:none; font-size:13px; line-height:1.1; }
+  .nf button.st:first-child { border-radius:3px 0 0 3px; }
+  .nf input { width:78px; text-align:right; padding:3px 6px; font:12px monospace;
+              background:#0f1730; color:#e6f4ff; border:1px solid #3a4a6a; }
+  .nf input:focus { outline:none; border-color:var(--accent); background:#132043; }
+  .nf button.st:last-of-type { border-right:1px solid #3a4a6a; border-radius:0 3px 3px 0; }
+  .nf .unit { color:#6d7e9e; font-size:10px; width:26px; }
+
+  .drops { display:flex; flex-wrap:wrap; gap:4px; margin:6px 0 2px; }
+  .drops .chip { padding:2px 6px; border:1px solid #3a4a6a; border-radius:3px;
+                 background:#0f1730; color:#cfe; font-size:11px; cursor:pointer; }
+  .drops .chip.sel { border-color:var(--accent); background:#132043; color:#e6f4ff; }
+  .drops .none { color:#6d7e9e; font-size:11px; }
+  #dump { width:100%; height:120px; background:#0f1730; color:var(--ok);
+          border:1px solid #3a4a6a; font:11px/1.45 monospace; padding:6px; resize:vertical; }
+  .note { color:#7a8aa8; font-size:11px; margin:5px 0 0; }
+  .warn { color:#d8a657; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>BEAT MUSIC LAB</b>
+  <span class="hint">beatemup-dungeon &middot; every take loops against the bed &middot; space play/stop &middot; 1-4 drop &middot; backspace undo &middot; g snap &middot; r re-render &middot; e export wav</span>
+  <span id="state">booting...</span>
+</div>
+<div id="main">
+  <div id="left">
+    <div id="wrap">
+      <div id="loadmsg">loading...</div>
+      <canvas id="wave"></canvas>
+    </div>
+    <div id="transport">
+      <button id="play">play</button>
+      <button id="rerender">re-render</button>
+      <button id="exportWav">export wav</button>
+      <button id="exportJson">export json</button>
+      <span class="hint">click the top strip to scrub &middot; click a lane to place &middot; drag to move &middot; shift+click to delete</span>
+      <span class="read" id="read">-</span>
+    </div>
+  </div>
+  <div id="side"></div>
+</div>
+<script>
+/* ---------------------------------------------------------------------------
+   BEAT MUSIC LAB -- build the beat 'em up's background bed out of one looping
+   take and a handful of dropped one-shots.
+
+   WHY THIS IS NOT tools/music-lab.html. That tool exists, it works, and it is
+   deliberately not the one being reused, for two separate reasons:
+
+     1. `tools/bake-trilha.py` PARSES DEFAULT_MIX AND DEFAULT_MASTER STRAIGHT
+        OUT OF music-lab.html. Those literals are the single source of truth for
+        the flying dungeon's shipped arrangement. Retargeting that file at these
+        recordings would not have broken anything visibly -- it would have made
+        the next trilha bake render this game's mix instead, and the failure
+        would have surfaced as a wrong-sounding file with nothing to point at.
+
+     2. The MODEL is different. music-lab layers three continuous takes that all
+        play at once, so a layer there is one offset and a repeat. Here there is
+        a BED that loops and a set of ONE-SHOTS dropped at chosen moments, which
+        means a layer needs a LIST of times, not a single offset. That is not a
+        setting on the old model, it is a different one.
+
+   THE ONE ARRANGEMENT, TWO DESTINATIONS RULE. `events()` turns the mix into a
+   flat list of "play this buffer, from here, at this moment". Live playback
+   schedules that list against the audio clock; the offline render feeds the
+   exact same list to an OfflineAudioContext. Nothing about placement is
+   computed twice, so the two cannot drift apart -- which is the trap the old
+   lab avoided by rendering first and looping the render, and this one avoids by
+   sharing the arithmetic instead. It has to be live here: a drop you cannot
+   hear the instant you tap it is not a drop, it is a form entry.
+
+   NO INDEPENDENT LOOPING SOURCES. Every event is scheduled cycle by cycle from
+   ONE clock by a lookahead scheduler. Three sources each set to `loop = true`
+   drift apart within a minute and the browser gives you no way to bind them --
+   that is the finding the flying dungeon's soundtrack was built around and it
+   has not stopped being true.
+
+   THE WRAP, AND WHY THERE IS NO CROSSFADE. A drop near the end of the loop
+   rings out past it. Played live that tail simply carries on over the top of
+   the next cycle, which is what you want and what you hear. A single rendered
+   FILE cannot do that -- it ends. So the render is made LONGER than the loop by
+   however much the last event needs, and the overhang is then summed back onto
+   the head. That is not an approximation of the live behaviour, it is exactly
+   it: the tail lands on the beginning because that is where it was going to
+   land anyway. `wrapFadeMs` fades the overhang as it wraps and is 0 by default;
+   reach for it only if a tail is piling up somewhere it should not.
+
+   WHAT A BAD LOOP SOUNDS LIKE. The bed repeats to fill the master loop. If the
+   loop is not a whole number of bed passes, the last pass is cut mid-phrase and
+   its remainder wraps onto the head, doubling with the first pass. That is
+   audible immediately and it is not a bug in the tool. `bed length` in the
+   MASTER panel sets the loop to exactly one pass; multiply it by hand for two.
+
+   ALL FIVE RECORDINGS ARE 48kHz MONO and already tight at the head -- there is
+   no phone dead air to trim, so `tools/build-sound.py` is not in this pipeline
+   and these are loaded straight out of the game's own audio folder.
+
+   Serve the repo root, do not open this off the filesystem: decodeAudioData
+   needs a real fetch and file:// gives you a CORS error rather than a useful
+   one.
+
+       python3 -m http.server 8000
+       http://localhost:8000/tools/beat-music-lab.html
+--------------------------------------------------------------------------- */
+
+const BASE = '../assets-v2/beatemup-dungeon/audio/';
+
+/* The layers, in draw order. `key` is the tap key -- press it while the loop is
+   running and the sample lands at the playhead AND is heard immediately. The
+   bed has no tap key because it is not dropped, it repeats. */
+const LAYERS = [
+  { file: 'tchum-tchap-tchap-1.ogg', name: 'tchum 1  (bed)', color: '#53d8fb', key: null },
+  { file: 'tchum-tchap-tchap-2.ogg', name: 'tchum 2',        color: '#e9a145', key: '1' },
+  { file: 'tchum-tchap-tchap-3.ogg', name: 'tchum 3',        color: '#a97be9', key: '2' },
+  { file: 'tchum-tchap-tchap-4.ogg', name: 'tchum 4',        color: '#8fce8f', key: '3' },
+  { file: 'mug-ring.ogg',            name: 'mug ring',       color: '#e94560', key: '4' },
+];
+
+/* Per-layer mix state. This is what `export json` writes and what a bake script
+   would read back.
+     on/solo   audition. Any solo mutes every layer that is not soloed.
+     db        level, in dB so that -6 means what it means anywhere else.
+     trimMs    skip this much off the front of the source. Throws material away
+               -- as opposed to moving a placement, which is what drops do.
+     rate      playback speed. 1.02 is 2% faster; also the pitch, these are
+               samples not stems.
+     repeat    THE BED SWITCH. On, the layer fills the loop end to end from
+               `offsetMs`, every `gapMs` apart. Off, it plays once per entry in
+               `drops` and nowhere else. Any layer can be either.
+     offsetMs  repeat only: where the first pass starts. Negative pulls it in
+               from before the loop begins.
+     gapMs     repeat only: dead air between passes.
+     drops     one-shot only: the times, in ms into the loop, it lands at.
+
+   THESE OPEN NEUTRAL, unlike the flying dungeon's lab, because there is no
+   dialled-in mix yet -- that is the job. When one is found, copy it out of
+   `export json` and put the numbers back here, so re-opening the tool plays the
+   real arrangement and `reset` returns to it. */
+/* THE DIALLED-IN MIX, found in this tool on 2026-08-19 and put back here so
+   opening it plays the real background track and `reset` returns to it.
+   `tools/bake-beat-trilha.py` READS THESE LITERALS -- they are the single
+   source of truth for what the game plays, exactly as DEFAULT_MIX in
+   music-lab.html is for the flying dungeon. Change the mix here, re-run the
+   bake.
+
+   WHAT THE TRACK IS: three of the five takes, all looping, all at their natural
+   speed -- no rate was needed, which is unusual for takes recorded apart and
+   worth not spending. tchum 1 is the bed and runs from the top untouched, and
+   the loop is its own length. tchum 3 comes in 100ms late and tchum 4 10ms
+   late; neither is a mistake being corrected, they are the swing that keeps the
+   three off each other's beat. tchum 4 also has 70ms taken off its front, which
+   is not the same thing as its offset: the trim throws away its lead-in, then
+   the offset places what is left.
+
+   TWO TAKES ARE LOADED AND OFF. tchum 2 and mug-ring are aligned (their trims
+   and offsets are real, found the same way) but muted -- they are the next
+   things to try, not rejects, and leaving them dialled in means turning one on
+   is a click rather than a search. `on: false` is honoured by the bake, so they
+   cost the game nothing while they sit there. */
+const DEFAULT_MIX = [
+  { on: true,  solo: false, db: 0, trimMs: 0,   rate: 1, repeat: true, offsetMs: 0,   gapMs: 0, drops: [] },
+  { on: false, solo: false, db: 0, trimMs: 220, rate: 1, repeat: true, offsetMs: 250, gapMs: 0, drops: [] },
+  { on: true,  solo: false, db: 0, trimMs: 0,   rate: 1, repeat: true, offsetMs: 100, gapMs: 0, drops: [] },
+  { on: true,  solo: false, db: 0, trimMs: 70,  rate: 1, repeat: true, offsetMs: 10,  gapMs: 0, drops: [] },
+  { on: false, solo: false, db: 0, trimMs: 130, rate: 1, repeat: true, offsetMs: 140, gapMs: 0, drops: [] },
+];
+
+const DEFAULT_MASTER = {
+  /* 6146 is tchum 1's own length, measured off the file (6.1465s, rounded down
+     to the millisecond). So the tool opens on exactly one pass of the bed with
+     nothing cut -- the only loop length that is certainly not wrong before
+     anyone has listened. It is a starting point, not a finding: if the take
+     runs a moment past its own last beat, the loop wants CROPPING to where the
+     next one would fall, and that is done by ear with the number below. */
+  loopMs: 6146,
+  db: 0,
+  wrapFadeMs: 0,
+  /* The grid is a visual and a snap target, in divisions of the whole loop. 8
+     over one bed pass is eighths of the phrase. It does not know the tempo --
+     nothing here does, these are hummed and struck takes. */
+  grid: 8,
+  snap: false,
+  /* DRAW EACH TAKE AGAINST ITS OWN PEAK rather than against full scale. These
+     recordings peak at about 0 dB but average -21 to -31, because they are
+     struck sounds: a couple of transients and a lot of near-silence between
+     them. Drawn honestly that is a flat line with a few spikes in it, which
+     tells you nothing about where the hits fall. This is a DISPLAY setting and
+     changes no audio -- turn it off to compare true levels between layers. */
+  viewNorm: true,
+};
+
+const SR = 48000;                 // every source is 48k; render at their rate
+
+/* How close to the loop end a repeat may start before it counts as the NEXT
+   cycle's first pass rather than this one's last.
+
+   A DECODER DISAGREEMENT, not a fudge. This browser, ffprobe and ffmpeg report
+   three slightly different lengths for the same ogg -- codec delay and padding,
+   single-digit ms. With the loop set to the bed's own length, which is the
+   obvious thing to do, a bed a few ms SHORT starts a second pass just before
+   the loop ends, and the whole take then wraps onto the head and doubles
+   against itself a few ms out of phase: a flanged mess that appears or does not
+   appear depending on who decoded the file. tools/bake-beat-trilha.py uses the
+   same number so the bake and the audition cannot disagree about how many
+   passes there are.
+
+   Drops are NOT subject to it -- those are times somebody typed. */
+const PASS_EPS = 0.030;
+
+/* --- state --------------------------------------------------------------- */
+
+const mix = DEFAULT_MIX.map(m => Object.assign({}, m, { drops: m.drops.slice() }));
+const master = Object.assign({}, DEFAULT_MASTER);
+
+let ctx = null;
+let buffers = [];                 // decoded, index-aligned with LAYERS
+let envs = [];                    // peak envelopes, index-aligned
+let peaks = [];                   // per-take peak sample, for the view scaling
+let renderedPeak = 1;
+let rendered = null;              // the baked loop, for the top strip and export
+let renderedEnv = null;
+let dirty = true;
+let playing = false;
+/* THE CLOCK IS ONE FIXED ORIGIN, not "when the current cycle began". The
+   scheduler runs AHEAD of the music, so the last cycle it has put down usually
+   has not started yet -- reading the playhead off that lands it near the end of
+   the loop instead of near the start, and the head jumps backwards every time
+   the scheduler ticks. Everything is measured from `origin` instead, which is
+   set once when playback starts and never moves. */
+let origin = 0;
+let scrubMs = 0;                  // where the head sits when stopped
+let scheduled = [];               // {when, src} still in the future
+let tapLog = [];                  // {layer, ms} newest last -- backspace undoes
+let sel = null;                   // {layer, index} selected drop
+let schedTimer = null, renderTimer = null;
+
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db / 20);
+const loopSec = () => master.loopMs / 1000;
+
+/* Any solo anywhere means only solos are heard. */
+function audible(m) {
+  const anySolo = mix.some(x => x.solo);
+  return anySolo ? m.solo : m.on;
+}
+
+/* --- the arrangement ----------------------------------------------------- */
+
+/**
+ * The whole mix as a flat list of one-shot plays.
+ *
+ * THE SINGLE SOURCE OF PLACEMENT. Live playback and the offline render both
+ * read this and neither computes a time of its own, which is what keeps the
+ * exported file identical to what was auditioned.
+ *
+ * `at` is when the play starts in loop time and is never negative -- a pass
+ * pulled in from before the loop begins is turned into a play that starts at 0
+ * already part way into its own material, because that is the same sound and
+ * a source cannot be started in the past.
+ */
+function events(all) {
+  const L = loopSec();
+  const out = [];
+  mix.forEach((m, i) => {
+    const buf = buffers[i];
+    if (!buf) return;
+    /* `all` is the DRAWING pass. A muted layer still has to be visible -- you
+       pick where to put a take by looking at it against the bed, and a lane
+       that goes blank the moment you mute it takes away the thing you were
+       comparing. Playback and the render never pass it. */
+    const on = audible(m);
+    if (!all && !on) return;
+    const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+    const rate = clamp(m.rate, 0.25, 4);
+    const clip = (buf.duration - trim) / rate;      // one pass, in output time
+    if (clip <= 0.001) return;
+    const gain = dbToGain(m.db);
+    if (!all && gain <= 0) return;
+
+    const push = at => {
+      if (at >= 0) { out.push({ i, at, into: trim, rate, dur: clip, gain, on }); return; }
+      /* Started before t=0: play it from the point it has already reached.
+         `at * rate` because the source offset is in SOURCE seconds while `at`
+         is in output seconds -- at rate 1.5 a pass pulled 100ms early is 150ms
+         further into its own material. */
+      const into = trim - at * rate;
+      if (into < buf.duration) out.push({ i, at: 0, into, rate, dur: clip + at, gain, on });
+    };
+
+    if (m.repeat) {
+      const step = clip + Math.max(0, m.gapMs / 1000);
+      if (step <= 0.001) return;
+      let at = m.offsetMs / 1000, guard = 0;
+      /* A pass starting at, or within PASS_EPS of, the loop end is the next
+         cycle's first pass, and generating it here would double it. */
+      do { push(at); at += step; } while (at < L - PASS_EPS && ++guard < 4000);
+    } else {
+      /* A DROP PAST THE LOOP END IS NOT IN THE LOOP. Cropping the loop shorter
+         leaves drops stranded beyond it, and playing them anyway would put them
+         into the NEXT cycle on top of whatever is there. They are kept rather
+         than deleted -- lengthen the loop again and they come back -- but they
+         do not sound, and the layer panel says how many are sitting out. */
+      m.drops.forEach(ms => { if (ms / 1000 < L) push(ms / 1000); });
+    }
+  });
+  return out;
+}
+
+/** How far past the loop end the longest ringing event reaches. */
+function tailSec(ev) {
+  let end = 0;
+  ev.forEach(e => { const t = e.at + e.dur; if (t > end) end = t; });
+  return clamp(end - loopSec(), 0, loopSec());
+}
+
+/* --- offline render ------------------------------------------------------ */
+
+/**
+ * Bake the arrangement to one buffer exactly the length of the loop.
+ *
+ * Rendered LONG and then wrapped: see the header. The overhang is summed onto
+ * the head rather than crossfaded with it, because the overhang IS the head's
+ * material -- it is the tail that would have been playing there.
+ */
+async function render() {
+  if (!buffers.length) return null;
+  const ev = events();
+  const L = loopSec();
+  const tail = tailSec(ev);
+  const frames = Math.ceil((L + tail) * SR);
+  if (frames < 2) return null;
+
+  const chOut = Math.max(1, ...buffers.filter(Boolean).map(b => b.numberOfChannels));
+  const oc = new OfflineAudioContext(chOut, frames, SR);
+  const out = oc.createGain();
+  out.gain.value = dbToGain(master.db);
+  out.connect(oc.destination);
+
+  ev.forEach(e => {
+    const g = oc.createGain();
+    g.gain.value = e.gain;
+    g.connect(out);
+    const s = oc.createBufferSource();
+    s.buffer = buffers[e.i];
+    s.playbackRate.value = e.rate;
+    s.connect(g);
+    s.start(e.at, e.into);
+  });
+
+  const body = await oc.startRendering();
+
+  const loopFrames = Math.round(L * SR);
+  const tailFrames = Math.min(Math.round(tail * SR), loopFrames);
+  const fadeFrames = Math.max(0, Math.round(master.wrapFadeMs / 1000 * SR));
+  const final = new AudioBuffer({ length: loopFrames, numberOfChannels: chOut, sampleRate: SR });
+  for (let c = 0; c < chOut; c++) {
+    const b = body.getChannelData(c);
+    const f = final.getChannelData(c);
+    f.set(b.subarray(0, loopFrames));
+    for (let i = 0; i < tailFrames; i++) {
+      const w = fadeFrames > 0 ? Math.max(0, 1 - i / fadeFrames) : 1;
+      f[i] += b[loopFrames + i] * w;
+    }
+  }
+
+  rendered = final;
+  renderedEnv = envelope(final);
+  renderedPeak = Math.max(0.02, Math.pow(10, peakDb(final) / 20));
+  dirty = false;
+  /* CLIPPING IS REPORTED, because the export cannot report it for you. Summed
+     layers routinely overshoot full scale; live you get away with it (the
+     browser clamps on the way to the DAC and it merely sounds a bit gritty),
+     but `export wav` clamps into 16-bit and bakes the flat tops in for good.
+     The bake script scales the whole mix under a ceiling instead, which keeps
+     the balance and loses only level -- so this is a nudge to bake rather than
+     to export, not something to fix by pulling faders. */
+  const pk = peakDb(final);
+  const clipped = countClipped(final);
+  setState('rendered ' + Math.round(L * 1000) + 'ms, ' + ev.length + ' plays, peak '
+           + pk.toFixed(1) + ' dB'
+           + (clipped ? ' -- ' + clipped + ' samples CLIPPED, bake it instead of exporting' : ''));
+  return final;
+}
+
+/** Samples pinned at full scale: what an export would flat-top. */
+function countClipped(buf) {
+  let n = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) if (Math.abs(d[i]) >= 0.99997) n++;
+  }
+  return n;
+}
+
+function peakDb(buf) {
+  let p = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) {
+    const d = buf.getChannelData(c);
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > p) p = a; }
+  }
+  return p > 0 ? 20 * Math.log10(p) : -Infinity;
+}
+
+/* --- live playback ------------------------------------------------------- */
+
+/* Lookahead: the scheduler runs on a timer and puts sources down a little
+   before they are due, because setTimeout is not accurate enough to start audio
+   on and the audio clock is. Kept SHORT on purpose -- everything already
+   scheduled has to be torn down and rebuilt whenever the arrangement changes,
+   and a long lookahead means a tap can be a whole cycle late to be heard in
+   place. */
+const LOOKAHEAD = 0.12;
+
+function ensureCtx() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: SR });
+  if (ctx.state === 'suspended') ctx.resume();
+  return ctx;
+}
+
+function posMs() {
+  if (!playing) return scrubMs;
+  const L = loopSec();
+  const t = (ctx.currentTime - origin) % L;
+  return (t < 0 ? t + L : t) * 1000;
+}
+
+function playOne(e, when) {
+  const g = ctx.createGain();
+  g.gain.value = e.gain;
+  g.connect(ctx.destination);
+  const s = ctx.createBufferSource();
+  s.buffer = buffers[e.i];
+  s.playbackRate.value = e.rate;
+  s.connect(g);
+  s.start(when, e.into);
+  scheduled.push({ when, src: s });
+  return s;
+}
+
+/** Drop everything not yet sounded, so an edit takes effect this cycle. */
+function flushFuture() {
+  const now = ctx ? ctx.currentTime : 0;
+  scheduled = scheduled.filter(x => {
+    if (x.when > now + 0.005) { try { x.src.stop(); } catch (err) {} return false; }
+    return true;
+  });
+}
+
+let nextCycle = 0;
+
+function pump() {
+  if (!playing) return;
+  const L = loopSec();
+  const ev = events();
+  const now = ctx.currentTime;
+  let guard = 0;
+  while (nextCycle < now + LOOKAHEAD && ++guard < 64) {
+    ev.forEach(e => {
+      const when = nextCycle + e.at;
+      // Skip what is already behind: on a scrub, and on a re-schedule after an
+      // edit, the cycle being filled in is one that is partly in the past.
+      if (when >= now - 0.001) playOne(e, when);
+    });
+    nextCycle += L;
+  }
+  scheduled = scheduled.filter(x => x.when > now - 8);
+}
+
+function start() {
+  ensureCtx();
+  playing = true;
+  const L = loopSec();
+  /* Enter the cycle where the head is sitting: the cycle NOTIONALLY began that
+     far in the past, so everything still ahead of the head this cycle lands at
+     the right moment. Events already passed are simply not scheduled -- a
+     sample is not resumed from its middle on a scrub. */
+  origin = ctx.currentTime - clamp(scrubMs / 1000, 0, L);
+  nextCycle = origin;
+  pump();
+  schedTimer = setInterval(pump, 25);
+  $('play').textContent = 'stop';
+  $('play').classList.add('on');
+}
+
+function stop() {
+  if (playing) scrubMs = posMs();
+  playing = false;
+  clearInterval(schedTimer); schedTimer = null;
+  scheduled.forEach(x => { try { x.src.stop(); } catch (err) {} });
+  scheduled = [];
+  $('play').textContent = 'play';
+  $('play').classList.remove('on');
+}
+
+function toggle() { playing ? stop() : start(); }
+
+/**
+ * An edit landed, so anything already scheduled is out of date.
+ *
+ * IT REWINDS THE SCHEDULER TO THE CURRENT CYCLE rather than carrying on from
+ * the next one. Dropping the future sources and then pumping forward would kill
+ * every remaining event of the cycle now playing and put nothing back -- the
+ * loop would go quiet from the edit to the wrap, once per edit, which reads as
+ * the tool eating your drops. `pump` skips whatever is already behind, so
+ * re-entering the cycle is safe.
+ */
+function reschedule() {
+  if (!playing) return;
+  flushFuture();
+  const L = loopSec();
+  nextCycle = origin + Math.floor((ctx.currentTime - origin) / L) * L;
+  pump();
+}
+
+function touch(reRender) {
+  dirty = true;
+  reschedule();
+  if (reRender !== false) {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => render().then(draw), 250);
+  }
+  if (!drag) buildSide();
+  draw();
+}
+
+/* --- dropping ------------------------------------------------------------ */
+
+function snapMs(ms) {
+  if (!master.snap || master.grid < 1) return Math.round(ms);
+  const step = master.loopMs / master.grid;
+  return Math.round(Math.round(ms / step) * step);
+}
+
+/**
+ * Land a one-shot.
+ *
+ * IT IS HEARD IMMEDIATELY AND SEPARATELY from the arrangement it just joined.
+ * The current cycle was scheduled before this drop existed, so re-pumping would
+ * not sound it -- the moment it belongs to is already in the past by the time
+ * the key is read. The audition below is that missing play, and from the next
+ * cycle on the scheduler has it like any other event.
+ */
+function drop(layer, atMs) {
+  const m = mix[layer];
+  if (!buffers[layer]) return;
+  const t = clamp(snapMs(atMs != null ? atMs : posMs()), 0, master.loopMs);
+  if (m.repeat) { setState('layer ' + (layer + 1) + ' is a repeating bed -- turn repeat off to drop it'); return; }
+  m.drops.push(t);
+  m.drops.sort((a, b) => a - b);
+  tapLog.push({ layer, ms: t });
+  sel = { layer, index: m.drops.indexOf(t) };
+  if (ctx && audible(m)) {
+    const trim = clamp(m.trimMs / 1000, 0, buffers[layer].duration);
+    playOne({ i: layer, at: 0, into: trim, rate: clamp(m.rate, 0.25, 4),
+              dur: 0, gain: dbToGain(m.db) }, ctx.currentTime + 0.005);
+  }
+  touch();
+}
+
+function undoDrop() {
+  const last = tapLog.pop();
+  if (!last) { setState('nothing to undo'); return; }
+  const d = mix[last.layer].drops;
+  const i = d.indexOf(last.ms);
+  if (i >= 0) d.splice(i, 1);
+  sel = null;
+  touch();
+}
+
+/* --- waveform envelopes -------------------------------------------------- */
+
+/** Peak envelope: [min0,max0, min1,max1, ...] over BUCKETS even slices. */
+function envelope(buf, buckets) {
+  const n = buckets || 6000;
+  const d = buf.getChannelData(0);
+  const out = new Float32Array(n * 2);
+  const per = d.length / n;
+  for (let i = 0; i < n; i++) {
+    const a = Math.floor(i * per), b = Math.min(d.length, Math.floor((i + 1) * per));
+    let lo = 0, hi = 0;
+    for (let j = a; j < b; j++) { const v = d[j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    out[i * 2] = lo; out[i * 2 + 1] = hi;
+  }
+  return out;
+}
+
+/** Draw part of a buffer's envelope into a pixel range. */
+function drawEnv(g, env, dur, from, to, x0, x1, yMid, amp, color) {
+  const n = env.length / 2;
+  const w = Math.max(1, Math.round(x1 - x0));
+  g.fillStyle = color;
+  for (let p = 0; p < w; p++) {
+    const s0 = from + (to - from) * (p / w);
+    const s1 = from + (to - from) * ((p + 1) / w);
+    let a = Math.floor(s0 / dur * n), b = Math.ceil(s1 / dur * n);
+    a = clamp(a, 0, n - 1); b = clamp(b, a + 1, n);
+    let lo = 0, hi = 0;
+    for (let i = a; i < b; i++) {
+      if (env[i * 2] < lo) lo = env[i * 2];
+      if (env[i * 2 + 1] > hi) hi = env[i * 2 + 1];
+    }
+    const y0 = yMid - hi * amp, y1 = yMid - lo * amp;
+    g.fillRect(x0 + p, y0, 1, Math.max(1, y1 - y0));
+  }
+}
+
+/* --- drawing ------------------------------------------------------------- */
+
+const cv = $('wave');
+const g = cv.getContext('2d');
+let R = { x0: 0, x1: 0, top: 0, mixH: 0, lanes: [] };
+
+/**
+ * Size the canvas to the LANES, not the lanes to the window.
+ *
+ * The first cut divided whatever height the window happened to have between
+ * five lanes and a mix strip, so on a laptop every waveform came out as a
+ * squashed band a few pixels tall. A lane has a height below which it stops
+ * being readable; below that the canvas grows past the viewport and #wrap
+ * scrolls instead.
+ */
+function layout() {
+  const wrap = $('wrap');
+  const pad = 12, mixH = 148, minLane = 96, gap = 8;
+  const w = wrap.clientWidth;
+  const room = wrap.clientHeight - pad * 2 - mixH - 12;
+  const laneH = Math.max(minLane, room / LAYERS.length - gap);
+  const need = pad * 2 + mixH + 12 + LAYERS.length * (laneH + gap);
+  const h = Math.max(wrap.clientHeight, Math.ceil(need));
+
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  cv.width = Math.round(w * devicePixelRatio);
+  cv.height = Math.round(h * devicePixelRatio);
+  g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  R.x0 = pad; R.x1 = w - pad; R.top = pad; R.mixH = mixH;
+  R.lanes = LAYERS.map((_, i) => ({ y: pad + mixH + 12 + i * (laneH + gap), h: laneH }));
+  R.w = w; R.h = h;
+}
+
+const tToX = ms => R.x0 + (R.x1 - R.x0) * clamp(ms / master.loopMs, 0, 1);
+const xToT = x => clamp((x - R.x0) / (R.x1 - R.x0), 0, 1) * master.loopMs;
+
+function draw() {
+  if (!R.w) layout();
+  g.clearRect(0, 0, R.w, R.h);
+  g.fillStyle = '#0b1020'; g.fillRect(0, 0, R.w, R.h);
+
+  // Grid, behind everything.
+  if (master.grid >= 1) {
+    for (let i = 0; i <= master.grid; i++) {
+      const x = tToX(master.loopMs * i / master.grid);
+      g.fillStyle = i === 0 || i === master.grid ? '#2c3e63' : '#1a2540';
+      g.fillRect(Math.round(x), R.top, 1, R.h - R.top - 8);
+    }
+  }
+
+  /* View scaling. `vn(i)` is how much to stretch a take so its own loudest
+     moment reaches the top of its lane. Display only -- see master.viewNorm. */
+  const vn = i => master.viewNorm ? 1 / Math.max(0.02, peaks[i] || 1) : 1;
+
+  // The rendered loop -- what the file will be.
+  g.fillStyle = '#0f1730'; g.fillRect(R.x0, R.top, R.x1 - R.x0, R.mixH);
+  if (renderedEnv && rendered) {
+    const amp = (R.mixH / 2 - 6) * (master.viewNorm ? 1 / Math.max(0.02, renderedPeak) : 1);
+    drawEnv(g, renderedEnv, rendered.duration, 0, rendered.duration,
+            R.x0, R.x1, R.top + R.mixH / 2, amp, dirty ? '#4a5a7a' : '#8fce8f');
+  }
+  g.fillStyle = dirty ? '#d8a657' : '#6d7e9e';
+  g.font = '10px monospace';
+  g.fillText(dirty ? 'MIX (stale -- re-rendering)' : 'MIX (this is the file)', R.x0 + 4, R.top + 12);
+
+  // Per-layer lanes. `true` -- muted layers are drawn too, see events().
+  const ev = events(true);
+  LAYERS.forEach((t, i) => {
+    const L = R.lanes[i], m = mix[i], buf = buffers[i];
+    const on = audible(m);
+    g.fillStyle = on ? '#0e1428' : '#0c111f';
+    g.fillRect(R.x0, L.y, R.x1 - R.x0, L.h);
+    g.strokeStyle = on ? '#1d2a48' : '#141c33';
+    g.strokeRect(R.x0 + .5, L.y + .5, R.x1 - R.x0 - 1, L.h - 1);
+    if (!buf) return;
+
+    const mine = ev.filter(e => e.i === i);
+    const passes = mine.length;
+    g.font = '10px monospace';
+    g.fillStyle = on ? t.color : '#48587a';
+    g.fillText(t.name + (m.repeat ? '  loop x' + passes : '  drops ' + m.drops.length)
+               + (on ? '' : '  (muted)'), R.x0 + 4, L.y + 12);
+
+    const mid = L.y + L.h / 2 + 5, amp = (L.h / 2 - 12) * vn(i);
+    const col = on ? t.color : '#48587a';
+
+    g.save();
+    g.beginPath(); g.rect(R.x0, L.y, R.x1 - R.x0, L.h); g.clip();
+
+    mine.forEach(e => {
+      const x0 = tToX(e.at * 1000), x1 = tToX((e.at + e.dur) * 1000);
+      const over = (e.at + e.dur) * 1000 > master.loopMs;
+      g.globalAlpha = on ? 0.9 : 0.5;
+      drawEnv(g, envs[i], buf.duration, e.into, e.into + e.dur * e.rate,
+              x0, Math.max(x0 + 1, x1), mid, amp, col);
+      // Where this pass starts, so repeats can be counted at a glance.
+      g.fillStyle = col; g.globalAlpha = on ? 0.5 : 0.3;
+      g.fillRect(Math.round(x0), L.y + 16, 1, L.h - 18);
+      g.globalAlpha = 1;
+      // The part that runs past the loop end and wraps onto the head.
+      if (over) {
+        const wx = tToX(0), wx1 = tToX(((e.at + e.dur) * 1000) - master.loopMs);
+        g.globalAlpha = on ? 0.32 : 0.18;
+        drawEnv(g, envs[i], buf.duration,
+                e.into + (loopSec() - e.at) * e.rate, e.into + e.dur * e.rate,
+                wx, Math.max(wx + 1, wx1), mid, amp, col);
+        g.globalAlpha = 1;
+      }
+    });
+
+    /* A one-shot layer with nothing dropped yet still shows the take, ghosted
+       at the top of the loop, so you can see what it is before placing it. */
+    if (!m.repeat && !m.drops.length) {
+      const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+      const dur = (buf.duration - trim) / clamp(m.rate, 0.25, 4);
+      g.globalAlpha = 0.22;
+      drawEnv(g, envs[i], buf.duration, trim, buf.duration,
+              tToX(0), Math.max(tToX(0) + 1, tToX(dur * 1000)), mid, amp, col);
+      g.globalAlpha = 1;
+      g.fillStyle = '#6d7e9e';
+      g.fillText('no drops yet - click this lane to place one', R.x0 + 6, L.y + L.h - 6);
+    }
+    g.restore();
+
+    if (!m.repeat) m.drops.forEach((ms, k) => {
+      const x = Math.round(tToX(ms));
+      const on = sel && sel.layer === i && sel.index === k;
+      g.fillStyle = on ? '#fff' : t.color;
+      g.fillRect(x, L.y, on ? 2 : 1, L.h);
+      g.fillRect(x - 3, L.y, 7, 3);
+    });
+  });
+
+  // Playhead.
+  const x = Math.round(tToX(posMs()));
+  g.fillStyle = '#e94560';
+  g.fillRect(x, R.top, 1, R.h - R.top - 8);
+
+  $('read').textContent = Math.round(posMs()) + ' / ' + master.loopMs + ' ms';
+}
+
+function tick() { if (playing) draw(); requestAnimationFrame(tick); }
+
+/* --- canvas interaction -------------------------------------------------- */
+
+let drag = null;
+
+cv.addEventListener('mousedown', e => {
+  const r = cv.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+
+  if (my >= R.top && my <= R.top + R.mixH) {         // the mix strip: scrub
+    scrubMs = Math.round(xToT(mx));
+    if (playing) { stop(); start(); }
+    draw();
+    return;
+  }
+  const li = R.lanes.findIndex(L => my >= L.y && my <= L.y + L.h);
+  if (li < 0) return;
+  const m = mix[li];
+  if (m.repeat) { setState(LAYERS[li].name + ' is a repeating bed -- placement is offset/gap, not drops'); return; }
+
+  // Grab an existing marker if one is near, otherwise place a new one.
+  let hit = -1, best = 7;
+  m.drops.forEach((ms, k) => { const d = Math.abs(tToX(ms) - mx); if (d < best) { best = d; hit = k; } });
+  if (hit >= 0) {
+    if (e.shiftKey) { m.drops.splice(hit, 1); sel = null; touch(); return; }
+    sel = { layer: li, index: hit };
+    drag = { layer: li, index: hit };
+    draw();
+    return;
+  }
+  if (e.shiftKey) return;
+  drop(li, xToT(mx));
+});
+
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  const r = cv.getBoundingClientRect();
+  const m = mix[drag.layer];
+  const t = clamp(snapMs(xToT(e.clientX - r.left)), 0, master.loopMs);
+  m.drops[drag.index] = t;
+  m.drops.sort((a, b) => a - b);
+  drag.index = m.drops.indexOf(t);
+  sel = { layer: drag.layer, index: drag.index };
+  touch(false);
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => render().then(draw), 250);
+});
+
+window.addEventListener('mouseup', () => { drag = null; });
+
+/* --- side panel ---------------------------------------------------------- */
+
+function setState(s) { $('state').textContent = s; }
+
+function numField(parent, label, unit, get, set, step, big) {
+  const row = document.createElement('div'); row.className = 'nf';
+  row.innerHTML = '<span class="lbl">' + label + '</span>'
+    + '<span class="stepper"><button class="st">-</button><button class="st">+</button></span>'
+    + '<input type="text"><span class="unit">' + (unit || '') + '</span>';
+  const [minus, plus] = row.querySelectorAll('button');
+  const inp = row.querySelector('input');
+  const show = () => { inp.value = String(get()); };
+  const bump = d => { set(get() + d); show(); };
+  minus.onclick = () => bump(-step);
+  plus.onclick = () => bump(step);
+  inp.onchange = () => { const v = parseFloat(inp.value); if (!isNaN(v)) set(v); show(); };
+  inp.onkeydown = ev => {
+    if (ev.key === 'ArrowUp') { ev.preventDefault(); bump(ev.shiftKey ? (big || step * 10) : step); }
+    if (ev.key === 'ArrowDown') { ev.preventDefault(); bump(-(ev.shiftKey ? (big || step * 10) : step)); }
+    ev.stopPropagation();
+  };
+  show();
+  parent.appendChild(row);
+  return row;
+}
+
+function buildSide() {
+  const side = $('side');
+  const scroll = side.scrollTop;
+  side.innerHTML = '';
+
+  // ---- master
+  const gm = document.createElement('div'); gm.className = 'group';
+  gm.innerHTML = '<h3>MASTER</h3>';
+  numField(gm, 'loop length', 'ms', () => master.loopMs,
+           v => { master.loopMs = Math.max(200, Math.round(v)); touch(); }, 1, 50);
+  numField(gm, 'master level', 'dB', () => master.db,
+           v => { master.db = clamp(v, -60, 12); touch(); }, 0.5, 3);
+  numField(gm, 'wrap fade', 'ms', () => master.wrapFadeMs,
+           v => { master.wrapFadeMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
+  numField(gm, 'grid divisions', '', () => master.grid,
+           v => { master.grid = clamp(Math.round(v), 0, 64); touch(false); draw(); }, 1, 4);
+  const mrow = document.createElement('div'); mrow.className = 'row';
+  const snapB = document.createElement('button');
+  snapB.textContent = 'snap: ' + (master.snap ? 'on' : 'off');
+  if (master.snap) snapB.classList.add('ok');
+  snapB.onclick = () => { master.snap = !master.snap; buildSide(); };
+  const bedB = document.createElement('button');
+  bedB.textContent = 'bed length';
+  bedB.title = 'set the loop to exactly one pass of layer 1';
+  bedB.onclick = () => {
+    const b = buffers[0]; if (!b) return;
+    const m = mix[0];
+    master.loopMs = Math.round((b.duration - clamp(m.trimMs / 1000, 0, b.duration))
+                               / clamp(m.rate, 0.25, 4) * 1000) + Math.max(0, m.gapMs);
+    touch();
+  };
+  const resetB = document.createElement('button');
+  resetB.textContent = 'reset';
+  resetB.onclick = () => {
+    mix.forEach((m, i) => Object.assign(m, DEFAULT_MIX[i], { drops: DEFAULT_MIX[i].drops.slice() }));
+    Object.assign(master, DEFAULT_MASTER);
+    tapLog = []; sel = null; touch();
+  };
+  const vnB = document.createElement('button');
+  vnB.textContent = 'view: ' + (master.viewNorm ? 'normalised' : 'true level');
+  vnB.title = 'display only -- scales each lane to its own peak so struck sounds are readable';
+  if (master.viewNorm) vnB.classList.add('ok');
+  vnB.onclick = () => { master.viewNorm = !master.viewNorm; buildSide(); draw(); };
+  mrow.append(snapB, vnB, bedB, resetB);
+  gm.appendChild(mrow);
+  const note = document.createElement('p'); note.className = 'note';
+  note.innerHTML = 'every layer loops against the bed. turn <b>repeat</b> off on a layer '
+    + 'to place it at moments instead. a tail past the loop end wraps onto the head '
+    + '-- that is what you hear live, and the render does it too.';
+  gm.appendChild(note);
+  side.appendChild(gm);
+
+  // ---- layers
+  LAYERS.forEach((t, i) => {
+    const m = mix[i], buf = buffers[i];
+    const gp = document.createElement('div'); gp.className = 'group';
+    const dur = buf ? (buf.duration * 1000).toFixed(1) + ' ms' : '...';
+    gp.innerHTML = '<h3><span class="sw" style="background:' + t.color + '"></span>'
+      + t.name + (t.key ? ' <span class="key">' + t.key + '</span>' : '')
+      + '<span class="dur">' + dur + '</span></h3>';
+
+    const r1 = document.createElement('div'); r1.className = 'row';
+    const onB = document.createElement('button');
+    onB.textContent = m.on ? 'on' : 'off';
+    if (m.on) onB.classList.add('ok');
+    onB.onclick = () => { m.on = !m.on; touch(); };
+    const soloB = document.createElement('button');
+    soloB.textContent = 'solo';
+    if (m.solo) soloB.classList.add('on');
+    soloB.onclick = () => { m.solo = !m.solo; touch(); };
+    const repB = document.createElement('button');
+    repB.textContent = m.repeat ? 'bed (repeating)' : 'one-shot';
+    if (m.repeat) repB.classList.add('on');
+    repB.onclick = () => { m.repeat = !m.repeat; touch(); };
+    r1.append(onB, soloB, repB);
+    gp.appendChild(r1);
+
+    numField(gp, 'level', 'dB', () => m.db, v => { m.db = clamp(v, -60, 12); touch(); }, 0.5, 3);
+    numField(gp, 'trim front', 'ms', () => m.trimMs, v => { m.trimMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
+    numField(gp, 'rate', 'x', () => m.rate, v => { m.rate = clamp(+v.toFixed(3), 0.25, 4); touch(); }, 0.005, 0.05);
+
+    if (m.repeat) {
+      numField(gp, 'offset', 'ms', () => m.offsetMs, v => { m.offsetMs = Math.round(v); touch(); }, 10, 100);
+      numField(gp, 'gap between', 'ms', () => m.gapMs, v => { m.gapMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
+      const body = buf ? (buf.duration - clamp(m.trimMs / 1000, 0, buf.duration)) * 1000 : 0;
+      const one = body / clamp(m.rate, 0.25, 4) + Math.max(0, m.gapMs);
+      const passes = one > 0 ? master.loopMs / one : 0;
+      const clean = Math.abs(passes - Math.round(passes)) < 0.004;
+
+      /* THE TWO WAYS OUT OF A LAYER THAT DOES NOT DIVIDE THE LOOP, and the
+         tool can do the arithmetic for both. Either pull the take into
+         agreement with `rate` until a whole number of passes fits, or move the
+         loop to the take. Which one is right is a musical call, not a numeric
+         one: rate changes the pitch as well as the tempo, because these are
+         samples and not stems, and on a struck sound a couple of percent is
+         usually inaudible while ten is a different instrument. */
+      const r3 = document.createElement('div'); r3.className = 'row';
+      const fitB = document.createElement('button');
+      const n = Math.max(1, Math.round(passes || 1));
+      fitB.textContent = 'fit by rate (x' + n + ')';
+      fitB.title = 'stretch this take so exactly ' + n + ' pass(es) fill the loop';
+      fitB.onclick = () => {
+        const want = master.loopMs / n - Math.max(0, m.gapMs);
+        if (want <= 1 || body <= 0) return;
+        m.rate = clamp(+(body / want).toFixed(4), 0.25, 4);
+        touch();
+      };
+      const loopB = document.createElement('button');
+      loopB.textContent = 'fit by loop';
+      loopB.title = 'move the loop length to ' + n + ' pass(es) of this take instead';
+      loopB.onclick = () => { master.loopMs = Math.max(200, Math.round(one * n)); touch(); };
+      r3.append(fitB, loopB);
+      gp.appendChild(r3);
+
+      const p = document.createElement('p'); p.className = 'note';
+      p.innerHTML = 'one pass ' + one.toFixed(1) + ' ms, fills the loop ' + passes.toFixed(3) + ' times'
+        + (clean ? ' <span style="color:#8fce8f">-- whole</span>'
+                 : ' <span class="warn">-- not whole, the last pass is cut and wraps onto the first</span>');
+      gp.appendChild(p);
+    } else {
+      const r2 = document.createElement('div'); r2.className = 'row';
+      const tapB = document.createElement('button');
+      tapB.textContent = 'drop at head';
+      tapB.onclick = () => drop(i);
+      const clrB = document.createElement('button');
+      clrB.textContent = 'clear';
+      clrB.onclick = () => { m.drops = []; tapLog = tapLog.filter(x => x.layer !== i); sel = null; touch(); };
+      r2.append(tapB, clrB);
+      gp.appendChild(r2);
+
+      const outside = m.drops.filter(ms => ms >= master.loopMs).length;
+      if (outside) {
+        const p3 = document.createElement('p'); p3.className = 'note warn';
+        p3.textContent = outside + ' drop' + (outside > 1 ? 's are' : ' is')
+          + ' past the loop end and silent -- lengthen the loop or remove them';
+        gp.appendChild(p3);
+      }
+      const dd = document.createElement('div'); dd.className = 'drops';
+      if (!m.drops.length) dd.innerHTML = '<span class="none">no drops yet</span>';
+      m.drops.forEach((ms, k) => {
+        const c = document.createElement('span');
+        c.className = 'chip' + (sel && sel.layer === i && sel.index === k ? ' sel' : '');
+        if (ms >= master.loopMs) c.style.opacity = '.45';
+        c.textContent = ms;
+        c.title = 'click to select, shift+click to remove';
+        c.onclick = ev => {
+          if (ev.shiftKey) { m.drops.splice(k, 1); sel = null; touch(); return; }
+          sel = { layer: i, index: k }; buildSide(); draw();
+        };
+        dd.appendChild(c);
+      });
+      gp.appendChild(dd);
+
+      if (sel && sel.layer === i && m.drops[sel.index] != null) {
+        numField(gp, 'selected drop', 'ms', () => m.drops[sel.index], v => {
+          const t2 = clamp(Math.round(v), 0, master.loopMs);
+          m.drops[sel.index] = t2;
+          m.drops.sort((a, b) => a - b);
+          sel.index = m.drops.indexOf(t2);
+          touch();
+        }, 1, 25);
+      }
+    }
+    side.appendChild(gp);
+  });
+
+  // ---- export
+  const ge = document.createElement('div'); ge.className = 'group';
+  ge.innerHTML = '<h3>ARRANGEMENT</h3>';
+  const ta = document.createElement('textarea'); ta.id = 'dump'; ta.readOnly = true;
+  ta.value = arrangementJson();
+  ge.appendChild(ta);
+  const p2 = document.createElement('p'); p2.className = 'note';
+  p2.innerHTML = 'found a mix? paste these back over DEFAULT_MIX / DEFAULT_MASTER '
+    + 'so the tool opens on it and <b>reset</b> returns to it.';
+  ge.appendChild(p2);
+  side.appendChild(ge);
+
+  side.scrollTop = scroll;
+}
+
+function arrangementJson() {
+  return JSON.stringify({
+    master: { loopMs: master.loopMs, db: master.db, wrapFadeMs: master.wrapFadeMs,
+              grid: master.grid, snap: master.snap },
+    layers: LAYERS.map((t, i) => Object.assign({ file: t.file }, mix[i])),
+  }, null, 1);
+}
+
+/* --- export -------------------------------------------------------------- */
+
+function wavBlob(buf) {
+  const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate;
+  const data = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) data.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); data.setUint32(4, 36 + n * ch * 2, true); str(8, 'WAVEfmt ');
+  data.setUint32(16, 16, true); data.setUint16(20, 1, true); data.setUint16(22, ch, true);
+  data.setUint32(24, sr, true); data.setUint32(28, sr * ch * 2, true);
+  data.setUint16(32, ch * 2, true); data.setUint16(34, 16, true);
+  str(36, 'data'); data.setUint32(40, n * ch * 2, true);
+  const chans = [];
+  for (let c = 0; c < ch; c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++)
+    for (let c = 0; c < ch; c++) {
+      const v = Math.max(-1, Math.min(1, chans[c][i]));
+      data.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      o += 2;
+    }
+  return new Blob([data], { type: 'audio/wav' });
+}
+
+function download(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+$('exportWav').onclick = async () => {
+  if (dirty || !rendered) await render();
+  if (!rendered) return;
+  download(wavBlob(rendered), 'beat-trilha-mix.wav');
+  setState('exported beat-trilha-mix.wav');
+};
+
+$('exportJson').onclick = () => {
+  download(new Blob([arrangementJson()], { type: 'application/json' }), 'beat-trilha-mix.json');
+};
+
+$('play').onclick = toggle;
+$('rerender').onclick = () => render().then(draw);
+
+/* --- keys ---------------------------------------------------------------- */
+
+window.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const k = e.key.toLowerCase();
+  if (k === ' ' || e.code === 'Space') { e.preventDefault(); toggle(); return; }
+  if (k === 'backspace') { e.preventDefault(); undoDrop(); return; }
+  if (k === 'g') { master.snap = !master.snap; buildSide(); setState('snap ' + (master.snap ? 'on' : 'off')); return; }
+  if (k === 'r') { render().then(draw); return; }
+  if (k === 'e') { $('exportWav').click(); return; }
+  const li = LAYERS.findIndex(t => t.key === k);
+  if (li >= 0) { e.preventDefault(); drop(li); }
+});
+
+window.addEventListener('resize', () => { layout(); draw(); });
+
+/* --- boot ---------------------------------------------------------------- */
+
+(async function boot() {
+  ensureCtx();
+  try {
+    buffers = await Promise.all(LAYERS.map(async t => {
+      const res = await fetch(BASE + t.file);
+      if (!res.ok) throw new Error(t.file + ': ' + res.status);
+      return ctx.decodeAudioData(await res.arrayBuffer());
+    }));
+  } catch (err) {
+    $('loadmsg').innerHTML = '<span style="color:#e94560">' + err.message + '</span><br>'
+      + 'serve the repo root and open this over http, not file://';
+    setState('load failed');
+    return;
+  }
+  envs = buffers.map(b => envelope(b));
+  peaks = buffers.map(b => {
+    const d = b.getChannelData(0);
+    let p2 = 0;
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > p2) p2 = a; }
+    return p2 || 1;
+  });
+  $('loadmsg').style.display = 'none';
+  layout();
+  buildSide();
+  await render();
+  draw();
+  tick();
+  setState('loaded ' + buffers.length + ' takes -- bed on, 4 muted. turn one on to loop it');
+})();
+</script>
+</body>
+</html>
