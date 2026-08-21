@@ -398,8 +398,8 @@ const CONFIG = {
       enemies: [
         { kind: 'cigarro',  x: 2280, z: 40 },
         { kind: 'cigarro2',   x: 2450, z: 120, delayMs: 500 },
-        { kind: 'eggplant', x: 2360, z: 175, delayMs: 1400 },
-        { kind: 'eggplant', x: 2200, z: 90,  delayMs: 6400, from: 'behind' },
+        { kind: 'cigarro3', x: 2360, z: 175, delayMs: 1400 },
+        { kind: 'cigarro3', x: 2200, z: 90,  delayMs: 6400, from: 'behind' },
         { kind: 'cigarro',  x: 2240, z: 160, delayMs: 9400, from: 'behind' },
       ],
     },
@@ -436,12 +436,25 @@ const CONFIG = {
        camera. */
     {
       kind: 'arena',
+      /* THE FIRST BUG FIGHT, and the cast changes here on purpose. Past the
+         sub-boss only ONE cigarette is left -- CIGARRO3, the strongest of the
+         three -- and everything else is baratas. Keeping the hardest of the
+         old gang rather than the easiest is what stops the new wave reading as
+         a reset: the enemy the player has learned to respect is now the
+         familiar one.
+
+         THE TAN ROACH STILL OPENS, but the wave is TWO AND TWO. It was three
+         tan to one red, which was meant to teach the charge on one animal
+         before the other arrived and instead just read as a colour that had
+         been used too often. The tell gets learned from the move, not from how
+         many are wearing the same shell -- and both roaches charge, so it is
+         taught either way. */
       enemies: [
-        { kind: 'cigarro',  x: 3600, z: 70 },
-        { kind: 'cigarro2',   x: 3800, z: 150, delayMs: 600 },
-        { kind: 'eggplant', x: 3500, z: 110, delayMs: 2400, from: 'behind' },
-        { kind: 'cigarro2',   x: 3900, z: 50,  delayMs: 5200 },
-        { kind: 'cigarro',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
+        { kind: 'cigarro3', x: 3600, z: 70 },
+        { kind: 'barata',   x: 3800, z: 150, delayMs: 600 },
+        { kind: 'barata2',  x: 3500, z: 110, delayMs: 2400, from: 'behind' },
+        { kind: 'barata',   x: 3900, z: 50,  delayMs: 5200 },
+        { kind: 'barata2',  x: 3450, z: 170, delayMs: 8000, from: 'behind' },
       ],
     },
     { kind: 'scroll', toX: 4092 },        // camera 3022 -> 3424   (film 100%)
@@ -450,11 +463,11 @@ const CONFIG = {
     {
       kind: 'arena',
       enemies: [
-        { kind: 'eggplant', x: 4000, z: 60 },
-        { kind: 'cigarro',  x: 4230, z: 150, delayMs: 500 },
-        { kind: 'cigarro2',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
-        { kind: 'eggplant', x: 4100, z: 180, delayMs: 4200, from: 'behind' },
-        { kind: 'cigarro2',   x: 4300, z: 40,  delayMs: 7000 },
+        { kind: 'barata2',  x: 4000, z: 60 },
+        { kind: 'cigarro3', x: 4230, z: 150, delayMs: 500 },
+        { kind: 'barata',   x: 3950, z: 110, delayMs: 1600, from: 'behind' },
+        { kind: 'barata2',  x: 4100, z: 180, delayMs: 4200, from: 'behind' },
+        { kind: 'barata',   x: 4300, z: 40,  delayMs: 7000 },
       ],
     },],
     },
@@ -471,9 +484,10 @@ const CONFIG = {
       endX: 1617,
       reverse: true,
       segments: [
-        /* PLACEHOLDER OCCUPANT. The room, its shot and its camera are the
-           feature; what actually fights here is not decided yet. Three mooks
-           keep it playable until it is. */
+        /* THE WAVE FIRST, THE BOSS AFTER IT -- decided 2026-08-21. These three
+           are no longer a placeholder standing in for an undecided occupant;
+           they are the room's opening, and clearing them is what brings the
+           horse out. */
         {
           kind: 'arena',
           /* THE CAMERA FOLLOWS THIS FIGHT, it does not lock. The room is 337px
@@ -482,11 +496,16 @@ const CONFIG = {
              reason the room's footage was cut to be scrubbable in reverse. */
           lock: false,
           enemies: [
-            { kind: 'eggplant', x: 900,  z: 70 },
+            { kind: 'cigarro3', x: 900,  z: 70 },
             { kind: 'cigarro2',   x: 1100, z: 150, delayMs: 900 },
             { kind: 'cigarro',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
           ],
         },
+        /* THE FINAL BOSS. `who` picks the occupant: without it a boss segment
+           is the Mosca, which is what every existing one means. The Mosca is a
+           SUB-boss mid-street and is long spent by the time the player gets
+           here, so this is the only place `who` is not the default. */
+        { kind: 'boss', who: 'horse' },
       ],
     },
   ],
@@ -571,7 +590,7 @@ const CONFIG = {
        characters with different rows behind them. */
     cigarro:  { sheet: 'v2:beatemup-dungeon/cigarro-beat', pack: 'ragged',
                 name: 'CIGARRO',
-                /* UP ON REQUEST, TWICE: 20% and then another 10%, from the
+                /* UP ON REQUEST THREE TIMES: 20%, 10% and 10% again, from
                    1.0 he had implicitly when he was the reference every other
                    pack was measured against. He still is that reference -- the
                    stub below is expressed as a ratio to him and both moved by
@@ -583,12 +602,11 @@ const CONFIG = {
                    size only; `ENEMY_COMBOS.cigarro` still swings 92/92/108 x
                    BODY_SCALE, the numbers it had when he was drawn a third
                    smaller than this. 1.2 was the limit the stub's note below
-                   describes and he is past it now: his fist ends visibly short
-                   of nothing -- it ends visibly PAST his hitbox, and the gap is
-                   about a third of his own reach. Growing those three reaches
-                   by the same 32% is the fix and it is a REBALANCE, which is
-                   why it waits to be asked for. */
-                drawScale: 1.32,
+                   describes and he is well past it: his fist now ends visibly
+                   PAST his hitbox, by roughly half his own reach again.
+                   Growing those three reaches by the same 45% is the fix, and
+                   it is a REBALANCE, which is why it waits to be asked for. */
+                drawScale: 1.452,
                 poses: {
                   /* The knockdown row, cut where the motion changes: three
                      frames of going over, one flat on the floor, two getting
@@ -614,7 +632,7 @@ const CONFIG = {
                    a size difference the illustrator drew ON PURPOSE. In the
                    masters his body is 405px against the first cigarette's 348:
                    16.4% bigger. That ratio is still what this number is FOR: it
-                   is now 1.164 x the 1.32 both cigarettes have been raised by
+                   is now 1.164 x the 1.452 both cigarettes have been raised by
                    between them, so the difference the illustrator drew survives
                    and the pair simply got bigger together.
 
@@ -624,8 +642,8 @@ const CONFIG = {
 
                    ⚠️ AND HE IS A LONG WAY PAST IT. This note used to end "push
                    it much past 1.2 and his fist visibly outruns the reach it
-                   actually has". At 1.537 he is drawn half again the size the
-                   pack was scaled to, while `ENEMY_COMBOS.cigarro2` still
+                   actually has". At 1.691 he is drawn nearly 70% over the size
+                   the pack was scaled to, while `ENEMY_COMBOS.cigarro2` still
                    swings the 92/92/108 x BODY_SCALE it had at 1.164. He is the
                    bigger of the two and so the worse offender: his swing will
                    look like it should have connected from a good deal further
@@ -636,14 +654,150 @@ const CONFIG = {
                    rebalance -- it makes him hit from further away, which is a
                    harder fight, not a bigger sprite -- so it waits to be asked
                    for rather than riding along with a size change. */
-                drawScale: 1.537,
+                drawScale: 1.691,
                 poses: {
                   downLand: { anim: 'knockdown', from: 0, to: 3 },
                   downLie:  { anim: 'knockdown', from: 3, to: 4 },
                   downRise: { anim: 'knockdown', from: 4, to: 6 },
                 } },
 
-    eggplant: { sheet: 'saborosa-elementos-eggplant', name: 'ERKPA' },
+    /* THE THIRD CIGARETTE, AND ERKPA'S REPLACEMENT. He took the eggplant's
+       waves, HP and speed the same way CIGARRO took JUIXY's and the stub took
+       TOM's, so no fight's time-to-kill moved when the art did.
+
+       ⚠️ WITH HIM THE CAST IS ALL RAGGED PACKS. ERKPA was the last character
+       on a main-game 9x5 grid sheet read as punches, which is why `sheets.js`
+       carries two formats and why `POSE` (the grid pose-to-column table) is
+       still in this file. Both are now dead weight. Removing them is a
+       separate job and has deliberately NOT been done here -- a cast change and
+       a loader refactor in one commit is two things to bisect.
+
+       HIS SIZE IS THE STUB'S, AND IT IS MEASURED. Packs are scaled so the idle
+       body is `fighterSizePx` tall, so every cigarette arrives on screen the
+       same height whatever the master was drawn at, and `drawScale` is what
+       puts the illustrator's intended difference back. At the cutter's shared
+       0.49 his body measures 198.4px -- cigarro2's 198, not cigarro's 170. He
+       was drawn as one of the BIG ones, so he carries the big one's number.
+       Copied rather than re-derived, so the trio keeps the proportions that
+       were drawn. */
+    /* THE BARATAS. A different animal and a SHORTER SHEET -- six rows, not
+       eight. No jump row and no knockdown row, because a cockroach does
+       neither; what it has instead is the BALL, row 6, which is a move nothing
+       else in the game has. See BARATA_CHARGE.
+
+       THREE POSE OVERRIDES, AND EACH IS A CONSEQUENCE OF THE SHEET:
+
+       `combo1..3` -- his punch row is FIVE frames, not the cigarettes' six, and
+       it is not wind-up/strike pairs. Frame 0 is a guard he returns to and
+       frames 1-4 are four separate strikes, so each punch is ONE drawing and
+       the shared table's pair-slicing would cut every hit in half. The fourth
+       strike is cut and unwired -- three is the longest string.
+
+       `down` -- there is no knockdown row. It borrows the death row's last
+       frame, which is the roach on its back with its legs up: that IS what
+       being knocked down looks like for this animal, and he gets up out of it.
+       A knocked-down barata and a dead one therefore share a drawing, which is
+       correct rather than a collision.
+
+       `ball` -- the charge, and it needs POSE_MS because an attack pose is
+       normally frozen to three frames (startup/active/recover). See the ball
+       branch in Fighter.frame(). */
+    barata:  { sheet: 'v2:beatemup-dungeon/barata-beat', pack: 'ragged',
+               name: 'BARATA',
+               /* THE CIGARETTES' SCALE, 1.452, and they arrived without one at
+                  all -- drawn at the bare normalised size while the rest of the
+                  cast had been raised 45%, which is most of why they looked
+                  like insects at the wrong end of a telescope.
+
+                  ⚠️ THEY STILL READ SMALLER THAN A CIGARETTE AT THE SAME
+                  NUMBER, and the reason is worth knowing before anyone retunes
+                  this. `sheets.js` scales a pack so its idle BODY is
+                  `fighterSizePx` tall, and for a cigarette every pixel of that
+                  is cigarette. For a roach the top 44px of 168 -- 26% -- is
+                  horns and antennae, so the animal itself only gets the
+                  remaining 124px.
+
+                  30% ON TOP OF THAT, ON REQUEST, and it lands at almost exactly
+                  the number that argument predicts: matching a cigarette's
+                  visible MASS rather than its normalised height wanted ~1.97,
+                  and 1.452 x 1.3 is 1.888. So the roach now stands as big as
+                  the gang he replaced, rather than as tall. */
+               drawScale: 1.888,
+               poses: {
+                 combo1: { anim: 'combo', from: 1, to: 2 },
+                 combo2: { anim: 'combo', from: 2, to: 3 },
+                 combo3: { anim: 'combo', from: 3, to: 4 },
+                 down:   { anim: 'death', from: 2, to: 3 },
+               } },
+    /* The red one. Same six rows drawn to one plan, heavier in the fight. */
+    barata2: { sheet: 'v2:beatemup-dungeon/barata2-beat', pack: 'ragged',
+               name: 'BARATA2',
+               // The same number as the tan one, and measured rather than
+               // assumed: both sheets cut to an identical 167.8px body, so the
+               // pair is drawn at one size and there is no ratio to preserve
+               // between them the way there is between the cigarettes.
+               drawScale: 1.888,
+               poses: {
+                 combo1: { anim: 'combo', from: 1, to: 2 },
+                 combo2: { anim: 'combo', from: 2, to: 3 },
+                 combo3: { anim: 'combo', from: 3, to: 4 },
+                 down:   { anim: 'death', from: 2, to: 3 },
+               } },
+
+    /* THE HORSE. THE FINAL BOSS, and the only entry here that is not a mook --
+       it is in this table purely so the SHEET is loaded and built like any
+       other ragged pack (manifest.js and game.js both walk these keys). Nothing
+       spawns it as a crowd enemy; `HorseBoss` owns it, the way `FlyBoss` owns
+       the Mosca.
+
+       ⚠️ ITS ROWS ARE NOT THE CAST'S ROWS. Five rows, all of them movement or
+       offense: runAttack, trot, walk, kick, turn. There is NO idle, NO hurt, NO
+       knockdown and NO death, and that is confirmed rather than missing -- it
+       takes damage the way the Mosca does, through a flash, a blink and the
+       impact burst. Do not press a movement row into service as a hurt pose.
+
+       ⚠️ THE `poses` MAP BELOW IS AN IDENTITY MAP, AND IT IS LOAD-BEARING.
+       `sheets.draw()` takes a POSE name and resolves it through `pack.poses`;
+       an unknown pose silently falls back to `idle`, and this pack has no idle,
+       so the fallback lands on `anims.idle || [0]` -- frame 0 of runAttack, for
+       every pose, forever. It does not error and it does not look obviously
+       wrong at a glance. So each of his five rows is declared as a pose of its
+       own name. What he must NOT get is the fighter vocabulary -- no combo1,
+       no down, no hurt -- because there is no art behind any of it.
+
+       `turn` IS NOT A FACING. It is a rotation: frame 0 is the left profile,
+       frame 3 is head-on, frame 6 is the right profile. Drawing it through the
+       pack's mirror would fold the rotation in half, so HorseBoss draws that row
+       with the flip forced off. Rows 1-4 face RIGHT like the rest of the cast.
+
+       `drawScale` 1.711 puts his 234px body on screen at 234px -- the atlas is
+       drawn at almost exactly 1:1, which is what the master was reduced FOR
+       (tools/shrink-master.py). Raising it past ~1.8 starts upscaling the
+       texture and there is no more detail to find.
+
+       NAME IS A PLACEHOLDER. The user names the characters. */
+    horse:   { sheet: 'v2:beatemup-dungeon/horse-beat', pack: 'ragged',
+               name: 'HORSE',
+               drawScale: 1.711,
+               poses: {
+                 runAttack: { anim: 'runAttack' },
+                 trot:      { anim: 'trot' },
+                 walk:      { anim: 'walk' },
+                 kick:      { anim: 'kick' },
+                 turn:      { anim: 'turn' },
+               } },
+
+    cigarro3: { sheet: 'v2:beatemup-dungeon/cigarro3-beat', pack: 'ragged',
+                /* PLACEHOLDER, like BAGANA was and unlike CIGARRO. Nothing
+                   draws this field -- it is documentation -- so naming him is
+                   one line whenever you decide. */
+                name: 'CIGARRO3',
+                drawScale: 1.691,
+                poses: {
+                  downLand: { anim: 'knockdown', from: 0, to: 3 },
+                  downLie:  { anim: 'knockdown', from: 3, to: 4 },
+                  downRise: { anim: 'knockdown', from: 4, to: 6 },
+                } },
   },
 
   /* Pose → sheet column. The packs were drawn for the main game's grab/throw
@@ -710,6 +864,17 @@ const CONFIG = {
     down:       { anim: 'knockdown' },
     death:      { anim: 'death' },
 
+    /* THE BARATA'S CHARGE -- ALL FIVE DRAWINGS AS ONE POSE, tell included.
+       Frame 0 is him tucking in and frames 1-4 are the spin, and they are one
+       pose rather than two because the ATTACK already separates them: the tell
+       is the attack's `startup` window and the roll is its `active` one. Split
+       into two poses, something would have to keep the pose and the attack
+       phase in step by hand, and that is the class of bug this file keeps
+       finding. In the shared table because that is where poses live, not
+       because anything else can play it -- only the baratas have a `ball`
+       animation, and `sheets.has()` keeps every other pack off it. */
+    ball:       { anim: 'ball' },
+
     lift:       { anim: 'lift' },
     liftThrow:  { anim: 'liftThrow' },
     pickGround: { anim: 'pickGround' },
@@ -736,7 +901,14 @@ const CONFIG = {
      Idle ended up at 200 by eye, after trying 110 (too fast), 286 (too slow)
      and 143 (still too fast). Both numbers are now literal: what is written
      here is what is drawn. */
-  POSE_MS: { idle: 200, walk: 124, hurt: 100, down: 110, death: 130 },
+  /* `ball` is here and no other ATTACK pose is, which is the exception worth
+     knowing about. Attack frames are normally driven by the attack's own
+     startup/active/recover windows so a punch's drawing can never drift out of
+     step with the window that can actually hit. A charge is not a punch: it is
+     one long active window that lasts until he leaves the screen, and read off
+     the phases it would show a single frozen drawing the whole way across.
+     So the ball spins on a clock, like the walk does. */
+  POSE_MS: { idle: 200, walk: 124, hurt: 100, down: 110, death: 130, ball: 55 },
 
   /* How long the LANDING frame of a jump is held after the arc has finished,
      in ms. Purely cosmetic and deliberately outside the jump itself: the six
@@ -928,7 +1100,11 @@ const CONFIG = {
      being something a player can count in hits. Was 100 before the hand-drawn
      bar landed; the bar is what makes the number matter. */
   playerHealth: 110,
-  enemyHealth: { cigarro2: 40, cigarro: 34, eggplant: 55 },
+  /* THE BARATAS ARE THE POST-MOSCA CAST and are meant to be a step up: the
+     tan one is quicker than anything before it, the red one tougher than
+     anything before it. Both untested numbers -- see the note on their
+     string. */
+  enemyHealth: { cigarro2: 40, cigarro: 34, cigarro3: 55, barata: 50, barata2: 66 },
 
   /* =========================================================================
      COMBAT
@@ -1026,6 +1202,71 @@ const CONFIG = {
      carries the weight of a blow on its own. Noted rather than left as zeroed
      knobs so it does not read as an unfinished feature and get "fixed". */
 
+  /* --- The impact burst ----------------------------------------------------
+     effects-porrada-01.png, cut by tools/build-beat-fx-defs.py into SIX
+     four-frame animations: three hand-drawn stars, each in yellow and in red,
+     each one going solid -> outline -> broken -> dots while it expands about
+     40%. It replaced a four-spoke starburst drawn in code, which was honest
+     placeholder and said so in its own comment.
+
+     ONE IS PICKED AT RANDOM PER BLOW, which is the point of having six -- a
+     five-punch combo must not stamp the identical mark five times. The pick is
+     made once, in Combat._impact, and remembered on the event; rolling it
+     inside the draw would strobe through all six in a fifth of a second.
+
+     THE COLOUR IS PART OF THAT DRAW by default: all six are in the hat whoever
+     is being hit. `colorByRole` makes it mean something instead -- yellow when
+     the player lands one, red when the player takes one -- which is the
+     readability convention most of the genre uses. It is one line either way
+     and it is a taste call, so both are here rather than one being baked in.
+
+     THE SIZES ARE `* BODY_SCALE` FOR THE SAME REASON THE FIGHTERS ARE. A burst
+     is measured against the character it is stamped on, so shrinking the cast
+     has to shrink the mark with it or the next rescale leaves punches throwing
+     stars bigger than the people throwing them. */
+  HIT_FX: {
+    on: true,
+    /* Requested size of the FIRST frame, as a geometric mean of its box -- NOT
+       a height. The three stars are drawn at three different aspects and
+       normalising on height alone makes the squat one arrive visibly wider than
+       the tall one, so which variant the dice picked would change how big the
+       hit looked. The later frames are drawn at the same scale and come out
+       bigger on their own; that growth IS the animation. Peak is about 1.4x
+       these numbers. */
+    sizePx: 90 * BODY_SCALE,
+    bigSizePx: 132 * BODY_SCALE,   // the finisher, and every blow the boss lands
+    /* Height up the victim the mark is stamped, as a fraction of
+       `fighterSizePx` above the feet. 0.42 is chest height, and it is the
+       number the code-drawn placeholder used -- kept so the art landed in the
+       same place the shape it replaced did. */
+    chestRel: 0.42,
+    /* Life of the burst. The event's own lifetime, so the four frames divide it
+       evenly. NOTE this clock does not advance during hitstop -- the simulation
+       is frozen -- so a finisher actually shows its solid first frame for
+       hitstopMs.finisher (130ms) BEFORE these 220 begin. That is deliberate and
+       it is free: the held frame is the one with the most ink in it. */
+    ms: 220,
+    /* Fraction of the life spent fading out, at the end. Small on purpose: the
+       art dissipates on its own, and an alpha ramp over the whole burst fades
+       out the solid star -- the part that reads as the hit -- to pay for a
+       disappearance the dots already do for free. */
+    fadeTail: 0.3,
+    /* Randomly mirror. The stars are hand-drawn and asymmetric enough that a
+       flipped one does not read as the same drawing, so this covers twelve
+       marks with six animations for the cost of a negative scale. */
+    mirror: true,
+    /* false = all six in the hat, whoever is being hit. true = the colour
+       carries the information instead. See above. */
+    colorByRole: false,
+    playerColour: 'yellow',   // used only when colorByRole is on
+    enemyColour: 'red',
+  },
+  /* The atlas and its defs, under one base name -- manifest.js appends
+     `-game.png` and `-sprites.json`, the same pair every character pack is
+     loaded as. Re-cut it with tools/build-beat-fx-defs.py; do not hand-edit
+     the JSON. */
+  FX_SHEET: 'v2:beatemup-dungeon/effects-porrada',
+
   // --- Being hit -----------------------------------------------------------
   /* THE THIRD DIMENSION OF A HIT, and the only part of the test with no
      geometry drawn for it in the game itself. Two fighters whose floor boxes
@@ -1077,12 +1318,16 @@ const CONFIG = {
   // still — the circling that makes a crowd read as alive.
   enemyCircleRadius: 210,
   enemyCircleSpeed: 0.9,  // rad/sec around the player
-  enemySpeedScale: { cigarro2: 0.72, cigarro: 0.88, eggplant: 0.58 },
+  enemySpeedScale: { cigarro2: 0.72, cigarro: 0.88, cigarro3: 0.58,
+                     // Faster than any cigarette. It is a roach; it should
+                     // skitter, and the charge only reads as a charge if the
+                     // walk it interrupts was already brisk.
+                     barata: 1.05, barata2: 0.9 },
   /* IGNORED FOR A KIND THAT HAS A COMBO — its hits carry their own damage, in
      ENEMY_COMBOS below. The cigarette's entry is kept as the number his string
      was balanced against (JUIXY's old swing), and because dropping him out of
      these three tables would make him look like a kind that has no stats. */
-  enemyDamage: { cigarro2: 7, cigarro: 5, eggplant: 10 },
+  enemyDamage: { cigarro2: 7, cigarro: 5, cigarro3: 10, barata: 6, barata2: 8 },
   enemyReachX: 92 * BODY_SCALE,
   enemyReachZ: 48 * BODY_SCALE,
   enemyStartupMs: 200,
@@ -1156,6 +1401,91 @@ const CONFIG = {
         cancelMs: 0, damage: 7, reachX: 108 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
         knockback: 260, lift: 0 },
     ],
+
+    /* THE THIRD ONE IS THE SLOWEST AND THE HARDEST TO PUT DOWN, because he
+       inherited ERKPA's 55 HP and 0.58 speed.
+
+       THE DAMAGE IS SPREAD, NOT ADDED -- the rule at the top of this block,
+       applied a third time. ERKPA swung once for 10, so the string is
+       6 + 6 + 10: no single hit costs more than the eggplant's did, the last
+       one costs exactly what it did, and only eating the whole string costs
+       more. That is the same ~2.2x the other two spread over the swing each
+       replaced (5 -> 11, 7 -> 15, 10 -> 22).
+
+       ⚠️ THE TIMINGS ARE EXTRAPOLATED, NOT WATCHED. The other two were tuned
+       in play; these continue their trend one step slower (startups
+       200/150/190, then 260/200/240, now 300/240/280) on the reasoning that a
+       fighter who walks slower should wind up slower. That reasoning has not
+       been tested. The startups stay well clear of `hurtMs` 260 as both others
+       do, so the string is escapable by design rather than by luck, and the
+       last hit's recovery is the punish window -- longest of the three, since
+       he is the one you most need a reason to walk away from. */
+    /* THE ROACH JABS. Three hits like everyone else, but each is ONE drawing
+       rather than a wind-up/strike pair, so the punches are shorter and come
+       faster than a cigarette's -- which is the whole read on him: he is not
+       stronger per hit, he is quicker to the next one. 4 + 4 + 6 = 14 against
+       CIGARRO's 11 over a string that takes less time to throw.
+
+       ⚠️ HIS STARTUPS ARE THE ONLY ONES UNDER `hurtMs` 260, AND THAT IS
+       DELIBERATE BUT DANGEROUS. At 190 the second hit lands while the player is
+       still stunned by the first, so his string is harder to escape once it has
+       begun -- that is what makes a fast enemy frightening rather than merely
+       busy. It is also the exact property the cigarettes' note warns against.
+       He gets away with it because he only ever throws three and his recovery
+       is long; if the fight reads as unfair rather than fast, this is the first
+       number to move, not his damage. */
+    /* ⚠️ REACH MUST CLEAR THE STAND-OFF **PLUS** THE PREVIOUS HIT'S KNOCKBACK,
+       and this string was written twice because the first version cleared
+       neither.
+
+       An enemy swings from `enemyStandoffX` -- 63.4px -- and DOES NOT STEP IN
+       between the hits of a string: the combo branch throws the next hit from
+       exactly where it stood. So each hit has to reach far enough to cover the
+       gap its own predecessor opened. Knockback decays exponentially at
+       `knockbackDecay` 6, so a blow of k moves the player k/6 px in total.
+
+       The first cut used 84 (= 60.5px), which is SHORTER THAN THE STAND-OFF
+       ITSELF -- the roach was swinging from a spot it could not reach, and the
+       second hit of a string missed most of the time. 104 (= 74.9px) clears
+       63.4 + 7.5 with 4px to spare, and the mid-string knockback is down from
+       100 to 45 so it stops shoving the player out of the flurry that is
+       supposed to be his whole identity. The FINISHER still launches. */
+    barata: [
+      { pose: 'combo1', startupMs: 200, activeMs: 80, recoverMs: 170,
+        cancelMs: 0, damage: 4, reachX: 104 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 45, lift: 0 },
+      { pose: 'combo2', startupMs: 190, activeMs: 80, recoverMs: 170,
+        cancelMs: 0, damage: 4, reachX: 104 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 45, lift: 0 },
+      { pose: 'combo3', startupMs: 190, activeMs: 100, recoverMs: 430,
+        cancelMs: 0, damage: 6, reachX: 114 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 200, lift: 0 },
+    ],
+    // The red one: the same string played heavier, the way the stub is to
+    // CIGARRO. Every window longer, every hit worth more.
+    barata2: [
+      { pose: 'combo1', startupMs: 250, activeMs: 90, recoverMs: 220,
+        cancelMs: 0, damage: 5, reachX: 104 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 50, lift: 0 },
+      { pose: 'combo2', startupMs: 230, activeMs: 90, recoverMs: 220,
+        cancelMs: 0, damage: 5, reachX: 104 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 50, lift: 0 },
+      { pose: 'combo3', startupMs: 240, activeMs: 110, recoverMs: 520,
+        cancelMs: 0, damage: 9, reachX: 118 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 240, lift: 0 },
+    ],
+
+    cigarro3: [
+      { pose: 'combo1', startupMs: 300, activeMs: 100, recoverMs: 280,
+        cancelMs: 0, damage: 6, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 140, lift: 0 },
+      { pose: 'combo2', startupMs: 240, activeMs: 100, recoverMs: 280,
+        cancelMs: 0, damage: 6, reachX: 92 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 140, lift: 0 },
+      { pose: 'combo3', startupMs: 280, activeMs: 120, recoverMs: 620,
+        cancelMs: 0, damage: 10, reachX: 108 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 300, lift: 0 },
+    ],
   },
   /* =========================================================================
      THE JUMP-IN
@@ -1199,6 +1529,15 @@ const CONFIG = {
       cancelMs: 0, damage: 8, reachX: 104 * BODY_SCALE, reachZ: 52 * BODY_SCALE,
       knockback: 340, lift: 0,
     },
+    /* SAME 420 AGAIN, for the reason above: it is where the arc drops back
+       inside `verticalReach`, not a feel, and all three jump on the same global
+       `jumpMs` and `jumpHeight`. He is the heaviest, so he costs the most to
+       eat and the most to miss with -- 340ms on the floor afterwards. */
+    cigarro3: {
+      pose: 'airPunch', startupMs: 420, activeMs: 200, recoverMs: 340,
+      cancelMs: 0, damage: 10, reachX: 104 * BODY_SCALE, reachZ: 52 * BODY_SCALE,
+      knockback: 380, lift: 0,
+    },
   },
   /* HOW OFTEN HE JUMPS IN, PER TURN. 0.10 — roughly one turn in ten — chosen in
      play after watching it at 1, where the leap was the only thing he did.
@@ -1218,6 +1557,10 @@ const CONFIG = {
     // closes the distance as readily as the quick one is not a second enemy,
     // and the leap is the one move that hides how slowly he walks.
     cigarro2: 0.05,
+    /* The slowest of the three, and the leap is the one move that hides that --
+       so he gets the stub's rate rather than a lower one. Reused rather than
+       invented: 0.05 is a number that has been watched. */
+    cigarro3: 0.05,
   },
   /* The band he will leap from. Under `enemyLeapMinX` there is nothing to leap
      over and he simply walks in; over `enemyLeapMaxX` he would be crossing most
@@ -1258,7 +1601,92 @@ const CONFIG = {
     // buy, and the fights he opens would swing on whether he happened to roll
     // three.
     cigarro2: [5, 3, 2],
+    /* THE HEAVY ONE LEANS SHORTEST -- the stub's reasoning, one step further.
+       His hits are the most expensive in the game (6 + 6 + 10 against the
+       stub's 4 + 4 + 7) and he commits longest to throwing them, so a full
+       string from him is the biggest promise any mook makes. He is on the
+       stub's weights rather than something lower because a third hit nobody
+       ever sees is not a fight, it is dead config -- 2 in 10 is rare enough to
+       stay a surprise and common enough to be learned.
+
+       ⚠️ WITHOUT AN ENTRY HERE HE THROWS EXACTLY ONE HIT, FOREVER. `Enemy`
+       rolls the length off this table and returns 1 when the kind is missing
+       (see `_rollCombo`), so a new enemy with a perfectly good three-hit string
+       in ENEMY_COMBOS silently never uses it. Nothing errors, nothing warns,
+       and it reads in play as "that one does not have a combo". Adding a kind
+       means adding it in BOTH places. */
+    cigarro3: [5, 3, 2],
+    /* THE ROACHES LEAN LONG, and they are the only ones that do. A cigarette's
+       single jab is a threat because it MIGHT be the start of a string; the
+       roach's whole identity is that he is already on the second one. Weighted
+       toward three, his ordinary attack is a flurry and the charge is what
+       breaks the rhythm. */
+    barata:  [2, 3, 5],
+    barata2: [3, 3, 4],
   },
+  /* =========================================================================
+     THE BARATA CHARGE
+     =========================================================================
+     He curls into a ball, rolls at the player, and LEAVES THE SCREEN -- he does
+     not stop, does not turn, and is gone. A few beats later he walks back in
+     from the side he vanished off.
+
+     WHY IT IS BUILT AS AN EXIT RATHER THAN A DASH. A charge that stops next to
+     the player is just a fast approach with a hitbox on it, and it puts him
+     right back where a punch can reach -- which makes the biggest move in his
+     repertoire the safest thing he can do. Running him off the screen costs him
+     his place in the fight: the crowd is one shorter for as long as he is gone,
+     he re-enters at walking pace from the far side, and the player has bought
+     several seconds by stepping out of the lane. That is the trade the move is
+     for, and it is why `chargeReturnMs` matters as much as the damage.
+
+     IT IS DODGED IN Z, NOT IN X. The direction is latched on the tell and never
+     corrected, exactly like the cigarettes' jump-in, so the answer to it is to
+     step out of the lane -- not to outrun it, which nothing can. `chargeReachZ`
+     is therefore the real difficulty dial: widen it and the move becomes
+     unavoidable rather than merely fast.
+
+     ⚠️ THE TELL IS THE WHOLE MOVE. `chargeCurlMs` is how long he sits in the
+     one curled drawing before he goes. Shorten it and the charge stops being a
+     thing the player answers and becomes a thing that happens to them. It is
+     deliberately longer than any wind-up in the game. */
+  BARATA_CHARGE: {
+    // Per TURN, not per frame -- same rule as enemyLeapChance, and the same
+    // trap if it is ever read anywhere else.
+    /* CUT 30% ON REQUEST, from 0.22 / 0.16. The move costs him his place in
+       the fight for a second and a half, so it was already the most expensive
+       thing he can do; at the old rate the roaches spent too much of the fight
+       off-screen rolling back in. It is a RATE OF SURPRISE, not a difficulty
+       dial -- the same warning the jump-in carries. */
+    chance:      { barata: 0.154, barata2: 0.112 },
+    /* THE TELL, held on the curled drawing -- frame 0 of the `ball` row, shown
+       for the whole of the attack's startup phase (see the ball branch in
+       Fighter.frame()). HALVED FROM 520 ON REQUEST: it sat on that one drawing
+       long enough to read as a stall rather than a wind-up.
+
+       ⚠️ IT IS ALSO THE PLAYER'S REACTION WINDOW, by construction -- the tuck
+       and the harmless startup are the same thing, so they cannot drift apart.
+       Cutting it in half cut the time to step out of the lane in half with it.
+       260ms is about 16 frames, which still reads; do not take it much lower
+       without deciding that the charge is meant to be unfair. */
+    curlMs:      260,
+    speed:       3.4,        // x walk speed. Nothing outruns it; step aside.
+    damage:      { barata: 12, barata2: 15 },
+    reachX:      74 * BODY_SCALE,
+    reachZ:      44 * BODY_SCALE,
+    knockback:   420,
+    knockdown:   true,       // it bowls the player over, which is the point
+    // How far past the arena wall he must get before he counts as gone.
+    exitMarginPx: 180,
+    // Off-screen, out of the fight. Then he walks back in from that same side.
+    returnMs:    { barata: 1500, barata2: 2100 },
+    /* THE BAND HE WILL CHARGE FROM, like the leap's. Too close and there is no
+       room for the tell to be read; too far and he is committing to a lane the
+       player left several seconds ago. */
+    minX:        150,
+    maxX:        620,
+  },
+
   // Enemies spawn by WALKING IN from the nearest side of the screen rather
   // than appearing — a fighter that materialises in front of the player reads
   // as a bug even when it is the design.
@@ -1313,6 +1741,194 @@ const CONFIG = {
      What it does change is the ARENA. At 304 it is well over twice a fighter's
      137px and takes up correspondingly more of the belt it sweeps along, so the
      ground pass is harder to stand clear of than when that attack was tuned. */
+  /* ===== THE HORSE BOSS ======================================================
+     The final boss, and the last fight in the game. Five rows of art and no
+     hurt/knockdown/death among them -- see CHARACTERS.horse.
+
+     WHAT THE MOVESET IS, AND WHY IT IS THIS. The rows ARE the design: the
+     illustrator drew a run-attack, a trot, a walk, a kick and a turn, so the
+     fight is a big animal that closes the distance and then either runs you
+     down or kicks you. Nothing here invents a move the art cannot show.
+
+       walk   arriving, and drifting between passes
+       trot   closing on the player -- the pressure beat
+       run    the CHARGE: he crosses the room and anything in the lane goes down
+       kick   the close-range answer, for when the player is already on him
+       turn   played whenever he changes which way he faces, because he is a
+              horse and cannot simply mirror on the spot the way a fighter does
+
+     ⚠️ THE TURN IS A REAL COST, NOT A FLOURISH. Every other character in the
+     game flips instantly -- one negative x-scale. This one plays seven frames
+     to come about, and that window is the fight's main opening: get behind him
+     and you have `turnMs` to hit something that cannot answer. Shortening it
+     makes him strictly harder in a way no other number here does.
+
+     HE TELEGRAPHS THE CHARGE BY STOPPING. `chargeTellMs` is spent standing
+     still in the run row's first frame, facing the player. That is the only
+     warning, and it is the same bargain the barata's curl makes -- the tell and
+     the harmless window are the same thing, so they cannot drift apart. */
+  HORSE_BOSS: {
+    /* Drawn body height. The pack already scales to this through
+       CHARACTERS.horse.drawScale; this is the number the SIMULATION uses --
+       hurtbox width and height both come off it -- so the picture and the
+       target grow together, the same pairing flyBossSizePx keeps. */
+    sizePx: 234,
+    /* 150 against the Mosca's 88. A full five-hit combo is 28 damage, so this
+       is a little over five clean combos -- long enough to be the last fight,
+       short enough that a player who never learns the turn opening can still
+       finish it. ⚠️ JUDGE IT WITH CONFIG.DEV.on FALSE: at 50 damage a punch he
+       dies in three combos and the fight cannot be read at all. */
+    health: 150,
+    hurtMs: 150,           // i-frames, same as the Mosca. Never optional.
+    /* Hurtbox, as fractions of sizePx. WIDER THAN A FIGHTER'S because he is a
+       horse seen side-on -- he is longer than he is tall, and a box built on
+       height alone would leave his hindquarters unhittable. */
+    hitWRel: 0.86,
+    hitZ: 52,
+    knockback: 30,         // barely shoved; he outweighs everything in the game
+
+    // --- Arriving ------------------------------------------------------------
+    /* He WALKS in from the right, and cannot be hurt until he has arrived --
+       Still Life's rule, the same one the Mosca's entrance follows. */
+    enterMargin: 240,      // px beyond the view edge he starts from
+    /* 880px of walk-in at this speed is about 3.4s -- a beat long enough to
+       read as an arrival, short enough not to be dead air. He is created off
+       the right edge (enterMargin past it) and walks to mid-screen. */
+    enterSpeed: 260,
+
+    // --- Choosing what to do -------------------------------------------------
+    /* ⚠️ HE PICKS A MOVE AND THEN MAKES IT POSSIBLE. This used to be decided by
+       distance alone -- kick inside 210, charge outside 320 after trotting for
+       1500ms -- and the charge almost never happened. The reason is arithmetic
+       rather than luck: he trots TOWARD the player at 200px/s, so by the time
+       the 1500ms was up he had closed 300px, and to still be beyond 320 he had
+       to have started more than 620px away. Anywhere nearer and he hit kick
+       range first. The signature move of the final boss fired maybe once a
+       fight, and it read as broken because it nearly was.
+
+       So the intent is ROLLED FIRST, from these weights, and the positioning
+       serves it: pick the charge from too close and he turns, backs off to get
+       a run-up, and turns again -- which is more telegraph, not less, and uses
+       animations that already exist.
+
+       DISTANCE DECIDES WHAT IS IN THE HAT; THE ROLL DECIDES BETWEEN THEM. Far
+       out he can charge or simply walk you down; up close he can kick or keep
+       repositioning. Distance gating the charge is right -- a run-up needs room
+       -- and the mistake the first version made was letting distance pick the
+       move OUTRIGHT, so his own approach kept talking him out of it.
+
+       ⚠️ `approach` IS WHY THIS IS THREE ACTIONS AND NOT TWO. With only charge
+       and kick, every moment at range became a charge and the fight was one
+       move on repeat. Approach is him just closing the distance like any other
+       enemy, committing to nothing, and it is what makes the charge read as a
+       decision rather than as a tic.
+
+       These are relative weights inside each band, not percentages of the
+       fight. At the defaults it is a coin flip either side: far, half his rolls
+       are charges and half are walk-ups; near, half are kicks and half are more
+       repositioning. */
+    ACTIONS: { charge: 50, kick: 50, approach: 50 },
+    /* An approach ends when he gets this close, or after `approachMs`,
+       whichever comes first -- and then he re-rolls. It stops a little outside
+       `kickRange` so the roll that follows is usually taken from kicking
+       distance, which is what makes him feel like he is working his way in
+       rather than teleporting between states. */
+    approachStopRange: 300,
+    approachMs: 1800,
+    /* A fuse on closing for a kick, so a player who keeps running cannot lead
+       him around the room forever without him committing to anything. */
+    approachMaxMs: 2400,
+
+    // --- The rhythm ----------------------------------------------------------
+    walkSpeed: 92,
+    trotSpeed: 200,
+    idleMs: 620,           // the breath between passes, stood in the turn row
+    /* DEAD KNOB, kept only so its absence is not mistaken for an oversight:
+       nothing reads it any more. It used to be how long he trotted before he
+       was allowed to charge, which is exactly the gate that made the charge
+       unreachable. `approachMaxMs` is the live equivalent. Delete it whenever
+       config.js next gets a tidy. */
+    // trotMs: 1500,
+    /* How close he has to be, in x, before the kick becomes the choice instead
+       of the charge. Inside this he has no room to build a run. */
+    kickRange: 210,
+    /* ⚠️ "SLIGHTLY AWAY", AND THAT IS MUCH NEARER THAN IT SOUNDS. He may only
+       roll a charge from beyond this. It was 320 and the charge starved: he
+       settles at 210-300 after any approach or kick, so the condition was
+       almost never true and the move fired once every 27 seconds at best.
+
+       IT HAS TO SIT BELOW `approachStopRange` (300). That is the whole loop:
+       an approach leaves him just outside this, so the next roll can be a
+       charge. Push it back above that number and the charge starves again --
+       which has now happened twice, in two different ways. */
+    chargeMinRange: 240,
+
+    // --- The charge ----------------------------------------------------------
+    chargeTellMs: 420,     // stood still, facing you. The only warning.
+    chargeSpeed: 520,      // faster than the player runs. Step out of the lane.
+    chargeMaxMs: 2200,     // a fuse, for the case where he cannot reach the edge
+    chargeDamage: 16,
+    /* ⚠️ MEASURED OFF THE DRAWING, NOT PICKED. Every reach in this file has to
+       be checked against the frame it belongs to -- no cigarette's second or
+       third punch has ever connected, because those numbers were written by
+       eye. The run row reaches 202px in front of the ground anchor, so the
+       chest arrives about there; 168 keeps the box just inside the picture, so
+       a charge that looks like it went through you did. */
+    chargeReachX: 168,
+    chargeReachZ: 52,
+    chargeKnockback: 480,
+    chargeKnockdown: true, // it bowls you over, which is the whole point
+    /* px past the wall he runs before he is considered to have finished the
+       pass and turns around. He commits to the run; he does not brake. */
+    chargeOverrun: 90,
+
+    // --- The kick ------------------------------------------------------------
+    /* THE KICK IS THROWN BACKWARDS. `coice` is a horse kicking with its hind
+       legs, so it lands BEHIND him -- which is why it is the answer to a player
+       who has walked round the back, and why its hitbox is on the opposite side
+       to every other attack in the game. Getting this the normal way round
+       makes the animation and the damage disagree. */
+    kickTellMs: 260,
+    kickActiveMs: 180,
+    kickRecoverMs: 420,
+    kickDamage: 14,
+    /* ⚠️ 260, NOT THE 132 THIS WAS FIRST WRITTEN AS. The hooves reach 300px
+       BEHIND the ground anchor in kick[6] and kick[7] -- measured -- so a
+       132px box put the damage barely past his own hindquarters while the
+       drawing threw legs most of a body-length further. That is the exact
+       failure the cigarettes' strings still have; it was caught here only
+       because the frame extents were printed before the number was chosen.
+       Kept a little inside 300 so the box never leads the picture.
+
+       IT ALSO HAS TO CLEAR `kickRange` (210) -- the distance at which he
+       chooses to kick. A reach shorter than the range he commits from is an
+       attack that can never land, which is the rule in STATE.md. */
+    kickReachX: 260,
+    kickReachZ: 50,
+    kickKnockback: 420,
+    kickKnockdown: true,
+
+    // --- Turning -------------------------------------------------------------
+    turnMs: 460,           // seven frames of coming about. See the warning above.
+
+    // --- Animation -----------------------------------------------------------
+    /* Per-frame holds, ms. The run is fastest because it is a gallop; the walk
+       is slow because a walking horse is slow, and both rows are 12 frames of
+       one full cycle, so these numbers are the gait. */
+    runMs: 52,
+    trotAnimMs: 62,
+    walkAnimMs: 84,
+    kickAnimMs: 62,
+
+    // --- Dying ---------------------------------------------------------------
+    /* NO DEATH ROW, so the death is drawn rather than animated: he tips over and
+       fades, which is what the Mosca does for the same reason. `finished()`
+       waits for the whole of it, so the level cannot advance out from under his
+       last beat -- the bug that hung a corpse in mid-air through the outro. */
+    dieMs: 1700,
+    dieTipRad: 1.15,       // how far over he goes before he is gone
+  },
+
   flyBossSizePx: 304,
   // A MULTIPLE OF 22 (= BAR_FRAMES − 1), like the player's, so its bar steps
   // evenly: 88 is exactly 4 damage a square.

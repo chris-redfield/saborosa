@@ -486,6 +486,22 @@ class Fighter {
       return Math.min(n - 1, Math.floor(t * n));
     }
 
+    /* THE ROLLING BALL SPINS ON A CLOCK, and it is the only ATTACK pose that
+       does. Every other attack reads its drawing off the three phases below, so
+       that a punch's picture can never drift out of step with the window that
+       can actually hit. A charge breaks that assumption: it is one long active
+       window that runs until he leaves the screen, so the phase rule would hold
+       a single frozen drawing for the entire crossing -- a ball sliding, not
+       rolling. Spun off `animT` instead it rolls at a constant rate however far
+       he has to travel. `ballCurl`, the tell, is one frame and is unaffected. */
+    if (this.atk && p === 'ball') {
+      // The tuck is the tell, and it is the attack's own startup window — so
+      // it holds for exactly as long as the player has to get out of the lane.
+      if (this.atk.phase === 'startup') return 0;
+      const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.ball) || 55;
+      return 1 + (Math.floor(this.animT * 1000 / ms) % Math.max(1, n - 1));
+    }
+
     if (this.atk) {
       const a = this.atk;
       return a.phase === 'startup' ? 0 : a.phase === 'active' ? Math.min(1, n - 1) : n - 1;

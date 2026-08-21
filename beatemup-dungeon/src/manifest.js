@@ -52,6 +52,14 @@ function assetManifest() {
   out.push({ key: 'hand', src: 'intro-hand.png', how: 'image' });
   out.push({ key: 'go', src: CONFIG.GO_SHEET, how: 'image' });
 
+  /* The impact burst. Sheet plus defs under ONE key, exactly like a character
+     pack -- Assets keeps images and JSON in separate maps, so the shared key is
+     deliberate and not a collision. */
+  if (CONFIG.HIT_FX && CONFIG.HIT_FX.on !== false) {
+    out.push({ key: 'hitfx', src: CONFIG.FX_SHEET + '-game.png', how: 'image' });
+    out.push({ key: 'hitfx', src: CONFIG.FX_SHEET + '-sprites.json', how: 'json' });
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>

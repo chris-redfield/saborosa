@@ -27,7 +27,10 @@
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
   const stats = new Stats();
-  const combat = new Combat(stats, sound);
+  /* The impact art. Built before Combat for the same reason Sound is: the
+     resolver is where a blow is decided, so it is where the mark is stamped. */
+  const hitFX = new HitFX(assets);
+  const combat = new Combat(stats, sound, hitFX);
   const hud = new Hud();
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
@@ -99,6 +102,7 @@
     if (bar) bar.style.display = 'none';
 
     for (const kind of Object.keys(CONFIG.CHARACTERS)) sheets.build(kind);
+    hitFX.build();
     backdrop.build();
 
     /* ⚠️ BOOT SCHEDULES THE FIRST FRAME ITSELF when it opens on the title, and
@@ -417,13 +421,15 @@
     all.sort((a, b) => a.z - b.z);
 
     for (const f of all) drawShadow(f, camX);
-    /* The boss draws itself from its own sheets rather than through Sheets —
-       its art is a 7-pose turn across two flapping files, not one of the 9x5
-       character packs — so it takes `assets` where a fighter takes `sheets`.
-       It is sorted into the same z order either way, which is what matters:
+    /* A BOSS SAYS WHICH ART SOURCE IT WANTS, because the two do not agree. The
+       Mosca's art is a 7-pose turn across two flapping files, so it takes raw
+       `assets`; the horse is a proper ragged pack and takes `sheets` like any
+       fighter. Asked rather than hardcoded -- this branch used to hand every
+       boss `assets`, which would have drawn the horse as nothing at all.
+       Either way it is sorted into the same z order, which is what matters:
        the player must be able to walk in front of it. */
     for (const f of all) {
-      if (f === stage.boss) f.draw(ctx, assets, camX);
+      if (f === stage.boss) f.draw(ctx, f.usesSheets ? sheets : assets, camX);
       else f.draw(ctx, sheets, camX);
     }
   }

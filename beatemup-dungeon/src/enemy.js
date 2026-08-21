@@ -18,6 +18,9 @@
  *     wind       has the token, hesitating before the swing (the tell)
  *     combo      throwing a string; Fighter drives each hit, this counts them
  *     leap       in the air, mid jump-in; the only state that MOVES mid-attack
+ *     curl       a barata tucking into a ball -- the tell before a charge
+ *     charge     rolling across the screen and off it; also MOVES mid-attack
+ *     gone       off-screen after a charge, waiting to walk back in
  *     attack     Fighter's own attack state does the work
  *
  * TWO OF THEM THROW COMBOS NOW. Both cigarettes have three punches drawn for
@@ -25,8 +28,15 @@
  * for the rule that keeps that a mook's move and not a boss's, and `_think`'s
  * 'combo' branch for how the hits are counted out. They also JUMP IN: see
  * `takeTurn()` for when that is decided and CONFIG.ENEMY_LEAP for why the
- * punch has to be thrown on the way down. ERKPA has neither and keeps the
- * single swing — he is still on a borrowed grid pack with no punch art.
+ * punch has to be thrown on the way down.
+ *
+ * THE BARATAS ARE THE FIRST ENEMIES THAT DO NOT SHARE THE ONE BRAIN. Every
+ * fighter before them ran the same loop -- approach, circle, wind, commit --
+ * and differed only in numbers. The roach's charge is a shape that loop cannot
+ * express, because it ENDS WITH HIM LEAVING THE FIGHT: `curl` -> `charge` ->
+ * `gone` -> back to `enter`, which is the spawn walk-in reused. While he is
+ * `gone` he is not in the crowd's reckoning at all, and that absence is the
+ * move's real cost to him. See CONFIG.BARATA_CHARGE.
  */
 class Enemy extends Fighter {
   constructor(kind, x, z, opts) {
@@ -74,6 +84,27 @@ class Enemy extends Fighter {
     // The jump-in. `leap` is the attack def; `wantsLeap` is rolled once per
     // turn by takeTurn() and spent by taking off. See _startLeap().
     this.leap = (CONFIG.ENEMY_LEAP && CONFIG.ENEMY_LEAP[kind]) || null;
+
+    /* THE CHARGE. `charge` is the attack def, built once from BARATA_CHARGE
+       rather than written per kind, because everything that differs between
+       the two roaches is a number in that block. A kind with no `chance` entry
+       gets null and can never roll one -- which is how every non-barata is kept
+       out of it without a single test for the kind anywhere below. */
+    const C = CONFIG.BARATA_CHARGE;
+    const cd = C && C.damage && C.damage[kind];
+    this.charge = cd == null ? null : {
+      pose: 'ball',
+      /* THE TELL IS THE ATTACK'S OWN STARTUP, so the curled drawing and the
+         harmless window are the same thing by construction and cannot drift
+         apart. `activeMs` is a CEILING, not a duration: the roll normally ends
+         when he leaves the screen, and this only catches the case where
+         something has stopped him crossing it. */
+      startupMs: C.curlMs, activeMs: 4000, recoverMs: 0, cancelMs: 0,
+      damage: cd, reachX: C.reachX, reachZ: C.reachZ,
+      knockback: C.knockback, lift: 0, knockdown: !!C.knockdown,
+    };
+    this.wantsCharge = false;
+    this.chargeIx = 1;
     this.wantsLeap = false;
     this.leapIx = 1;
     this.leapScale = 1;
@@ -142,6 +173,32 @@ class Enemy extends Fighter {
   takeTurn() {
     const c = (CONFIG.enemyLeapChance && CONFIG.enemyLeapChance[this.kind]) || 0;
     this.wantsLeap = !!this.leap && Math.random() < c;
+    /* ROLLED ON THE TURN, exactly like the leap and for the same reason: this
+       is the one frame the token changes hands, and a per-frame roll would be
+       a certainty within a few frames rather than "sometimes he charges".
+       Rolled INDEPENDENTLY of the leap because nothing has both -- a roach has
+       no jump-in and a cigarette has no charge -- so they can never contend. */
+    const cc = (CONFIG.BARATA_CHARGE && CONFIG.BARATA_CHARGE.chance
+                && CONFIG.BARATA_CHARGE.chance[this.kind]) || 0;
+    this.wantsCharge = !!this.charge && Math.random() < cc;
+  }
+
+  /**
+   * Curl up. Everything about the charge is fixed HERE, on the last frame he
+   * is still a roach, and nothing is re-read once he is rolling.
+   *
+   * THE DIRECTION IS LATCHED AND NEVER CORRECTED -- the cigarettes' jump-in
+   * rule, and the reason the move is answered by stepping out of the lane
+   * rather than by outrunning it. He commits to the line the player was
+   * standing on when the tell began.
+   */
+  _startCharge(dx) {
+    this.chargeIx = dx >= 0 ? 1 : -1;
+    this.facing = this.chargeIx > 0 ? 'right' : 'left';
+    this.wantsCharge = false;
+    this.ai = 'charge';
+    this.aiT = 0;
+    this.attack([this.charge], 0);
   }
 
   /**
@@ -223,6 +280,83 @@ class Enemy extends Fighter {
       return;
     }
 
+    /* THE CHARGE, and it sits above the mid-swing return for the leap's
+       reason: it is an attack that has to keep MOVING while it runs. Fighter
+       drives the tell, the hitbox and the drawing; this drives only where he
+       goes.
+
+       THREE BEATS, AND THE ORDER MATTERS. While the attack is in `startup` he
+       is curled and STANDING STILL -- that is the tell, and a tell that already
+       moves is not one. Once it is `active` he rolls, ignoring `bounds`
+       entirely, because the walls are what he is leaving. The moment he is
+       clear of them he is `gone`: the attack is dropped, the token handed back,
+       and he stops being part of the fight. */
+    if (this.ai === 'charge') {
+      const C = CONFIG.BARATA_CHARGE;
+      const margin = (C && C.exitMarginPx) || 180;
+      const out = bounds
+        && (this.x < bounds.minX - margin || this.x > bounds.maxX + margin);
+
+      if (out) {
+        /* GONE. The attack is dropped here rather than left to time out: its
+           `activeMs` is a ceiling for a roll that never crossed, and leaving it
+           running would keep a live hitbox on a fighter nobody can see. */
+        this.atk = null;
+        this.ai = 'gone';
+        this.aiT = 0;
+        this.hasToken = false;
+        this.returnT = (((C && C.returnMs) || {})[this.kind] || 1600) / 1000;
+        this.exitSide = this.chargeIx;
+        return;
+      }
+
+      /* ⚠️ PUNCHED OUT OF THE ROLL. `Fighter.hurt` clears `atk`, so losing the
+         attack while still on screen means he was interrupted -- and without
+         this he would fall through to the exit above and be teleported
+         off-screen by a jab. The charge is answerable by hitting him during
+         it, which is worth keeping: the tell is long, and a player who reads it
+         and steps IN deserves the counter as much as one who steps aside. */
+      if (!this.atk) {
+        this.ai = 'approach';
+        this.aiT = 0;
+        this.hasToken = false;
+        return;
+      }
+
+      // The tell. Curled and STILL -- a tell that already moves is not one.
+      if (this.atk.phase === 'startup') return;
+      // Rolling. No `bounds`: the walls are the thing he is leaving.
+      this.walk(dt, this.chargeIx, 0, null, (C && C.speed) || 3.4);
+      return;
+    }
+
+    /* OFF-SCREEN, AND OUT OF THE FIGHT. This is the charge's real cost to him:
+       the crowd is one shorter for as long as it lasts, and `Crowd` will not
+       hand a token to something it cannot see.
+
+       HE COMES BACK THE WAY HE WENT, which is the whole point of remembering
+       `exitSide` -- reappearing on the far side would read as a second roach
+       rather than the same one returning. The walk back in is the SPAWN walk,
+       reused: `enter` already knows how to bring a fighter in from off-screen
+       to a mark, so a charge ends by handing him to the code that started him. */
+    if (this.ai === 'gone') {
+      this.returnT -= dt;
+      if (this.returnT > 0) return;
+      const b = bounds;
+      const margin = ((CONFIG.BARATA_CHARGE && CONFIG.BARATA_CHARGE.exitMarginPx) || 180);
+      if (b) {
+        this.x = this.exitSide > 0 ? b.maxX + margin : b.minX - margin;
+        this.entryX = this.exitSide > 0 ? b.maxX - 60 : b.minX + 60;
+      } else {
+        this.entryX = this.x;
+      }
+      this.facing = this.exitSide > 0 ? 'left' : 'right';
+      this.enterT = 0;
+      this.ai = 'enter';
+      this.aiT = 0;
+      return;
+    }
+
     if (this.atk) return;      // mid-swing; Fighter is driving
 
     /* BETWEEN THE HITS OF A STRING. Fighter clears `atk` at the end of each
@@ -292,6 +426,23 @@ class Enemy extends Fighter {
         && Math.abs(dx) > CONFIG.enemyLeapMinX
         && Math.abs(dx) < CONFIG.enemyLeapMaxX) {
       this._startLeap(dx);
+      return;
+    }
+
+    /* THE CHARGE, decided here beside the leap and on the same terms: he must
+       hold the token, and he must be inside the band the move reads well from.
+
+       ⚠️ THERE IS NO `dz` TEST, and that is the difference between this and the
+       jump-in. The leap checks depth because it is aimed AT the player and
+       would otherwise be thrown at somebody standing in another lane. The
+       charge is not aimed -- it is a line down the lane he is already in, and
+       the player's job is to leave that lane. Adding a depth condition here
+       would quietly turn it into a homing attack that only fires when it is
+       already going to hit. */
+    const CB = CONFIG.BARATA_CHARGE;
+    if (this.wantsCharge && this.charge && this.hasToken && CB
+        && Math.abs(dx) > CB.minX && Math.abs(dx) < CB.maxX) {
+      this._startCharge(dx);
       return;
     }
 
@@ -385,7 +536,8 @@ class Crowd {
          hits of a string `atk` is momentarily null, and an enemy that stopped
          counting for that one frame could have its turn handed to somebody
          else while it is still visibly punching. */
-      const busy = e.ai === 'wind' || e.ai === 'combo' || e.ai === 'leap' || !!e.atk;
+      const busy = e.ai === 'wind' || e.ai === 'combo' || e.ai === 'leap'
+                || e.ai === 'charge' || !!e.atk;
       if (!busy && (e.state === 'hurt' || e.state === 'down' || e.ai === 'enter')) {
         e.hasToken = false;
       }
@@ -395,7 +547,12 @@ class Crowd {
     if (committed < CONFIG.maxAttackers) {
       let best = null, bestD = Infinity;
       for (const e of this.list) {
-        if (e.dead || e.hasToken || e.ai === 'enter') continue;
+        /* `gone` IS SKIPPED FOR THE SAME REASON `enter` IS: he is not on the
+           screen. Without this the token can be handed to a roach that has
+           charged off the side, and it sits with him -- unspendable, because
+           his branch only counts down -- while the enemies still in the fight
+           wait for a turn that is not coming. */
+        if (e.dead || e.hasToken || e.ai === 'enter' || e.ai === 'gone') continue;
         if (e.state === 'hurt' || e.state === 'down' || e.atk) continue;
         const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
         if (d < bestD) { bestD = d; best = e; }

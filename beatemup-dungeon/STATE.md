@@ -89,6 +89,466 @@ stopping. Worth knowing both shapes exist.
 
 ---
 
+## And then on 2026-08-21
+
+Sound, a front door, and the bugs.
+
+**THE GAME MAKES NOISE NOW, and it is three separate systems.** A looping
+background bed, one-shot hit effects, and the tooling that cut both out of raw
+phone recordings. See *Sound* below. `M` mutes everything, in every phase.
+
+**IT OPENS ON A TITLE SCREEN.** The flying dungeon's, borrowed whole — its
+crawling vermin as a backdrop with the SABOROSA logo over them, any button to
+start. See *The title screen*.
+
+**THE CAST TURNED OVER AGAIN, TWICE.** CIGARRO3 arrived and took ERKPA's waves
+and stats, which retired the last borrowed main-game pack; then the **BARATAS**
+arrived and took the whole stretch after the sub-boss. See *The sprites* and
+*The barata charge*.
+
+**THE ENEMY BRAIN BRANCHED FOR THE FIRST TIME.** Every fighter before the
+roaches ran one loop — approach, circle, wind, commit — and differed only in
+numbers. The charge cannot be expressed in it, because it ends with the enemy
+*leaving the fight*. See *The barata charge*.
+
+**AND THE PUNCHES LEAVE A MARK.** `effects-porrada-01.png` arrived at the end of
+the day and the code-drawn starburst is gone. Six four-frame bursts, one picked
+at random per blow. See *The impact burst*.
+
+**AND THE GAME HAS A FINAL BOSS.** A HORSE, in the boss room, after the wave
+that already lived there. Five rows of art, no damage frames at all, and a
+moveset that is exactly what was drawn. See *The horse boss*.
+
+---
+
+### Sound
+
+Three pieces, and they were built in this order because each needs the one
+before it.
+
+**The music is ONE FILE, ONE LOOP, NO MIXER.** `trilha-mix.ogg`, 6.146s,
+seamless. It is three of five recorded takes layered and aligned in
+`tools/beat-music-lab.html`. The game does none of that layering: three
+`<audio>` elements started together drift apart within a minute and the browser
+gives no way to bind them, which is the flying dungeon's finding inherited
+whole. Playback is `AudioBufferSourceNode`, not `<audio>`, because the latter
+can drop a few ms at the wrap — inaudible on a song, fatal on a six-second bed.
+
+⚠️ **`musicLoopSec` IS LOAD-BEARING.** `loop = true` with no bounds wraps at
+whatever the decoded buffer turned out to be, and decoders disagree about an
+Opus file's length by a few ms of codec padding — this file's container claims
+6.1525s for 6.1460s of music. Left alone that is six milliseconds of silence
+inserted every six seconds: an audible tick you would go looking for in the
+music rather than in the decoder. `loopStart`/`loopEnd` are pinned to the
+config number instead.
+
+**The shipped track came from the tool's `export wav`, NOT from the bake
+script**, and that is an open sore. `tools/bake-beat-trilha.py` exists, reads
+`DEFAULT_MIX`/`DEFAULT_MASTER` out of the lab the way `bake-trilha.py` reads
+`music-lab.html`, and **does not reproduce the browser's render**. What is
+known: pass SPACING agrees exactly (2223.5ms for tchum 4, 2093.5 for tchum 3),
+pass COUNT was wrong once and is fixed (see PASS_EPS), and a least-squares fit
+of the export against the script's own layers still leaves about three quarters
+of its energy unexplained with tchum 3 fitting at −19dB where it should be 0.
+The likeliest suspect is decoded CONTENT rather than placement — ffmpeg and a
+browser disagree about where an Opus stream starts as well as how long it is.
+Until that is chased down the bake writes `trilha-mix-baked.ogg`, deliberately
+NOT the shipped name, so a re-run cannot quietly replace an approved mix.
+
+**PASS_EPS, and the bug that produced it.** The repeat generator emitted a
+second full pass of the bed 13ms before the loop end, because ffmpeg hands out
+6.133s of PCM where the container says 6.1465 — so six seconds of bed wrapped
+onto the head and doubled against itself out of phase. Both the lab and the
+bake now treat a pass starting within 30ms of the loop end as the *next*
+cycle's first pass. 30ms is far larger than codec padding and far smaller than
+any gap a person would place deliberately.
+
+**The effects are CUT, not played whole.** `single-hit.ogg` is 2.17 seconds and
+the hit is 300ms of it starting at 958ms; played raw the punch lands a second
+before you hear it. `tools/build-beat-sfx.py` finds the events in a take and
+lifts one out. ⚠️ **Its gate is set two ways and the stricter wins** — a floor
++ margin rule alone failed on the very first file, because that take holds both
+room tone at −61dB *and* a stretch of digital silence at −92, so the floor read
+−69, the gate landed under the room tone, and 900ms of room tone counted as the
+sound. The gate is also held within 40dB of the file's peak.
+
+**The finisher is its own recording.** `combo-1-4-hits.ogg` is three ordinary
+punches and a different sound at the end; the last event lifts out cleanly on a
+75ms gap. It correlates at −0.00 with `single-hit` — a genuinely different
+sound, not a louder punch, which is why it is its own clip rather than a pitch.
+`Fighter.attack()` stamps `last: i === defs.length - 1` on the attack when it
+starts, because that is the only moment the string and the position in it are
+both known; a frame later `comboIndex` survives but the array it indexed does
+not.
+
+⚠️ **Ordinary hits are DETUNED per link, the finisher is not.** The rising pitch
+exists to stop four copies of one sample reading as a stuck record. The finisher
+is heard once against three that were not it, so there is nothing to tell it
+apart from.
+
+⚠️ **A clip cannot be made louder by re-cutting it.** The cut effects are
+normalised to −1 dBFS, so a hotter render is a flatter one. `SFX_GAIN` is a
+playback trim per effect, and Web Audio has the headroom the file does not.
+At `sfxVolume` 0.9 × 1.2 the finisher sits at −0.27 dBFS: 3% of headroom left.
+Past about 1.3 it clips against the music instead of getting louder, and the
+thing to turn down at that point is `musicVolume`.
+
+### The title screen
+
+`src/title.js`. The flying dungeon's three crawling-vermin frames as a
+full-bleed backdrop with the SABOROSA logo over the middle; any button, keyboard
+mouse or pad, fades to black over 600ms and hands off to the fight.
+
+**Both images are read IN PLACE** out of `assets-v2/flying-dungeon/` — the same
+frames its endings crawl on and the same logo its finale lands on. Two copies of
+a picture drift the moment one is recut. The crawl frames go through the `big`
+loader, not `image`: they are 3002px wide drawn at 1280, and handing the GPU
+that full-size texture is the VRAM thrash PERFORMANCE.md already records once.
+The holds (105ms, cycling 1·2·3) are that game's, tuned in its own tool.
+
+⚠️ **`boot()` SCHEDULES THE FIRST FRAME ITSELF NOW and must not also call
+`start()`.** `start()` schedules a frame of its own — that is the contract every
+caller inside `loop()` depends on — so doing both leaves TWO
+requestAnimationFrame chains running the same loop, and the game runs at double
+speed with every `dt` halved. It would read as a physics bug and would not be
+one. This is the same family as the CLEAR board's early `return`.
+
+### The barata charge
+
+The roach curls into a ball, rolls at the player, and **leaves the screen**. A
+beat later he walks back in from the side he vanished off.
+
+**IT IS BUILT AS AN EXIT, NOT A DASH, and that is the design.** A charge that
+stops next to the player is a fast approach with a hitbox on it, and it leaves
+him standing in punching range — which makes the biggest move in his repertoire
+the safest thing he can do. Running him off screen costs him his place in the
+fight: the crowd is one shorter while he is gone, and the player has bought
+several seconds by stepping out of the lane.
+
+**IT IS DODGED IN Z, NOT IN X.** The direction is latched on the tell and never
+corrected — the jump-in's rule. ⚠️ **The trigger has no `dz` test on purpose.**
+The leap checks depth because it is aimed AT the player; the charge is a line
+down the lane he is already in. Adding a depth condition would quietly turn it
+into a homing attack that only fires when it is already going to hit, so
+`chargeReachZ` is the real difficulty dial.
+
+**The tell is the attack's own `startup` window**, so the curled drawing and the
+harmless window are the same thing by construction and cannot drift apart. That
+is also why the ball is ONE pose of five frames rather than two poses.
+
+⚠️ **The ball spins on a clock — the only attack pose that does.** Attack frames
+normally read off the three phases (startup → 0, active → 1, recover → last) so
+a punch's picture can never drift from the window that can hit. A charge is one
+long active window lasting until he leaves the screen; read off the phases it
+would hold a single frozen drawing the whole crossing — a ball sliding, not
+rolling.
+
+**Three bugs found building it, all worth keeping in mind:**
+
+* **A roach punched out of its roll was teleported off-screen by a jab.**
+  `Fighter.hurt` clears `atk`, and losing the attack looked identical to having
+  crossed the wall. He drops back to `approach` now, so reading the tell and
+  stepping IN is a real counter.
+* **The crowd handed the attack token to roaches that were off-screen**, where
+  it sat unspendable — their branch only counts down — while the enemies still
+  fighting waited for a turn that was never coming. `gone` is skipped like
+  `enter`.
+* **Enemy hits had `lift` and `knockdown` hardcoded to `0, false`** in
+  `combat.js`; no enemy attack in the game could put the player on the floor.
+  They are read from the def now. Not one cigarette punch sets either flag, so
+  every existing swing behaves exactly as it did.
+
+### The horse boss
+
+The boss room's occupant, decided 2026-08-21 after being open since the room was
+built. **The wave stays and the boss comes after it** — clearing the three mooks
+is what brings him out, so the room is now an opening and a finale rather than a
+placeholder.
+
+**THE ART DECIDED THE FIGHT.** Five rows arrived, named by the illustrator in
+one line: *ataque correndo*, *trotando*, *caminhando*, *coice*, *parado
+virando*. So the moveset is a run-attack, a trot, a walk, a backward kick and a
+turn, and nothing else. He closes at a trot, charges the length of the room, and
+kicks anyone who gets underneath him. No move here is invented.
+
+**HE ARRIVED AT 27329x7922 AND 18MB.** Reduced to a quarter in place by the new
+`tools/shrink-master.py` before anything else touched it — 3.2MB, and the frames
+still come out at ~280px, which is the ceiling on how large he can ever be
+drawn. Cropping the dead canvas was worth 0.8MB of 18; the size is the drawn
+pixels and scale is the only lever.
+
+**HE IS NOT AN `Enemy`, AND THAT IS NOT LAZINESS.** Every villain in the game is
+one `_think` — approach, circle, wind, commit — with different numbers. A horse
+does not circle, its main attack crosses the whole room and ends at a wall, and
+coming about costs it half a second. The barata's charge already forced that
+loop to branch once; this would have been a second, deeper branch for an animal
+that shares none of the assumptions. It is its own class answering the same
+interface, exactly as `FlyBoss` is.
+
+**⚠️ THE TURN IS THE FIGHT.** Everything else in this game changes facing with a
+negative x-scale, for free. He plays a seven-frame rotation — left profile,
+head-on, right profile — and can do nothing while it runs. **Getting behind him
+is the whole strategy**, and `turnMs` is therefore the most load-bearing number
+in `HORSE_BOSS`: shortening it makes him harder in a way no other knob does.
+
+That row is also the one piece of art in the game that **must not be mirrored**.
+It already contains both profiles, so flipping it folds the rotation in half and
+he appears to turn back the way he came. `HorseBoss` draws it by passing the
+pack's own native side as the facing, which is how you say "leave this alone"
+without `sheets.js` needing to know what a turn is. The same trick gives him an
+idle: he has no idle row, so he stands in frame 0 or frame 6 of the turn.
+
+**⚠️ THE KICK LANDS BEHIND HIM.** `coice` is a hind-leg kick, so its box is on
+the opposite side to every other attack in the game — which is what makes it the
+answer to a player who has walked round the back. Measured, not assumed: frames
+5-7 reach **-189, -281 and -300px** from the ground anchor while the front of
+the frame pulls in to +84.
+
+**⚠️ AND THAT MEASUREMENT CAUGHT A REAL BUG BEFORE IT SHIPPED.** The kick's
+reach was first written as 132 by eye. The hooves reach 300. That is precisely
+the failure the cigarettes' strings still have — see the section above — and the
+only reason it did not happen again is that the frame extents were printed
+*before* the number was chosen. **Do not write a reach without printing the
+extents of the row it belongs to.** It is now 260, which also has to clear
+`kickRange` (210), the distance he commits from.
+
+**⚠️ HOW HE CHOOSES WHAT TO DO, AND THE FOUR WAYS IT WENT WRONG FIRST.** The
+shape that works: **distance decides what is in the hat, a roll decides what
+comes out of it, and there are THREE actions, not two.**
+
+    gap >= chargeMinRange (240)  ->  roll: charge  or approach
+    gap <  chargeMinRange        ->  roll: kick    or approach
+
+`approach` is him closing the distance, or giving himself room, committing to
+nothing. **It is the reason there are three actions:** with only charge and
+kick, every roll taken at range was a charge and the fight was one move on a
+loop. The user asked for it in those words — *"he should also try to approach
+you normally"*.
+
+Everything that went wrong went wrong the same way: **the move was chosen by
+geometry that his own movement then destroyed.**
+
+1. *Distance picked the move outright.* He trots at you at 200px/s, so by the
+   time the check ran he had closed 300px and was never far enough — he had to
+   START 620px out. The charge fired about once a fight, and the user reported
+   it as never happening, which was very nearly true.
+2. *A pure roll, with a back-off to manufacture range.* A player who stays close
+   follows him as he retreats, so the range never arrives. **0 charges in three
+   minutes.**
+3. *Roll inside a distance band, but with `chargeMinRange` at 320.* He settles
+   at 210-300 after any approach or kick, so the band was almost never entered.
+   Starved again. **The three ranges are coupled:** `kickRange` (210) <
+   `chargeMinRange` (240) < `approachStopRange` (300). An approach settles just
+   OUTSIDE `chargeMinRange`; that is the whole loop.
+4. *An approach that could only close.* Then nothing ever opened the gap, and
+   after a charge he landed in the pocket between the wall and the player —
+   median 36px away, permanently walled, kicking forever. He now walks to a
+   **standoff spot** (either side of the player, nearest one that is inside the
+   room), which in a corner means walking PAST them to get his room back.
+
+Two more that were pure thrash, both found by counting rather than watching:
+**idle used to turn him toward the player before an approach**, which then
+turned him back to travel — 45% of the fight spent pirouetting. And **the
+standoff spot was recomputed every frame**, so it flipped as he crossed the
+midpoint and he flapped between the two: 78% turning, one kick in four minutes.
+Whoever moves picks the facing, and a destination is chosen once.
+
+⚠️ **A clamp bug hid inside all of this.** A charge deliberately overruns the
+player's walls, so he finishes a pass outside them; the next phase clamped him
+back to the wall — onto the player he had just charged past. `_limits()` is now
+the one set of bounds every moving phase uses.
+
+Measured after all of it, over four simulated minutes each:
+
+| player | charge | kick | approach | charge every |
+|---|---|---|---|---|
+| moving around | 28% | 16% | 56% | 6.9s |
+| keeping distance | 14% | 28% | 58% | 11.5s |
+| glued to him | 0% | 41% | 59% | never |
+
+The last row is the design, not a bug: inside 240px he kicks, and the kick moves
+you only 70px (`knockback / knockbackDecay`), so hugging him is a real choice
+with a real answer.
+
+**THE GENERAL LESSON, and it is worth more than this fight:** a weighted choice
+is a lie if the thing it picked can be silently vetoed downstream, and a
+distance condition is a lie if the character's own movement destroys it. Also:
+**count the actions, do not watch them.** Every one of these was described
+confidently before it was measured, and every description was wrong.
+
+**HE TAKES DAMAGE WITH NO DAMAGE ART.** No hurt, no knockdown, no death row —
+confirmed by the user rather than assumed missing, and the Mosca has the same
+gap. A hit reads as an additive flash plus a blink, with the new impact burst
+stamped on top. Death is drawn rather than animated: he tips over and fades.
+**Do not press a movement row into service as a hurt pose** — a horse that trots
+when you punch it reads as a horse ignoring you.
+
+**FOUR THINGS THE WIRING GOT WRONG FIRST, ALL SILENT:**
+
+* **Boxes in this game are EDGES (`x0/x1/z0/z1`), not centre-and-half-extent.**
+  Written the other way, `overlaps()` compares against `undefined` and answers
+  false forever: the boss simply cannot be punched, and it presents as a
+  hitbox-tuning problem.
+* **`combat.bossHits()` sets `boss.hasHit`, on the instance, not on the
+  attack.** Gate the box on `atk.hasHit` instead and the flag lands on an
+  unread property — the charge then damages the player *every frame* it
+  overlaps them.
+* **`sheets.draw()` takes a POSE, resolved through the pack's pose table, and an
+  unknown pose falls back to `idle`.** This pack has no idle, so the fallback
+  lands on frame 0 of the first row — every pose, forever, without an error.
+  His five rows are declared as five identity poses for exactly that reason.
+* **`sheets.rect()` CLAMPS the frame index, it does not wrap.** A free-running
+  millisecond counter rides up to the last frame of the walk and stays there: a
+  horse frozen mid-stride while sliding along the belt, which looks like a
+  physics bug and is not one. Every looping row wraps against `poseLength`.
+
+And one that was not silent, just wrong: **a turn has to know what it is FOR.**
+It first always handed back to `idle`, so the kick — which needs him facing
+*away* — could never happen. He closed in, turned his hindquarters to the
+player, went to idle, idle turned him back, and he trotted in again. An infinite
+pirouette that never threw a kick. `_face()` now takes the phase to enter when
+the turn completes.
+
+---
+
+### The impact burst
+
+`effects-porrada-01.png` is the first piece of impact art the project has had,
+and it replaced the four-spoke starburst `combat.js` drew in code. That shape
+carried a comment saying it was placeholder and that a shape drawn in code is an
+honest one where a borrowed sprite would quietly become permanent; the comment
+did its job, so it went with the shape.
+
+**THE SHEET IS SIX ANIMATIONS, NOT EIGHT.** It arrives as an 8x3 grid, and the
+first reading — three frames down a column — is wrong. The animation runs ALONG
+a row, inside one colour block: the star is solid, then a hollow outline, then a
+broken one, then a scatter of dots, and it GROWS about 40% while it does it.
+Measured before anything was built: fill ratio falls 0.46 → 0.21 → 0.14 → 0.08
+left to right while the bounding box goes from 236px to 342px. That is a burst
+dissipating. Down a column nothing progresses at all — the three rows are simply
+three different drawings, and the right-hand half of the sheet is the left-hand
+half recoloured (all twelve pairs have identical bounding boxes). So: three
+stars, two colours, four frames each.
+
+**ONE IS PICKED PER BLOW, AND THE PICK IS REMEMBERED.** That is the whole point
+of having six — the placeholder stamped the identical mark on all five hits of a
+combo. The choice is made in `Combat._impact`, when the blow lands, and stored on
+the impact event; rolling it inside the draw would cycle all six inside a fifth
+of a second and read as static rather than variety. A random horizontal mirror
+rides along with it, which covers twelve marks with six animations.
+
+**THE COLOUR IS PART OF THE RANDOM DRAW, AND THAT IS A DECISION THAT CAN GO
+EITHER WAY.** As shipped, all six are in the hat whoever is being hit, which is
+what the art was asked for. `CONFIG.HIT_FX.colorByRole` makes the colour carry
+information instead — yellow when the player lands one, red when the player takes
+one — which is the convention most of the genre uses. Both are one line; it is a
+look-and-feel call and those are the user's.
+
+**THE BURST IS DRIVEN BY THE IMPACT EVENT'S OWN CLOCK, WHICH FREEZES DURING
+HITSTOP.** `combat.tick()` is not called while the simulation is held, so the
+solid first frame — the one with the most ink in it — is held for exactly as long
+as the picture is, and the dissipation starts when time restarts. That was free
+rather than designed, but it is the right behaviour and it is worth not breaking:
+if the FX ever grows a clock of its own, it loses this.
+
+**⚠️ THE THREE STARS KEEP THE SIZES THEY WERE DRAWN AT — 236x276, 210x238 and
+201x195 — AND THE PACK HAS ONE SHARED `baseSize`.** Every frame of every variant
+scales by the same factor, so both the growth across a burst and the spread
+between the variants arrive intact.
+
+It was built the other way first: one reference per animation, normalised on
+sqrt(w*h), so all three read at one apparent mass — reasoning that the variant
+the dice picked should not change how big the hit looked. The user stopped it.
+**Art is wired as it was drawn; do not rescale it to even it out.** The effect
+is real, but whether the spread is wanted is a question about the art, not a
+normalisation applied quietly on the way in. The same rule is why the horse's
+atlas draws at 1:1.
+
+**SIZE COMES FROM THE BLOW.** `HIT_FX.sizePx` for an ordinary hit, `bigSizePx`
+for a finisher and for everything the Mosca lands, both `* BODY_SCALE` like the
+fighters. At the shipped numbers the ordinary burst peaks at about two thirds of
+a fighter's height and the finisher at about all of it, stamped at
+`chestRel` (0.42) of the way up the victim — the height the placeholder used, so
+the art landed where the shape it replaced did.
+
+### ⚠️ THE CIGARETTES HAVE NEVER LANDED HIT 2 OR HIT 3
+
+Found on 2026-08-21 while fixing the barata's reach, and **not fixed**, because
+fixing it rebalances three enemies at once.
+
+An enemy swings from `enemyStandoffX` — 63.4px — and **does not step in between
+the hits of a string**: the `combo` branch throws the next hit from exactly
+where it stood. Knockback decays exponentially at `knockbackDecay` 6, so a blow
+of k moves the player k/6 px. Every hit therefore has to reach far enough to
+cover the gap its own predecessor opened, and no cigarette's does:
+
+| | hit 1 | hit 2 | hit 3 |
+|---|---|---|---|
+| CIGARRO | +2.9 | **−15.5** | **−22.3** |
+| CIGARRO2 | +2.9 | **−18.8** | **−28.9** |
+| CIGARRO3 | +2.9 | **−20.5** | **−32.3** |
+| BARATA | +11.5 | +4.0 | +3.7 |
+| BARATA2 | +11.5 | +3.2 | +4.9 |
+
+The stand-off tolerance is ±14px, so the smallest miss cannot be closed by
+where the enemy happened to stop. **Their strings are animation only past the
+first punch.** Which means the damage table is fiction: CIGARRO's advertised
+3 + 3 + 5 = 11 has always been 3, and the whole "the damage is spread, not
+added" argument — the thing every string in this file was designed around —
+has never actually reached the player.
+
+It also means the fight economy has never been judged, even with dev mode off:
+what was played was one-hit enemies wearing three-hit animations.
+
+**Three ways to fix it, and they are not equivalent:**
+
+1. **Drop mid-string knockback** to near zero and leave the finisher launching.
+   This is what the baratas now do and it is the genre-standard answer — a
+   flurry should not shove you out of itself. Cheapest, and it changes how the
+   cigarettes FEEL the least.
+2. **Grow the mid-string reaches** to cover stand-off + push. Keeps the shove,
+   but the fists visibly outrun the reach already (see *Scale*), so this makes a
+   known problem worse.
+3. **Let the enemy step in between hits.** Truest to the genre and the biggest
+   change: it turns a string into a pressure tool that follows the player.
+
+Whichever is chosen, **every enemy's damage per turn roughly triples**, so the
+HP table and `maxAttackers` want re-reading straight afterwards.
+
+### The silent-config trap, and it will happen again
+
+⚠️ **AN ENEMY WITH A STRING IN `ENEMY_COMBOS` AND NO ENTRY IN
+`enemyComboWeights` THROWS EXACTLY ONE HIT, FOREVER.** `Enemy._rollCombo`
+returns 1 when the kind is missing. Nothing errors, nothing warns, and it reads
+in play as "that one does not have a combo" — which is exactly how it was
+found, by the user asking why CIGARRO3 only hit twice. **Adding a kind means
+adding it in BOTH tables.**
+
+### Scale, and why `drawScale` keeps moving
+
+Both cigarettes went up 45% over three requests and the roaches 89%. Worth
+knowing what that number does and does not touch:
+
+⚠️ **`drawScale` IS DRAWN SIZE ONLY. Hurtboxes and reaches do not follow it.**
+`ENEMY_COMBOS` still swings the 92/92/108 × BODY_SCALE the cigarettes had when
+they were drawn a third smaller. Both are now well past the 1.2 this file
+originally flagged as the point where a fist visibly outruns the reach behind
+it. Growing those reaches to match is a REBALANCE — it makes them hit from
+further away — which is why it has not been done.
+
+**`flyBossSizePx` is the opposite case** and needs no such warning: it drives
+the simulation as well as the picture, so growing it moved the hurtbox with the
+sprite. At 304 the Mosca is over twice a fighter's 137px and takes up more of
+the belt it sweeps along, so its ground pass is harder to stand clear of than
+when that attack was tuned.
+
+⚠️ **A ROACH IS NOT AS BIG AS ITS NUMBER SAYS.** Packs are scaled so the idle
+BODY is `fighterSizePx` tall. For a cigarette every pixel of that is cigarette;
+for a barata the top 44px of 168 — **26%** — is horns and antennae, so the
+animal itself gets the remaining 124. That is why they needed 1.888 to stand as
+big as the gang they replaced rather than merely as tall.
+
+
 ## The one constraint that will break things if forgotten
 
 **The backdrop is FILMED FOOTAGE, and it is a single shot.** THE FOOTAGE HAS
@@ -181,6 +641,8 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/enemy.js` | the villains, and `Crowd`, which owns **the attack token** |
 | `src/fly-boss.js` | the Mosca Boss: ambush entrance, swoop, ground pass |
 | `src/combat.js` | hit resolution and hitstop |
+| `src/hit-fx.js` | the impact burst: six variants, picked per blow |
+| `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |
@@ -191,6 +653,8 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `tools/build-manifest.js` | prints & checks what package.sh copies |
 | `tools/build-beat-coconut-defs.py` | cuts the coconut's ragged sheet + anchors |
 | `tools/build-beat-enemy-defs.py` | the same for a VILLAIN sheet, plus the smoke rules |
+| `tools/build-beat-fx-defs.py` | cuts the impact-burst sheet into six animations |
+| `tools/shrink-master.py` | crops + downscales an artist master; **overwrites, lossily** |
 | `tools/build-boss-plate.py` | crops the boss shot at its turn, re-encodes for reverse |
 | `tools/build-plate-panorama.py` | **unused** — the rejected panorama; see the plate note |
 
@@ -1077,10 +1541,15 @@ reader is the shape to look for.
 - ⚠️ **DEV MODE IS ON** (`CONFIG.DEV.on`), so every punch does 50. `package.sh`
   refuses to build until it is off. Number keys 1-9 jump rooms; the marker in
   the top right says which room you are in.
-- ⚠️ **THE BOSS ROOM HAS NO BOSS.** The room, its footage, its fade and its
-  two-way camera are all built and working; what fights there is not decided.
-  Three placeholder mooks keep it playable. The Mosca is already spent as the
-  street's sub-boss, so this wants something new.
+- **THE BOSS ROOM HAS ITS BOSS** (2026-08-21): a HORSE, after the wave. See
+  *The horse boss*. What is still open there is smaller: he has no name (the
+  user names the characters), and the fight has never been judged with
+  `CONFIG.DEV.on` false — at 50 damage a punch he dies in three combos.
+- ⚠️ **THE CIGARETTES' STRINGS DO NOT CONNECT PAST HIT 1** — see the section
+  above. This is the single most consequential open item in the file: the
+  advertised damage numbers have never reached the player, so the fight economy
+  is unjudged whatever dev mode is set to. The baratas are already fixed and
+  are the worked example of option 1.
 - **The belt is unjudged in motion** — 520 came from measuring the plate, not
   from play. Hold C: the magenta bands are the no-walk regions, each labelled
   with the knob that resizes it.
@@ -1090,13 +1559,15 @@ reader is the shape to look for.
 - **The first fight is now what used to be the second one** — 5 enemies incl.
   ERKPA and two from behind, tuned as an escalation rather than an opener. Worth
   replaying once dev mode is off.
-- **Villain sheets: one left.** ERKPA is the last character still on a main-game
-  9×5 pack read as punches. Until he is redrawn, `sheets.js` has to carry two
-  formats and the grid path cannot go — and he is the only enemy with no combo
-  and no jump-in, because he has no art for either.
-- **The stub has no name yet.** He is `cigarro2` in the code and carries
-  `name: 'BAGANA'` as a placeholder next to COCONUT / CIGARRO / ERKPA. Nothing
-  draws it — the field is documentation — so renaming him is one line.
+- **Villain sheets: DONE, and something is now removable.** ERKPA is gone —
+  CIGARRO3 took his waves and stats on 2026-08-21 — so every character in the
+  game is a ragged pack. `sheets.js` no longer needs to carry two formats and
+  `CONFIG.POSE` (the grid pose→column table) is dead weight. Deleting both is a
+  loader refactor and was deliberately not bundled with the cast change.
+- **FOUR characters have no name.** `cigarro2` carries `name: 'BAGANA'`,
+  `cigarro3` carries `CIGARRO3`, and the roaches carry `BARATA` / `BARATA2` —
+  all placeholders next to the real COCONUT and CIGARRO. Nothing draws the
+  field, so each is one line.
 - **The strings and the jump-ins have been watched and liked**, at
   `enemyLeapChance` 0.10 / 0.05. What is still unjudged is the fight ECONOMY,
   because dev mode changes the player's damage only: their blows land for real,
@@ -1119,7 +1590,12 @@ reader is the shape to look for.
   than a trip back to the illustrator. Note the enemies' equivalent row IS wired
   now (it is their jump-in), so `airPunch` being in `POSE_RAGGED` no longer
   means "unused" — check per character.
-- **No sound at all.** The flying dungeon's `sound.js` is the model.
+- **Sound: music and hits are in; nothing else is.** No footsteps, no enemy
+  death, no UI, and the four `enemy-hit-*.ogg` takes plus `combo-2-5-hits.ogg`
+  are sitting uncut in `assets-v2/beatemup-dungeon/audio/`.
+  `tools/build-beat-sfx.py` does each in one line. The second combo take is the
+  obvious next one: the player's two strings currently END ON THE SAME CLIP,
+  because `COMBO_ALT_FINISH` has no sound of its own.
 - **`Escape`/`P` are captured but do nothing** — `takePause()` exists, no pause
   state does.
 - **The font.** Futura is not bundled; the stack falls through geometric sans.
@@ -1130,7 +1606,9 @@ reader is the shape to look for.
   for either. What they still SHARE is one `_think`: approach, circle, wind,
   commit. A grappler, a thrower or anything that keeps its distance would need
   that to branch.
-- **The impact FX is drawn in code** (a starburst), honestly placeholder. There
-  is no impact art in any Saborosa pack yet.
+- **The impact burst is real art now** (2026-08-21) and the code-drawn
+  starburst is gone. What is still open is a taste call rather than a gap: the
+  colour is currently part of the random draw, and `HIT_FX.colorByRole` flips it
+  to yellow-for-landed / red-for-taken in one line. Decide by playing it.
 - **Enemy bars stay plain slabs.** The hand-drawn bar is 11 inked squares in a
   333px frame; at the ~50px a floating bar occupies they turn to mush.

@@ -26,7 +26,7 @@ class Combat {
      so nothing here has to be guarded by "is there a scoreboard". It is passed
      in rather than reached for because this file is the one place every hit in
      the game is decided, which makes it the only honest place to count them. */
-  constructor(stats, sound) {
+  constructor(stats, sound, hitFX) {
     this.stats = stats || null;
     /* `sound` is optional for the same reason `stats` is: the resolver decides
        hits and must keep working without a mixer attached. It is passed in
@@ -34,8 +34,14 @@ class Combat {
        blow is known to have connected -- anywhere else would be guessing from
        an animation frame. */
     this.sound = sound || null;
+    /* The impact art, optional on the same principle as the two above: the
+       resolver decides hits and must keep deciding them with no effects pack
+       loaded. Without one, drawFX simply draws nothing. */
+    this.hitFX = hitFX || null;
     this.stop = 0;        // hitstop remaining, seconds
-    this.events = [];     // { x, y, kind } — impact points, for the FX pass
+    /* Impact points, for the FX pass. Each carries the variant it drew, because
+       the pick has to survive the whole burst -- see hit-fx.js. */
+    this.events = [];
   }
 
   /** True while the simulation should be held. */
@@ -55,7 +61,11 @@ class Combat {
     }
   }
 
-  _impact(attacker, victim, poseName) {
+  /* `byPlayer` says which way the blow went. It is passed in rather than worked
+     out from the arguments because this function has no idea which of the two
+     fighters is the player -- and it only matters at all when HIT_FX.colorByRole
+     is on, where the colour of the mark is the information. */
+  _impact(attacker, victim, poseName, byPlayer) {
     const stop = (CONFIG.hitstopMs && CONFIG.hitstopMs[poseName]) || 60;
     // Take the LONGEST pending freeze rather than adding to it: two connects in
     // the same frame (a punch clipping two enemies) is one moment of impact,
@@ -67,13 +77,26 @@ class Combat {
        own, which is the arrangement most of the genre's best-feeling games
        actually use. Don't put it back as juice; it was a decision, not a gap. */
 
+    /* THE VARIANT IS DRAWN HERE, ONCE, and rides the event for its whole life.
+       Six animations exist so that a five-punch combo does not stamp the same
+       mark five times; rolling the dice inside drawFX instead would strobe
+       through all six inside a fifth of a second, which is noise rather than
+       variety. Same for the mirror. */
+    const fx = CONFIG.HIT_FX || {};
+    const colour = fx.colorByRole
+      ? (byPlayer ? fx.playerColour : fx.enemyColour)
+      : null;
+
     // Impact point, in world coords: between the two, at the victim's depth.
     this.events.push({
       x: (attacker.x + victim.x) / 2,
       z: victim.z,
       y: victim.jumpY,
-      t: 0.22,
+      t: (fx.ms || 220) / 1000,
+      life: (fx.ms || 220) / 1000,
       big: poseName === 'finisher',
+      fx: this.hitFX ? this.hitFX.pick(colour) : null,
+      mirror: fx.mirror !== false && Math.random() < 0.5,
     });
   }
 
@@ -163,7 +186,7 @@ class Combat {
       // score one death every frame of the fall.
       if (!wasDead && best.dead) this.stats.killed(best.kind);
     }
-    this._impact(player, best, box.def.pose);
+    this._impact(player, best, box.def.pose, true);
   }
 
   /**
@@ -194,7 +217,7 @@ class Combat {
     player.hurt(box.def.damage, box.dir, box.def.knockback,
                 box.def.lift || 0, !!box.def.knockdown);
     if (this.stats) this.stats.tookHit(box.def.damage);
-    this._impact(boss, player, 'finisher');
+    this._impact(boss, player, 'finisher', false);
   }
 
   /** ...and the crowd's swings against the player. */
@@ -206,37 +229,54 @@ class Combat {
       if (Math.abs(player.jumpY - e.jumpY) > CONFIG.verticalReach) continue;
       if (!player.overlaps(box)) continue;
       e.atk.hasHit = true;
-      player.hurt(box.def.damage, box.dir, box.def.knockback, 0, false);
+      /* LIFT AND KNOCKDOWN COME FROM THE DEF NOW, and used to be hardcoded 0
+         and false -- no enemy attack in the game could put the player on the
+         floor. Nothing about the crowd changes by reading them: not one
+         cigarette punch sets either flag, so every existing swing still behaves
+         exactly as it did. It is the barata's CHARGE that needs it. A move that
+         bowls you over and keeps going has to actually bowl you over, or it
+         reads as a very fast enemy brushing past. */
+      player.hurt(box.def.damage, box.dir, box.def.knockback,
+                  box.def.lift || 0, !!box.def.knockdown);
       if (this.stats) this.stats.tookHit(box.def.damage);
-      this._impact(e, player, 'straight');
+      this._impact(e, player, 'straight', false);
     }
   }
 
   /**
-   * The impact marks. Deliberately drawn rather than sprited: there is no
-   * impact art in any Saborosa pack yet, and a shape drawn in code is honest
-   * placeholder where a borrowed sprite would quietly become permanent.
+   * The impact marks.
+   *
+   * SPRITED SINCE 2026-08-21. What was here before was a four-spoke starburst
+   * drawn in code, with a comment saying it was placeholder and that a shape
+   * drawn in code is an honest one where a borrowed sprite would quietly become
+   * permanent. effects-porrada-01.png is the real art, so it went.
+   *
+   * THE PICK IS ALREADY MADE. Which of the six animations this event draws, and
+   * whether it is mirrored, were decided in _impact and stored on the event.
+   * Nothing random happens in here -- see hit-fx.js for why that matters.
+   *
+   * `t` counts DOWN, and does not advance during hitstop, so a burst holds its
+   * solid first frame for as long as the picture is held and then breaks up.
    */
   drawFX(ctx, camX) {
+    if (!this.hitFX || !this.hitFX.ready()) return;
+    const cfg = CONFIG.HIT_FX || {};
     for (const ev of this.events) {
-      const p = ev.t / 0.22;                       // 1 → 0
-      const r = (ev.big ? 46 : 26) * (1.35 - p * 0.6);
+      if (!ev.fx) continue;
+      const p = 1 - ev.t / (ev.life || 0.22);       // 0 -> 1 through the burst
       const x = ev.x - camX;
-      const y = CONFIG.beltTopY + ev.z - ev.y - CONFIG.fighterSizePx * 0.42;
-      ctx.save();
-      ctx.globalAlpha = p;
-      ctx.strokeStyle = ev.big ? '#FAFA24' : '#ffffff';
-      ctx.lineWidth = ev.big ? 4 : 2.5;
-      ctx.beginPath();
-      // A starburst: four spokes, which at this size reads as an impact and at
-      // any size reads as "not final art".
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2 + 0.4;
-        ctx.moveTo(x + Math.cos(a) * r * 0.35, y + Math.sin(a) * r * 0.35);
-        ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
-      }
-      ctx.stroke();
-      ctx.restore();
+      const y = CONFIG.beltTopY + ev.z - ev.y
+              - CONFIG.fighterSizePx * (cfg.chestRel != null ? cfg.chestRel : 0.42);
+      /* The fade runs over the TAIL only. The art dissipates on its own -- it
+         ends as a scatter of dots -- so ramping alpha across the whole life
+         would spend the fade on the solid star, which is the frame that reads
+         as the hit. */
+      const tail = cfg.fadeTail != null ? cfg.fadeTail : 0.3;
+      const alpha = tail > 0 && p > 1 - tail ? Math.max(0, (1 - p) / tail) : 1;
+      const size = ev.big
+        ? (cfg.bigSizePx || 95)
+        : (cfg.sizePx || 65);
+      this.hitFX.draw(ctx, ev.fx, p, x, y, size, ev.mirror, alpha);
     }
   }
 }

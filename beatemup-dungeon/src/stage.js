@@ -152,10 +152,15 @@ class Stage {
       if (!this.spawned) {
         this.spawned = true;
         crowd.clear();       // the mooks are done; this is between two of you
-        this.boss = new FlyBoss(
-          this.camX + CONFIG.GAME_W * 0.5,
-          CONFIG.beltDepth * 0.5,
-          this.camX);
+        /* WHICH BOSS. `who` defaults to the Mosca because every boss segment
+           written before the horse existed means the Mosca, and a default that
+           changes the meaning of existing data is not a default. The two share
+           no code -- only the interface combat.js and the overlay talk to. */
+        const bx = this.camX + CONFIG.GAME_W * 0.5;
+        const bz = CONFIG.beltDepth * 0.5;
+        this.boss = (s.who === 'horse')
+          ? new HorseBoss(bx, bz, this.camX)
+          : new FlyBoss(bx, bz, this.camX);
       }
       /* Waits for `finished()`, not for `dead` — the death fall and fade play
          out before the level is called, so the boss is not deleted out from

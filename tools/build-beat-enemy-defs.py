@@ -154,6 +154,129 @@ SHEETS = {
             ('death',     8, 8),
         ],
     },
+    # The THIRD cigarette, and the third drawing of one plan: same 3487x6243
+    # sheet, same eight rows, same counts, same order. The entry is a copy with
+    # one path changed for exactly that reason -- if a future sheet ever breaks
+    # the plan, the cutter says so rather than guessing (it counts bodies and
+    # row bands against `rows` and refuses to run when they disagree).
+    'cigarro3': {
+        'src': 'assets-v2/beatemup-dungeon/cigarro3-sprites-fim.png',
+        'base': 'cigarro3-beat',
+        'native': 'right',
+        # Drawn at the STUB's size, not the first cigarette's: 198.4px of body
+        # at the shared 0.49 against cigarro's 170. Same reason and same number
+        # as cigarro2 -- the atlas comes back to ~170px of body per fighter, so
+        # a sprite drawn at the same on-screen size does not ship a third more
+        # texture than it needs. Sizing in game is `bodyH` in the defs, never
+        # this.
+        'scale': 0.42,
+        'rows': [
+            ('idle',      1, 3),
+            ('walk',      2, 6),
+            ('jump',      3, 6),
+            ('airPunch',  4, 7),
+            ('combo',     5, 6),
+            ('hurt',      6, 2),
+            ('knockdown', 7, 6),
+            ('death',     8, 8),
+        ],
+    },
+
+    # THE BARATAS -- a different animal, and a shorter sheet.
+    # Six rows, not eight: no jump and no separate knockdown, because a
+    # cockroach does neither. What it has instead is row 6, the BALL -- it curls
+    # up and charges.
+    #
+    # ROW 5 REUSES ROW 4's TWO DRAWINGS as its first two frames, which is the
+    # illustrator's plan and was stated when the sheet was delivered. The cutter
+    # dedupes on mean absolute difference, so those two pack ONCE and both rows
+    # index the same tiles. That is the intended outcome, not a bug to chase:
+    # `death` and `hurt` genuinely share their opening.
+    'barata': {
+        'src': 'assets-v2/beatemup-dungeon/barata-coconutbash.png',
+        'base': 'barata-beat',
+        'native': 'right',
+        # Drawn BIG: 342.5px of body at the shared 0.49, twice the first
+        # cigarette's 170. Same rule as the cigarettes -- bring the atlas back
+        # to ~170px of body, because `sheets.js` scales every pack so its idle
+        # body is `fighterSizePx` tall and a source drawn 2.5x over that is
+        # 2.5x of texture being thrown away on every draw. Sizing in game is
+        # `bodyH` in the defs, never this.
+        'scale': 0.24,
+        'rows': [
+            ('idle',   1, 4),
+            ('walk',   2, 5),
+            ('combo',  3, 5),   # a guard frame, then four strike poses
+            ('hurt',   4, 2),   # both frames cycle, as the cigarettes' do
+            ('death',  5, 3),   # frames 1-2 are the hurt pair again
+            ('ball',   6, 5),   # curls up, then spins -- the charge
+        ],
+    },
+    # The red one. Same six rows, same counts, same order -- the pair was drawn
+    # to one plan exactly as the cigarettes were.
+    'barata2': {
+        'src': 'assets-v2/beatemup-dungeon/barata2-coconutbash.png',
+        'base': 'barata2-beat',
+        'native': 'right',
+        # Drawn BIG: 342.5px of body at the shared 0.49, twice the first
+        # cigarette's 170. Same rule as the cigarettes -- bring the atlas back
+        # to ~170px of body, because `sheets.js` scales every pack so its idle
+        # body is `fighterSizePx` tall and a source drawn 2.5x over that is
+        # 2.5x of texture being thrown away on every draw. Sizing in game is
+        # `bodyH` in the defs, never this.
+        'scale': 0.24,
+        'rows': [
+            ('idle',   1, 4),
+            ('walk',   2, 5),
+            ('combo',  3, 5),
+            ('hurt',   4, 2),
+            ('death',  5, 3),
+            ('ball',   6, 5),
+        ],
+    },
+    # THE HORSE BOSS, and the first thing through this cutter that is not a
+    # cigarette. Five rows, 55 frames, named by the illustrator in one line.
+    #
+    # IT ARRIVED AT 27329x7922 AND 18MB and was reduced to a quarter before it
+    # came anywhere near here -- see tools/shrink-master.py. Do not re-cut from
+    # an unreduced export and expect any of these numbers to hold.
+    #
+    # `scale` IS 1.0 BECAUSE THE MASTER IS ALREADY THE RIGHT SIZE. The others
+    # carry 0.42-0.49 to bring a print-resolution sheet down to ~170px of body.
+    # The horse's master was reduced once, permanently, so a second reduction
+    # here would throw away half of what is left.
+    #
+    # `baseWhite` IS FALSE: he is chrome and gold, not white, and the white
+    # anchor test does NOT fall back on him -- see anchor().
+    #
+    # `bodyArea` IS LOWERED because his smallest frames sit just under the
+    # shared 15000, which was measured on the cigarettes.
+    #
+    # HE FACES RIGHT in rows 1-4, like the coconut and the cigarettes. ROW 5 IS
+    # THE EXCEPTION AND IT IS NOT A FACING: `turn` runs profile-left (frame 0)
+    # through head-on (frame 3) to profile-right (frame 6), the same shape as
+    # MOSCA_RECTS. Whatever draws it must index it directly and must NOT let the
+    # pack's mirror touch it, or the turn folds in half.
+    #
+    # THERE IS NO hurt, knockdown OR death ROW, and that is deliberate --
+    # confirmed by the user. He takes damage the way the Mosca does: a flash, a
+    # blink, and the impact burst on top. Do not invent one out of these rows.
+    'horse': {
+        'src': 'assets-v2/beatemup-dungeon/horse-coconutbash.png',
+        'base': 'horse-beat',
+        'native': 'right',
+        'scale': 1.0,
+        'baseWhite': False,
+        'bodyArea': 1000,
+        'refAnim': 'walk',
+        'rows': [
+            ('runAttack', 1, 12),  # ataque correndo
+            ('trot',      2, 12),  # trotando
+            ('walk',      3, 12),  # caminhando
+            ('kick',      4, 12),  # coice
+            ('turn',      5,  7),  # parado virando -- a TURN, not a facing
+        ],
+    },
 }
 
 
@@ -263,7 +386,7 @@ def body_mask(opaque):
     return labels == big
 
 
-def anchor(tile):
+def anchor(tile, base_white=True):
     """Ground point and body height inside a tile.
 
     Returns (ax, ay, bh): the horizontal anchor, the ground line, and how tall
@@ -273,6 +396,15 @@ def anchor(tile):
     `ax` is the centroid of the WHITE base -- the bottom BASE_FRAC of him, body
     white only, so neither a thrown arm (tan) nor a leaning head (black) can
     move his feet. See the header.
+
+    ⚠️ `base_white=False` FOR ANY SHEET THAT IS NOT WHITE-BODIED, and the horse
+    is why the switch exists. The white test is not self-checking: it falls back
+    to the whole body only when it finds FEWER THAN 20 matching pixels, and the
+    horse's chrome highlights give it ~530 scattered over the legs. So it would
+    not fall back -- it would quietly anchor the animal on whichever leg
+    happened to catch the most light, which moves frame to frame. A palette rule
+    written for one character must be opt-in, not the default for every sheet
+    that arrives afterwards.
     """
     a = np.array(tile)
     opaque = a[:, :, 3] > ALPHA
@@ -285,7 +417,8 @@ def anchor(tile):
     top, bottom = int(solid.min()), int(solid.max()) + 1
 
     rgb = a[:, :, :3].astype(int)
-    white = body & (np.abs(rgb - 255).sum(axis=2) < WHITE_TOL)
+    white = (body & (np.abs(rgb - 255).sum(axis=2) < WHITE_TOL)) if base_white \
+        else body
     base_top = max(top, bottom - max(1, int(round((bottom - top) * BASE_FRAC))))
     base = white.copy()
     base[:base_top] = False
@@ -312,11 +445,19 @@ def main():
 
     # THE SHEET IS CUT ON BODIES, NOT ON INK -- see the module header.
     labels, stats = components(a)
-    bodies = {l: s for l, s in stats.items() if s[4] >= BODY_AREA}
+    # PER SHEET, because the constant was measured on the cigarettes and the
+    # horse's three smallest frames come in at 14539-14607 -- just UNDER it.
+    # That fails loudly (the count will not match) rather than silently, which
+    # is the tool working as intended; the fix is still to say so per sheet
+    # rather than to keep lowering a shared number until it fits everything and
+    # separates nothing. On the horse, dirt is 1-4px and the smallest body is
+    # 14539, so 1000 sits in a gap 3000x wide.
+    body_area = spec.get('bodyArea', BODY_AREA)
+    bodies = {l: s for l, s in stats.items() if s[4] >= body_area}
     if len(bodies) != want_total:
         big = sorted((s[4] for s in stats.values()), reverse=True)
         raise SystemExit(
-            f'expected {want_total} bodies over {BODY_AREA}px, found {len(bodies)}. '
+            f'expected {want_total} bodies over {body_area}px, found {len(bodies)}. '
             f'Areas around the cut: {big[max(0, want_total - 3):want_total + 3]}')
 
     body_px = np.isin(labels, list(bodies))
@@ -442,7 +583,16 @@ def main():
     # THE PACK'S REFERENCE HEIGHT, and the reason the defs carry it: the idle
     # frame is a third smoke, so sizing the pack on the frame would draw a
     # two-thirds-height cigarette under a full-height plume.
-    body_h = frames[anims['idle'][0]]['bh']
+    # PER SHEET: the cigarettes size themselves on their idle row, but the horse
+    # has no idle -- his rows are all movement. `refAnim` names the row whose
+    # first frame stands for the pack, and it must be a NEUTRAL PROFILE: pick a
+    # reaching or rearing frame and the whole character shrinks in game to make
+    # room for the pose. For the horse that is `walk` frame 0.
+    ref = spec.get('refAnim', 'idle')
+    if ref not in anims:
+        raise SystemExit(
+            f"refAnim {ref!r} is not a row on this sheet; have {sorted(anims)}")
+    body_h = frames[anims[ref][0]]['bh']
 
     scale = spec.get('scale', SCALE)
     if scale != 1.0:

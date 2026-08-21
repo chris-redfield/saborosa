@@ -46,26 +46,41 @@ furniture rather than a fighter.
 
 ```js
 CHARACTERS.coconut.drawScale:  0.9,     // the player, DRAWN size
-CHARACTERS.cigarro2.drawScale: 1.164,   // the stub, the big one
-flyBossSizePx: 253,                     // the Mosca, drawn AND simulated
+CHARACTERS.cigarro.drawScale:  1.452,   // raised 45% over three requests
+CHARACTERS.cigarro2.drawScale: 1.691,   // the stub, 1.164x the above
+CHARACTERS.cigarro3.drawScale: 1.691,   // drawn at the stub's size
+CHARACTERS.barata.drawScale:   1.888,   // both roaches
+flyBossSizePx: 304,                     // the Mosca, drawn AND simulated
 ```
 
 `drawScale` is a drawn size only — it does not touch the hurtbox, punch reaches
-or jump, so it is a look and not a rebalance. Keep it near 1: the rule below is
-that a sprite must not shrink while its reach does not, and the same holds
-upward — much past 1.2 and the fist visibly outruns the reach behind it.
+or jump, so it is a look and not a rebalance.
 
-**Why the stub needs one at all.** A ragged pack is scaled so its idle BODY is
-`fighterSizePx` tall, which is what stops a sheet drawn at a different size
+**⚠️ EVERY ENEMY IS NOW WELL PAST THE POINT THIS SECTION USED TO WARN ABOUT.**
+The rule was "much past 1.2 and the fist visibly outruns the reach behind it",
+and that is exactly where the cast sits. `ENEMY_COMBOS` still swings the
+92/92/108 × BODY_SCALE the cigarettes had when they were drawn a third smaller.
+Growing those reaches to match is a rebalance — it makes them hit from further
+away — so it has deliberately not been done. If a swing looks like it should
+have connected, this is why.
+
+**Why a pack needs an override at all.** A ragged pack is scaled so its idle
+BODY is `fighterSizePx` tall, which stops a sheet drawn at a different size
 arriving as a giant — but it also flattens size differences the illustrator drew
-on purpose. In the masters his body is 405px against the first cigarette's 348,
-so 1.164 restores exactly that and nothing more. Drawn heights end up:
+on purpose. The stub's body is 405px in the masters against the first
+cigarette's 348, so his 1.164 ratio restores exactly that.
+
+**⚠️ A ROACH IS NOT AS BIG AS ITS NUMBER SAYS.** That normalisation measures the
+whole body, and for a barata the top 44px of 168 — **26%** — is horns and
+antennae, so only ~124px is animal. It is why they need 1.888 to stand as big as
+a cigarette rather than merely as tall.
 
 | | body drawn |
 |---|---|
 | COCONUT | 123px |
-| CIGARRO | 137px |
-| the stub | 159px |
+| CIGARRO | 199px |
+| the stub / CIGARRO3 | 231px |
+| the baratas | 258px (~191px of animal) |
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
 the boss's size in the simulation moves with its drawn size.
@@ -435,19 +450,36 @@ person who left it on.
 
 ```
 COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
-enemy HP       CIGARRO 34   CIGARRO2 40   ERKPA 55
 player HP      110
 
-CIGARRO's string    3 + 3 + 5  =  11    quick, light
-CIGARRO2's string   4 + 4 + 7  =  15    slow, heavy
-ERKPA               one swing, 10       (enemyDamage)
+              HP   speed   string              P(3 hits)   charge
+CIGARRO       34   0.88    3 + 3 + 5  = 11        30%        -
+CIGARRO2      40   0.72    4 + 4 + 7  = 15        20%        -
+CIGARRO3      55   0.58    6 + 6 + 10 = 22        20%        -
+BARATA        50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/turn
+BARATA2       66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
 ```
 
-**Both cigarettes throw combos.** They have three punches drawn for them, so
-their attack is a string rather than a swing — `CONFIG.ENEMY_COMBOS`, one attack
-def per hit, same four numbers and a box as any other attack. ERKPA has no entry
-there and keeps the single swing built from `enemyStartupMs` / `enemyActiveMs` /
-`enemyRecoverMs`.
+**Everyone throws a combo now**, so `enemyDamage` is read for nobody — it is
+kept as the number each string was balanced against. Damage is SPREAD, not
+added: each enemy replaced one that swung once, and no single hit of a string
+costs more than that swing did, so only eating the whole thing costs more.
+
+**⚠️ The barata's second and third startups are 190ms, under `hurtMs` 260** —
+the only ones in the game that are. His string is therefore hard to escape once
+it has begun, which is what makes a fast enemy frightening rather than busy. If
+it reads as unfair, move that number before his damage.
+
+**⚠️ REACH MUST CLEAR THE STAND-OFF PLUS THE LAST HIT'S KNOCKBACK.** Enemies
+swing from `enemyStandoffX` (63.4px) and do NOT step in between the hits of a
+string, and knockback of k moves the player k/6 px. So hit 2 must reach
+63.4 + k1/6, and hit 3 further again. **No cigarette's does** — see STATE.md;
+their strings are animation only past the first punch, and the damage table is
+fiction. The baratas are the corrected example: mid-string knockback 45,
+reach 104.
+
+**⚠️ Every number for both baratas is untested** — extrapolated from the
+cigarettes, never watched in play.
 
 **The pair is one gang with two tempos.** Each kept the stats of the enemy it
 replaced — CIGARRO took JUIXY's 34 HP and 0.88 speed, CIGARRO2 took TOM's 40 and
@@ -520,6 +552,141 @@ it is a real rebalance, not a tweak: at 40 damage a full string one-combos the
 stub (40 HP), and at 34 it already one-combos CIGARRO.
 
 ---
+
+## Sound
+
+Three knobs and three pipelines.
+
+| knob | what it does |
+|---|---|
+| `MUSIC_TRACK` | the looping bed, one file |
+| `musicLoopSec` | **6.146** — where the loop wraps. NOT decoration; see below |
+| `musicVolume` | 0.55 |
+| `SFX` | name → file. `sound.play('hit')` looks the name up here |
+| `sfxVolume` | 0.9 — effects sit above the music on purpose |
+| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume` |
+| `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
+
+`M` mutes everything, in every phase.
+
+**⚠️ `musicLoopSec` must match the mix.** `AudioBufferSourceNode.loop` with no
+bounds wraps at whatever the decoded buffer turned out to be, and decoders
+disagree about an Opus file's length by a few ms of padding. Left alone that is
+a few ms of silence every 6.1 seconds — an audible tick. If you re-crop the
+mix, this number moves with it.
+
+**⚠️ You cannot make an effect louder by re-cutting it.** The clips are
+normalised to −1 dBFS; a hotter render is a flatter one. Use `SFX_GAIN`. Past
+about 1.3 it clips against the music rather than getting louder — turn
+`musicVolume` down instead.
+
+### Re-mixing the music
+
+    python3 -m http.server 8000
+    http://localhost:8000/tools/beat-music-lab.html
+
+Every take loops against the bed; turn a layer **on** and it joins immediately.
+`repeat` off turns a layer into one-shots you place by tapping **1–4** or
+clicking its lane. The **ARRANGEMENT** box at the bottom is the JSON to paste
+back over `DEFAULT_MIX` / `DEFAULT_MASTER` so the tool reopens on your mix.
+
+Both `fit by rate` and `fit by loop` solve a layer that does not divide the loop
+— the panel says in amber when one does not. Rate changes pitch as well as
+tempo here (these are samples, not stems), so a couple of percent passes and ten
+does not.
+
+**⚠️ The shipped `trilha-mix.ogg` came from the tool's `export wav`, not from
+`tools/bake-beat-trilha.py`.** That script does not currently reproduce the
+browser's render and writes `trilha-mix-baked.ogg` so it cannot overwrite an
+approved mix. See STATE.md for what is known about the discrepancy.
+
+### Cutting a new sound effect
+
+    python3 tools/build-beat-sfx.py enemy-hit-1              # the loudest event
+    python3 tools/build-beat-sfx.py combo-2-5-hits --event last --out combo-finish2
+    python3 tools/build-beat-sfx.py combo-1-4-hits --event all --dry-run
+
+Takes come from `assets-v2/beatemup-dungeon/audio/`, cuts land in `audio/sfx/`.
+Always `--dry-run` first: it prints every event it found with its timing and
+peak, and picking the right one is the whole job.
+
+| flag | for |
+|---|---|
+| `--event` | `loudest` (default), `last`, `all`, or a 1-based number |
+| `--out` | output name, when the cut is part of a take |
+| `--gap` | ms of quiet that still belongs to the same event |
+| `--range` | dB below the file peak that still counts as sound (default 40) |
+| `--margin` | dB above the measured noise floor (default 12) |
+
+**⚠️ Do not use `tools/build-sound.py` on these.** It trims silence off both
+ENDS and keeps everything between them — right for a musical take, wrong for a
+recording that holds a second quiet event, which several of these do.
+
+Wiring a cut effect is two lines: an entry in `CONFIG.SFX`, and a
+`sound.play('name')` where it should be heard.
+
+## The title screen
+
+| knob | what it does |
+|---|---|
+| `title` | `false` skips straight into the fight |
+| `TITLE_FRAMES` | the three crawl frames, read in place from `flying-dungeon/` |
+| `TITLE_HOLDS_MS` | `[105,105,105]` — the other game's timing, do not re-derive |
+| `LOGO_SHEET` | the SABOROSA logo |
+| `titleLogoWRel` | 0.52 — logo width as a fraction of the canvas |
+| `titleFadeOutMs` | 600 |
+
+**⚠️ If you add another pre-game phase, `boot()` schedules the first frame and
+`start()` schedules its own.** Calling both leaves two rAF chains running the
+same loop: the game runs at double speed with every `dt` halved, and it reads
+as a physics bug.
+
+## The baratas
+
+Six rows, not the cigarettes' eight — no jump and no knockdown, because a
+cockroach does neither. What they have instead is the charge.
+
+    python3 tools/build-beat-enemy-defs.py barata
+    python3 tools/build-beat-enemy-defs.py barata2
+
+| row | frames | note |
+|---|---|---|
+| 1 idle | 4 | |
+| 2 walk | 5 | |
+| 3 combo | 5 | frame 0 is a guard; **1, 2, 3 are the punches**; 4 is spare |
+| 4 hurt | 2 | both cycle |
+| 5 death | 3 | frames 1–2 are the hurt pair again — they dedupe to one tile |
+| 6 ball | 5 | frame 0 is the tuck, 1–4 spin |
+
+Their `combo1..3` are **one drawing each**, which is why they need per-character
+pose overrides — the shared table slices a combo row into wind-up/strike pairs
+and would cut every one of these punches in half. `down` borrows the death
+row's last frame, the roach on its back.
+
+### The charge — `CONFIG.BARATA_CHARGE`
+
+| knob | what it does |
+|---|---|
+| `chance` | per **turn**, not per frame. 0.154 / 0.112 |
+| `curlMs` | 260 — the tell, and the player's reaction window; the two are the same thing by construction. Halved from 520, which read as a stall. Much lower and the charge stops being answerable |
+| `speed` | 3.4 × walk. Nothing outruns it; step out of the lane |
+| `damage` | 12 / 15, and it knocks the player down |
+| `reachZ` | **the real difficulty dial** — widen it and the move becomes unavoidable |
+| `returnMs` | 1500 / 2100 off-screen. This is what the move costs him |
+| `minX` / `maxX` | the band he will charge from |
+| `exitMarginPx` | how far past the wall counts as gone |
+
+## Adding an enemy kind
+
+**⚠️ A kind needs an entry in BOTH `ENEMY_COMBOS` and `enemyComboWeights`.**
+With a string but no weights, `Enemy._rollCombo` returns 1 and it throws exactly
+one hit forever. Nothing errors. It reads in play as "that one has no combo".
+
+The full checklist: `CONFIG.CHARACTERS` (+ `poses` if the sheet differs),
+`enemyHealth`, `enemySpeedScale`, `enemyDamage`, `ENEMY_COMBOS`,
+`enemyComboWeights`, and a wave to put it in. `assetManifest()` walks
+`CHARACTERS`, so the build follows on its own.
+
 
 ## The coconut's sprites
 
@@ -735,6 +902,184 @@ his feet.
 
 He faces **right**, like the coconut and unlike the main game's packs. Recorded
 in the defs as `native`, never assumed.
+
+---
+
+## The impact burst
+
+Six four-frame bursts — three hand-drawn stars, each in yellow and in red — cut
+out of `assets-v2/beatemup-dungeon/effects-porrada-01.png`. One is picked at
+random every time a blow connects, whoever throws it. It replaced a starburst
+drawn in code.
+
+All the knobs are in `CONFIG.HIT_FX`:
+
+| knob | what it does |
+|---|---|
+| `on` | `false` drops the effect entirely — it also drops out of the manifest, so the build stops carrying it |
+| `sizePx` | size of an ordinary hit's **first** frame; the burst grows ~40% on its own from there |
+| `bigSizePx` | the same for a finisher, and for every blow the Mosca lands |
+| `chestRel` | how far up the victim the mark is stamped, as a fraction of `fighterSizePx` above the feet |
+| `ms` | life of the burst; the four frames divide it evenly |
+| `fadeTail` | fraction of that life spent fading out, at the **end** only |
+| `mirror` | randomly flip horizontally — twelve marks out of six animations |
+| `colorByRole` | `false` (shipped): colour is part of the random draw. `true`: yellow when the player lands one, red when the player takes one |
+
+`sizePx` and `bigSizePx` are `* BODY_SCALE` like the fighters are, so rescaling
+the cast rescales the marks with it.
+
+**`sizePx` is the reference for the whole pack, not a per-variant target.** The
+defs carry one `baseSize` and every frame of every variant scales by the same
+factor, so the three stars arrive in the proportions they were drawn (1.00 /
+0.88 / 0.78) and each burst still grows across its four frames.
+
+> ⚠️ **Do not normalise the variants to a common size.** It was built that way
+> once and taken out: art is wired as drawn. If the spread is unwanted, that is
+> a change to the art, not a rescale on the way in.
+
+**The burst holds its first frame through the hitstop.** It runs off the impact
+event's clock, and that clock does not advance while the simulation is frozen —
+so a finisher shows the solid star for `hitstopMs.finisher` (130ms) *before* its
+`ms` begin. That is wanted. Giving the effect a timer of its own would lose it.
+
+### Re-cutting the sheet
+
+```
+python3 tools/build-beat-fx-defs.py
+```
+
+Writes `effects-porrada-game.png` and `effects-porrada-sprites.json` beside the
+master. It asserts 8 column bands and 3 row bands and dies loudly if the sheet
+stops matching, which is the point — a mis-banded sheet still produces a working
+atlas and the mistake only shows up weeks later as an animation that looks
+subtly wrong.
+
+Three things in that tool that are not obvious, all in its header at length:
+
+* **The animation runs along a ROW**, inside one colour block, not down a
+  column. Solid → outline → broken → dots.
+* **Rows are banded per column, after dropping specks.** The dotted frames are
+  disconnected dots and project as up to eleven runs on the raw mask, and a 2px
+  speck at y=1133 opens a fourth row band all by itself.
+* **The anchor is the frame's centre**, not a ground line — a burst is centred
+  on the impact and expands around it. Bbox centre rather than centroid: on one
+  variant the centroid sits 13% low and would drag that star down.
+
+### Adding more effect sheets
+
+`effects-porrada-01.png` is numbered because more are expected. A second sheet
+needs `SRC`/`BASE` in the cutter parameterised and its own `HIT_FX`-style entry;
+the reader (`src/hit-fx.js`) already takes any number of named animations and
+groups them by the trailing digits, so `yellow0..2` / `red0..2` becoming
+`yellow0..5` costs nothing.
+
+---
+
+## The horse boss
+
+The final boss, in the boss room, **after** the wave of three that already lived
+there. Its own class (`src/horse-boss.js`), not an `Enemy` — see STATE.md for
+why. All the knobs are `CONFIG.HORSE_BOSS`.
+
+| knob | what it does |
+|---|---|
+| `health` | 150. A full player combo is 28, so a little over five clean combos |
+| `sizePx` | 234 — the drawn body height **and** what the hurtbox is derived from, so picture and target grow together |
+| `hitWRel` / `hitZ` | hurtbox, as a fraction of `sizePx` and in belt px. Wide (0.86) because he is longer than he is tall |
+| `turnMs` | **460 — the most load-bearing number here.** Seven frames of coming about, during which he cannot attack. It is the fight's only opening |
+| `ACTIONS` | **relative weights inside each distance band** — `{charge: 50, kick: 50, approach: 50}`. Far: charge vs approach. Near: kick vs approach |
+| `idleMs` | the breath between passes |
+| `kickRange` | how close he closes to before throwing the kick |
+| `chargeMinRange` | 240 — he may only *roll* a charge from beyond this. **Must stay below `approachStopRange`** or the charge starves |
+| `approachStopRange` | 300 — the distance an approach settles at, either by closing or by giving himself room |
+| `approachMs` | fuse on an approach |
+| `approachMaxMs` | fuse on closing for a kick, so he can't be led around the room forever |
+
+**How the fight paces out**, measured over 4 simulated minutes each:
+
+| you | charge | kick | approach | charge every |
+|---|---|---|---|---|
+| move around normally | 28% | 16% | 56% | 6.9 s |
+| keep your distance | 14% | 28% | 58% | 11.5 s |
+| glue yourself to him | 0% | 41% | 59% | never |
+
+That last row is the design working, not failing: stay inside 240 px and he
+kicks instead. The kick only knocks you back 70 px (`knockback / knockbackDecay`),
+so hugging him is a real choice with a real answer.
+| `chargeTellMs` | 420 — stood still, facing you. The only warning |
+| `chargeSpeed` | 520, faster than the player runs. Step out of the lane |
+| `kickReachX` | 260 — **measured off the drawing**, see below |
+| `runMs` / `trotAnimMs` / `walkAnimMs` / `kickAnimMs` | per-frame holds; these are the gait |
+| `dieMs` / `dieTipRad` | there is no death row, so he tips over and fades |
+
+### Three things not to change without reading first
+
+**The turn cannot be mirrored.** Row 5 already contains both profiles plus
+head-on. Flipping it folds the rotation in half. It is drawn by passing the
+pack's native side as the facing, which is also how he gets an idle he has no
+row for — he stands in frame 0 or 6 of that row.
+
+**The kick reaches backwards.** `coice` is a hind-leg kick; its box is on the
+opposite side to every other attack in the game, which is what makes it the
+answer to a player behind him.
+
+**Three numbers are coupled and will starve the charge if separated.**
+`kickRange` (210) < `chargeMinRange` (240) < `approachStopRange` (300). An
+approach settles just outside `chargeMinRange`, which is what makes the next
+roll able to be a charge. Raise `chargeMinRange` above `approachStopRange` and
+the charge can never be rolled again — that has now happened twice.
+
+**⚠️ Never write a reach by eye.** `kickReachX` was first 132; the hooves reach
+300px behind the anchor. Print the row's frame extents from the defs and set the
+number against them — this is the same failure the cigarettes' strings still
+have.
+
+### Re-cutting the sheet
+
+```
+python3 tools/build-beat-enemy-defs.py horse
+```
+
+Same cutter as the cigarettes, with three per-sheet options the horse added:
+`baseWhite: false` (he is chrome, and the white anchor test does **not** fall
+back on him — it would anchor him on whichever leg caught the light),
+`bodyArea: 1000` (his smallest frames sit just under the shared 15000), and
+`refAnim: 'walk'` (he has no idle row to size the pack from; it must be a
+neutral profile, or the whole character shrinks to make room for a pose).
+
+He has **no hurt, knockdown or death row** and that is deliberate. Damage is a
+flash, a blink and the impact burst.
+
+---
+
+## Masters arrive too big
+
+Artist exports come at print resolution — the horse boss landed at 27329x7922
+and 18 MB. Nothing needs that: the cutters read the master, and what the cutters
+write is what the game loads, so a master only has to carry enough pixels that
+**no frame is ever upscaled on its way to the screen**.
+
+```
+python3 tools/shrink-master.py <sheet.png> --scale 0.25 --dry-run   # measure
+python3 tools/shrink-master.py <sheet.png> --scale 0.25             # commit
+```
+
+`--dry-run` prints the row bands and the frame height each one would end up
+with. **That height is the ceiling on how large the character can ever be
+drawn** — pick the scale off it, not off the file size. `--out` writes elsewhere
+instead of overwriting.
+
+> ⚠️ **It overwrites in place and the loss is permanent.** Dry-run first.
+
+**Cropping the dead canvas saves almost nothing.** PNG already compresses a
+blank region to near zero — on the horse, cropping a third of the width off
+saved 0.8 MB of 18. The size is the drawn pixels, and `--scale` is the only real
+lever.
+
+The resize is premultiplied, so colour hiding under transparent pixels cannot
+bleed into the edges. On the horse that changed nothing (its export is matted on
+black, tight to the art) — but a sheet matted on white would fringe badly
+without it. Insurance, not a fix.
 
 ---
 
