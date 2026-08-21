@@ -30,6 +30,12 @@
 class Title {
   constructor(assets) {
     this.assets = assets;
+    this.reset();
+  }
+
+  /** Back to the top. Called when the game returns here after a run, so the
+      hold and the name play again exactly as they did on the first boot. */
+  reset() {
     this.t = 0;          // ms on screen; the name is timed off this
     this.out = -1;       /* -1 until dismissed, then the fade-out clock.
                             IT DOUBLES AS THE "already going" FLAG: a second

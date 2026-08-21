@@ -130,6 +130,17 @@ offered as flavour, is not used anywhere: it reads as a bottom RANK TIER ("you
 are a joke") rather than as a row label, and the tiers are single letters drawn
 at 76px, so using it is a drawing change rather than a string.
 
+**AND THERE IS AN ENDING.** ⚠️ *He is drawn at `scale: 1.0` there — exactly his
+size in the fight. It shipped at 1.55 and was wrong on sight: a character who
+changes size between the level and the ending stops reading as the same
+character, and the ending is the last thing the player sees him do. If the shot
+needs him larger, crop the plate.* Beating the horse walks LEBRON out to the right and
+into a photograph, where he stands with his arms up before the tally arrives.
+See *The ending screen* in README.md. Two things it changed elsewhere: the last
+fight now WALKS HIM OUT (it used to hand straight to the board, and the note
+saying that would be "walking him out of the level into nothing" has expired),
+and the tally draws over the ending plate rather than over the room he left.
+
 **AND THE TITLE SCREEN IS ITS OWN NOW.** The flying dungeon's vermin panel and
 the SABOROSA logo are gone; it opens on a photograph of a wall, holds it bare
 for two seconds, and fades the name up over it. See *The title screen* in
@@ -717,6 +728,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/hit-fx.js` | the impact burst: six variants, picked per blow |
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
 | `src/title.js` | the photo title screen: hold, then the name |
+| `src/ending.js` | the WON screen: walk in, arms up, then the tally |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |
@@ -1484,6 +1496,83 @@ Embed settings: **1280×720**, fullscreen **on**, mobile **off**, autostart
 ---
 
 ## Bugs whose causes are not guessable
+
+### A scroll can be already finished before it starts
+
+**Found in play, 2026-08-21: the wave after the Mosca spawned on top of the
+player instead of being walked into.**
+
+A `scroll` segment ends at an ABSOLUTE world x (`toX`). That is fine when the
+player arrives from behind it, and wrong when they do not — and after a fight
+they often do not. **An arena or a boss locks the CAMERA but still gives the
+player the full width of the screen to move in.** The Mosca's lock sits around
+camX 2762, so the walls run to roughly 4002, and the scroll that follows asks
+for 3690. Finish the boss anywhere right of centre and that scroll is already
+satisfied: it completes on its first frame, the arena after it spawns
+immediately, and its enemies — declared at x 3450–3900 — arrive in the player's
+lap. Nothing errors. It reads as enemies teleporting onto you.
+
+`CONFIG.scrollMinWalkPx` (260) is the floor: a scroll now ends at whichever is
+further, `toX` or that far from **wherever the player was standing when the
+scroll began**. In the normal case the player is behind `toX` and it never
+binds, so it costs no film.
+
+⚠️ **AND IT IS CLAMPED TO `endX()`, WHICH IS NOT OPTIONAL.** In a scroll the
+player may walk as far as the room's right wall and no further, so a minimum
+measured from near that wall would ask for a position they can never stand in —
+the segment would never advance and the game would sit there with nothing
+visibly wrong. A fight ending against the right-hand gate is enough to cause it.
+
+**The general shape, and it is a third instance of one in this file:** a rule
+written as an absolute position is a rule that assumes where the player came
+from. `toX` assumed it, and so did the camera lock before it was rewritten to
+spend a budget earned by walking.
+
+### The GO arrow pointed at a wall
+
+**Found in play, 2026-08-21.** Clearing the boss room's wave raised the "GO →"
+prompt, in a room where the next thing is HIPÓLITO and there is nowhere to walk.
+
+The arrow means *the way forward has opened* — and it was raised on any segment
+hand-off that had a next segment at all, which silently assumed every fight is
+followed by a walk. True everywhere in the street, false in the boss room, where
+an arena hands straight to a boss.
+
+`Stage._goPrompt()` is now the one place it goes up, and it asks whether the
+NEXT segment is a `scroll`. Verified across both rooms: the street is unchanged
+(after segments 1, 3 and 5), the last street arena still gets none because it
+returns a 'room' event, and the boss room now gets none at all.
+
+### Stuck on the ending screen
+
+**Found in play, 2026-08-21, and mine.** After the tally, pressing anything left
+the player on the ending photograph forever.
+
+Nothing was frozen. `endingShown` makes `render()` draw the ending plate INSTEAD
+of the world and return early, and it was never cleared — so the restart ran the
+entire game underneath a still picture. Input worked, the level was playing, the
+screen simply never changed again. **A stale render flag does not present as a
+stale flag; it presents as the game hanging.**
+
+Cleared in both `toTitle()` and `start()`, because those are the two ways a run
+can begin (the title hands to `start`, and so does the DEV room-jump).
+
+**And the two endings now part company.** Finishing goes back to the TITLE — the
+run is over and that is where a run begins. Dying still goes straight back into
+play, because a death is a retry and making the player sit through a title screen
+to have another go is the one thing an arcade game must not do. `Title.reset()`
+exists for the first of those, so the hold and the name play again from the top.
+
+### The one I added and the user caught
+
+`const ending = new Ending(assets, sheets)` was placed one line ABOVE
+`const sheets = ...`. `const` is not hoisted the way `var` is, so reading it
+early throws *"can't access lexical declaration 'sheets' before initialization"*
+and takes the whole boot down — a black page, before any of the new code runs.
+Not subtle, and entirely avoidable: **the shell's declaration block is ordered
+by dependency, and anything added to it has to go after what it takes.** All 15
+constructions in that block were checked afterwards; it was the only one.
+
 
 ⚠️ **A missing config knob made the boss invisible.** `flyBossTurnMs` was
 undefined; it divides into the turn rate, so `facing` went NaN → the pose index

@@ -128,7 +128,36 @@ class Stage {
       // LAYERS note in config.js for why this is not two layers.
       this.backdrop.setMode('plate', 'scrub');
       this._followCamera(dt, player);
-      if (player.x >= s.toX) {
+
+      /* ⚠️ A SCROLL ALSO HAS TO BE WALKED, NOT JUST REACHED. `toX` is an
+         absolute line, and the player can already be past it when the scroll
+         begins: an arena or a boss LOCKS the camera but still gives them the
+         width of the screen to move in, so a fight that ends with them on the
+         right-hand side can leave them beyond the next scroll's target. That
+         scroll then completes on its first frame and the wave after it spawns
+         on top of them.
+
+         That is exactly what happened after the Mosca. Its lock sits around
+         camX 2762, the arena walls run to camX+1240 ~ 4002, and the scroll that
+         follows asks for 3690 -- so finishing the boss anywhere right of centre
+         skipped the walk entirely and the roaches arrived in the player's lap.
+
+         So the target is whichever is FURTHER: the absolute line, or a minimum
+         walk from where they actually are. `scrollFrom` is sampled here rather
+         than in _enter because the first frame of the segment is the first
+         moment the player's position means anything for it. */
+      if (this.scrollFrom == null) this.scrollFrom = player.x;
+      const minWalk = CONFIG.scrollMinWalkPx || 0;
+      /* ⚠️ AND CLAMPED TO THE ROOM'S RIGHT WALL, WHICH IS NOT OPTIONAL. In a
+         scroll the player may walk as far as `endX()` and no further, so a
+         minimum walk measured from near that wall would ask for a position they
+         can never stand in -- the segment would never advance and the game
+         would sit there with nothing visibly wrong. A fight ending against the
+         right-hand gate is enough to cause it. */
+      const target = Math.min(Math.max(s.toX, this.scrollFrom + minWalk),
+                              this.endX());
+
+      if (player.x >= target) {
         this.index++;
         this.spawned = false;
         this.lockX = null;      // the next arena resolves its own
@@ -180,7 +209,7 @@ class Stage {
         this.spawned = false;
         this.lockX = null;
         const r = this._enter(player, crowd);
-        if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
+        if (!r) this._goPrompt();
         return r || 'advance';
       }
       return null;
@@ -221,7 +250,7 @@ class Stage {
         this.index++;
         this.spawned = false;
         const r = this._enter(player, crowd);
-        if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
+        if (!r) this._goPrompt();
         return r || 'advance';
       }
       return null;
@@ -253,18 +282,42 @@ class Stage {
       this.spawned = false;
       this.lockX = null;
       const r = this._enter(player, crowd);
-      /* THE ARROW ONLY MEANS SOMETHING IF THERE IS SOMEWHERE TO WALK. `_enter`
-         returns null when a next segment exists and an event when the room is
-         over -- 'clear' at the end of the game, 'room' at a door. Neither is a
-         walk the player controls, so neither gets an arrow. It used to be set
-         before asking at all, which put a GO over the clear card. */
-      if (!r) this.banner = (CONFIG.goMs || 1600) / 1000;
+      if (!r) this._goPrompt();
       return r || 'advance';
     }
     return null;
   }
 
+  /**
+   * Raise the GO arrow — but only if there is somewhere to go.
+   *
+   * ⚠️ THE ARROW MEANS "THE WAY FORWARD HAS OPENED", so it may only appear when
+   * the thing that follows is a WALK. Two ways it can be wrong:
+   *
+   *   * `_enter` returned an event. 'clear' ends the game and 'room' is a door
+   *     the game walks him through itself -- neither is a walk the player
+   *     controls. Setting the banner before asking put a GO over the clear card
+   *     once already, which is why the callers check `r` first.
+   *   * THE NEXT SEGMENT IS NOT A SCROLL. This is the boss room: clearing its
+   *     wave hands straight to HIPÓLITO, so the camera never unlocks and there
+   *     is nowhere to walk -- but the arrow went up anyway, pointing the player
+   *     at a wall. Found in play.
+   *
+   * Everywhere in the street an arena is followed by a scroll, so this changes
+   * nothing there; it is the boss room's arena→boss hand-off that it fixes.
+   */
+  _goPrompt() {
+    const next = this.segment();
+    if (next && next.kind === 'scroll') {
+      this.banner = (CONFIG.goMs || 1600) / 1000;
+    }
+  }
+
   _enter(player, crowd) {
+    /* WHERE THE NEXT SCROLL IS MEASURED FROM. Cleared on EVERY segment change,
+       so a scroll always takes it from wherever the player is standing when it
+       actually begins -- see the scroll branch in update(). */
+    this.scrollFrom = null;
     const s = this.segment();
     /* OUT OF SEGMENTS. If another room follows, this is a door rather than the
        end of the game -- game.js walks the player out and fades into it. Only

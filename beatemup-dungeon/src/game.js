@@ -24,6 +24,11 @@
   const sound = new Sound(assets);
   const title = new Title(assets);
   const sheets = new Sheets(assets);
+  /* AFTER `sheets`, because it takes it. `const` is not hoisted the way `var`
+     is -- reading one before its declaration line throws "can't access lexical
+     declaration before initialization" and takes the whole boot down, which is
+     exactly what putting this line above `sheets` did. */
+  const ending = new Ending(assets, sheets);
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
   const stats = new Stats();
@@ -37,7 +42,16 @@
   const crowd = new Crowd();
 
   let player = null;
-  let phase = 'boot';          // boot | title | play | outro | fade | dead | clear
+  let phase = 'boot';          // boot | title | play | outro | ending | fade | dead | clear
+  /* WHAT THE WALK-OUT HANDS TO. The outro is the same beat either way -- he
+     walks off the right-hand edge -- but it means two different things: a door
+     into the next room, or the end of the game. It used to be able to assume
+     the first, because running out of segments in the LAST room went straight
+     to the tally and never walked him anywhere. Now it does. */
+  let outroTo = 'fade';
+  /* True once the ending screen has been shown, so the tally draws over the
+     photograph instead of over a boss room the player has already left. */
+  let endingShown = false;
   let phaseT = 0;
   let faded = false;           // has the room swap inside a fade happened yet
   let boardSkip = 0;           // >0 = the CLEAR tally was skipped to its end
@@ -120,10 +134,48 @@
     }
   }
 
+  /**
+   * Back to the front of the game after a run — win or lose.
+   *
+   * ⚠️ IT MUST CLEAR `endingShown`, and forgetting to was a real bug: the flag
+   * makes render() draw the ending photograph INSTEAD of the world and return
+   * early, so a restart that left it set ran the whole game underneath a still
+   * picture. Every button worked, nothing was frozen, and the screen never
+   * changed — which reads as being stuck on the ending, not as a stale flag.
+   *
+   * ⚠️ AND IT SCHEDULES A FRAME, like start() does. Every caller inside loop()
+   * relies on that contract; returning without one is this game's recurring bug.
+   */
+  function toTitle() {
+    if (!CONFIG.title) { start(); return; }   // no front screen to go back to
+    stage.reset();
+    crowd.clear();
+    stats.reset();
+    player = null;
+    endingShown = false;
+    outroTo = 'fade';
+    boardSkip = 0;
+    faded = false;
+    title.reset();
+    /* The bed belongs to the level, not to the front screen -- it is started by
+       start() and has to stop here or it would play under the title and then be
+       started a second time on the next run. */
+    sound.stopMusic(0.4);
+    phase = 'title';
+    phaseT = 0;
+    input.flush();
+    last = performance.now();
+    requestAnimationFrame(loop);
+  }
+
   function start() {
     stage.reset();
     crowd.clear();
     stats.reset();
+    /* Cleared here TOO, not only in toTitle(): the title hands straight here,
+       and so does the DEV room-jump, so this is the other way a run can begin. */
+    endingShown = false;
+    outroTo = 'fade';
     player = new Player(220, CONFIG.beltDepth * 0.6);
     /* DEV: start somewhere other than the beginning. Applied after the player
        exists, because entering a room places them at its own origin. */
@@ -221,12 +273,25 @@
       player.walkOut(dt);
       crowd.update(dt, player, stage.bounds());
       combat.tick(dt);
-      // Out of frame, and the outro is only ever entered with a room to go to.
+      // Out of frame. Where it goes from here depends on why he was walking.
       if (player.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad) {
-        phase = 'fade';
-        faded = false;
         phaseT = 0;
+        if (outroTo === 'ending') {
+          ending.reset();
+          endingShown = true;
+          phase = 'ending';
+        } else {
+          phase = 'fade';
+          faded = false;
+        }
       }
+    } else if (phase === 'ending') {
+      /* THE WON SCREEN. Nothing else is ticked: the fight is over, the crowd is
+         gone and there is no world left to advance -- this is the one phase in
+         the game that is genuinely just a picture and a clock. It hands to the
+         tally when the arms-up pose has been held its beat. */
+      phaseT += dt;
+      if (ending.update(dt)) { phase = 'clear'; phaseT = 0; endScreen(); }
     } else if (phase === 'fade') {
       phaseT += dt;
       /* THE ROOM CHANGES AT THE BLACKEST POINT, halfway through, so the swap
@@ -281,6 +346,12 @@
          shape as the shadow exception in the bug list — anything that leaves
          loop() early has to have called start(), which schedules its own. */
       if (rolling) boardSkip = hud.resultsRunS(stats);
+      /* THE TWO ENDINGS PART COMPANY HERE. Finishing the game goes back to the
+         FRONT of it -- the run is over, and the title is where a run begins.
+         Dying goes straight back into play, because a death is a retry and
+         making the player sit through a title screen to have another go is the
+         one thing an arcade game must not do. */
+      else if (phase === 'clear') { toTitle(); return; }
       else { start(); return; }
     }
 
@@ -315,8 +386,12 @@
        into it -- he is leaving for somewhere. Running out in the LAST room
        ('clear') is the end of the game, and walking him off the edge there
        would be walking him out of the level into nothing. */
-    if (ev === 'room') { phase = 'outro'; phaseT = 0; endScreen(); }
-    else if (ev === 'clear') { phase = 'clear'; phaseT = 0; endScreen(); }
+    /* BOTH ENDINGS WALK HIM OUT NOW. The comment that used to sit here said
+       walking him off the edge on 'clear' would be "walking him out of the
+       level into nothing" -- true until there was an ending screen for him to
+       arrive on. `outroTo` is what the walk-out hands to. */
+    if (ev === 'room') { phase = 'outro'; outroTo = 'fade'; phaseT = 0; endScreen(); }
+    else if (ev === 'clear') { phase = 'outro'; outroTo = 'ending'; phaseT = 0; endScreen(); }
 
     if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
   }
@@ -343,6 +418,19 @@
     ctx.save();
     ctx.fillStyle = '#0b0714';
     ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
+
+    /* ⚠️ ONCE THE ENDING IS UP THE WORLD IS NOT DRAWN AT ALL, and the flag is
+       `endingShown` rather than `phase === 'ending'` deliberately: it has to
+       stay true through the CLEAR phase that follows, or the tally would fade
+       up over the boss room he just left. Nothing in the world is being ticked
+       by then either, so drawing it would be showing a frozen frame of a place
+       the game has finished with. */
+    if (endingShown) {
+      ending.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
+      ctx.restore();
+      drawEndCards();
+      return;
+    }
 
     const camX = stage.camX;
 
@@ -391,7 +479,14 @@
     }
 
     ctx.restore();
+    drawEndCards();
+  }
 
+  /* The two cards that sit OVER whatever was just drawn -- the tally and the
+     death screen. Pulled out of render() because the ending screen replaces the
+     world but must keep them: the tally has to land on the photograph, not on a
+     boss room the player has already walked out of. */
+  function drawEndCards() {
     if (phase === 'clear') {
       hud.drawResults(ctx, stats,
                       Math.max(boardSkip, phaseT - 0.45),

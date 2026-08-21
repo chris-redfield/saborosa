@@ -48,6 +48,13 @@ function assetManifest() {
     out.push({ key: 'titleBg', src: CONFIG.TITLE_BG, how: 'big' });
   }
 
+  /* The ending plate. Same treatment as the title's for the same reasons, and
+     NOT gated on `CONFIG.title` -- turning the title screen off must not take
+     the ending with it. */
+  if (CONFIG.ENDING && CONFIG.ENDING.BG) {
+    out.push({ key: 'endingBg', src: CONFIG.ENDING.BG, how: 'big' });
+  }
+
   // The GO prompt: the main game's pointing hand, and the hand-lettered word.
   out.push({ key: 'hand', src: 'intro-hand.png', how: 'image' });
   out.push({ key: 'go', src: CONFIG.GO_SHEET, how: 'image' });

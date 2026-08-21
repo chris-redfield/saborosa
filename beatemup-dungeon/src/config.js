@@ -520,6 +520,22 @@ const CONFIG = {
      `worldPxPerSecond` 116. `camX` is clamped to `levelEndX - GAME_W`, so this
      number is a hard ceiling on how much of the shot can ever be seen, and at
      4000 it stopped the level 792px short whatever the segments asked for. */
+  /* ⚠️ THE FLOOR UNDER EVERY SCROLL, and it exists because `toX` alone is not
+     enough. A scroll's target is an absolute world x, but the player can
+     already be past it when the scroll starts -- an arena or a boss locks the
+     camera and still leaves them a screen's width to move in, so a fight that
+     ends on the right-hand side can put them beyond the next target. The scroll
+     then finishes on its first frame and the following wave spawns on top of
+     them, which is what happened after the Mosca.
+
+     A scroll now ends at whichever is further: `toX`, or this far from wherever
+     the player was standing when it began. 260px is about a second of walking
+     -- long enough that enemies are always found by walking INTO them.
+
+     IT COSTS NO FILM in the normal case, because in the normal case the player
+     is behind `toX` and this never binds. */
+  scrollMinWalkPx: 260,
+
   levelEndX: 4704,
 
   // --- Camera --------------------------------------------------------------
@@ -578,7 +594,19 @@ const CONFIG = {
        worth it, but scale it much further and the punches start landing across
        a visible gap. */
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
-                drawScale: 0.9, name: 'LEBRON' },
+                drawScale: 0.9, name: 'LEBRON',
+                /* THE VICTORY POSE, for the ending screen only. Atlas frame 10
+                   -- row 1, column 3 of `coconut-beat-game.png` counting from
+                   zero -- reached as slot 2 of the `jump` row, which is the row
+                   the packer happened to put it in.
+
+                   ⚠️ IT IS ADDRESSED BY ATLAS POSITION, NOT BY MEANING, and
+                   that makes it fragile in a way the other poses are not:
+                   re-running tools/build-beat-coconut-defs.py repacks the atlas,
+                   and if the dedupe ever folds this frame differently the slot
+                   moves. If the ending suddenly shows the wrong drawing, this
+                   line is why. Verify against the atlas, not against the name. */
+                poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
 
     /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
        wave for wave rather than joining the cast: the orange was the main
@@ -2276,6 +2304,48 @@ const CONFIG = {
      lean on `titleFauxBoldPct`, the way that game's white ending does. */
   titleNameColor: '#FAFA30',
   titleFadeOutMs: 600,   // to black, once dismissed
+
+  /* --- The ending ----------------------------------------------------------
+     WON. Beating HIPÓLITO no longer cuts straight to the tally: the coconut
+     walks out of the boss room to the right the same way he leaves every other
+     room, and then this screen -- a photograph with the real coconut toy sat on
+     a rock in it -- fades up and he walks in from the left to stand in front of
+     it with his arms up.
+
+     ⚠️ THE WALK-OUT AFTER THE LAST FIGHT IS NEW. The level used to hand
+     straight to the CLEAR board when it ran out of segments in the last room,
+     deliberately: `game.js` carried a note saying walking him off the edge
+     there would be "walking him out of the level into nothing". There is now
+     somewhere for him to walk TO, so that reasoning has expired -- but it is
+     the reason the outro has to know which of the two it is handing to.
+
+     Same plate rules as the title screen: 4:3 photograph on a 16:9 canvas,
+     drawn COVER, loaded `big` so it is capped at `bigTextureCap`. It arrived
+     4000x3000 / 4.2MB and was reduced by tools/shrink-master.py. */
+  ENDING: {
+    BG: 'v2:beatemup-dungeon/ending-background.jpg',
+    fadeInMs: 700,        // the plate coming up out of the outro's black
+    /* Where he enters and where he stops, as fractions of canvas width. He
+       starts off-screen so the walk reads as an arrival rather than a fade-in
+       of someone already standing there. */
+    startXRel: -0.10,
+    stopXRel: 0.5,        // the middle
+    walkSpeed: 210,       // px/s
+    /* His feet, down the canvas. The near dirt in front of the rock -- not the
+       rock, which is a photographed object he is standing in FRONT of. */
+    groundYRel: 0.93,
+    /* ⚠️ 1.0 = EXACTLY HIS SIZE IN THE FIGHT, and that is the point. It was
+       1.55 on the reasoning that he is alone in the shot and the rock behind
+       him is most of its height -- but a character who changes size between the
+       level and the ending stops being the same character, and the ending is
+       the last thing the player sees him do. If the framing needs him to fill
+       more of the picture, move the CAMERA (the plate's crop) rather than the
+       actor. */
+    scale: 1.0,
+    /* How long the arms-up pose is held before the tally comes up. Asked for as
+       1.5 seconds AFTER the pose lands, not after he starts walking. */
+    poseHoldMs: 1500,
+  },
 
   /* --- Music ---------------------------------------------------------------
      ONE FILE, ONE LOOP, NO MIXER AT RUNTIME. The track is three of the five

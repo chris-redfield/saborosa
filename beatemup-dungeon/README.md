@@ -218,6 +218,44 @@ goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
 So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
 place, size, bob and fade are the other `go*` knobs in the same block.
 
+## The ending screen
+
+Beating HIPÓLITO now walks LEBRON out of the boss room to the right — the same
+walk-out every other room gets — and then a photograph fades up, he walks in
+from the left, stops in front of the rock and throws his arms up. 1.5 s after
+the pose lands, the tally comes up over it.
+
+`src/ending.js`, a sibling of `title.js`. Knobs in `CONFIG.ENDING`:
+
+| knob | what it does |
+|---|---|
+| `BG` | the plate. Drawn **cover**, loaded `big`, reduced by `shrink-master.py` |
+| `fadeInMs` | the plate coming up out of the outro's black |
+| `startXRel` / `stopXRel` | he enters off-screen left and stops at **0.5**, dead centre |
+| `walkSpeed` | px/s |
+| `groundYRel` | 0.93 — his feet, on the near dirt **in front of** the rock |
+| `scale` | **1.0 — exactly his size in the fight.** It was 1.55 and read as a different character. To fill more of the frame, crop the plate, not the actor |
+| `poseHoldMs` | 1500, counted **from the pose landing**, not from the start of the screen |
+
+**The victory frame is atlas frame 10** of `coconut-beat-game.png` — row 1,
+column 3 counting from zero — reached through `CHARACTERS.coconut.poses.victory`
+as slot 2 of the `jump` row, which is simply where the packer put that drawing.
+
+> ⚠️ **It is addressed by atlas position, not by meaning.** Re-running
+> `build-beat-coconut-defs.py` repacks the atlas; if the dedupe folds that frame
+> differently the slot moves and the ending shows the wrong drawing. Verify
+> against the atlas, not against the pose name.
+
+**After the tally, a press goes back to the title screen** (`toTitle()`), which
+resets the run and replays the title's hold from the top. **Dying is different** —
+a press there restarts play immediately, because a death is a retry.
+
+**The last fight used to hand straight to the tally.** `game.js` carried a note
+saying walking him off the edge there would be "walking him out of the level
+into nothing" — true until there was somewhere to arrive. The outro now carries
+`outroTo` so it knows whether it is a door or an ending, and `endingShown` keeps
+the photograph behind the tally instead of the boss room he already left.
+
 ## The CLEAR board
 
 Clearing the last room no longer writes CLEAR and stops — it counts the run up,
@@ -415,6 +453,24 @@ python3 tools/build-boss-plate.py     # crops at the pan's turn, keyframe every 
 **`lock: false` on an arena** makes the camera follow that fight instead of
 locking, with the whole room as walls rather than one screen. That is what a
 small room wants.
+
+## Walking between fights
+
+**The GO arrow only appears when the next segment is a `scroll`.** It means "the
+way forward has opened", so a fight that hands straight to another fight — the
+boss room's wave handing to HIPÓLITO — raises nothing. One place decides it,
+`Stage._goPrompt()`.
+
+
+`scroll` segments end at an absolute `toX` — **and at a minimum walk**,
+`CONFIG.scrollMinWalkPx` (260), measured from wherever the player was standing
+when the scroll began, clamped to the room's right wall.
+
+Without the minimum, a fight that ends on the right-hand side of a locked camera
+can leave the player already past the next `toX`; that scroll then completes on
+its first frame and the following wave spawns on top of them. It is what
+happened after the Mosca. In the normal case the player is behind `toX`, so the
+minimum never binds and costs no film.
 
 ## The camera
 
