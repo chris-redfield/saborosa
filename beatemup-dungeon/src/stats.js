@@ -61,7 +61,13 @@ class Stats {
     return n;
   }
 
-  /** "CIGARRO x7 · BAGANA x5 · ERKPA x4", in the order the cast is declared. */
+  /** "DUDU x7 · DIDI x5 · CLAUDINHO x4", in the order the cast is declared.
+
+      ⚠️ IT WALKS `CONFIG.CHARACTERS`, so it can only ever name a character that
+      has a pack entry there. The Mosca does not -- it is a FlyBoss with two raw
+      sheets -- so NARUTÃO can never appear on this line, and neither boss is
+      counted here. That is why `CONFIG.MOSCA_NAME` exists and why nothing reads
+      it yet. */
   downedBy() {
     const out = [];
     for (const kind of Object.keys(CONFIG.CHARACTERS)) {
@@ -113,14 +119,18 @@ class Stats {
       const t = Math.max(0, Math.round(s));
       return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
     };
+    /* ⚠️ THE LABELS LIVE IN CONFIG AND ARE PORTUGUESE, by request -- nothing on
+       this board is in English. They are slang rather than translations; see
+       the note on RESULTS.LABELS for which ones were chosen rather than given. */
+    const L = (CONFIG.RESULTS && CONFIG.RESULTS.LABELS) || {};
     return [
-      { label: 'HITS LANDED',  value: this.hits,      text: (n) => `${n} / ${this.swings}` },
-      { label: 'ACCURACY',     value: this.accuracy(), text: (n) => `${n}%` },
-      { label: 'HITS TAKEN',   value: this.taken,     text: (n) => `${n}` },
-      { label: 'DAMAGE DEALT', value: this.damageOut, text: (n) => `${n}` },
-      { label: 'DAMAGE TAKEN', value: this.damageIn,  text: (n) => `${n}` },
-      { label: 'TIME',         value: this.time,      text: mm },
-      { label: 'ENEMIES DOWN', value: this.downed(),  text: (n) => `${n}`,
+      { label: L.hits,     value: this.hits,       text: (n) => `${n} / ${this.swings}` },
+      { label: L.accuracy, value: this.accuracy(), text: (n) => `${n}%` },
+      { label: L.taken,    value: this.taken,      text: (n) => `${n}` },
+      { label: L.dealt,    value: this.damageOut,  text: (n) => `${n}` },
+      { label: L.suffered, value: this.damageIn,   text: (n) => `${n}` },
+      { label: L.time,     value: this.time,       text: mm },
+      { label: L.downed,   value: this.downed(),   text: (n) => `${n}`,
         note: this.downedBy() },
     ];
   }

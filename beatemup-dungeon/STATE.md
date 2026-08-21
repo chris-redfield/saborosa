@@ -115,6 +115,21 @@ numbers. The charge cannot be expressed in it, because it ends with the enemy
 the day and the code-drawn starburst is gone. Six four-frame bursts, one picked
 at random per blow. See *The impact burst*.
 
+**THE CAST HAS NAMES AND THE INTERFACE SPEAKS PORTUGUESE.** LEBRON, DUDU, DIDI,
+DEDÉ, CLAUDINHO, ZIDANE, NARUTÃO, HIPÓLITO — given by the user, no placeholders
+left. And nothing on the results board is in English any more: the labels are
+slang (PORRADAS, SAGACIDADE, VACILOS, ESTRAGO, PREJUÍZO, TEMPO, RANGO, NOTA),
+losing says PERDEU!, and the end card is OBRIGADO POR JOGAR / THANK YOU. See
+*The CLEAR board* in README.md.
+
+⚠️ **TWO ASSUMPTIONS ARE BAKED IN AND BOTH ARE ONE LINE TO UNDO.** The three
+cigarettes and the two roaches were named as bare lists and mapped onto
+`cigarro`/`cigarro2`/`cigarro3` and `barata`/`barata2` in the order given —
+nothing confirms DIDI is the stub rather than DEDÉ. And COMÉDIA, which was
+offered as flavour, is not used anywhere: it reads as a bottom RANK TIER ("you
+are a joke") rather than as a row label, and the tiers are single letters drawn
+at 76px, so using it is a drawing change rather than a string.
+
 **AND THE TITLE SCREEN IS ITS OWN NOW.** The flying dungeon's vermin panel and
 the SABOROSA logo are gone; it opens on a photograph of a wall, holds it bare
 for two seconds, and fades the name up over it. See *The title screen* in
@@ -1601,8 +1616,8 @@ reader is the shape to look for.
   refuses to build until it is off. Number keys 1-9 jump rooms; the marker in
   the top right says which room you are in.
 - **THE BOSS ROOM HAS ITS BOSS** (2026-08-21): a HORSE, after the wave. See
-  *The horse boss*. What is still open there is smaller: he has no name (the
-  user names the characters), and the fight has never been judged with
+  *The horse boss*. He is HIPÓLITO as of 2026-08-21. What is still open there:
+  the fight has never been judged with
   `CONFIG.DEV.on` false — at 50 damage a punch he dies in three combos.
 - ⚠️ **THE CIGARETTES' STRINGS DO NOT CONNECT PAST HIT 1** — see the section
   above. This is the single most consequential open item in the file: the
@@ -1623,10 +1638,22 @@ reader is the shape to look for.
   game is a ragged pack. `sheets.js` no longer needs to carry two formats and
   `CONFIG.POSE` (the grid pose→column table) is dead weight. Deleting both is a
   loader refactor and was deliberately not bundled with the cast change.
-- **FOUR characters have no name.** `cigarro2` carries `name: 'BAGANA'`,
-  `cigarro3` carries `CIGARRO3`, and the roaches carry `BARATA` / `BARATA2` —
-  all placeholders next to the real COCONUT and CIGARRO. Nothing draws the
-  field, so each is one line.
+- **THE CAST IS NAMED** (2026-08-21, by the user). LEBRON the coconut; DUDU,
+  DIDI and DEDÉ the cigarettes; CLAUDINHO and ZIDANE the roaches; NARUTÃO the
+  Mosca; HIPÓLITO the horse. No placeholders left.
+
+  ⚠️ **THE ORDER OF THE THREE CIGARETTES AND THE TWO ROACHES IS AN ASSUMPTION.**
+  They were given as bare lists — "Os cigarros DUDU, DIDI, DEDÉ", "As baratas
+  CLAUDINHO e ZIDANE" — and mapped onto `cigarro`/`cigarro2`/`cigarro3` and
+  `barata`/`barata2` in the order they were listed, which is the order those
+  kinds were added. Nothing confirms DIDI is the stub rather than DEDÉ. Swapping
+  any of them is one line each in `CONFIG.CHARACTERS`.
+
+  NARUTÃO lives in `CONFIG.MOSCA_NAME` rather than in `CHARACTERS`, because the
+  Mosca is a `FlyBoss` with two raw sheets and has no pack entry. **Nothing
+  draws it** — `stats.downedBy()` walks `CHARACTERS`, so the two bosses' names
+  are recorded but never shown. A boss nameplate would be the thing that uses
+  them.
 - **The strings and the jump-ins have been watched and liked**, at
   `enemyLeapChance` 0.10 / 0.05. What is still unjudged is the fight ECONOMY,
   because dev mode changes the player's damage only: their blows land for real,

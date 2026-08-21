@@ -402,7 +402,9 @@
          that adds a frame or a change to deathHoldMs cannot start clipping the
          card over the death it was moved out of the way of. */
       const t = player.deathT - player.deathWatch(sheets);
-      hud.drawCard(ctx, ['DOWN', 'press anything'], Math.max(0, Math.min(1, t / 0.6)), '#E4463A');
+      const L = (CONFIG.RESULTS && CONFIG.RESULTS.LABELS) || {};
+      hud.drawCard(ctx, [L.lost || '', L.prompt || ''],
+                   Math.max(0, Math.min(1, t / 0.6)), '#E4463A');
     }
   }
 

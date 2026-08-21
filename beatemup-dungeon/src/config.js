@@ -578,7 +578,7 @@ const CONFIG = {
        worth it, but scale it much further and the punches start landing across
        a visible gap. */
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
-                drawScale: 0.9, name: 'COCONUT' },
+                drawScale: 0.9, name: 'LEBRON' },
 
     /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
        wave for wave rather than joining the cast: the orange was the main
@@ -595,7 +595,7 @@ const CONFIG = {
        worth knowing before editing them: those three are now read by two
        characters with different rows behind them. */
     cigarro:  { sheet: 'v2:beatemup-dungeon/cigarro-beat', pack: 'ragged',
-                name: 'CIGARRO',
+                name: 'DUDU',
                 /* UP ON REQUEST THREE TIMES: 20%, 10% and 10% again, from
                    1.0 he had implicitly when he was the reference every other
                    pack was measured against. He still is that reference -- the
@@ -630,7 +630,7 @@ const CONFIG = {
        one gang with two tempos: the white one is quick and comes at you, the
        stub is slow and costs more when it lands. */
     cigarro2: { sheet: 'v2:beatemup-dungeon/cigarro2-beat', pack: 'ragged',
-                name: 'BAGANA',
+                name: 'DIDI',
                 /* HE IS BIGGER, AND THE NUMBER IS MEASURED OFF THE ART RATHER
                    THAN CHOSEN. Packs are scaled so their idle BODY is
                    `fighterSizePx` tall, which is what stops a sheet drawn at a
@@ -709,7 +709,7 @@ const CONFIG = {
        normally frozen to three frames (startup/active/recover). See the ball
        branch in Fighter.frame(). */
     barata:  { sheet: 'v2:beatemup-dungeon/barata-beat', pack: 'ragged',
-               name: 'BARATA',
+               name: 'CLAUDINHO',
                /* THE CIGARETTES' SCALE, 1.452, and they arrived without one at
                   all -- drawn at the bare normalised size while the rest of the
                   cast had been raised 45%, which is most of why they looked
@@ -737,7 +737,7 @@ const CONFIG = {
                } },
     /* The red one. Same six rows drawn to one plan, heavier in the fight. */
     barata2: { sheet: 'v2:beatemup-dungeon/barata2-beat', pack: 'ragged',
-               name: 'BARATA2',
+               name: 'ZIDANE',
                // The same number as the tan one, and measured rather than
                // assumed: both sheets cut to an identical 167.8px body, so the
                // pair is drawn at one size and there is no ratio to preserve
@@ -781,9 +781,9 @@ const CONFIG = {
        (tools/shrink-master.py). Raising it past ~1.8 starts upscaling the
        texture and there is no more detail to find.
 
-       NAME IS A PLACEHOLDER. The user names the characters. */
+       NAMED HIPOLITO BY THE USER, 2026-08-21. */
     horse:   { sheet: 'v2:beatemup-dungeon/horse-beat', pack: 'ragged',
-               name: 'HORSE',
+               name: 'HIPÓLITO',
                drawScale: 1.711,
                poses: {
                  runAttack: { anim: 'runAttack' },
@@ -794,10 +794,7 @@ const CONFIG = {
                } },
 
     cigarro3: { sheet: 'v2:beatemup-dungeon/cigarro3-beat', pack: 'ragged',
-                /* PLACEHOLDER, like BAGANA was and unlike CIGARRO. Nothing
-                   draws this field -- it is documentation -- so naming him is
-                   one line whenever you decide. */
-                name: 'CIGARRO3',
+                name: 'DEDÉ',
                 drawScale: 1.691,
                 poses: {
                   downLand: { anim: 'knockdown', from: 0, to: 3 },
@@ -986,7 +983,44 @@ const CONFIG = {
        above `rankY`. At the first numbers tried the breakdown line landed
        directly under the word RANK. If a row is added, move `rankY` down with
        it -- nothing here is computed from the row count. */
+    /* ⚠️ NOTHING ON THIS BOARD IS IN ENGLISH, by request (2026-08-21): "quando
+       aparece a contagem de pontos nada deve ser em inglês". The labels are
+       Brazilian slang rather than translations of the English ones -- PORRADAS
+       rather than "hits", VACILOS rather than "hits taken" -- because a literal
+       translation of a scoreboard reads like a scoreboard, and these read like
+       someone describing the fight afterwards.
+
+       THE ONE DELIBERATE EXCEPTION IS `thanks2`. The end card was asked for as
+       "obrigado por jogar THANK YOU" -- both languages, on purpose, the same
+       pairing the flying dungeon's finale uses. It is not an oversight; leave
+       it in English.
+
+       ⚠️ WHICH WORD GOES ON WHICH ROW IS PARTLY MINE. The request listed
+       "rango, sagacidade, vacilos, comédia etc" as the flavour to aim at, not
+       as a mapping. PORRADAS, SAGACIDADE and VACILOS place themselves; ESTRAGO,
+       PREJUÍZO, TEMPO and NOTA are mine in the same register; RANGO went on the
+       body count because this is a game about food. COMÉDIA is NOT USED -- see
+       the note in STATE.md; it wants to be the bottom rank tier, not a label,
+       and that is a change to how ranks are drawn rather than a string. */
+    LABELS: {
+      hits:     'PORRADAS',      // hits landed / swings
+      accuracy: 'SAGACIDADE',    // accuracy %
+      taken:    'VACILOS',       // times the player got hit
+      dealt:    'ESTRAGO',       // damage dealt
+      suffered: 'PREJUÍZO',      // damage taken
+      time:     'TEMPO',
+      downed:   'RANGO',         // enemies put down
+      rank:     'NOTA',          // the letter stamp's caption
+      thanks:   'OBRIGADO POR JOGAR',
+      thanks2:  'THANK YOU',     // in English ON PURPOSE -- see above
+      prompt:   'aperta qualquer botão',
+      lost:     'PERDEU!',
+      dev:      'MODO DEV: os números de dano não são reais',
+    },
     titleY: 100,
+    titleSize: 54,         // was 76 when the word was just CLEAR
+    subTitleSize: 26,
+    subTitleGap: 40,       // px below the title line
     rowsY: 190,
     rowStep: 42,
     noteStep: 30,
@@ -1713,6 +1747,15 @@ const CONFIG = {
     'v2:flying-dungeon/enemy-sheets/saborosa-boss-mosca-01.png',
     'v2:flying-dungeon/enemy-sheets/saborosa-boss-mosca-02.png',
   ],
+  /* NARUTÃO, named by the user 2026-08-21. The Mosca is the only member of the
+     cast with no CONFIG.CHARACTERS entry -- it is a FlyBoss with two raw sheets,
+     not a ragged pack -- so its name has nowhere else to live.
+
+     NOTHING DRAWS IT YET. Names only surface on the CLEAR board, through
+     stats.downedBy(), which walks CHARACTERS and therefore cannot see this one.
+     It is recorded so the name exists in one place when a boss nameplate is
+     wanted, rather than being retyped into whatever draws it first. */
+  MOSCA_NAME: 'NARUTÃO',
   MOSCA_CYCLE: [0, 1, 0],
   moscaFlapMs: 90,
   /* The 7 poses are a TURN: profile-left (0), head-on (3), profile-right (6).

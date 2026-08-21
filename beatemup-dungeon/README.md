@@ -77,10 +77,10 @@ a cigarette rather than merely as tall.
 
 | | body drawn |
 |---|---|
-| COCONUT | 123px |
-| CIGARRO | 199px |
-| the stub / CIGARRO3 | 231px |
-| the baratas | 258px (~191px of animal) |
+| LEBRON (coconut) | 123px |
+| DUDU (cigarro) | 199px |
+| DIDI / DEDÉ (cigarro2, cigarro3) | 231px |
+| CLAUDINHO & ZIDANE (baratas) | 258px (~191px of animal) |
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
 the boss's size in the simulation moves with its drawn size.
@@ -237,8 +237,38 @@ RESULTS: {
 }
 ```
 
-Rows: hits landed / swings, accuracy, hits taken, damage dealt, damage taken,
-time, enemies downed (with a by-name breakdown underneath). Then the rank.
+### It is all in Portuguese
+
+**Nothing on this board is in English**, by request. The labels are slang rather
+than translations — a literal translation of a scoreboard still reads like a
+scoreboard. They live in `CONFIG.RESULTS.LABELS`, so changing a word is one
+line.
+
+| row | label | what it counts |
+|---|---|---|
+| hits landed | **PORRADAS** | connected / swung |
+| accuracy | **SAGACIDADE** | % |
+| hits taken | **VACILOS** | times you got hit |
+| damage dealt | **ESTRAGO** | |
+| damage taken | **PREJUÍZO** | |
+| time | **TEMPO** | |
+| enemies downed | **RANGO** | with a by-name breakdown under it |
+| the stamp | **NOTA** | the letter |
+
+The card reads **OBRIGADO POR JOGAR** with **THANK YOU** under it, and the
+prompt is *aperta qualquer botão*. Losing shows **PERDEU!**
+
+> ⚠️ **THANK YOU is English on purpose** — the end card was asked for as
+> "obrigado por jogar THANK YOU", both languages, the same pairing the flying
+> dungeon's finale uses. It is not an oversight.
+
+> ⚠️ **Which word landed on which row is partly a judgement call.** The request
+> gave "rango, sagacidade, vacilos, comédia etc" as the flavour, not a mapping.
+> PORRADAS / SAGACIDADE / VACILOS place themselves; ESTRAGO, PREJUÍZO, TEMPO and
+> NOTA are in the same register; RANGO went on the body count because this is a
+> game about food. **COMÉDIA is unused** — it wants to be the bottom rank tier
+> rather than a row label, and that is a change to how ranks draw, not a string.
+
 
 **Where the time goes.** The count-up is **4.0s** end to end — rows start 0.5s
 apart and each number rolls for 1.0s, so the last row starts at 3.0s and lands
@@ -452,12 +482,12 @@ person who left it on.
 COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
 player HP      110
 
-              HP   speed   string              P(3 hits)   charge
-CIGARRO       34   0.88    3 + 3 + 5  = 11        30%        -
-CIGARRO2      40   0.72    4 + 4 + 7  = 15        20%        -
-CIGARRO3      55   0.58    6 + 6 + 10 = 22        20%        -
-BARATA        50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/turn
-BARATA2       66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
+                    HP   speed   string              P(3 hits)   charge
+DUDU      (cigarro)  34   0.88    3 + 3 + 5  = 11        30%        -
+DIDI      (cigarro2) 40   0.72    4 + 4 + 7  = 15        20%        -
+DEDÉ      (cigarro3) 55   0.58    6 + 6 + 10 = 22        20%        -
+CLAUDINHO (barata)   50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/turn
+ZIDANE    (barata2)  66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
 ```
 
 **Everyone throws a combo now**, so `enemyDamage` is read for nobody — it is
@@ -482,7 +512,7 @@ reach 104.
 cigarettes, never watched in play.
 
 **The pair is one gang with two tempos.** Each kept the stats of the enemy it
-replaced — CIGARRO took JUIXY's 34 HP and 0.88 speed, CIGARRO2 took TOM's 40 and
+replaced — DUDU took JUIXY's 34 HP and 0.88 speed, DIDI took TOM's 40 and
 0.72 — so the difference between them is tempo and weight, not a new system.
 Every window in the stub's string is longer and every hit costs more, and his
 weights lean shorter (`[5,3,2]` against `[4,3,3]`).
@@ -549,7 +579,7 @@ same reason.
 The full-combo total was held at 28 when the combo went from three hits to five,
 deliberately — so every enemy's time-to-kill stayed where it was tuned. Raising
 it is a real rebalance, not a tweak: at 40 damage a full string one-combos the
-stub (40 HP), and at 34 it already one-combos CIGARRO.
+stub (40 HP), and at 34 it already one-combos DUDU.
 
 ---
 

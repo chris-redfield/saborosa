@@ -42,7 +42,10 @@ class Hud {
     ctx.font = this._font(CONFIG.hudSize * 0.62);
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
-    ctx.fillText('COCONUT', box.x, box.y + box.h + 4);
+    /* READ FROM THE CAST TABLE rather than written here, so the player's name
+       cannot drift from the one the results board prints. He is LEBRON. */
+    const me = (CONFIG.CHARACTERS && CONFIG.CHARACTERS.coconut) || {};
+    ctx.fillText(me.name || '', box.x, box.y + box.h + 4);
     ctx.textAlign = 'right';
     ctx.fillText('x' + Math.max(0, player.lives - 1), box.x + box.w, box.y + box.h + 4);
     ctx.restore();
@@ -187,8 +190,20 @@ class Hud {
     ctx.fillStyle = CONFIG.hudColor;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = this._font(76, 900);
-    ctx.fillText('CLEAR', W / 2, R.titleY);
+    /* THE END CARD, AND IT IS TWO LINES IN TWO LANGUAGES ON PURPOSE. It used to
+       be the single word CLEAR; it was asked to be "obrigado por jogar THANK
+       YOU". The English half stays English -- that pairing is the same one the
+       flying dungeon's finale uses, and it is the ONE thing on this board that
+       is deliberately not Portuguese. */
+    const L = R.LABELS || {};
+    ctx.font = this._font(R.titleSize || 54, 900);
+    ctx.fillText(L.thanks || '', W / 2, R.titleY);
+    if (L.thanks2) {
+      ctx.font = this._font(R.subTitleSize || 26, 'bold');
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillText(L.thanks2, W / 2, R.titleY + (R.subTitleGap || 40));
+      ctx.globalAlpha = alpha;
+    }
 
     const ease = (p) => 1 - Math.pow(1 - p, 3);       // fast, then settling
     let y = R.rowsY;
@@ -242,14 +257,14 @@ class Hud {
       ctx.font = this._font(R.rankSize, 900);
       ctx.fillText(letter, 0, 0);
       ctx.font = this._font(R.rowSize * 0.8, 'bold');
-      ctx.fillText('RANK', 0, -R.rankSize * 0.62);
+      ctx.fillText(L.rank || '', 0, -R.rankSize * 0.62);
       ctx.restore();
 
       if (CONFIG.DEV && CONFIG.DEV.on) {
         ctx.globalAlpha = alpha * 0.8;
         ctx.fillStyle = '#E4463A';
         ctx.font = this._font(16, 'bold');
-        ctx.fillText('DEV MODE: damage figures are not real', W / 2, R.rankY + 54);
+        ctx.fillText(L.dev || '', W / 2, R.rankY + 54);
       }
     }
 
@@ -258,7 +273,7 @@ class Hud {
       ctx.fillStyle = CONFIG.hudColor;
       ctx.textAlign = 'center';
       ctx.font = this._font(22, 'bold');
-      ctx.fillText('press anything', W / 2, CONFIG.GAME_H - 46);
+      ctx.fillText(L.prompt || '', W / 2, CONFIG.GAME_H - 46);
     }
     ctx.restore();
   }
