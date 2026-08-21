@@ -571,6 +571,24 @@ const CONFIG = {
        characters with different rows behind them. */
     cigarro:  { sheet: 'v2:beatemup-dungeon/cigarro-beat', pack: 'ragged',
                 name: 'CIGARRO',
+                /* UP ON REQUEST, TWICE: 20% and then another 10%, from the
+                   1.0 he had implicitly when he was the reference every other
+                   pack was measured against. He still is that reference -- the
+                   stub below is expressed as a ratio to him and both moved by
+                   the same factors, so the size difference the illustrator drew
+                   between them is untouched and the pair still reads as one
+                   gang with two builds.
+
+                   ⚠️ THE REACHES HAVE NOT MOVED AT ALL. `drawScale` is drawn
+                   size only; `ENEMY_COMBOS.cigarro` still swings 92/92/108 x
+                   BODY_SCALE, the numbers it had when he was drawn a third
+                   smaller than this. 1.2 was the limit the stub's note below
+                   describes and he is past it now: his fist ends visibly short
+                   of nothing -- it ends visibly PAST his hitbox, and the gap is
+                   about a third of his own reach. Growing those three reaches
+                   by the same 32% is the fix and it is a REBALANCE, which is
+                   why it waits to be asked for. */
+                drawScale: 1.32,
                 poses: {
                   /* The knockdown row, cut where the motion changes: three
                      frames of going over, one flat on the floor, two getting
@@ -595,15 +613,30 @@ const CONFIG = {
                    different size from arriving as a giant — but it also flattens
                    a size difference the illustrator drew ON PURPOSE. In the
                    masters his body is 405px against the first cigarette's 348:
-                   16.4% bigger, and that is this number.
+                   16.4% bigger. That ratio is still what this number is FOR: it
+                   is now 1.164 x the 1.32 both cigarettes have been raised by
+                   between them, so the difference the illustrator drew survives
+                   and the pair simply got bigger together.
 
                    It is a DRAWN size only. His hurtbox, his reaches and the
                    jump are global and unchanged, so this is a look and not a
-                   rebalance — but that is also its limit. Push it much past
-                   1.2 and his fist visibly outruns the reach it actually has;
-                   past that point his `ENEMY_COMBOS` entry has to grow with
-                   him. */
-                drawScale: 1.164,
+                   rebalance — but that is also its limit.
+
+                   ⚠️ AND HE IS A LONG WAY PAST IT. This note used to end "push
+                   it much past 1.2 and his fist visibly outruns the reach it
+                   actually has". At 1.537 he is drawn half again the size the
+                   pack was scaled to, while `ENEMY_COMBOS.cigarro2` still
+                   swings the 92/92/108 x BODY_SCALE it had at 1.164. He is the
+                   bigger of the two and so the worse offender: his swing will
+                   look like it should have connected from a good deal further
+                   out than it does, and at this size that is a thing a player
+                   can notice rather than a thing only the config knows.
+
+                   The fix is to grow those three reaches to match. It IS a
+                   rebalance -- it makes him hit from further away, which is a
+                   harder fight, not a bigger sprite -- so it waits to be asked
+                   for rather than riding along with a size change. */
+                drawScale: 1.537,
                 poses: {
                   downLand: { anim: 'knockdown', from: 0, to: 3 },
                   downLie:  { anim: 'knockdown', from: 3, to: 4 },
@@ -1267,12 +1300,20 @@ const CONFIG = {
   // Drawn height in the fixed canvas. Fighters are 152, so at 230 it is half as
   // tall again as the thing fighting it — big enough to read as a boss without
   // filling the belt it has to move along.
-  /* Drawn height of the Mosca, in canvas px. Raised 10% from 230. It is also
-     the boss's size in the SIMULATION -- `halfW()` and `bodyHeight()` are both
-     derived from it -- so a bigger boss is a bigger target and a bigger threat
-     together, which is the pairing `fighterSizePx` deliberately keeps for the
-     fighters too. */
-  flyBossSizePx: 253,
+  /* Drawn height of the Mosca, in canvas px. 230 originally, then 10% to 253,
+     now 20% on top of that. It is also the boss's size in the SIMULATION --
+     `halfW()` and `bodyHeight()` are both derived from it -- so a bigger boss
+     is a bigger target and a bigger threat together, which is the pairing
+     `fighterSizePx` deliberately keeps for the fighters too.
+
+     THAT PAIRING IS WHY THIS ONE CARRIES NO WARNING and the cigarettes'
+     drawScale does: growing it moves the hurtbox with the picture, so nothing
+     comes apart. It is easier to hit and it reaches further, both by 20%.
+
+     What it does change is the ARENA. At 304 it is well over twice a fighter's
+     137px and takes up correspondingly more of the belt it sweeps along, so the
+     ground pass is harder to stand clear of than when that attack was tuned. */
+  flyBossSizePx: 304,
   // A MULTIPLE OF 22 (= BAR_FRAMES − 1), like the player's, so its bar steps
   // evenly: 88 is exactly 4 damage a square.
   flyBossHealth: 88,
