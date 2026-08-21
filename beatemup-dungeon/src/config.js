@@ -1054,7 +1054,7 @@ const CONFIG = {
       rank:     'NOTA',          // the letter stamp's caption
       thanks:   'OBRIGADO POR JOGAR',
       thanks2:  'THANK YOU',     // in English ON PURPOSE -- see above
-      prompt:   'aperta qualquer botão',
+      prompt:   'pressione qualquer botão',
       lost:     'PERDEU!',
       dev:      'MODO DEV: os números de dano não são reais',
     },
@@ -1181,6 +1181,23 @@ const CONFIG = {
      being something a player can count in hits. Was 100 before the hand-drawn
      bar landed; the bar is what makes the number matter. */
   playerHealth: 110,
+  /* LIVES, THE GENRE'S WAY: dying does not end the run while you have one
+     spare. The HUD has always shown "LEBRON x2" beside the bar -- it reads
+     `lives - 1`, the number of tries you have LEFT AFTER this one -- and until
+     2026-08-21 nothing ever decremented it, so the count was decoration and a
+     single death was game over.
+
+     3 = three attempts. The game over panel is the third death, not the first. */
+  playerLives: 3,
+  /* Invulnerability on respawn, in ms. It is spent as `hurtT`, so the existing
+     hurt BLINK comes with it for free and the player can see they are safe --
+     the same treatment a hit gives, used for the opposite reason.
+
+     ⚠️ IT IS NOT OPTIONAL. He comes back exactly where he fell, and in this
+     genre that is usually underneath whoever killed him: without a moment of
+     safety the respawn is a free hit, then another, and the remaining lives
+     evaporate without the player touching anything. */
+  respawnInvulnMs: 1500,
   /* THE BARATAS ARE THE POST-MOSCA CAST and are meant to be a step up: the
      tan one is quicker than anything before it, the red one tougher than
      anything before it. Both untested numbers -- see the note on their
@@ -2317,6 +2334,62 @@ const CONFIG = {
      lean on `titleFauxBoldPct`, the way that game's white ending does. */
   titleNameColor: '#FAFA30',
   titleFadeOutMs: 600,   // to black, once dismissed
+
+  /* --- The game over panel -------------------------------------------------
+     THE FLYING DUNGEON'S SCREEN, brought over: its three photographed frames of
+     crawling vermin, looping, with one word revealed over them. There it says
+     TIME OVER; here it says PERDEU!
+
+     ⚠️ THE FRAMES ARE READ IN PLACE out of `assets-v2/flying-dungeon/`, not
+     copied. Two copies of a picture drift the moment one is recut, and the copy
+     that is wrong is always the one you are not looking at. They are the same
+     three files the TITLE screen used to crawl on before it became a
+     photograph, so this game already knows how to load them.
+
+     THE TIMINGS ARE THAT GAME'S, unchanged, because they were tuned in its
+     tools/game-over-anim.html and there is nothing here that wants them
+     different: dip the played scene to black, HOLD there a beat, then bring the
+     panel up. The hold is the part worth keeping -- cross-fading straight from
+     the fight to the worms reads as a glitch, whereas a moment of black reads
+     as a cut.
+
+     ⚠️ AND THE PRESS IS ARMED ONLY ONCE THE WORD IS UP, plus `armMs` to read
+     it. Otherwise a key still held from the last seconds of the run blows
+     straight past the screen the player is meant to see -- which is the whole
+     reason the panel exists. */
+  GAME_OVER: {
+    on: true,
+    FRAMES: [
+      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-001.webp',
+      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-002.webp',
+      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-003.webp',
+    ],
+    holdsMs: [105, 105, 105],   // ~9.5fps, looping 1-2-3
+    fadeOutMs: 900,             // the fight dipping to black
+    holdMs: 350,                // black, before the panel
+    fadeInMs: 900,              // the panel arriving
+    armMs: 500,                 // after the word is up, before a press counts
+    /* The lettering. Same machinery and the same numbers as that game's
+       `overTitle`, so the two screens are set identically -- and the FONT is
+       `TITLE_FONT`, which is already its stack.
+
+       THE WORD IS NOT LISTED HERE ON PURPOSE. It comes from
+       `RESULTS.LABELS.lost`, so PERDEU! is written in exactly one place and the
+       death card and this panel can never disagree. Set `words` to override. */
+    title: {
+      sizePct: 20.4,     // % of canvas height
+      yPct: 50,          // vertical middle of the text, down the canvas
+      lsPct: 3,          // letter spacing, % of font size
+      gapPct: 20,        // between words, if it ever has more than one
+      fauxBold: 1.5,     // extra weight as a stroke, % of font size
+      color: '#FAFA30',  // that game's yellow
+      weight: 900,
+      d1: 1100,          // ms into the panel before the word shows
+      d2: 700,           // ...and before a second word, if there is one
+      revealMs: 0,       // 0 = hard pop
+      offX: 0, offY: 0,
+    },
+  },
 
   /* --- The ending ----------------------------------------------------------
      WON. Beating HIPÓLITO no longer cuts straight to the tally: the coconut

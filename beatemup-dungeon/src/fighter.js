@@ -650,6 +650,42 @@ class Fighter {
   }
 
   /**
+   * Back on your feet: full health, standing, briefly untouchable.
+   *
+   * ⚠️ IT MUST UNDO EVERY PIECE OF STATE `hurt()` SET ON THE WAY DOWN, not just
+   * `dead`. A death is a knockdown that never gets up, so it leaves `state`,
+   * `downPhase`, `stateT`, `launch` and `jumpY` mid-fall, and the knockback
+   * that threw the body is still in `vx`. Clearing only the flag brings the
+   * player back lying on the floor, sliding, and permanently unable to act --
+   * which looks like the respawn not having happened at all.
+   *
+   * The i-frames go in `hurtT` on purpose: `vulnerable()` already reads it and
+   * the draw already blinks on it, so safety and the signal that you are safe
+   * are the same value and cannot disagree.
+   */
+  revive() {
+    this.hp = this.maxHp;
+    this.dead = false;
+    this.deathT = 0;
+    this.state = 'idle';
+    this.downPhase = '';
+    this.stateT = 0;
+    this.launch = 0;
+    this.jumpY = 0;
+    this.jumping = false;
+    this.vx = 0;
+    this.vz = 0;
+    this.atk = null;
+    this.comboWindow = 0;
+    /* Reset too, though the window being 0 already restarts the string: a live
+       `comboIndex` with a closed window is a half-remembered chain, and coming
+       back from the dead is exactly where a string should begin again. */
+    this.comboIndex = 0;
+    this.flash = 0;
+    this.hurtT = (CONFIG.respawnInvulnMs || 0) / 1000;
+  }
+
+  /**
    * Fully faded out, and therefore safe to remove.
    *
    * ⚠️ IT MUST BE THE SAME ARITHMETIC THE FADE USES, which is why both read

@@ -218,6 +218,78 @@ goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
 So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
 place, size, bob and fade are the other `go*` knobs in the same block.
 
+## Lives
+
+`LEBRON x2` beside the health bar is real now. `CONFIG.playerLives` is 3, and the
+HUD shows `lives - 1` — the tries you have left **after** this one.
+
+| death | HUD | what happens |
+|---|---|---|
+| 1st | x1 | back on your feet where you fell |
+| 2nd | x0 | back on your feet where you fell |
+| 3rd | — | the game over panel |
+
+The death animation plays out and holds either way; the respawn then happens by
+itself. A respawn that waited for a keypress would be a second thing to dismiss
+on top of the death.
+
+`Fighter.revive()` puts him back: full health, standing, and untouchable for
+`respawnInvulnMs` (1500).
+
+> ⚠️ **The invulnerability is not optional.** He comes back exactly where he
+> fell, which in this genre is usually underneath whoever killed him. Without a
+> moment of safety the respawn is a free hit, then another, and the remaining
+> lives evaporate without the player touching anything.
+
+The i-frames are spent as `hurtT`, so the existing hurt **blink** comes with
+them for free — safety and the signal that you are safe are the same value and
+cannot disagree.
+
+> ⚠️ **`revive()` must undo the whole death path, not just the `dead` flag.** A
+> death is a knockdown that never gets up, so it leaves `state`, `downPhase`,
+> `stateT`, `launch` and `jumpY` mid-fall, with the killing knockback still in
+> `vx`. Clearing only the flag brings him back lying on the floor, sliding, and
+> unable to act — which reads as the respawn not having happened.
+
+Nothing else resets: the crowd, the segment and the camera are exactly where
+they were. He was the only thing that stopped.
+
+## The game over panel
+
+Dying used to dim the fight and put a small PERDEU! over it. It now gets the
+**flying dungeon's game over screen** — its three photographed frames of
+crawling vermin, looping at ~9.5fps, with the word revealed over them. Same
+panel, same timings, same lettering; different word.
+
+The sequence, once the death animation has played out and held:
+
+| | |
+|---|---|
+| `fadeOutMs` 900 | the fight dips to black |
+| `holdMs` 350 | black, alone |
+| `fadeInMs` 900 | the panel arrives |
+| `title.d1` 1100 | PERDEU! pops |
+| `armMs` 500 | then a press counts — 2850 ms in total |
+
+**The black hold is the point.** Cross-fading straight from the belt to the
+worms reads as a glitch; a moment of black reads as a cut. That's the other
+game's sequencing and there was no reason to differ.
+
+**The press is armed off the reveal**, not off a constant, so retiming the word
+moves the arming with it. Without that, a key still held from the last seconds
+of the run blows straight past the screen the player is meant to read.
+
+> **The word comes from `RESULTS.LABELS.lost`**, not from the panel's own
+> config — so PERDEU! is written in exactly one place. `GAME_OVER.title.words`
+> overrides it if the panel ever needs to say something else.
+
+The three frames are read **in place** out of `assets-v2/flying-dungeon/`, like
+the health bar and the gamepad map. They are the same files this game's title
+screen used to crawl on before that became a photograph.
+
+A press restarts play immediately — a death is a retry. (Finishing the game goes
+to the title instead; see below.)
+
 ## The ending screen
 
 Beating HIPÓLITO now walks LEBRON out of the boss room to the right — the same
@@ -294,7 +366,7 @@ line.
 | the stamp | **NOTA** | the letter |
 
 The card reads **OBRIGADO POR JOGAR** with **THANK YOU** under it, and the
-prompt is *aperta qualquer botão*. Losing shows **PERDEU!**
+prompt is *pressione qualquer botão*. Losing shows **PERDEU!**
 
 > ⚠️ **THANK YOU is English on purpose** — the end card was asked for as
 > "obrigado por jogar THANK YOU", both languages, the same pairing the flying

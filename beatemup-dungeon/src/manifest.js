@@ -48,6 +48,15 @@ function assetManifest() {
     out.push({ key: 'titleBg', src: CONFIG.TITLE_BG, how: 'big' });
   }
 
+  /* THE GAME OVER PANEL: the flying dungeon's three crawling-vermin frames, read
+     IN PLACE out of that game's folder rather than copied. `big` because they
+     are 3002px wide and drawn at 1280 -- the same VRAM reasoning as every other
+     oversized plate here. */
+  if (CONFIG.GAME_OVER && CONFIG.GAME_OVER.on !== false) {
+    (CONFIG.GAME_OVER.FRAMES || []).forEach((src, i) =>
+      out.push({ key: 'gameover' + i, src: src, how: 'big' }));
+  }
+
   /* The ending plate. Same treatment as the title's for the same reasons, and
      NOT gated on `CONFIG.title` -- turning the title screen off must not take
      the ending with it. */

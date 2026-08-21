@@ -130,6 +130,19 @@ offered as flavour, is not used anywhere: it reads as a bottom RANK TIER ("you
 are a joke") rather than as a row label, and the tiers are single letters drawn
 at 76px, so using it is a drawing change rather than a string.
 
+**AND LIVES ACTUALLY WORK.** `player.lives` existed from the start and nothing
+ever decremented it, so "LEBRON x2" beside the bar was decoration and one death
+was the whole run. Dying now spends a life and puts him back where he fell with
+1.5s of invulnerability -- the genre's arrangement -- and only the third death
+reaches the panel. See *Lives* in README.
+
+**AND DYING HAS A SCREEN NOW TOO.** It used to dim the fight and put a small
+PERDEU! over it, which read as nothing happening. It gets the FLYING DUNGEON'S
+game over panel instead -- its crawling vermin, its timings, its lettering, with
+the word taken from `RESULTS.LABELS.lost` so PERDEU! is spelled in one place.
+Read that game's `src/game-over.js` before changing anything structural; the two
+screens are meant to look like the same screen. See README.
+
 **AND THERE IS AN ENDING.** ⚠️ *He is drawn at `scale: 1.0` there — exactly his
 size in the fight. It shipped at 1.55 and was wrong on sight: a character who
 changes size between the level and the ending stops reading as the same
@@ -729,6 +742,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
 | `src/title.js` | the photo title screen: hold, then the name |
 | `src/ending.js` | the WON screen: walk in, arms up, then the tally |
+| `src/game-over.js` | the LOST panel: the flying dungeon's worms, saying PERDEU! |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |

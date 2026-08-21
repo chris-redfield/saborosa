@@ -9,7 +9,7 @@
 class Player extends Fighter {
   constructor(x, z) {
     super('coconut', x, z, { hp: CONFIG.playerHealth, facing: 'right' });
-    this.lives = 3;
+    this.lives = CONFIG.playerLives != null ? CONFIG.playerLives : 3;
 
     /* THE TWO COMBO STRINGS, built once. Both share the first four hits -- the
        art is literally the same drawings -- and differ only in the finisher, so

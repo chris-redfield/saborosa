@@ -132,7 +132,12 @@ class Hud {
     ctx.restore();
   }
 
-  /** A full-screen card: the two endings, and the pause. */
+  /** A full-screen card: a dimmed screen with a line or two over it.
+   *
+   *  ⚠️ NOTHING CALLS THIS ANY MORE. It drew the death card until 2026-08-21,
+   *  when dying got a real panel (`game-over.js`) instead. Kept because it is
+   *  the obvious tool for a pause screen, which this game does not have yet --
+   *  delete it if that never happens rather than leaving it to rot. */
   /**
    * The DEV MODE marker.
    *

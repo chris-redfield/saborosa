@@ -29,6 +29,7 @@
      declaration before initialization" and takes the whole boot down, which is
      exactly what putting this line above `sheets` did. */
   const ending = new Ending(assets, sheets);
+  const gameOver = new GameOver(assets);
   const backdrop = new Backdrop(assets);
   const stage = new Stage(backdrop);
   const stats = new Stats();
@@ -42,7 +43,8 @@
   const crowd = new Crowd();
 
   let player = null;
-  let phase = 'boot';          // boot | title | play | outro | ending | fade | dead | clear
+  let phase = 'boot';          /* boot | title | play | outro | ending | fade
+                                  | dead | gameover | clear */
   /* WHAT THE WALK-OUT HANDS TO. The outro is the same beat either way -- he
      walks off the right-hand edge -- but it means two different things: a door
      into the next room, or the end of the game. It used to be able to assume
@@ -321,13 +323,43 @@
        over a body still falling, and a player mashing as they died restarted
        the game a heartbeat after the animation ended, so they never found out
        what happened to them. */
+    /* ⚠️ DYING SPENDS A LIFE FIRST, AND ONLY THE LAST ONE ENDS THE RUN. The
+       death row plays out and holds (see Fighter.deathWatch); then either he
+       gets back up where he fell with a moment of invulnerability -- the genre's
+       arrangement, and what the "LEBRON x2" beside the bar has always claimed --
+       or, on the last life, the screen dips to black and the game over panel
+       comes up. Nothing is asked of the player until it has arrived; see
+       GameOver.armedAtMs().
+
+       IT HAPPENS BY ITSELF EITHER WAY. A respawn that waited for a keypress
+       would be a second thing to dismiss on top of the death animation. */
+    if (phase === 'dead' && player.deathLock(sheets) <= 0) {
+      player.lives--;
+      if (player.lives > 0) {
+        /* BACK INTO THE FIGHT, NOT INTO A FRESH ROOM. The crowd, the segment
+           and the camera are exactly where they were -- he was the only thing
+           that stopped, and the world froze around him while the body fell. */
+        player.revive();
+        phase = 'play';
+        phaseT = 0;
+      } else {
+        phase = 'gameover';
+        phaseT = 0;
+      }
+      input.flush();
+    }
+
     const deathLock = (phase === 'dead') ? player.deathLock(sheets) : 0;
     // Is the CLEAR tally still counting up? Derived from the same clock the
     // board draws itself from, so the two can never disagree about it.
     const rolling = phase === 'clear'
       && Math.max(boardSkip, phaseT - 0.45) < hud.resultsRunS(stats);
-    if ((phase === 'dead' || phase === 'clear') && deathLock <= 0
-        && phaseT > 1.2 && input.takeAnyPress()) {
+    /* The panel arms its own press, derived from when the word finishes
+       arriving -- so retiming the reveal moves the arming with it. */
+    const overArmed = phase === 'gameover'
+      && phaseT * 1000 >= (CONFIG.GAME_OVER.fadeOutMs || 0) + gameOver.armedAtMs();
+    if ((overArmed || (phase === 'clear' && phaseT > 1.2))
+        && deathLock <= 0 && input.takeAnyPress()) {
       /* ⚠️ A PRESS ON A **ROLLING** BOARD SKIPS IT, IT DOES NOT DISMISS IT.
          The CLEAR board counts its figures up, and a player who presses during
          that has said "get on with it", not "I have finished reading numbers I
@@ -352,7 +384,7 @@
          making the player sit through a title screen to have another go is the
          one thing an arcade game must not do. */
       else if (phase === 'clear') { toTitle(); return; }
-      else { start(); return; }
+      else { start(); return; }   // the game over panel: straight back in
     }
 
     render();
@@ -491,15 +523,27 @@
       hud.drawResults(ctx, stats,
                       Math.max(boardSkip, phaseT - 0.45),
                       Math.min(1, phaseT / 0.6));
-    } else if (phase === 'dead') {
-      /* Held back for the whole watch -- the row playing plus the hold after it.
-         Length comes from the pack and the knob, never a literal, so a redraw
-         that adds a frame or a change to deathHoldMs cannot start clipping the
-         card over the death it was moved out of the way of. */
-      const t = player.deathT - player.deathWatch(sheets);
-      const L = (CONFIG.RESULTS && CONFIG.RESULTS.LABELS) || {};
-      hud.drawCard(ctx, [L.lost || '', L.prompt || ''],
-                   Math.max(0, Math.min(1, t / 0.6)), '#E4463A');
+    } else if (phase === 'gameover') {
+      /* ⚠️ THE FIGHT DIPS TO BLACK FIRST, AND THE PANEL ONLY THEN ARRIVES.
+         Cross-fading straight from the belt to the worms reads as a glitch; a
+         moment of black reads as a cut. That is the flying dungeon's own
+         sequencing and the reason `holdMs` exists.
+
+         The dead player's own fade keeps running underneath the veil, because
+         `tickDeath` is still called in the 'dead' phase and the body is still
+         drawn -- it goes out with the picture rather than being cut off, which
+         is the same rule the corpses in the crowd now follow. */
+      const t = phaseT * 1000;
+      const fo = CONFIG.GAME_OVER.fadeOutMs || 900;
+      if (t < fo) {
+        ctx.save();
+        ctx.globalAlpha = gameOver.worldVeil(t);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
+        ctx.restore();
+      } else {
+        gameOver.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H, t - fo);
+      }
     }
   }
 
