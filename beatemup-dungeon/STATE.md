@@ -115,6 +115,15 @@ numbers. The charge cannot be expressed in it, because it ends with the enemy
 the day and the code-drawn starburst is gone. Six four-frame bursts, one picked
 at random per blow. See *The impact burst*.
 
+**AND THE TITLE SCREEN IS ITS OWN NOW.** The flying dungeon's vermin panel and
+the SABOROSA logo are gone; it opens on a photograph of a wall, holds it bare
+for two seconds, and fades the name up over it. See *The title screen* in
+README.md for the knobs. Two things worth keeping: **the wait is the design** —
+open on the bare photo and it reads as a place, cut the type in at zero and it
+reads as a background for text — and **input is accepted from the first frame**,
+because a title screen that ignores you for two seconds reads as one that has
+hung.
+
 **AND THE GAME HAS A FINAL BOSS.** A HORSE, in the boss room, after the wave
 that already lived there. Five rows of art, no damage frames at all, and a
 moveset that is exactly what was drawn. See *The horse boss*.
@@ -692,6 +701,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/combat.js` | hit resolution and hitstop |
 | `src/hit-fx.js` | the impact burst: six variants, picked per blow |
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
+| `src/title.js` | the photo title screen: hold, then the name |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
 | `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |

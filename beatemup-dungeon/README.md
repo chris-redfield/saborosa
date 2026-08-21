@@ -627,19 +627,49 @@ Wiring a cut effect is two lines: an entry in `CONFIG.SFX`, and a
 
 ## The title screen
 
+A photograph of a wall, held on its own, then the name fades up over it. Any
+button starts the fight — **from the first frame**, before the name arrives; the
+hold is there to be looked at, not sat through.
+
 | knob | what it does |
 |---|---|
-| `title` | `false` skips straight into the fight |
-| `TITLE_FRAMES` | the three crawl frames, read in place from `flying-dungeon/` |
-| `TITLE_HOLDS_MS` | `[105,105,105]` — the other game's timing, do not re-derive |
-| `LOGO_SHEET` | the SABOROSA logo |
-| `titleLogoWRel` | 0.52 — logo width as a fraction of the canvas |
-| `titleFadeOutMs` | 600 |
+| `title` | `false` goes straight into the fight |
+| `TITLE_BG` | the photograph. Drawn **cover** — it is 4:3 on a 16:9 canvas, so about an eighth is cropped off top and bottom |
+| `titleNameAtMs` | 2000 — one second of bare wall, then a second more, then the name |
+| `titleNameFadeMs` | 320, or 0 for a hard cut |
+| `TITLE_NAME` / `TITLE_SUBNAME` | the two lines. First is heavy and large, second is a gloss under it |
+| `TITLE_FONT` | **the flying dungeon's lettering stack**, copied from its `overTitle.family` — heaviest Futura cuts first, geometric stand-ins after |
+| `titleNameWeight` / `titleSubWeight` | 900 and 400. The weight difference *is* the hierarchy |
+| `titleNameLsPct` / `titleFauxBoldPct` | 3% letter spacing and a 1.5% stroke, both from the same block |
+| `titleNameSize` / `titleSubSize` / `titleNameGap` | type sizes and leading, in canvas px |
+| `titleNameY` | 0.26 — centre of the block down the canvas. High, because the wall is palest in its upper third |
+| `titleNameColor` | `#FAFA30` — the flying dungeon's end-panel yellow, so the two games match |
+| `titleFadeOutMs` | to black, once dismissed |
 
-**⚠️ If you add another pre-game phase, `boot()` schedules the first frame and
-`start()` schedules its own.** Calling both leaves two rAF chains running the
-same loop: the game runs at double speed with every `dt` halved, and it reads
-as a physics bug.
+**The wait is the design.** Open on the bare photograph and it reads as a place —
+the same kind of place the level is filmed in. Cut the type in at zero and the
+photo instantly reads as a background for some text instead. `titleNameAtMs` is
+what that costs.
+
+> ⚠️ **No drop shadow, nothing darkened under the type.** House rule for every
+> title screen in this project. If the type stops reading, move it to a cleaner
+> part of the wall — do not shade the photograph.
+
+**The face is the flying dungeon's**, so the two games' lettering matches — same
+stack, same 900 weight, same 3% tracking, same faux-bold stroke. **Futura is not
+bundled in either game**, so most machines fall through to Century Gothic, URW
+Gothic or Jost; that is a known open problem over there, inherited here. The
+stroke exists because those fallbacks are lighter than the cut the design
+assumes — without it the words come out visibly thinner on a machine with no
+Futura. The stack is **duplicated, not imported**: each game's `config.js` is
+self-contained (same as the two sound pipelines and the two cutters), so change
+the face in both or neither.
+
+It used to be the **flying dungeon's crawling vermin panel** with the SABOROSA
+logo over it, read in place out of that game's folder. Both are gone from this
+screen as of 2026-08-21. The logo is still at
+`v2:flying-dungeon/saborosa-logo.webp` if it is ever wanted back — that is a
+draw call, not a rebuild.
 
 ## The baratas
 

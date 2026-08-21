@@ -38,14 +38,14 @@ function assetManifest() {
     out.push({ key: kind, src: base + '-sprites.json', how: 'json' });
   }
 
-  /* The title screen. `big` rather than `image` for the crawl frames: they are
-     3002px wide and drawn at 1280, and handing the GPU the full-size texture
-     for that is the VRAM thrash that cost the main game its frame rate once
-     already (see PERFORMANCE.md). The logo is small and goes through as-is. */
+  /* The title screen: one photograph, and the name is drawn as type rather than
+     loaded. `big` rather than `image` -- it is 2400px wide and drawn at 1280,
+     and handing the GPU the full-size texture for that is the VRAM thrash that
+     cost the main game its frame rate once already (see PERFORMANCE.md). `big`
+     also caps it at `bigTextureCap`, which is the number the file on disk was
+     reduced to in the first place; see tools/shrink-master.py. */
   if (CONFIG.title) {
-    (CONFIG.TITLE_FRAMES || []).forEach((src, i) =>
-      out.push({ key: 'title' + i, src: src, how: 'big' }));
-    out.push({ key: 'logo', src: CONFIG.LOGO_SHEET, how: 'image' });
+    out.push({ key: 'titleBg', src: CONFIG.TITLE_BG, how: 'big' });
   }
 
   // The GO prompt: the main game's pointing hand, and the hand-lettered word.

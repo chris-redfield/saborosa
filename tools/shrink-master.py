@@ -12,6 +12,14 @@ re-exports a sheet, the reduction has to happen again the same way. Re-run it,
 do not hand-resize.
 
   python3 tools/shrink-master.py assets-v2/beatemup-dungeon/horse-coconutbash.png --scale 0.25
+  python3 tools/shrink-master.py assets-v2/beatemup-dungeon/intro-background.jpg --max-dim 2400 --quality 88
+
+⚠️ `--max-dim` IS USUALLY THE RIGHT KNOB FOR A PHOTO, AND 2400 IS NOT ARBITRARY.
+Anything loaded through the manifest as `big` is decoded and downscaled to
+`CONFIG.bigTextureCap` (2400) at load time -- so pixels past that are thrown away
+by the game every single run, having been paid for in the download. The intro
+background arrived 4000x3000 and 6.6MB; at 2400x1800 q88 it is 1.55MB and, at
+the size the game actually draws it, indistinguishable from the original.
 
 ⚠️ IT OVERWRITES BY DEFAULT AND THE LOSS IS PERMANENT. --out writes elsewhere,
 --dry-run measures and writes nothing. Check the numbers before committing to a
@@ -120,8 +128,13 @@ def rows_of(alpha, thresh):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('path')
-    ap.add_argument('--scale', type=float, required=True,
+    ap.add_argument('--scale', type=float,
                     help='fraction of the cropped size to keep, e.g. 0.25')
+    ap.add_argument('--max-dim', type=int,
+                    help='scale so the longest side is this, e.g. 2400. Use for '
+                         'photos; see the note about bigTextureCap.')
+    ap.add_argument('--quality', type=int, default=88,
+                    help='JPEG/WebP quality (default 88). Ignored for PNG.')
     ap.add_argument('--out', help='write here instead of overwriting `path`')
     ap.add_argument('--margin', type=int, default=8,
                     help='transparent px kept around the content (default 8)')
@@ -131,18 +144,25 @@ def main():
     ap.add_argument('--dry-run', action='store_true')
     args = ap.parse_args()
 
-    if not (0 < args.scale <= 1):
+    if (args.scale is None) == (args.max_dim is None):
+        sys.exit('give exactly one of --scale or --max-dim')
+    if args.scale is not None and not (0 < args.scale <= 1):
         sys.exit('--scale must be in (0, 1]')
     if not os.path.exists(args.path):
         sys.exit(f'missing {args.path}')
 
     before_bytes = os.path.getsize(args.path)
-    im = Image.open(args.path).convert('RGBA')
+    src = Image.open(args.path)
+    # A PHOTO HAS NO ALPHA, and forcing one on costs a third more pixels for a
+    # channel that is all 255 -- and would make a JPEG unsaveable. The alpha
+    # crop and the premultiplied resize only mean anything on a cut-out.
+    has_alpha = src.mode in ('RGBA', 'LA') or 'transparency' in src.info
+    im = src.convert('RGBA') if has_alpha else src.convert('RGB')
     print(f'{args.path}')
     print(f'  in   {im.size[0]}x{im.size[1]}  {before_bytes / 1e6:.2f} MB')
 
-    alpha = np.asarray(im)[:, :, 3]
-    if not args.no_crop:
+    alpha = np.asarray(im)[:, :, 3] if has_alpha else None
+    if has_alpha and not args.no_crop:
         box = content_box(alpha, args.alpha, args.margin)
         if box is None:
             sys.exit('nothing visible in this image')
@@ -152,23 +172,39 @@ def main():
                   f'(dropped {box[0]}L {box[1]}T '
                   f'{alpha.shape[1] - box[2]}R {alpha.shape[0] - box[3]}B)')
 
-    rows = rows_of(np.asarray(im)[:, :, 3], args.alpha)
+    scale = args.scale if args.scale is not None else \
+        min(1.0, args.max_dim / max(im.width, im.height))
 
-    size = (max(1, round(im.width * args.scale)),
-            max(1, round(im.height * args.scale)))
-    out = resize_premultiplied(im, size) if args.scale != 1.0 else im
-    print(f'  out  {size[0]}x{size[1]}  at scale {args.scale}')
-    print(f'  {len(rows)} row bands; frame heights become '
-          + ', '.join(str(round((b - a + 1) * args.scale)) for a, b in rows) + ' px')
-    print('  ^ that is the CEILING on how large this character can be drawn '
-          'without upscaling')
+    size = (max(1, round(im.width * scale)), max(1, round(im.height * scale)))
+    if scale == 1.0:
+        out = im
+    elif has_alpha:
+        out = resize_premultiplied(im, size)
+    else:
+        # No alpha, so nothing can bleed out of it: a plain resample is correct
+        # and there is no premultiply to undo.
+        out = im.resize(size, Image.LANCZOS)
+    print(f'  out  {size[0]}x{size[1]}  at scale {round(scale, 4)}')
+
+    if has_alpha:
+        rows = rows_of(np.asarray(im)[:, :, 3], args.alpha)
+        print(f'  {len(rows)} row bands; frame heights become '
+              + ', '.join(str(round((b - a + 1) * scale)) for a, b in rows) + ' px')
+        print('  ^ that is the CEILING on how large this character can be drawn '
+              'without upscaling')
 
     if args.dry_run:
         print('  dry run, nothing written')
         return
 
     dest = args.out or args.path
-    out.save(dest, optimize=True)
+    ext = os.path.splitext(dest)[1].lower()
+    if ext in ('.jpg', '.jpeg'):
+        out.save(dest, 'JPEG', quality=args.quality, optimize=True, progressive=True)
+    elif ext == '.webp':
+        out.save(dest, 'WEBP', quality=args.quality, method=6)
+    else:
+        out.save(dest, optimize=True)
     after = os.path.getsize(dest)
     print(f'  wrote {dest}  {after / 1e6:.2f} MB  '
           f'({before_bytes / after:.1f}x smaller)')

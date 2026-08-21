@@ -2148,27 +2148,90 @@ const CONFIG = {
   GO_SHEET: 'v2:beatemup-dungeon/saborosa-go.png',
 
   /* --- The title screen ----------------------------------------------------
-     The first thing the game shows: the flying dungeon's crawling vermin as a
-     backdrop with the SABOROSA logo over it. Any button starts the fight.
+     The first thing the game shows: a photograph of a wall, and then the name
+     over it. Any button starts the fight.
 
-     BOTH IMAGES ARE READ IN PLACE out of that game's folder rather than copied
-     here -- the same three frames its endings crawl on and the same logo its
-     finale lands on. Two copies of a picture drift the moment one is recut.
+     ⚠️ IT USED TO BE THE FLYING DUNGEON'S CRAWLING VERMIN PANEL with the
+     SABOROSA logo laid on it, read in place out of that game's folder. Both are
+     gone from this screen -- replaced 2026-08-21 by one photograph and hand-set
+     type. If the logo is wanted back it is a draw call, not a rebuild; the file
+     is still `v2:flying-dungeon/saborosa-logo.webp`.
 
-     The frames are pre-cropped to a shared 16:9 band (3002x1687) so they
-     stretch to fill the canvas and stay aligned with each other; that cropping
-     is tools/build-game-over-frames.py's, over in the other game. The holds are
-     that game's too, tuned in tools/game-over-anim.html -- roughly 9.5fps,
-     cycling 1-2-3. Do not re-derive them by eye. */
+     THE PLATE IS A PHOTOGRAPH AND SO IS THE LEVEL. That is the whole reason it
+     works: the backdrop of the street is filmed footage, so a title screen made
+     of a photo of the same kind of wall reads as the same place rather than as
+     a menu bolted to the front.
+
+     ⚠️ IT IS 4:3 AND THE CANVAS IS 16:9, so it is drawn COVER -- scaled to fill
+     and centre-cropped top and bottom. About an eighth is lost off each; the
+     wall/ground line still lands around two thirds down, which is what leaves
+     the pale upper wall clear for the type. Do not switch it to `contain`
+     unless you want pillarboxing.
+
+     LOADED AS `big`, so it is decoded and downscaled to `bigTextureCap` (2400)
+     off the main thread. The file on disk is already 2400 wide for exactly that
+     reason -- see tools/shrink-master.py. It arrived at 4000x3000 and 6.6MB. */
   title: true,           // false = straight into the fight
-  TITLE_FRAMES: [
-    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-001.webp',
-    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-002.webp',
-    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-003.webp',
-  ],
-  TITLE_HOLDS_MS: [105, 105, 105],
-  LOGO_SHEET: 'v2:flying-dungeon/saborosa-logo.webp',
-  titleLogoWRel: 0.52,   // logo width as a fraction of the canvas
+  TITLE_BG: 'v2:beatemup-dungeon/intro-background.jpg',
+
+  /* THE NAME, AND WHEN IT ARRIVES. The screen opens on the bare photograph and
+     holds it: one second of just the wall, then a second more, and the name
+     fades up at two. The point of the wait is that the picture is allowed to be
+     a picture before it becomes a title card -- cut the name in at zero and the
+     photo reads as a background for text rather than as the place. */
+  titleNameAtMs: 2000,
+  titleNameFadeMs: 320,  // 0 for a hard cut
+
+  /* Two lines, and the weights are the point: the Portuguese name is the title
+     and the English is a gloss under it, so one is bold and large and the other
+     is not. Kept as data because the name is not settled -- BATIDAO DE COCO is
+     what the user calls it, and the parenthetical is a translation for a jam
+     audience that will not read Portuguese. */
+  TITLE_NAME: 'BATIDÃO DE CÔCO',
+  TITLE_SUBNAME: '(Coconut Bash)',
+  /* ⚠️ THE FLYING DUNGEON'S LETTERING FONT, COPIED STACK FOR STACK from its
+     `overTitle.family` -- the face its TIME OVER / THE END panels are set in.
+     Requested so the two games' type matches.
+
+     THE HEAVIEST FUTURA CUTS COME FIRST and the geometric stand-ins follow.
+     FUTURA IS NOT BUNDLED, in either game, so most machines fall straight
+     through to Century Gothic / URW Gothic / Jost -- that is a known open
+     problem over there and it is inherited wholesale here. If it is ever fixed,
+     it has to be fixed in both.
+
+     ⚠️ IT IS DUPLICATED RATHER THAN IMPORTED, and that is the house pattern:
+     each game's config.js is self-contained, the way the two sound pipelines
+     and the two cutters are. Do not make this game read the other's config --
+     but do change both when the face changes. */
+  TITLE_FONT: '"Futura Extra Bold","Futura ExtraBold","Futura Std Extra Bold",'
+            + '"Futura PT Extra Bold","Futura Bold","Futura","Futura PT",'
+            + '"Futura Std","Century Gothic","URW Gothic","Jost",sans-serif',
+  /* 900 for the name and 400 for the gloss -- the weight difference IS the
+     hierarchy, and it is what "batidao de coco should be bold" asked for. */
+  titleNameWeight: 900,
+  titleSubWeight: 400,
+  /* Letter spacing and the faux-bold stroke, both % of the font size, both
+     lifted from the flying dungeon's block. The stroke exists because the
+     fallback faces are lighter than the Futura cut the design assumes; without
+     it the same words come out visibly thinner on a machine with no Futura. */
+  titleNameLsPct: 3,
+  titleFauxBoldPct: 1.5,
+  titleNameSize: 74,     // px on the 1280x720 canvas
+  titleSubSize: 30,
+  titleNameGap: 20,      // px between the two lines
+  /* Higher than centre on purpose: the wall is palest in its upper third and
+     browner below, so the block sits where BOTH lines have something clean to
+     read against. Moved up from 0.30, where the gloss landed in a stain. */
+  titleNameY: 0.26,      // centre of the block, as a fraction of canvas height
+  /* THE FLYING DUNGEON'S YELLOW, the exact value its end panels are set in
+     (`overTitle.color`, CMYK 2/2/81/0) -- requested so the two games' lettering
+     matches in colour as well as in face.
+
+     NO DROP SHADOW AND NOTHING DARKENED UNDER IT -- the house rule for every
+     title screen in this project, and it is not up for a tasteful gradient. If
+     the type needs more separation, move it to a cleaner part of the wall or
+     lean on `titleFauxBoldPct`, the way that game's white ending does. */
+  titleNameColor: '#FAFA30',
   titleFadeOutMs: 600,   // to black, once dismissed
 
   /* --- Music ---------------------------------------------------------------
