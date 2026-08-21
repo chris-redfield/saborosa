@@ -495,10 +495,16 @@ const CONFIG = {
              move, and a camera that trails them back and forth is the whole
              reason the room's footage was cut to be scrubbable in reverse. */
           lock: false,
+          /* ⚠️ COCKROACHES ONLY IN HERE. The cigarettes are the street's gang
+             and they are spent by the time the player reaches this room; the
+             baratas took the whole stretch after the sub-boss, so the run
+             arrives here already in roach country and the boss room reads as
+             the end of that stretch rather than a reprise of the first one.
+             Do not put a cigarette back in this wave. */
           enemies: [
-            { kind: 'cigarro3', x: 900,  z: 70 },
-            { kind: 'cigarro2',   x: 1100, z: 150, delayMs: 900 },
-            { kind: 'cigarro',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
+            { kind: 'barata',  x: 900,  z: 70 },
+            { kind: 'barata2', x: 1100, z: 150, delayMs: 900 },
+            { kind: 'barata',  x: 700,  z: 110, delayMs: 2600, from: 'behind' },
           ],
         },
         /* THE FINAL BOSS. `who` picks the occupant: without it a boss segment
@@ -1824,16 +1830,73 @@ const CONFIG = {
        decision rather than as a tic.
 
        These are relative weights inside each band, not percentages of the
-       fight. At the defaults it is a coin flip either side: far, half his rolls
-       are charges and half are walk-ups; near, half are kicks and half are more
-       repositioning. */
-    ACTIONS: { charge: 50, kick: 50, approach: 50 },
-    /* An approach ends when he gets this close, or after `approachMs`,
-       whichever comes first -- and then he re-rolls. It stops a little outside
-       `kickRange` so the roll that follows is usually taken from kicking
-       distance, which is what makes him feel like he is working his way in
-       rather than teleporting between states. */
-    approachStopRange: 300,
+       fight. `kick` and `approach` are flat; `charge` is NOT -- see below. */
+    ACTIONS: { charge: 60, kick: 50, approach: 50 },
+    /* ⚠️ THE CHARGE'S WEIGHT SCALES WITH DISTANCE, AND A FLAT WEIGHT GOT THIS
+       BACKWARDS. Past `chargeMinRange` the odds used to be the same at 250px as
+       at 900px, so how far away the player stood barely changed how often he
+       ran at them -- and once the cooldown was taken into account a RETREATING
+       player actually saw fewer charges than one moving around normally, which
+       is exactly wrong for the move. It is the long-range answer; it should get
+       likelier the further away you are.
+
+       So the weight ramps: `chargeNearWeight` of full at the threshold, rising
+       to full at `chargeFarRange`. At the defaults that is half the odds at
+       240px and double them out past 600 -- which is the relationship the
+       distance gate was only ever pretending to express. */
+    chargeNearWeight: 0.35,
+    chargeFarRange: 600,
+    /* ⚠️ AND THE COOLDOWN RELAXES WITH DISTANCE, for the same reason the weight
+       rises. The cooldown exists to stop every walk-up ending in a charge at
+       MEDIUM range; out where the charge is the obvious answer it was fighting
+       the distance ramp instead -- he would charge, and then the next few
+       decisions, also taken from far away, were all blocked. The bucket rates
+       came out flat and a retreating player still saw no more charges than a
+       nearby one.
+
+       At `chargeFarRange` and beyond only this fraction of the cooldown is
+       applied, so a player who keeps running gets run at. */
+    chargeCooldownFarScale: 0.2,
+    /* ⚠️ A CHARGE CANNOT FOLLOW A CHARGE, OR VERY NEARLY ONE. For this long
+       after a pass ends, the charge is out of the hat and the aggressive option
+       is the kick instead -- so he has to walk in and do something else before
+       he can run at you again.
+
+       This exists because of how it read in play, not how it read in a table.
+       The weights were already only asking for half his rolls at range, but at
+       range the kick is rarely reachable, so the actual sequence came out
+       walk > CHARGE > walk > CHARGE > walk > CHARGE. Every walk-up terminated
+       in a charge, which turns the walk into a wind-up: the player stops
+       reading it as movement and starts reading it as a tell. Forcing another
+       action in between is what makes the walk mean nothing again, which is the
+       whole point of having it. */
+    chargeCooldownMs: 2400,
+    /* WHERE AN APPROACH SETTLES -- A RANGE, ROLLED PER APPROACH, NOT ONE
+       DISTANCE.
+
+       ⚠️ THIS IS WHY IT IS TWO NUMBERS. It was a single 300, which is above
+       `chargeMinRange` (240) -- so EVERY approach parked him at exactly charge
+       distance and the roll that followed had the charge in it every time. The
+       result read as one fixed pattern: walk at you for a moment, then charge,
+       over and over. The approach had stopped being a behaviour and become the
+       wind-up for the charge.
+
+       Straddling `chargeMinRange` instead means where he ends up is genuinely
+       uncertain: settle short and the next roll is kick-or-approach, settle
+       long and it is charge-or-approach. That is what makes the walk-up read as
+       him working his way in rather than as a tell. Keep `chargeMinRange`
+       BETWEEN these two. */
+    approachStopMin: 165,
+    approachStopMax: 340,
+    /* ⚠️ AN APPROACH MUST ACTUALLY TRAVEL. The standoff distance is rolled, so
+       it can easily land within a few px of where he is already standing -- the
+       approach then ends on its first frame and he immediately rolls another
+       one. That is not visible as a bug; it just quietly turns two thirds of the
+       fight into a horse shuffling on the spot. Measured before this: 67% of
+       his actions were approaches, against a weight that asks for half. If
+       neither standoff spot is at least this far away, he takes the further
+       one. */
+    approachMinTravel: 95,
     approachMs: 1800,
     /* A fuse on closing for a kick, so a player who keeps running cannot lead
        him around the room forever without him committing to anything. */
@@ -1857,10 +1920,11 @@ const CONFIG = {
        settles at 210-300 after any approach or kick, so the condition was
        almost never true and the move fired once every 27 seconds at best.
 
-       IT HAS TO SIT BELOW `approachStopRange` (300). That is the whole loop:
-       an approach leaves him just outside this, so the next roll can be a
-       charge. Push it back above that number and the charge starves again --
-       which has now happened twice, in two different ways. */
+       IT HAS TO SIT INSIDE THE `approachStop` BAND (165..340). Above it and no
+       approach ever leaves him far enough to charge, and the move starves --
+       which has now happened twice, in two different ways. Below it and every
+       approach leaves him able to charge, which is the lockstep that band
+       exists to break. */
     chargeMinRange: 240,
 
     // --- The charge ----------------------------------------------------------

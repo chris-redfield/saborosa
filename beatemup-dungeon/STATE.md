@@ -312,6 +312,12 @@ only reason it did not happen again is that the frame extents were printed
 extents of the row it belongs to.** It is now 260, which also has to clear
 `kickRange` (210), the distance he commits from.
 
+**THE ROOM'S WAVE IS ALL COCKROACHES** (2026-08-21). It opened with three
+cigarettes, inherited from when it was placeholder. The baratas own the whole
+stretch after the sub-boss, so the run now arrives here already in roach country
+and the boss room reads as the end of that stretch rather than a reprise of the
+street's gang.
+
 **⚠️ HOW HE CHOOSES WHAT TO DO, AND THE FOUR WAYS IT WENT WRONG FIRST.** The
 shape that works: **distance decides what is in the hat, a roll decides what
 comes out of it, and there are THREE actions, not two.**
@@ -337,9 +343,17 @@ geometry that his own movement then destroyed.**
    minutes.**
 3. *Roll inside a distance band, but with `chargeMinRange` at 320.* He settles
    at 210-300 after any approach or kick, so the band was almost never entered.
-   Starved again. **The three ranges are coupled:** `kickRange` (210) <
-   `chargeMinRange` (240) < `approachStopRange` (300). An approach settles just
-   OUTSIDE `chargeMinRange`; that is the whole loop.
+   Starved again.
+5. *And then the opposite failure.* With the threshold at 240 and every approach
+   settling at a fixed 300, EVERY walk-up left him able to charge, and the fight
+   came out `walk > CHARGE > walk > CHARGE > walk > CHARGE`. The user's words:
+   *"he walks towards you for a while, then immediately starts charging."* A
+   walk that always ends in a charge is not movement, it is a tell -- which
+   destroys the reason the approach exists. Two things fix it: the settle
+   distance is **rolled across a band that straddles `chargeMinRange`**
+   (165..340), so you cannot read the walk-up; and a **`chargeCooldownMs`**
+   keeps the charge out of the hat for 2.4s after a pass, so something else has
+   to happen in between.
 4. *An approach that could only close.* Then nothing ever opened the gap, and
    after a charge he landed in the pocket between the wall and the player —
    median 36px away, permanently walled, kicking forever. He now walks to a
@@ -358,13 +372,48 @@ player's walls, so he finishes a pass outside them; the next phase clamped him
 back to the wall — onto the player he had just charged past. `_limits()` is now
 the one set of bounds every moving phase uses.
 
-Measured after all of it, over four simulated minutes each:
+⚠️ **AND THE MEASUREMENT ITSELF WAS WRONG TWICE.** Counting phase entries
+overcounts approaches, because a turn taken mid-approach re-enters the phase --
+that read as "73% of approaches are followed by another approach" when the real
+number was 50, exactly as configured. **Count at the DECISION.** The other
+miscount: an approach whose rolled target landed where he already stood ended on
+its first frame and re-rolled, so two thirds of the fight was a horse shuffling
+on the spot. `approachMinTravel` is the floor under that.
+
+6. *And the last one was the relationship itself being backwards.* Past the
+   threshold the charge's weight was FLAT, so 250px and 900px were the same
+   roll -- and with the cooldown on top, a RETREATING player saw fewer charges
+   than one milling about nearby. The user caught it from the table: *"it should
+   be half of when he is away, not the opposite."* A gate says whether a move is
+   allowed; it cannot say that a move gets more attractive the further you are.
+   That needs a **ramp**: the weight rises from `chargeNearWeight` at the
+   threshold to full at `chargeFarRange`, and the cooldown relaxes across the
+   same span (`chargeCooldownFarScale`) so it stops fighting the ramp out where
+   the charge is the obvious answer.
+
+⚠️ **AND ONE MEASUREMENT SCENARIO WAS A LIE TOO.** The row labelled "keeping
+distance" pinned the player in a CORNER, which lets the horse walk into the
+pocket beside them -- so it was really testing a cornered player, and only 17%
+of his decisions in it were taken at charge range. Modelling an actual retreat
+(run toward whichever wall is further from him) inverted the result. **Name a
+scenario after what it does, not after what you meant it to do.**
+
+Measured after all of it, over thirty simulated minutes each, counted at the
+decision. Charge odds against the distance he decided from -- which is the
+relationship that matters:
+
+| distance at the decision | chance he charges |
+|---|---|
+| under 240px | 0% (kick instead) |
+| 240-360px | ~20% |
+| 360-520px | ~45% |
+| 520px+ | ~50% |
 
 | player | charge | kick | approach | charge every |
 |---|---|---|---|---|
-| moving around | 28% | 16% | 56% | 6.9s |
-| keeping distance | 14% | 28% | 58% | 11.5s |
-| glued to him | 0% | 41% | 59% | never |
+| running away | 35% | 11% | 54% | 7.9s |
+| moving around | 22% | 27% | 51% | 11.1s |
+| glued to him | 0% | 53% | 47% | never |
 
 The last row is the design, not a bug: inside 240px he kicks, and the kick moves
 you only 70px (`knockback / knockbackDecay`), so hugging him is a real choice

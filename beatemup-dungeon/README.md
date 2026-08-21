@@ -990,22 +990,40 @@ why. All the knobs are `CONFIG.HORSE_BOSS`.
 | `ACTIONS` | **relative weights inside each distance band** — `{charge: 50, kick: 50, approach: 50}`. Far: charge vs approach. Near: kick vs approach |
 | `idleMs` | the breath between passes |
 | `kickRange` | how close he closes to before throwing the kick |
-| `chargeMinRange` | 240 — he may only *roll* a charge from beyond this. **Must stay below `approachStopRange`** or the charge starves |
-| `approachStopRange` | 300 — the distance an approach settles at, either by closing or by giving himself room |
+| `chargeMinRange` | 240 — he may only *roll* a charge from beyond this. **Must sit inside the `approachStop` band** |
+| `chargeCooldownMs` | 2400 — no charge for this long after one. Stops every walk-up ending in a charge |
+| `chargeNearWeight` / `chargeFarRange` | 0.35 / 600 — the charge's weight **ramps with distance**: about a third of full at the threshold, full from 600 px out |
+| `chargeCooldownFarScale` | 0.2 — the cooldown relaxes with distance too, so a player who keeps running gets run at |
+| `approachStopMin` / `Max` | 165 / 340 — where an approach settles, rolled each time. **Straddles `chargeMinRange` on purpose** |
+| `approachMinTravel` | 95 — an approach must actually go somewhere, or it ends on frame one and re-rolls |
 | `approachMs` | fuse on an approach |
 | `approachMaxMs` | fuse on closing for a kick, so he can't be led around the room forever |
 
-**How the fight paces out**, measured over 4 simulated minutes each:
+**The charge gets likelier the further away you are** — that is the point of the
+move, and it is what the two ramp knobs above encode. Odds of a charge, by the
+distance he is at when he decides (30 simulated minutes):
+
+| distance at the decision | chance he charges |
+|---|---|
+| under 240 px | 0% — he kicks instead |
+| 240–360 px | ~20% |
+| 360–520 px | ~45% |
+| 520 px + | ~50% |
+
+**How that adds up over a fight**, counted at the DECISION — not by watching
+phases, because a turn taken mid-approach re-enters the phase and will inflate
+any tally built on that:
 
 | you | charge | kick | approach | charge every |
 |---|---|---|---|---|
-| move around normally | 28% | 16% | 56% | 6.9 s |
-| keep your distance | 14% | 28% | 58% | 11.5 s |
-| glue yourself to him | 0% | 41% | 59% | never |
+| run away from him | 35% | 11% | 54% | 7.9 s |
+| move around normally | 22% | 27% | 51% | 11.1 s |
+| glue yourself to him | 0% | 53% | 47% | never |
 
-That last row is the design working, not failing: stay inside 240 px and he
-kicks instead. The kick only knocks you back 70 px (`knockback / knockbackDecay`),
-so hugging him is a real choice with a real answer.
+Running gets you charged at roughly twice as often as milling about nearby, and
+the bottom row is the design working: stay inside 240 px and he kicks. The kick
+only knocks you back 70 px (`knockback / knockbackDecay`), so hugging him is a
+real choice with a real answer.
 | `chargeTellMs` | 420 — stood still, facing you. The only warning |
 | `chargeSpeed` | 520, faster than the player runs. Step out of the lane |
 | `kickReachX` | 260 — **measured off the drawing**, see below |
@@ -1023,11 +1041,16 @@ row for — he stands in frame 0 or 6 of that row.
 opposite side to every other attack in the game, which is what makes it the
 answer to a player behind him.
 
-**Three numbers are coupled and will starve the charge if separated.**
-`kickRange` (210) < `chargeMinRange` (240) < `approachStopRange` (300). An
-approach settles just outside `chargeMinRange`, which is what makes the next
-roll able to be a charge. Raise `chargeMinRange` above `approachStopRange` and
-the charge can never be rolled again — that has now happened twice.
+**The ranges are coupled and will break the fight if separated.**
+`approachStopMin` (165) < `chargeMinRange` (240) < `approachStopMax` (340).
+Where an approach settles is rolled inside that band, so it lands on either side
+of the charge threshold and you cannot tell from the walk-up what is coming.
+
+* Push `chargeMinRange` **above** the band and no approach ever leaves him far
+  enough — the charge starves. That has happened twice, two different ways.
+* Push it **below** the band and every approach leaves him able to charge, and
+  the sequence comes out `walk > CHARGE > walk > CHARGE`. The walk stops being
+  movement and becomes a tell.
 
 **⚠️ Never write a reach by eye.** `kickReachX` was first 132; the hooves reach
 300px behind the anchor. Print the row's frame extents from the defs and set the

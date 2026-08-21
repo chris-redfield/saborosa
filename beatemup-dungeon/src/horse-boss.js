@@ -67,6 +67,9 @@ class HorseBoss {
     this.chargeZ = null;     // the lane a charge committed to; see _charge()
     this.afterTurn = null;   // what the turn in progress is FOR; see _face()
     this.approachTarget = null;  // committed destination of an approach
+    /* Seconds since the last charge ended. Starts high so the fight can open
+       with one; see chargeCooldownMs. */
+    this.sinceCharge = 999;
     this.kickArmed = false;
     this.intent = null;      // the move he is currently committed to; see _decide()
     this.hasHit = false;     // the live blow has connected; see hitbox()
@@ -276,6 +279,7 @@ class HorseBoss {
     if (this.hurtT > 0) this.hurtT -= dt;
     this.t += dt;
     this.animT += dt;
+    if (this.phase !== 'charge') this.sinceCharge += dt;
 
     /* Stashed because two phases besides the charge need the arena's edges --
        the back-off has to know when it has run out of room. */
@@ -338,8 +342,27 @@ class HorseBoss {
     /* THE BAND. Far enough for a run-up, and he may charge; otherwise the
        aggressive option is the kick. Either way `approach` is always in the
        hat, so neither band can become a single move on repeat. */
-    const attack = gap >= C.chargeMinRange ? 'charge' : 'kick';
-    const wa = (attack === 'charge' ? W.charge : W.kick) || 0;
+    /* Far enough to run at them, AND not fresh off a pass. On cooldown the
+       aggressive option becomes the kick, so he walks in and does that instead
+       -- see chargeCooldownMs. */
+    /* How far out he is, 0 at the threshold and 1 from `chargeFarRange` on.
+       Both the charge's weight and its cooldown are read off this. */
+    const span = Math.max(1, (C.chargeFarRange || 600) - C.chargeMinRange);
+    const far = Math.max(0, Math.min(1, (gap - C.chargeMinRange) / span));
+
+    const farScale = C.chargeCooldownFarScale != null ? C.chargeCooldownFarScale : 1;
+    const cool = ((C.chargeCooldownMs || 0) / 1000) * (1 - (1 - farScale) * far);
+    const canCharge = gap >= C.chargeMinRange && this.sinceCharge >= cool;
+    const attack = canCharge ? 'charge' : 'kick';
+    /* ⚠️ THE CHARGE'S WEIGHT RISES WITH DISTANCE. Flat, it made a retreating
+       player see FEWER charges than one milling about nearby -- backwards for
+       the one move that exists to cover ground. Half weight at the threshold,
+       full weight from `chargeFarRange` out. */
+    let wa = (attack === 'charge' ? W.charge : W.kick) || 0;
+    if (attack === 'charge') {
+      const near = C.chargeNearWeight != null ? C.chargeNearWeight : 0.5;
+      wa *= near + (1 - near) * far;
+    }
     const wp = W.approach || 0;
     const total = Math.max(1e-6, wa + wp);
     this.intent = (Math.random() * total < wa) ? attack : 'approach';
@@ -383,7 +406,6 @@ class HorseBoss {
   _approach(dt, player) {
     const C = CONFIG.HORSE_BOSS;
     const { lo, hi } = this._limits(this._bounds);
-    const want = C.approachStopRange;
 
     /* ⚠️ CHOSEN ONCE PER APPROACH AND THEN COMMITTED TO. Recomputing it every
        frame looks harmless and is not: the player moves too, so the nearest of
@@ -394,6 +416,7 @@ class HorseBoss {
        continuously is not a destination. */
     if (this.approachTarget == null) this.approachTarget = this._standoff(player);
     const target = this.approachTarget;
+    const want = Math.abs(target - player.x);
 
     const d = target - this.x;
     const side = d >= 0 ? 'right' : 'left';
@@ -412,18 +435,33 @@ class HorseBoss {
     }
   }
 
-  /** The nearest place at standoff distance that is actually inside the room. */
+  /**
+   * The nearest place at standoff distance that is actually inside the room.
+   *
+   * The distance is ROLLED per approach, across a band that straddles
+   * `chargeMinRange` -- see the config note. A fixed distance made every
+   * approach end at charge range, so the fight became walk-then-charge on a
+   * loop.
+   */
   _standoff(player) {
     const C = CONFIG.HORSE_BOSS;
     const { lo, hi } = this._limits(this._bounds);
-    const want = C.approachStopRange;
+    const want = C.approachStopMin
+      + Math.random() * Math.max(0, C.approachStopMax - C.approachStopMin);
     const spots = [player.x - want, player.x + want]
       .filter(v => v >= lo && v <= hi)
       .sort((a, b) => Math.abs(a - this.x) - Math.abs(b - this.x));
     // Nothing reachable at all (a room narrower than the standoff): take the
     // corner furthest from the player rather than standing still.
-    return spots.length ? spots[0]
-      : (Math.abs(lo - player.x) > Math.abs(hi - player.x) ? lo : hi);
+    if (!spots.length) {
+      return Math.abs(lo - player.x) > Math.abs(hi - player.x) ? lo : hi;
+    }
+    /* PREFER THE NEAREST SPOT THAT IS ACTUALLY WORTH WALKING TO. A target a few
+       px away ends the approach on its first frame and he rolls another one
+       straight away -- see approachMinTravel. */
+    const min = CONFIG.HORSE_BOSS.approachMinTravel || 0;
+    const worth = spots.find(v => Math.abs(v - this.x) >= min);
+    return worth != null ? worth : spots[spots.length - 1];
   }
 
   /** Walk in `side`, and close in DEPTH unless told otherwise. Shared. */
@@ -517,6 +555,7 @@ class HorseBoss {
       this.x = Math.max(lo, Math.min(hi, this.x));
       this.atk = null;
       this.chargeZ = null;
+      this.sinceCharge = 0;        // starts the cooldown; see _decide()
       this.intent = null;          // spent; _idle rolls the next one
       this.passes++;
       this._to('idle');
