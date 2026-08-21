@@ -961,6 +961,19 @@ const CONFIG = {
      the death is gone before it registers -- you know you lost, but not how.
      The DOWN card is held back for the same span, so the one moment the death
      row was drawn for is not spent behind a piece of UI. */
+  /* HOW A CORPSE LEAVES. It lies where it fell, waits `corpseFadeDelayS`, then
+     fades over `corpseFadeS` and is removed from the crowd once it is fully
+     transparent.
+
+     ⚠️ READ BY BOTH THE FADE AND THE REAPER, which is the point of them being
+     here. They were two literals inside Fighter.draw(); nothing removed a body
+     at all, and `crowd.clear()` was the only cleanup -- so the moment a segment
+     handed over, every corpse still fading was deleted mid-fade. Split across
+     two places these would drift and bodies would either vanish early or linger
+     invisible forever. */
+  corpseFadeDelayS: 0.6,
+  corpseFadeS: 1.2,
+
   deathHoldMs: 1000,
 
   /* =========================================================================

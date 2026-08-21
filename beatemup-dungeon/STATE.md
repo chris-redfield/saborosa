@@ -1543,6 +1543,35 @@ NEXT segment is a `scroll`. Verified across both rooms: the street is unchanged
 (after segments 1, 3 and 5), the last street arena still gets none because it
 returns a 'room' event, and the boss room now gets none at all.
 
+### The last wave blinked out when the horse arrived
+
+**Found in play, 2026-08-21.** Clearing the boss room's wave deleted the bodies
+the instant HIPÓLITO spawned, cutting their fade off mid-way.
+
+Two facts met: **`crowd.cleared()` means nobody is ALIVE, not that the bodies
+have gone** — a corpse lies where it fell and fades over 1.8s — and **nothing
+ever removed a corpse from the crowd**, so `crowd.clear()` at a segment boundary
+was the only cleanup there was. The arena hands over the moment the last enemy
+dies, the boss branch cleared on spawn, and every body still fading went with it.
+
+Fixed at the cause rather than the symptom: `Crowd.update` now **reaps corpses
+on their own clock**, once `corpseGone()` says they are fully transparent, and
+the boss branch clears nothing. It has nothing to clear — that segment is only
+reached when `cleared()` is true, so all that is left is bodies.
+
+⚠️ **THE FADE AND THE REAPER READ THE SAME TWO NUMBERS** (`corpseFadeDelayS`,
+`corpseFadeS`), which used to be literals inside `Fighter.draw()`. Split, they
+drift, and the reaper starts deleting bodies that are still visible — the same
+bug again, self-inflicted. Verified across the whole fade: the reaper never
+fires while alpha > 0.
+
+**THIS IS THE SIXTH INSTANCE OF THE FAMILY** — something mid-state when the
+thing driving it changes underneath. The death row froze when the world stopped,
+the end screens fired on a flag nothing consumed, the last corpse hung mid-fall
+through the outro, the plate seek-stormed, `play()` restarted an ended video, and
+now a hand-over deleted a fade. **When adding a phase or a hand-over, ask what
+was still moving when it started.**
+
 ### Stuck on the ending screen
 
 **Found in play, 2026-08-21, and mine.** After the tally, pressing anything left

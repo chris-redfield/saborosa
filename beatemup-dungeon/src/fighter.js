@@ -577,8 +577,10 @@ class Fighter {
       alpha = (Math.floor(this.hurtT / period) % 2) ? 0.35 : 1;
     }
     if (this.dead && this.downPhase === 'lie') {
-      // Fade out where it fell, rather than vanishing.
-      alpha *= Math.max(0, 1 - (this.stateT - 0.6) / 1.2);
+      // Fade out where it fell, rather than vanishing. The two numbers are in
+      // CONFIG because `corpseGone()` has to agree with this exactly.
+      const d = CONFIG.corpseFadeDelayS, f = CONFIG.corpseFadeS;
+      alpha *= Math.max(0, 1 - (this.stateT - d) / f);
     }
 
     /* A knocked-down fighter is ROTATED rather than given a lying-down frame,
@@ -645,6 +647,19 @@ class Fighter {
     g.spent = !!this.atk.hasHit;
     g.live = this.atk.phase === 'active' && !this.atk.hasHit;
     return g;
+  }
+
+  /**
+   * Fully faded out, and therefore safe to remove.
+   *
+   * ⚠️ IT MUST BE THE SAME ARITHMETIC THE FADE USES, which is why both read
+   * CONFIG. A reaper that fires early deletes a body the player can still see —
+   * which is exactly the bug this was written for, only self-inflicted instead
+   * of caused by `crowd.clear()`.
+   */
+  corpseGone() {
+    return this.dead && this.downPhase === 'lie'
+        && this.stateT >= CONFIG.corpseFadeDelayS + CONFIG.corpseFadeS;
   }
 
   /** Does a hitbox overlap this fighter's body? */

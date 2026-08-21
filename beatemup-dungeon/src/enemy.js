@@ -569,5 +569,17 @@ class Crowd {
     }
 
     for (const e of this.list) e.update(dt, player, bounds);
+
+    /* REAP THE BODIES THAT HAVE FINISHED FADING, and nothing before that.
+       Corpses used to stay in this list forever at alpha 0, so the only thing
+       that ever removed one was `crowd.clear()` at a segment boundary -- which
+       meant a hand-over fired mid-fade DELETED bodies the player was still
+       watching. That is what made the last wave vanish the instant HIPÓLITO
+       arrived. Removing them here, on their own clock, means a segment can hand
+       over whenever it likes and the dead still leave the way they were drawn
+       to. `corpseGone()` is the same arithmetic the fade uses. */
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      if (this.list[i].corpseGone && this.list[i].corpseGone()) this.list.splice(i, 1);
+    }
   }
 }

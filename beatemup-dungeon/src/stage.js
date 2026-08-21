@@ -180,7 +180,13 @@ class Stage {
 
       if (!this.spawned) {
         this.spawned = true;
-        crowd.clear();       // the mooks are done; this is between two of you
+        /* ⚠️ THE CROWD IS **NOT** CLEARED HERE ANY MORE. It used to be, on the
+           reasoning that "the mooks are done, this is between two of you" --
+           and it deleted every body still fading the instant the boss arrived,
+           so the last wave blinked out of existence instead of settling. There
+           is nothing to clear anyway: this segment is only reached once
+           `crowd.cleared()` is true, so nobody is alive; what is left is
+           corpses, and Crowd.update now reaps those on their own clock. */
         /* WHICH BOSS. `who` defaults to the Mosca because every boss segment
            written before the horse existed means the Mosca, and a default that
            changes the meaning of existing data is not a default. The two share
