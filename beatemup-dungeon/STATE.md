@@ -1569,8 +1569,24 @@ fires while alpha > 0.
 thing driving it changes underneath. The death row froze when the world stopped,
 the end screens fired on a flag nothing consumed, the last corpse hung mid-fall
 through the outro, the plate seek-stormed, `play()` restarted an ended video, and
-now a hand-over deleted a fade. **When adding a phase or a hand-over, ask what
-was still moving when it started.**
+now a hand-over deleted a fade.
+
+⚠️ **AND THE NOTE THAT WAS SUPPOSED TO PREVENT IT — "ask what was still moving
+when it started" — HAS NOW FAILED FIVE TIMES.** It is a thing to remember at
+exactly the moment attention is somewhere else, which is the definition of a
+rule that does not work. The five fixes before this one each patched their own
+instance.
+
+**THE RULE WITH TEETH IS STRUCTURAL: anything with its own clock decides when it
+is finished, and a caller that deletes it is wrong by construction.** Corpses now
+reap themselves; nothing outside has to know they exist. Applied to the whole
+codebase afterwards, every other deletion site came back either a hard reset (a
+run beginning or ending), hidden behind the room-change black, or already
+guarded by an owner-decides test (`this.boss = null` waits on `boss.finished()`)
+— **except one**, which the audit caught before it was ever seen: `_spawn` still
+cleared the crowd at arena start, and with the new minimum walk that is ~0.87s
+after the last body landed against a 1.8s fade. It is `clearLiving()` now.
+`clear()` survives only for hard resets and is labelled as such.
 
 ### Stuck on the ending screen
 

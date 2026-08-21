@@ -337,7 +337,11 @@ class Stage {
   }
 
   _spawn(seg, crowd) {
-    crowd.clear();
+    /* THE DEAD STAY AND FINISH FADING. This was a `clear()`, and with the
+       minimum walk between fights down to ~0.87s against a 1.8s fade, that
+       deleted bodies from the previous wave that were still visibly on screen.
+       See Crowd.clearLiving(). */
+    crowd.clearLiving();
     for (const e of seg.enemies || []) {
       /* ENEMIES ARE PLACED OFF SCREEN AND WALK IN, rather than appearing at the
          spot they will fight from. A fighter that materialises in front of the

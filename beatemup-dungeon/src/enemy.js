@@ -499,7 +499,30 @@ class Crowd {
   constructor() { this.list = []; }
 
   add(e) { this.list.push(e); }
+  /** Everything, corpses included. For a HARD reset only -- a run beginning or
+      ending, or a room swap behind the fade's black. Never mid-level: it cuts
+      whatever was still fading. Use clearLiving() there. */
   clear() { this.list.length = 0; }
+
+  /**
+   * Take the LIVING out and leave the dead to finish fading.
+   *
+   * ⚠️ THIS EXISTS BECAUSE `clear()` MID-LEVEL IS THE SAME BUG SIX TIMES OVER.
+   * A body fades for `corpseFadeDelayS + corpseFadeS` (1.8s) after it lands,
+   * and the gap between one arena clearing and the next spawning can be as
+   * little as `scrollMinWalkPx / walkSpeedX` -- 0.87s. So a straight clear at
+   * spawn time deletes a body the player is still watching, and the camera is
+   * following the player away from it, which keeps it on screen while it goes.
+   *
+   * In practice it removes nothing at all: an arena only hands over once
+   * `cleared()` is true. It is a safety net for a segment entered with somebody
+   * still standing, and it is deliberately not a `clear()`.
+   */
+  clearLiving() {
+    for (let i = this.list.length - 1; i >= 0; i--) {
+      if (!this.list[i].dead) this.list.splice(i, 1);
+    }
+  }
 
   /** Everyone still standing. A dead one lies where it fell and is skipped. */
   alive() { return this.list.filter(e => !e.dead); }
