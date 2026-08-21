@@ -628,13 +628,18 @@ the only ones in the game that are. His string is therefore hard to escape once
 it has begun, which is what makes a fast enemy frightening rather than busy. If
 it reads as unfair, move that number before his damage.
 
-**⚠️ REACH MUST CLEAR THE STAND-OFF PLUS THE LAST HIT'S KNOCKBACK.** Enemies
-swing from `enemyStandoffX` (63.4px) and do NOT step in between the hits of a
-string, and knockback of k moves the player k/6 px. So hit 2 must reach
-63.4 + k1/6, and hit 3 further again. **No cigarette's does** — see STATE.md;
-their strings are animation only past the first punch, and the damage table is
-fiction. The baratas are the corrected example: mid-string knockback 45,
-reach 104.
+**⚠️ REACH MUST CLEAR THE STAND-OFF PLUS THE LAST HIT'S KNOCKBACK — AND YOU
+MUST ADD THE TARGET'S HALF-WIDTH.** Enemies swing from `enemyStandoffX` (63.4px)
+and do NOT step in between the hits of a string, and knockback of k moves the
+player k/6 px. But the hit test is edges against half-widths, so a hit lands
+while the centre gap is under **`reachX + bodyW/2`** — that is `reachX + 26.6`,
+not `reachX`. Forgetting the 26.6 is what once produced a confident (and wrong)
+claim in STATE.md that no cigarette had ever landed a second hit.
+
+Measured properly: DUDU, CLAUDINHO and ZIDANE land all three. **DIDI and DEDÉ
+miss their third by 1.7 and 6.2px** — their heavier mid-string knockback (130
+and 140 against DUDU's 110) shoves the player out of their own finisher. That is
+**deliberate and liked**; do not "fix" it.
 
 **⚠️ Every number for both baratas is untested** — extrapolated from the
 cigarettes, never watched in play.

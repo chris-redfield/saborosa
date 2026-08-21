@@ -568,36 +568,52 @@ a fighter's height and the finisher at about all of it, stamped at
 `chestRel` (0.42) of the way up the victim — the height the placeholder used, so
 the art landed where the shape it replaced did.
 
-### ⚠️ THE CIGARETTES HAVE NEVER LANDED HIT 2 OR HIT 3
+### ⚠️ A REACH COMPARISON THAT FORGOT THE TARGET'S HURTBOX
 
-Found on 2026-08-21 while fixing the barata's reach, and **not fixed**, because
-fixing it rebalances three enemies at once.
+**This section used to say the cigarettes' strings had never landed a second or
+third hit and that their damage tables were fiction. THAT WAS WRONG.** The user
+had played them and said so; re-measured against the actual overlap test, four
+of the five strings land in full.
 
-An enemy swings from `enemyStandoffX` — 63.4px — and **does not step in between
-the hits of a string**: the `combo` branch throws the next hit from exactly
-where it stood. Knockback decays exponentially at `knockbackDecay` 6, so a blow
-of k moves the player k/6 px. Every hit therefore has to reach far enough to
-cover the gap its own predecessor opened, and no cigarette's does:
+**The error:** the reach was compared against `enemyStandoffX` (63.4px) alone.
+But the hit test is EDGES AGAINST HALF-WIDTHS — `box.x1 >= target.x - hw` — and
+the box runs from the attacker's CENTRE out to `reachX`, connecting with the
+player's near EDGE. So the real centre-to-centre reach is `reachX + bodyW/2`,
+and `bodyW/2` is **26.6px**. Leaving it out understated every reach in the game
+by that much, which is the entire distance between "nothing past hit 1 lands"
+and "almost everything lands".
+
+⚠️ **THAT IS THE SAME MISTAKE TWICE IN ONE DAY.** The horse's first hitbox was
+written as centre-and-half-extent against a codebase that uses edges, and would
+silently never have connected. **Boxes in this game are `x0/x1/z0/z1`, and any
+reach arithmetic has to add the TARGET's half-width.** Check against
+`Fighter.overlaps()`, not against intuition.
+
+Re-measured, simulating the string with the real inter-hit timings and the real
+exponential knockback decay:
 
 | | hit 1 | hit 2 | hit 3 |
 |---|---|---|---|
-| CIGARRO | +2.9 | **−15.5** | **−22.3** |
-| CIGARRO2 | +2.9 | **−18.8** | **−28.9** |
-| CIGARRO3 | +2.9 | **−20.5** | **−32.3** |
-| BARATA | +11.5 | +4.0 | +3.7 |
-| BARATA2 | +11.5 | +3.2 | +4.9 |
+| DUDU | hit | hit (+12.6) | hit (+6.6) |
+| DIDI | hit | hit (+8.3) | **miss by 1.7** |
+| DEDÉ | hit | hit (+6.0) | **miss by 6.2** |
+| CLAUDINHO | hit | hit (+31.2) | hit (+31.3) |
+| ZIDANE | hit | hit (+31.2) | hit (+31.8) |
 
-The stand-off tolerance is ±14px, so the smallest miss cannot be closed by
-where the enemy happened to stop. **Their strings are animation only past the
-first punch.** Which means the damage table is fiction: CIGARRO's advertised
-3 + 3 + 5 = 11 has always been 3, and the whole "the damage is spread, not
-added" argument — the thing every string in this file was designed around —
-has never actually reached the player.
+**What is actually true is small, and the user likes it.** The two HEAVY
+cigarettes knock the player out of their own finisher: DIDI's mid-string
+knockback is 130 and DEDÉ's 140, against DUDU's 110, and those extra few px are
+enough to put the third hit out of range. The light cigarette and both roaches
+keep the player close enough to land everything. Told about it, the user's
+answer was "no problem at all, I like that" — a heavy enemy shoving you out of
+its own combo is a property, not a bug. **Do not "fix" it.**
 
-It also means the fight economy has never been judged, even with dev mode off:
-what was played was one-hit enemies wearing three-hit animations.
+So the damage tables overstate DIDI and DEDÉ by their finisher alone (7 and 10),
+not by two thirds of a string, and the fight economy is NOT unjudged. The
+options below are kept only as the record of what the reach knobs do.
 
-**Three ways to fix it, and they are not equivalent:**
+**The three knobs that move a string's reach**, kept as a reference rather than
+as a to-do — nothing here needs fixing:
 
 1. **Drop mid-string knockback** to near zero and leave the finisher launching.
    This is what the baratas now do and it is the genre-standard answer — a
@@ -609,8 +625,11 @@ what was played was one-hit enemies wearing three-hit animations.
 3. **Let the enemy step in between hits.** Truest to the genre and the biggest
    change: it turns a string into a pressure tool that follows the player.
 
-Whichever is chosen, **every enemy's damage per turn roughly triples**, so the
-HP table and `maxAttackers` want re-reading straight afterwards.
+⚠️ **THE OLD VERSION OF THIS ENDED "whichever is chosen, every enemy's damage
+per turn roughly triples, so the HP table and maxAttackers want re-reading".
+That followed from the mistaken premise and is not true.** Closing DIDI's and
+DEDÉ's third hit would add 7 and 10 damage to one of their strings — a real
+change, but a tuning one, and it is not wanted anyway.
 
 ### The silent-config trap, and it will happen again
 
@@ -745,7 +764,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/game-over.js` | the LOST panel: the flying dungeon's worms, saying PERDEU! |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
 | `src/life-bar.js` | STILL LIFE's hand-drawn bar, player and boss |
-| `src/hud.js` | health, GO prompt, end cards, **the CLEAR board** |
+| `src/hud.js` | health, lives, GO prompt, **the CLEAR board** |
 | `src/stats.js` | the run's tally: what the CLEAR board counts up |
 | `src/debug.js` | everything the C key draws |
 | `src/input.js` | keyboard + pad; owns the pad mapping merge-back |
@@ -1767,11 +1786,10 @@ reader is the shape to look for.
   *The horse boss*. He is HIPÓLITO as of 2026-08-21. What is still open there:
   the fight has never been judged with
   `CONFIG.DEV.on` false — at 50 damage a punch he dies in three combos.
-- ⚠️ **THE CIGARETTES' STRINGS DO NOT CONNECT PAST HIT 1** — see the section
-  above. This is the single most consequential open item in the file: the
-  advertised damage numbers have never reached the player, so the fight economy
-  is unjudged whatever dev mode is set to. The baratas are already fixed and
-  are the worked example of option 1.
+- **The strings DO connect** — the claim that they never did was a measurement
+  error and is corrected above. DIDI and DEDÉ miss only their third hit, by 1.7
+  and 6.2px, because their own knockback shoves the player out of range; the
+  user was told and likes it. **Left deliberately as is.**
 - **The belt is unjudged in motion** — 520 came from measuring the plate, not
   from play. Hold C: the magenta bands are the no-walk regions, each labelled
   with the knob that resizes it.
