@@ -1779,13 +1779,70 @@ reader is the shape to look for.
 
 ## Open
 
-- ⚠️ **DEV MODE IS ON** (`CONFIG.DEV.on`), so every punch does 50. `package.sh`
-  refuses to build until it is off. Number keys 1-9 jump rooms; the marker in
-  the top right says which room you are in.
+- ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**
+  (2026-08-22). Dev mode had been on since the game was started, so no fight had
+  ever been seen at real damage; turning it off for the build was the first
+  time. On top of that the player's combo was raised on request in the same
+  pass — 4+5+6+4+9 = 28 became 5+6+8+5+12 = 36 (+28.6%; 30% exactly is 36.4 and
+  these are integers), with the alternate finisher moved 9 → 12 so the two
+  endings still cost the same.
+
+  So the shipped numbers are a rebalance on top of an untested baseline. When
+  judging it, expect to move the HP table rather than the combo.
+
+  ⚠️ **AND "HP / 36" IS NOT A TIME TO KILL. I QUOTED IT AS ONE AND THE USER,
+  WHO HAD ACTUALLY PLAYED IT, SAID THE BOSSES TAKE FAR LONGER.** They were
+  right, twice over:
+
+  * **A FULL COMBO LANDS 25, NOT 36.** Contacts fall at 55 / 180 / 320 / 455 /
+    635ms and i-frames are `flyBossHurtMs` 150 on a boss and `hurtMs` 260 on a
+    mook, so **hits 2 and 4 are eaten on every target in the game** — only 1, 3
+    and 5 connect (5 + 8 + 12). Hitstop does not change this: it freezes the
+    attack clock and `hurtT` together, so the relative spacing is unchanged.
+  * **NARUTÃO IS USUALLY OUT OF REACH.** `verticalReach` is 70; it hovers at
+    `flyBossHoverY` 150 and rises to 210 to telegraph. A grounded punch cannot
+    touch it except at the bottom of a swoop or during the ground sweep, so its
+    fight is paced by how often it descends, not by damage at all.
+
+  Corrected: NARUTÃO 88 HP = **3.5** combos of damage plus the waiting;
+  HIPÓLITO 150 HP = **6.0**, and he only opens up during his 460ms turn and his
+  idle beat. Both are floors, not experiences.
+
+  **THE STANDING LESSON:** an arithmetic quotient is not a measurement. Damage
+  per second means nothing here — i-frames, reach and the openings the AI leaves
+  are what set the pace, and none of them are in the division.
+
+  `CONFIG.DEV.on` is `false` and the block is KEPT: `punchDamage` and the
+  number-key room jumps are the tools for that pass. `package.sh` refuses to
+  build while it is true.
 - **THE BOSS ROOM HAS ITS BOSS** (2026-08-21): a HORSE, after the wave. See
   *The horse boss*. He is HIPÓLITO as of 2026-08-21. What is still open there:
   the fight has never been judged with
   `CONFIG.DEV.on` false — at 50 damage a punch he dies in three combos.
+- **NEXT UP, AND DECIDED (2026-08-21): the bottom rank tier becomes COMÉDIA.**
+  The board's grade is drawn as one 76px glyph — S / A / B / C — and C means
+  "you finished, badly". In Brazilian slang *comédia* is what you call someone
+  who is a joke, which is the same thing said with teeth. It was one of the
+  words offered for the score board and is the only one that never found a row;
+  it belongs here instead.
+
+  ⚠️ **It is NOT a string swap.** `rankTiers` values are stamped as a single
+  scaled letter, so a seven-letter word needs its own size and layout —
+  `rankSize` cannot simply be reused. Scope agreed as the BOTTOM TIER ONLY;
+  S, A and B stay letters unless the user names them too.
+
+- ⚠️ **THE PLAYER'S COMBO HAS TWO HITS THAT CAN NEVER LAND.** Its contacts are
+  125-180ms apart and every target's i-frames are longer (150 boss / 260 mook),
+  so hits 2 and 4 are always inside the previous hit's invulnerability. The
+  advertised 5+6+8+5+12 = 36 is really 5+8+12 = 25 against anything.
+
+  Not obviously wrong — i-frames during hitstun are what stop infinite juggling
+  — but **the damage table overstates the player by 30%**, which is the same
+  shape as the enemy-string error above and was found the same way: by asking
+  what actually connects instead of adding the column up. Either retime the
+  chain so contacts clear `hurtMs`, or restate the table as 3 landing hits.
+  Left alone for the balance pass.
+
 - **The strings DO connect** — the claim that they never did was a measurement
   error and is corrected above. DIDI and DEDÉ miss only their third hit, by 1.7
   and 6.2px, because their own knockback shoves the player out of range; the

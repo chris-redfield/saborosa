@@ -43,7 +43,11 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    on: true,
+    /* OFF FOR THE ITCH BUILD, 2026-08-22. `package.sh` refuses to build while
+       this is true, which is the point of it. Turn it back on for testing --
+       but note that everything below is dead while it is false, including the
+       number-key room jumps. */
+    on: false,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
@@ -1244,14 +1248,14 @@ const CONFIG = {
      part of the string. */
   COMBO: [
     { pose: 'combo1', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
-      damage: 4, reachX:  96 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  60, lift: 0 },
+      damage: 5, reachX:  96 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  60, lift: 0 },
     { pose: 'combo2', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 230,
-      damage: 5, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
+      damage: 6, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
     // The leaning punch: the body commits forward, so it reaches further.
     { pose: 'combo3', startupMs: 70, activeMs: 80, recoverMs: 100, cancelMs: 250,
-      damage: 6, reachX: 110 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 140, lift: 0 },
+      damage: 8, reachX: 110 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 140, lift: 0 },
     { pose: 'combo4', startupMs: 55, activeMs: 70, recoverMs:  85, cancelMs: 240,
-      damage: 4, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
+      damage: 5, reachX: 100 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback:  80, lift: 0 },
     /* The uppercut KNOCKS DOWN, and that is what the combo is for: the first
        four hits are worth 19 damage between them, this one is worth 9 on its
        own AND takes the enemy off its feet, which buys the player the room to
@@ -1262,7 +1266,7 @@ const CONFIG = {
        the drawing. Row 6's low lunging punch is the alternative ending and is
        cut but unwired; see POSE_RAGGED. */
     { pose: 'combo5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
-      damage: 9, reachX: 118 * BODY_SCALE, reachZ: 52 * BODY_SCALE, knockback: 320,
+      damage: 12, reachX: 118 * BODY_SCALE, reachZ: 52 * BODY_SCALE, knockback: 320,
       lift: 190 * BODY_SCALE, knockdown: true },
   ],
 
@@ -1285,7 +1289,7 @@ const CONFIG = {
      further for the lunge. */
   COMBO_ALT_FINISH: {
     pose: 'comboLow5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
-    damage: 9, reachX: 124 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 420,
+    damage: 12, reachX: 124 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 420,
     lift: 0, knockdown: true,
   },
 
@@ -1294,6 +1298,17 @@ const CONFIG = {
      punch feeling like it weighed something: the picture holding still for two
      frames reads as impact far more strongly than any amount of particle.
      Scaled by the blow, so the finisher hits visibly harder than the jab. */
+  /* ⚠️ THE PLAYER'S COMBO WAS RAISED 2026-08-22, BY REQUEST, FOR THE FIRST ITCH
+     BUILD: 4+5+6+4+9 = 28 became 5+6+8+5+12 = 36. That is +28.6%, not exactly
+     the 30% asked for -- these are integers and 28 x 1.3 is 36.4, so 36 is the
+     closest whole-number string. The alternate finisher moved with it (9 -> 12)
+     or the two endings would have stopped costing the same.
+
+     IT IS A FIRST GUESS AND IT IS UNPLAYED. The fight economy had never been
+     seen at real damage at all before this build -- dev mode had been on since
+     the game was started -- so this is a rebalance on top of an untested
+     baseline. Every enemy's time-to-kill divides by 1.29; nothing else moved.
+     Judge it in play and expect to move the HP table rather than this. */
   hitstopMs: { jab: 55, straight: 70, finisher: 130 },
   /* NO SCREEN SHAKE. There was a shakeAmp/shakeMs/shakeFreq block here and it
      was REMOVED BY REQUEST — the effect is not wanted in this game. Hitstop

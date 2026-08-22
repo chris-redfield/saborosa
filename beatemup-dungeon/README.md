@@ -607,8 +607,10 @@ person who left it on.
 ## How hard everyone hits
 
 ```
-COMBO damage   4 + 5 + 6 + 4 + 9  =  28 for the full string
-player HP      110
+COMBO damage   5 + 6 + 8 + 5 + 12 =  36 advertised   (raised 2026-08-22)
+               5 +     8 +     12 =  25 ACTUALLY LANDS -- hits 2 and 4 are
+               always inside the target's i-frames. See STATE.md.
+player HP      110  x 3 lives
 
                     HP   speed   string              P(3 hits)   charge
 DUDU      (cigarro)  34   0.88    3 + 3 + 5  = 11        30%        -
