@@ -217,6 +217,7 @@ class Combat {
     player.hurt(box.def.damage, box.dir, box.def.knockback,
                 box.def.lift || 0, !!box.def.knockdown);
     if (this.stats) this.stats.tookHit(box.def.damage);
+    this._takeHitSound();
     this._impact(boss, player, 'finisher', false);
   }
 
@@ -239,8 +240,34 @@ class Combat {
       player.hurt(box.def.damage, box.dir, box.def.knockback,
                   box.def.lift || 0, !!box.def.knockdown);
       if (this.stats) this.stats.tookHit(box.def.damage);
+      this._takeHitSound();
       this._impact(e, player, 'straight', false);
     }
+  }
+
+  /**
+   * A blow LANDING ON THE PLAYER.
+   *
+   * ⚠️ IT IS THE PUNCH SAMPLE, PITCHED DOWN, AND THAT IS THE REQUEST -- "the
+   * porrada noise when the player gets hit, like when he hits the enemies".
+   * A second recording would have been a different sound, and half the point is
+   * that a fight sounds like one fight.
+   *
+   * ⚠️ CALLED FROM EVERY PATH THAT DAMAGES THE PLAYER, and there are two --
+   * the crowd's swings and a boss's contact -- which is exactly why it is a
+   * method rather than two copies of one line. The player's own connects fire
+   * their sound in playerHits() instead, because that is where the combo
+   * position is known and the finisher gets its own clip.
+   *
+   * NO DETUNE PER HIT. The rising pitch in a combo exists to keep five copies
+   * of one sample in a row from reading as a stuck record; blows coming the
+   * other way arrive from different attackers at irregular spacing and have
+   * nothing to be told apart from.
+   */
+  _takeHitSound() {
+    if (!this.sound) return;
+    const r = (CONFIG.sfxTakeHitRate != null) ? CONFIG.sfxTakeHitRate : 0.82;
+    this.sound.play('hit', r);
   }
 
   /**

@@ -76,6 +76,12 @@ function assetManifest() {
     out.push({ key: 'hitfx', src: CONFIG.FX_SHEET + '-sprites.json', how: 'json' });
   }
 
+  /* STILL LIFE's explosion, for the horse boss's death. One small webp read in
+     place out of that game's folder; `image` rather than `big` because it is
+     1228x845 and every frame on it is drawn at a couple of hundred px, so
+     there is nothing to downscale. */
+  if (CONFIG.BOOM_SHEET) out.push({ key: 'boom', src: CONFIG.BOOM_SHEET, how: 'image' });
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>

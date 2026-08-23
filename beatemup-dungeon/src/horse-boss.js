@@ -49,6 +49,16 @@ class HorseBoss {
     this.z = z;
     this.jumpY = 0;          // he never leaves the floor; kept so the shared
                              // depth/ground helpers read the same as a fighter
+    /* NO GROUND SHADOW, on request 2026-08-22. Every other fighter casts one
+       and it is load-bearing for them -- an ellipse on the floor is the only
+       way to read where a jump will land and which of two bodies is in front.
+       ⚠️ HE NEVER JUMPS AND HE IS NEVER BEHIND ANYTHING: the boss room holds
+       exactly two characters, and by the time he arrives the ellipse was doing
+       nothing but sitting under an animal whose own hooves already say where he
+       stands. `game.js`'s shadow pass reads this flag; it is a property rather
+       than a `kind === 'horse'` test there so a future boss can say the same
+       thing without that function learning about it. */
+    this.noShadow = CONFIG.HORSE_BOSS.shadow === false;
     this.hp = C.health;
     this.maxHp = C.health;
     this.dead = false;
@@ -62,6 +72,9 @@ class HorseBoss {
        purpose -- combat.js reads `hasHit` off whatever hitbox() came from, and
        one shape for "a blow in progress" is one less thing to get wrong. */
     this.atk = null;
+    /* The death explosions, rolled on the frame he dies and not before -- see
+       _armBooms(). Empty until then, so draw() has nothing to skip. */
+    this.blasts = [];
     this.turnTo = null;      // facing being turned toward, during 'turn'
     this.passes = 0;         // charges completed; only used to vary the rhythm
     this.chargeZ = null;     // the lane a charge committed to; see _charge()
@@ -140,6 +153,7 @@ class HorseBoss {
       this.atk = null;
       this.phase = 'die';
       this.t = 0;
+      this._armBooms();
     }
     return true;
   }
@@ -587,7 +601,52 @@ class HorseBoss {
   }
 
   _die(dt) {
-    // Nothing to drive: the tip and the fade are read off `t` by draw().
+    // Nothing to drive: the blasts and the fade are read off `t` by draw().
+  }
+
+  /**
+   * Roll the explosions, ONCE, on the frame he dies.
+   *
+   * ⚠️ ROLLED HERE AND STORED, NOT IN draw(). A scatter re-rolled every frame
+   * is not an explosion, it is static -- the same lesson hit-fx.js records for
+   * the impact bursts, where the random pick is frozen on the event. Everything
+   * random about this death happens in this function and nowhere else.
+   *
+   * THE TIMES ARE SHUFFLED AGAINST THE POSITIONS on purpose. Laid out along his
+   * body and then fired in that order, the blasts sweep from nose to tail like
+   * something being unzipped; dealt out at random they read as him coming apart
+   * from the inside, which is what was asked for.
+   */
+  _armBooms() {
+    this.blasts = [];
+    const B = (CONFIG.HORSE_BOSS.DEATH_BOOM) || {};
+    if (!B.on) return;
+    const n = Math.max(1, B.count || 7);
+    const h = CONFIG.HORSE_BOSS.sizePx;
+
+    // The order the blasts go off in: 0..n-1, shuffled.
+    const order = [];
+    for (let i = 0; i < n; i++) order.push(i);
+    for (let i = n - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
+    }
+
+    const jit = B.sizeJitter || 0;
+    for (let i = 0; i < n; i++) {
+      /* Spread ALONG him first and jittered second, so seven blasts cover the
+         whole animal instead of clustering wherever the rolls happened to fall
+         -- a horse is longer than he is tall and the middle of him is not where
+         this reads. */
+      const spanX = (n === 1) ? 0 : ((i + 0.5) / n * 2 - 1);
+      this.blasts.push({
+        ox: (spanX * (B.spreadXRel || 0.55) + (Math.random() - 0.5) * 0.16) * h,
+        // Up from his feet: never at ground level, never over his head.
+        oy: -(0.18 + Math.random() * (B.spreadYRel || 0.75)) * h,
+        at: (B.startMs || 0) + order[i] * (B.everyMs || 180),
+        size: (B.sizePx || 210) * (1 + (Math.random() * 2 - 1) * jit),
+      });
+    }
   }
 
   /* Waits for the WHOLE death, not for `dead`. The level advances on this, and
@@ -668,14 +727,27 @@ class HorseBoss {
       const period = (CONFIG.hurtBlinkMs || 60) / 1000;
       alpha = (Math.floor(this.hurtT / period) % 2) ? 0.4 : 1;
     }
+    const boom = (C.DEATH_BOOM && C.DEATH_BOOM.on) ? C.DEATH_BOOM : null;
     if (this.dead) {
-      alpha *= Math.max(0, 1 - this.t / ((C.dieMs || 1700) / 1000));
+      /* HE GOES FASTER THAN THE BLASTS DO. Fading him across the whole of
+         `dieMs` left a horse still faintly visible under explosions that were
+         supposed to have destroyed him; `fadeMs` takes him out early and the
+         rest of the string reads as the wreckage still going up. Without the
+         booms it is the old full-length fade. */
+      const ms = boom ? (boom.fadeMs || 620) : (C.dieMs || 1700);
+      alpha *= Math.max(0, 1 - this.t / (ms / 1000));
     }
 
-    /* HE TIPS OVER RATHER THAN PLAYING A DEATH, because there is no death row.
-       Rotated about his own ground point, which is what makes it read as
-       falling rather than as sliding sideways. */
-    const rot = this.dead
+    /* HE USED TO TIP OVER, because there is no death row -- rotated about his
+       own ground point, which is what made it read as falling rather than as
+       sliding sideways.
+
+       ⚠️ NOT WHILE HE IS EXPLODING. A body toppling THROUGH a string of blasts
+       reads as two deaths playing at once: the eye follows the rotation and
+       stops reading the explosions as the thing that killed him. He now stands
+       where he is and goes up. The tip is still here and still correct -- turn
+       `DEATH_BOOM.on` off and it comes back. */
+    const rot = (this.dead && !boom)
       ? Math.min(1, this.t / ((C.dieMs || 1700) / 1000) * 1.6) * (C.dieTipRad || 1.15)
         * (this.facing === 'right' ? 1 : -1)
       : 0;
@@ -687,5 +759,56 @@ class HorseBoss {
     sheets.draw(ctx, 'horse', facing, f.anim, f.step, gx, gy, {
       alpha, rotate: rot, flash: this.flash,
     });
+
+    // OVER him, always -- an explosion behind the thing exploding is a sunrise.
+    if (boom) this._drawBooms(ctx, sheets, gx, gy);
+  }
+
+  /**
+   * The death explosions.
+   *
+   * ⚠️ THE SHEET COMES THROUGH `sheets.assets` RATHER THAN THROUGH A SECOND
+   * ARGUMENT. `draw(ctx, sheets, camX)` is the interface every drawable in this
+   * game answers to, and widening it for one boss's death would have meant
+   * touching the shell, the Mosca and the crowd for something none of them
+   * needs. Sheets owns an Assets; this borrows it. If a second effect ever
+   * wants raw art, THAT is the moment to give the interface an assets slot
+   * rather than to borrow twice.
+   *
+   * NOTHING IS TICKED HERE. Each blast knows when it starts, and `this.t` says
+   * what time it is -- so the whole string is a pure function of the death
+   * clock, which is the same arrangement the game over panel uses and it means
+   * there is no second thing to keep in step.
+   */
+  _drawBooms(ctx, sheets, gx, gy) {
+    if (!this.blasts || !this.blasts.length) return;
+    const img = sheets.assets && sheets.assets.getDrawable('boom');
+    const rects = CONFIG.BOOM_RECTS || [];
+    if (!img || !rects.length) return;               // no art: no explosion, no crash
+    const ms = CONFIG.boomMs || 71;
+    const t = this.t * 1000;
+
+    /* Measured off the WIDEST frame, not the first. With the full 12-frame set
+       the first frame is the smallest one -- the blast growing -- so anchoring
+       the scale on it would make every explosion enormous. */
+    let peak = 1;
+    for (const r of rects) if (r[2] > peak) peak = r[2];
+
+    ctx.save();
+    for (const b of this.blasts) {
+      const local = t - b.at;
+      if (local < 0) continue;
+      const i = Math.floor(local / ms);
+      if (i >= rects.length) continue;               // this one has finished
+      const r = rects[i];
+      const s = b.size / peak;
+      const w = r[2] * s, h = r[3] * s;
+      /* Centred on its own point, so the frames grow and shrink about it. Every
+         frame shares one scale, which is what keeps their RELATIVE sizes -- the
+         animation is the sheet's, not something re-timed here. */
+      ctx.drawImage(img, r[0], r[1], r[2], r[3],
+                    gx + b.ox - w / 2, gy + b.oy - h / 2, w, h);
+    }
+    ctx.restore();
   }
 }

@@ -169,6 +169,89 @@ moveset that is exactly what was drawn. See *The horse boss*.
 
 ---
 
+## And then on 2026-08-22
+
+A pass of ten small requests, and three of them overturned decisions this
+document argued for. They are listed here so nobody re-argues them from the old
+notes, which are still in place further down.
+
+**A PROJECTOR WAS BUILT AND THEN SWITCHED OFF, ALL IN ONE DAY.** Still Life's
+old-film post effect — grain, brightness flicker, a vignette, gate weave, the
+odd scratch — was copied over file-for-file and value-for-value, on the ask that
+the two games look like they came off the same reel. Then it was seen in this
+game and turned down: *"it causes a terrible feeling"*.
+
+⚠️ **IT WAS SOFTENED BEFORE IT WAS REFUSED, so the refusal is not about the
+numbers.** The first note back was that it blinked too much, and the real
+culprit was `filmFlickerMs` — at Still Life's 24ms the lamp value is re-rolled
+~42 times a second, which the eye reads as strobing rather than as a lamp. It
+went to 80 (~12 changes/s), the dip came down 30% and the scratch with it. It
+was still not wanted. **Do not re-propose this as a tuning problem.**
+
+⚠️ **AND NOTHING WAS DELETED, ON REQUEST.** `CONFIG.film: false` is the whole of
+the off switch. `src/film.js`, `renderFilmed()` in game.js and the entire
+`CONFIG.film*` block are live and correct; one flag brings it back. It also
+covers the HUD, which is the one deliberate difference from Still Life, where
+the HUD is drawn outside the film pass — `renderFilmed()` is the split point if
+that ever matters.
+
+**THE TITLE NO LONGER WAITS.** The 08-19 note below defends a two-second hold on
+the bare photograph before the name arrives — *the wait is the design* — and the
+name now **falls in from off the top of the frame on the first frame** instead,
+eased out so it lands rather than stops. The argument was heard and overruled;
+the hold is one config line away (`titleDropAtMs`) if it is ever wanted back.
+
+**AND LEBRON WALKS ACROSS IT.** Once the name has landed he enters from the left
+and leaves by the right, drawn out of the same packs the fight uses. ⚠️ He is
+DRAWN, not simulated — two numbers and a frame clock, exactly the choice
+ending.js makes and for the reasons its header gives. Crossing once is what was
+asked for; `titleWalkRepeatMs` sends him round again.
+
+**AND THE GLOSS UNDER IT READS (BIG COCONUT BASH).** It was `(Coconut Bash)`;
+BATIDÃO is the augmentative and dropping it lost the joke rather than
+translating it.
+
+**DYING NOW ENDS THE RUN PROPERLY.** The game over panel used to hand straight
+back into play, on the arcade rule that a death is a retry. ⚠️ That rule is
+about a DEATH and this is not one — the retry already happened twice, and the
+third one is the end of the run in exactly the sense the CLEAR board is. It goes
+back to the title now, like winning does.
+
+**AND IT ENDS ON STILL LIFE'S MUSIC.** That game's `game-over.ogg`, read in
+place, played the way it plays it: 10% slow with a second voice 50ms behind it,
+and the level's bed stopped to make room. `CONFIG.GAME_OVER_STING` holds the
+three numbers; `Sound.play` grew a `delaySec` so the double is scheduled on the
+audio clock rather than by a timer. See *Sound*.
+
+**AND TAKING A PUNCH MAKES A NOISE.** The porrada sample, pitched down
+(`sfxTakeHitRate`), on every path that damages the player. Deliberately the same
+recording rather than a second one: a fight should sound like one fight, and the
+pitch is what says which direction the blow went.
+
+**THE ROACHES AND THE HORSE ARE 30% BIGGER.** Both were asked for flat. ⚠️ The
+roaches took the drawn size ONLY — their boxes did not move, so the picture is
+now about 30% wider than what can be hit, which is the standing warning on
+`drawScale` and it is now a real gap rather than a theoretical one. The horse
+took it properly: `drawScale`, `HORSE_BOSS.sizePx` (the hurtbox) and both attack
+REACHES all went up by 1.3, because this file's rule is that a reach is measured
+off the drawing. His DECISION ranges did not, so a kick he commits to now lands
+more reliably — a bigger animal doing what a bigger animal does, but it is a
+difficulty change and it was not separately asked for.
+
+**AND THE HORSE BLOWS UP.** He used to tip over and fade, for want of a death
+row; he now goes up in a string of seven explosions rolled once on the frame he
+dies and walked across his body over a second. ⚠️ The tip is dead code on
+purpose — `DEATH_BOOM.on` false brings it back, and a body toppling THROUGH the
+blasts read as two deaths playing at once. The art is Still Life's explosion
+sheet, read in place. `dieMs` went to 2000 to cover the string; that number and
+the blast timings have to be checked against each other.
+
+**AND HE CASTS NO SHADOW.** The only character in the game without one. The
+ellipse is load-bearing for everyone who jumps or who can stand behind someone
+else; he does neither, and the boss room holds exactly two characters.
+
+---
+
 ### Sound
 
 Three pieces, and they were built in this order because each needs the one
@@ -662,7 +745,10 @@ when that attack was tuned.
 BODY is `fighterSizePx` tall. For a cigarette every pixel of that is cigarette;
 for a barata the top 44px of 168 — **26%** — is horns and antennae, so the
 animal itself gets the remaining 124. That is why they needed 1.888 to stand as
-big as the gang they replaced rather than merely as tall.
+big as the gang they replaced rather than merely as tall. ⚠️ **They took another
+flat 30% on 2026-08-22 (2.4544) and that is past this argument** — they are not
+matching a cigarette's mass any more, they are bigger than the men, and their
+boxes did not move with them.
 
 
 ## The one constraint that will break things if forgotten
@@ -759,7 +845,8 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/combat.js` | hit resolution and hitstop |
 | `src/hit-fx.js` | the impact burst: six variants, picked per blow |
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
-| `src/title.js` | the photo title screen: hold, then the name |
+| `src/title.js` | the photo title screen: the name drops in, LEBRON walks past |
+| `src/film.js` | **STILL LIFE'S PROJECTOR**, copied unchanged — the post effect |
 | `src/ending.js` | the WON screen: walk in, arms up, then the tally |
 | `src/game-over.js` | the LOST panel: the flying dungeon's worms, saying PERDEU! |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
@@ -1636,10 +1723,15 @@ Cleared in both `toTitle()` and `start()`, because those are the two ways a run
 can begin (the title hands to `start`, and so does the DEV room-jump).
 
 **And the two endings now part company.** Finishing goes back to the TITLE — the
-run is over and that is where a run begins. Dying still goes straight back into
-play, because a death is a retry and making the player sit through a title screen
-to have another go is the one thing an arcade game must not do. `Title.reset()`
-exists for the first of those, so the hold and the name play again from the top.
+run is over and that is where a run begins. Dying used to go straight back into
+play, because a death is a retry and making the player sit through a title
+screen to have another go is the one thing an arcade game must not do.
+⚠️ **THAT WAS OVERTURNED ON 2026-08-22 AND THE ARGUMENT ABOVE HAS AN ERROR IN
+IT: this panel is not a death.** The retry already happened, twice — a life is
+spent and the fight resumes where it fell — and only the THIRD death reaches
+the panel, by which point the run is over in exactly the sense the CLEAR board's
+is. Both endings go to the title now. `Title.reset()` is what makes that work,
+so the screen plays again from the top.
 
 ### The one I added and the user caught
 

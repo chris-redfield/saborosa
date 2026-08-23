@@ -99,6 +99,65 @@ const CONFIG = {
   fitMaxScale: 0,        // 0 = uncapped, so itch's fullscreen button can fill a
                          // big monitor — see flying-dungeon/STATE.md for why
 
+  /* --- Old-film style (post effect) ---------------------------------------
+     STILL LIFE'S FILTER, COPIED VALUE FOR VALUE on request (2026-08-22), and
+     `src/film.js` is that game's file unchanged. The headline is the FRAME
+     LINE: the dark gap between two film frames rolling down the picture like a
+     misframed projector. Around it: grain, brightness flicker, a vignette, gate
+     weave, and the odd scratch. Colour is KEPT -- these are projector
+     artifacts, not a black-and-white grade.
+
+     ⚠️ THREE OF THESE HAVE SINCE BEEN SOFTENED AND NO LONGER MATCH STILL LIFE.
+     Seen on this game's plate the flicker read as a blink rather than as a
+     projector -- watched on the wall photograph and the filmed street it is the
+     one artifact with nowhere to hide, where over there it sits under a busy
+     scrolling world. So on the same day it landed: the dip is 30% shallower and
+     it is HELD more than three times as long (24ms -> 80ms), which is the part
+     that was actually wrong -- a value re-rolled every 24ms changes ~42 times a
+     second and the eye reads that as strobing, not as a lamp. The scratch came
+     down 30% with it. Still Life's originals are in the comments beside each.
+
+     ⚠️ EVERYTHING ELSE HERE IS THAT GAME'S, VALUE FOR VALUE, and should stay
+     that way: the point of the request was that the two games look like they
+     came off the same projector. If the grain, the vignette or the weave move,
+     move them in flying-dungeon/src/config.js too. They are duplicated rather
+     than imported for the same reason TITLE_FONT is: each game's config.js is
+     self-contained.
+
+     ⚠️ IT SITS OVER EVERYTHING, INCLUDING THE HUD AND THE END CARDS, which is
+     one difference from that game -- there the HUD is drawn outside the film
+     pass. Here the whole frame is one projected picture: the grain, the
+     vignette and the 1.4px gate weave take the health bar with them. If the
+     HUD ever needs to sit outside it, the split point is `renderFilmed()` in
+     game.js, not a knob in here. */
+  /* ⚠️ OFF. It was built, seen, and turned down on the day it landed
+     (2026-08-22): "it causes a terrible feeling". The flicker was softened
+     first -- see the note above -- and it still was not wanted, so the answer
+     is not another pass on these numbers.
+
+     EVERYTHING BELOW STAYS, AND THE CODE PATH STAYS, on request: `film.js`,
+     `renderFilmed()` and this whole block are live and one flag from working.
+     Set this true to see it again. Do not delete any of it to tidy up. */
+  film: false,
+  filmBarSpeed: 60,      // px/sec the frame-gap bar rolls down
+  filmBarHeight: 0,      // px thickness of the dark frame gap (0 = no frame line)
+  filmBarDark: 0.78,     // how dark the gap gets (0-1)
+  filmGrain: 0.11,       // grain opacity
+  filmFlicker: 0.042,    // max brightness dip (black overlay alpha). 0.06 there
+  /* How long ONE brightness value is held before a new one is rolled -- this is
+     the BLINK RATE, and it is the knob that matters. At Still Life's 24ms the
+     lamp changes ~42 times a second, which strobes; at 80 it changes ~12 times,
+     which breathes. Raise it further to slow the flicker, lower it to bring the
+     strobe back, 0 = a new value every single frame. */
+  filmFlickerMs: 80,     // 24 there
+  filmVignette: 0.22,    // corner darkening strength
+  filmWeave: 1.4,        // px vertical gate jitter of the whole picture
+  filmScratchChance: 0.028, // per-frame chance of a vertical scratch. 0.04 there
+  /* Optional CSS grade on the canvas element (kept EMPTY = full colour). A
+     gentle 'contrast(1.08)' would add filmic punch; desaturation would not be
+     this effect. Empty in Still Life too. */
+  filmCss: '',
+
   /* =========================================================================
      THE BELT
      =========================================================================
@@ -758,9 +817,25 @@ const CONFIG = {
                   30% ON TOP OF THAT, ON REQUEST, and it lands at almost exactly
                   the number that argument predicts: matching a cigarette's
                   visible MASS rather than its normalised height wanted ~1.97,
-                  and 1.452 x 1.3 is 1.888. So the roach now stands as big as
-                  the gang he replaced, rather than as tall. */
-               drawScale: 1.888,
+                  and 1.452 x 1.3 is 1.888. So the roach stands as big as the
+                  gang he replaced, rather than as tall.
+
+                  AND 30% AGAIN, ASKED FOR ON 2026-08-22: 1.888 x 1.3 = 2.4544
+                  -- then 10% BACK OFF the same day, 2.4544 x 0.9 = 2.20896,
+                  which is where it sits. He is still well past the mass
+                  argument above: this is not matching a cigarette any more, it
+                  is a roach that is bigger than the men, which is a choice
+                  about what the fight looks like rather than a correction.
+
+                  ⚠️ HIS REACHES HAVE NOT MOVED, AND THAT IS THE STANDING
+                  WARNING ON THIS FIELD. `drawScale` is drawn size only: the
+                  hurtbox, the punch boxes and the charge lane are all global or
+                  per-attack numbers and none of them knows about it. At 2.21
+                  the picture is about 17% wider than the boxes underneath it,
+                  so a swing that looks like it grazed him will miss. If that
+                  starts to read wrong in play, the fix is ENEMY_COMBOS'
+                  reaches, not this number. */
+               drawScale: 2.20896,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -773,8 +848,10 @@ const CONFIG = {
                // The same number as the tan one, and measured rather than
                // assumed: both sheets cut to an identical 167.8px body, so the
                // pair is drawn at one size and there is no ratio to preserve
-               // between them the way there is between the cigarettes.
-               drawScale: 1.888,
+               // between them the way there is between the cigarettes. They
+               // took the 2026-08-22 +30% and the -10% after it together, for
+               // the same reason.
+               drawScale: 2.20896,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -808,15 +885,28 @@ const CONFIG = {
        pack's mirror would fold the rotation in half, so HorseBoss draws that row
        with the flip forced off. Rows 1-4 face RIGHT like the rest of the cast.
 
-       `drawScale` 1.711 puts his 234px body on screen at 234px -- the atlas is
+       `drawScale` 1.711 put his 234px body on screen at 234px -- the atlas is
        drawn at almost exactly 1:1, which is what the master was reduced FOR
-       (tools/shrink-master.py). Raising it past ~1.8 starts upscaling the
-       texture and there is no more detail to find.
+       (tools/shrink-master.py).
+
+       ⚠️ 30% BIGGER ON REQUEST, 2026-08-22: 1.711 x 1.3 = 2.2243, so he is
+       drawn at 304px against a 137px fighter. THAT IS PAST 1:1 AND THE TEXTURE
+       IS NOW UPSCALED -- there is no more detail in the atlas to find, so he
+       will be very slightly softer than the men he is fighting. If that shows,
+       the answer is a bigger master through shrink-master.py, not a smaller
+       number here.
+
+       ⚠️ AND HE DID NOT GROW ALONE. `HORSE_BOSS.sizePx` went to 304 with him so
+       the hurtbox tracks the picture, and the two attack REACHES went up by the
+       same 1.3 because this file's rule is that a reach is measured off the
+       drawing -- see the notes on each. What did NOT scale is anything measured
+       in DEPTH (hitZ, kickReachZ, chargeReachZ): the belt is as deep as it was
+       and a 2D drawing does not get deeper when it gets taller.
 
        NAMED HIPOLITO BY THE USER, 2026-08-21. */
     horse:   { sheet: 'v2:beatemup-dungeon/horse-beat', pack: 'ragged',
                name: 'HIPÓLITO',
-               drawScale: 1.711,
+               drawScale: 2.2243,
                poses: {
                  runAttack: { anim: 'runAttack' },
                  trot:      { anim: 'trot' },
@@ -1894,7 +1984,7 @@ const CONFIG = {
        CHARACTERS.horse.drawScale; this is the number the SIMULATION uses --
        hurtbox width and height both come off it -- so the picture and the
        target grow together, the same pairing flyBossSizePx keeps. */
-    sizePx: 234,
+    sizePx: 304,
     /* 150 against the Mosca's 88. A full five-hit combo is 28 damage, so this
        is a little over five clean combos -- long enough to be the last fight,
        short enough that a player who never learns the turn opening can still
@@ -1902,6 +1992,10 @@ const CONFIG = {
        dies in three combos and the fight cannot be read at all. */
     health: 150,
     hurtMs: 150,           // i-frames, same as the Mosca. Never optional.
+    /* NO GROUND SHADOW. Asked for on 2026-08-22 and it is the only character in
+       the game without one -- see the note in HorseBoss's constructor for why
+       he can afford to lose it and the fighters cannot. `true` puts it back. */
+    shadow: false,
     /* Hurtbox, as fractions of sizePx. WIDER THAN A FIGHTER'S because he is a
        horse seen side-on -- he is longer than he is tall, and a box built on
        height alone would leave his hindquarters unhittable. */
@@ -2052,9 +2146,14 @@ const CONFIG = {
        be checked against the frame it belongs to -- no cigarette's second or
        third punch has ever connected, because those numbers were written by
        eye. The run row reaches 202px in front of the ground anchor, so the
-       chest arrives about there; 168 keeps the box just inside the picture, so
-       a charge that looks like it went through you did. */
-    chargeReachX: 168,
+       chest arrives about there; 168 kept the box just inside the picture, so
+       a charge that looks like it went through you did.
+
+       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (168 -> 218). The measurement is
+       of the PICTURE, so when the picture grew 30% this had to grow with it or
+       the box would have stopped where his chest used to be. The 202 above is
+       likewise now 263 on screen. */
+    chargeReachX: 218,
     chargeReachZ: 52,
     chargeKnockback: 480,
     chargeKnockdown: true, // it bowls you over, which is the whole point
@@ -2082,8 +2181,16 @@ const CONFIG = {
 
        IT ALSO HAS TO CLEAR `kickRange` (210) -- the distance at which he
        chooses to kick. A reach shorter than the range he commits from is an
-       attack that can never land, which is the rule in STATE.md. */
-    kickReachX: 260,
+       attack that can never land, which is the rule in STATE.md.
+
+       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (260 -> 338), for the same reason
+       as chargeReachX: the 300px measurement it was cut from is 390px now. The
+       ranges he DECIDES from (`kickRange`, `chargeMinRange`) were deliberately
+       left where they are -- they are about the fight's spacing, not about the
+       drawing -- so the practical effect is that a kick he commits to now lands
+       more reliably. That is a bigger animal doing what a bigger animal does,
+       but it IS a difficulty change and it was not separately asked for. */
+    kickReachX: 338,
     kickReachZ: 50,
     kickKnockback: 420,
     kickKnockdown: true,
@@ -2101,12 +2208,68 @@ const CONFIG = {
     kickAnimMs: 62,
 
     // --- Dying ---------------------------------------------------------------
-    /* NO DEATH ROW, so the death is drawn rather than animated: he tips over and
-       fades, which is what the Mosca does for the same reason. `finished()`
-       waits for the whole of it, so the level cannot advance out from under his
-       last beat -- the bug that hung a corpse in mid-air through the outro. */
-    dieMs: 1700,
-    dieTipRad: 1.15,       // how far over he goes before he is gone
+    /* NO DEATH ROW, so the death is drawn rather than animated. He used to TIP
+       OVER and fade -- what the Mosca does, for the same reason -- and since
+       2026-08-22 HE BLOWS UP INSTEAD, on request. `finished()` still waits for
+       the whole of it, so the level cannot advance out from under his last beat
+       -- the bug that hung a corpse in mid-air through the outro. */
+    /* ⚠️ 2000, NOT THE 1700 THE TIP-OVER USED. The blasts are the death now and
+       they have to finish INSIDE this: the last one starts at
+       startMs + (count-1) x everyMs = 1080ms and runs for 12 x boomMs = 852ms
+       more, so the string is over at 1932. `finished()` waits for this number,
+       and the level advancing before it would cut a blast off mid-frame -- the
+       same failure that once hung a corpse in mid-air through the outro.
+       RE-CHECK THAT SUM if count, everyMs or startMs ever move. */
+    dieMs: 2000,
+    /* How far over he goes before he is gone. ⚠️ DEAD WHILE `DEATH_BOOM.on` IS
+       TRUE, and kept rather than deleted: the tip is the fallback death and it
+       is one flag away. A body that tips over WHILE exploding reads as two
+       different deaths playing at once, which is what trying both looked
+       like. */
+    dieTipRad: 1.15,
+    /* --- Going up ----------------------------------------------------------
+       A STRING OF EXPLOSIONS ACROSS HIM, not one. The request was "multiple
+       explosions when the horse boss dies, instead of him falling dead", and
+       the plural is the effect: one blast in the middle of an animal this size
+       reads as a hit, several walking across him over a second reads as the
+       thing coming apart.
+
+       ⚠️ THE ART IS STILL LIFE'S EXPLOSION, READ IN PLACE out of that game's
+       folder like the game over frames and the death sting. See BOOM_RECTS at
+       the bottom of this file for what is on the sheet and why it must not be
+       re-cut by island detection.
+
+       ⚠️ THE PATTERN IS ROLLED ONCE, AT THE MOMENT HE DIES, and stored. Rolling
+       it per frame would give a different scatter sixty times a second, which
+       is not an explosion, it is static -- the same lesson the impact bursts
+       learned (see hit-fx.js). */
+    DEATH_BOOM: {
+      on: true,
+      count: 7,
+      /* When the first one goes off and how far apart the rest are, in ms. The
+         last STARTS at startMs + (count-1) x everyMs = 1080 and then runs for
+         another 852 (twelve frames at boomMs), so the string ends at 1932 --
+         ⚠️ which is what `dieMs` 2000 is sized for. Raise either of these and
+         raise dieMs with them, or the level will advance while a blast is
+         still on screen. */
+      startMs: 0,
+      everyMs: 180,
+      /* Where they land, as fractions of his drawn size: x across his body from
+         his ground point, y up from his feet. He is drawn side-on and longer
+         than he is tall, so the spread is wider than it is high. */
+      spreadXRel: 0.55,
+      spreadYRel: 0.75,
+      /* Width of the PEAK frame on screen, in px, before the per-blast jitter
+         below. 210 against a 304px-tall horse: each one covers a good third of
+         him, so seven of them cover him several times over. */
+      sizePx: 210,
+      sizeJitter: 0.3,     // +/- this fraction, per blast
+      /* How long he takes to go, in ms. SHORTER THAN THE BLASTS RUN FOR, on
+         purpose: he is gone before the last ones fire, so they read as the
+         wreckage still going up rather than as fireworks over a body that is
+         somehow still standing there. */
+      fadeMs: 620,
+    },
   },
 
   flyBossSizePx: 304,
@@ -2290,13 +2453,26 @@ const CONFIG = {
   title: true,           // false = straight into the fight
   TITLE_BG: 'v2:beatemup-dungeon/intro-background.jpg',
 
-  /* THE NAME, AND WHEN IT ARRIVES. The screen opens on the bare photograph and
-     holds it: one second of just the wall, then a second more, and the name
-     fades up at two. The point of the wait is that the picture is allowed to be
-     a picture before it becomes a title card -- cut the name in at zero and the
-     photo reads as a background for text rather than as the place. */
-  titleNameAtMs: 2000,
-  titleNameFadeMs: 320,  // 0 for a hard cut
+  /* THE NAME, AND HOW IT ARRIVES: IT FALLS IN FROM ABOVE THE SCREEN, AT ONCE.
+     ⚠️ THIS REPLACED A TWO-SECOND HOLD, deliberately and on request
+     (2026-08-22). The screen used to open on the bare photograph and let it be
+     a photograph for two full seconds before the name faded up, on the argument
+     that a picture given time reads as a place rather than as a background.
+     That argument was heard and overruled: the title now enters on frame one.
+     If anyone ever wants the old screen back, `titleDropAtMs` 2000 with
+     `titleDropMs` 0 and `titleNameFadeMs` 320 is roughly it.
+
+     THE DROP IS EASED OUT, so it arrives rather than stops -- a linear fall
+     hitting its mark dead is the difference between a title landing and a title
+     being teleported. It falls from clear of the top edge, so nothing is ever
+     seen half-drawn at the top of the frame. */
+  titleDropAtMs: 0,      // when the fall starts. 0 = the first frame
+  titleDropMs: 700,      // how long the fall takes
+  /* Where it falls FROM, as a fraction of canvas height above its resting
+     place. 1 = a full screen height up, which clears the top edge by a wide
+     margin whatever the type is set at. */
+  titleDropFromRel: 1.0,
+  titleNameFadeMs: 0,    // the drop IS the entrance; 0 = no fade over it
 
   /* Two lines, and the weights are the point: the Portuguese name is the title
      and the English is a gloss under it, so one is bold and large and the other
@@ -2304,7 +2480,11 @@ const CONFIG = {
      what the user calls it, and the parenthetical is a translation for a jam
      audience that will not read Portuguese. */
   TITLE_NAME: 'BATIDÃO DE CÔCO',
-  TITLE_SUBNAME: '(Coconut Bash)',
+  /* THE ENGLISH GLOSS, IN CAPS AND WITH THE "BIG" BACK IN, on request
+     2026-08-22. It was `(Coconut Bash)`; the Portuguese is BATIDÃO -- the
+     augmentative -- and dropping it lost the joke rather than translating it.
+     Capitalised to sit under a line that is all caps. */
+  TITLE_SUBNAME: '(BIG COCONUT BASH)',
   /* ⚠️ THE FLYING DUNGEON'S LETTERING FONT, COPIED STACK FOR STACK from its
      `overTitle.family` -- the face its TIME OVER / THE END panels are set in.
      Requested so the two games' type matches.
@@ -2349,6 +2529,38 @@ const CONFIG = {
      lean on `titleFauxBoldPct`, the way that game's white ending does. */
   titleNameColor: '#FAFA30',
   titleFadeOutMs: 600,   // to black, once dismissed
+
+  /* --- LEBRON crosses the title screen -------------------------------------
+     Once the name has landed he walks in from the left and off the right, and
+     that is the whole of it: no stop, no pose, nothing to press. Asked for on
+     2026-08-22.
+
+     ⚠️ HE IS DRAWN THE WAY THE ENDING DRAWS HIM, out of the same packs, by the
+     same two numbers and a frame clock -- NOT by ticking a `Player`. A Player
+     is a belt entity with depth, a camera, gates, an attack machine and a life
+     total, and none of that exists on a photograph. See the header of
+     ending.js, which makes the same choice for the same reason.
+
+     ⚠️ AND AT `scale` 1.0, WHICH IS EXACTLY HIS SIZE IN THE FIGHT. Same rule
+     the ending screen keeps and for the same reason: a character who changes
+     size between screens stops reading as the same character. If he needs to
+     be bigger in the frame, that is a crop of the photograph, not a scale on
+     the actor. */
+  titleWalk: true,
+  /* When he sets off, in ms AFTER THE NAME HAS FINISHED FALLING -- not after
+     the screen opened. Retiming the drop therefore moves him with it, and the
+     beat between the two stays the beat it was tuned to. */
+  titleWalkAfterMs: 250,
+  titleWalkStartXRel: -0.12,   // off the left edge, so he walks ON
+  titleWalkEndXRel: 1.12,      // and keeps going until he is clear of the right
+  titleWalkSpeed: 210,         // px/s -- the ending's, so the two walks match
+  titleWalkGroundYRel: 0.93,   // his feet, down the canvas: the near dirt
+  titleWalkScale: 1.0,
+  /* Gap before he crosses AGAIN, in ms. 0 = he crosses once and the screen is
+     still after that, which is what was asked for. Set it to a couple of
+     seconds if a title left sitting for minutes ever wants to keep moving --
+     the crossing itself takes about seven seconds at these numbers. */
+  titleWalkRepeatMs: 0,
 
   /* --- The game over panel -------------------------------------------------
      THE FLYING DUNGEON'S SCREEN, brought over: its three photographed frames of
@@ -2448,6 +2660,42 @@ const CONFIG = {
     poseHoldMs: 1500,
   },
 
+  /* --- The explosion -------------------------------------------------------
+     STILL LIFE'S BLAST, READ IN PLACE out of that game's folder rather than
+     copied -- the same arrangement as the game over frames and the death sting,
+     and for the same reason: two copies of a picture drift the moment one is
+     recut, and the wrong one is always the one you are not looking at.
+
+     ⚠️ ALL TWELVE FRAMES -- grow, peak, fade. The main game plays a 7-frame
+     TAIL-ONLY subset of this sheet that starts at the peak; this is the whole
+     explosion. The rects are that game's, unchanged, and they are correct for
+     the sheet at its native 1228x845.
+
+     ⚠️ DO NOT RE-CUT THIS SHEET BY ISLAND DETECTION. Two frames have DETACHED
+     DEBRIS sitting beside the main blob and the rects below deliberately span
+     both -- cut by connected components you get 14 frames, two of which are
+     stray sparks that will flash on their own in the middle of the animation.
+
+     Used by the horse boss's death; see HORSE_BOSS.DEATH_BOOM. */
+  BOOM_SHEET: 'v2:flying-dungeon/saborosa-boom.webp',
+  BOOM_RECTS: [
+    [243, 234,  93,  86],
+    [438, 179, 134, 134],
+    [638, 143, 162, 156],
+    [844, 128, 173, 158],
+    [210, 380, 190, 162],   // widest -- the peak, and what `sizePx` measures
+    [431, 363, 182, 164],
+    [642, 347, 179, 155],   // spans a detached debris fleck at x 808
+    [851, 335, 160, 151],
+    [233, 619, 129, 120],
+    [448, 610,  97, 112],
+    [663, 616,  99,  84],   // spans a second fleck at x 920
+    [901, 615,  56,  67],
+  ],
+  /* ms per frame -- 12 of them, so a blast is ~852ms. Still Life's rate
+     (78 / 1.1), kept so the two games' explosions are the same explosion. */
+  boomMs: 78 / 1.1,
+
   /* --- Music ---------------------------------------------------------------
      ONE FILE, ONE LOOP, NO MIXER AT RUNTIME. The track is three of the five
      takes layered and aligned in tools/beat-music-lab.html; the game does none
@@ -2489,6 +2737,17 @@ const CONFIG = {
        correlates at -0.00 with single-hit), which is why it gets its own entry
        instead of a pitch on the existing one. */
     comboFinish: 'v2:beatemup-dungeon/audio/sfx/combo-finish.ogg',
+    /* THE DEATH STING -- STILL LIFE'S, READ IN PLACE out of that game's folder
+       rather than copied, exactly like the game over panel's three frames above
+       it. Asked for by name on 2026-08-22: the two games are meant to end the
+       same way, so they end on the same piece of music, and two copies of it
+       would drift the moment one is recut.
+
+       ⚠️ IT IS MUSIC, NOT AN EFFECT, and it is played as one -- see
+       GAME_OVER_STING for the rate, the double and the level. It is in this map
+       because this map is what gets fetched and decoded, not because a punch
+       and a requiem are the same kind of thing. */
+    gameOver: 'v2:flying-dungeon/audio/game-over.ogg',
   },
   /* Effects sit ABOVE the music: a punch that the bed swallows reads as a
      punch that did not connect. Both are under the mute. */
@@ -2508,11 +2767,55 @@ const CONFIG = {
      more than that, the thing to turn down is musicVolume. */
   SFX_GAIN: {
     comboFinish: 1.2,      // the last hit of a string reads as the biggest one
+    /* 0.67 is not a taste decision, it is arithmetic: Still Life plays this
+       clip at 1.0 on an sfx bus set to 0.6, so it reaches the master at 0.6.
+       This game's bus is 0.9, and 0.9 x 0.67 is that same 0.6. Changing
+       sfxVolume therefore breaks the match -- if the punches are ever
+       rebalanced, re-derive this rather than nudging it by ear. */
+    gameOver: 0.67,
+  },
+  /* --- The death sting -----------------------------------------------------
+     HOW the game over music is played, kept apart from WHICH file it is because
+     these three numbers ARE the sound: Still Life plays the clip 10% slow with
+     a second voice 50ms behind it, and neither is a mix decision.
+
+     ⚠️ `rate` RESAMPLES. It drops the pitch with the speed -- about 1.8
+     semitones at 0.9 -- because that is what playbackRate on a buffer source
+     does; Web Audio has no time-stretch. On a death sting the drop is the
+     point, but it is a tape-speed change and not a tempo change.
+
+     ⚠️ `doubleDelayMs` IS IN THE CLIP'S OWN TIME, so game.js divides it by
+     `rate` before scheduling. Slowing the clip then slows the whole
+     combination, exactly as it would if the two voices had been bounced to one
+     file and that file played slower. At 50ms it sits right on the edge of
+     fusion -- one thickened sound with a hard edge, rather than two attacks.
+     Under ~40ms it fuses completely and starts colouring the tone instead.
+
+     THE BED STOPS FOR IT. This is music standing in for the music that has just
+     ended, not an effect layered over one -- the opposite of the CLEAR board,
+     where the game carries on. */
+  GAME_OVER_STING: {
+    on: true,
+    rate: 0.9,
+    doubleDelayMs: 50,
+    musicFadeSec: 0.35,    // the bed getting out of the way
   },
   /* How much higher each successive hit of a combo is pitched. 0 turns it off
      and gives every punch the identical sample. At 0.045 the fifth hit is about
      20% up, which is a different punch rather than a different instrument. */
   sfxHitDetune: 0.045,
+  /* THE SAME PUNCH, PLAYED LOWER, FOR A BLOW THE PLAYER TAKES. Asked for on
+     2026-08-22 as "the porrada noise when the player gets hit, like when he
+     hits the enemies" -- so it is deliberately the same recording rather than a
+     second one. Pitched down instead of reused flat because the ear has to be
+     able to tell "I landed that" from "I took that" without looking, and it is
+     the one cue in the fight that has no picture of its own to lean on: an
+     enemy's swing lands the same impact burst the player's does.
+
+     1 turns the distinction off and gives both directions the identical sound.
+     Do not go far under ~0.7 -- the clip is a 300ms crack and slowing it that
+     far turns it into a thud, which reads as something falling over. */
+  sfxTakeHitRate: 0.82,
   goY: 150,
   goH: 74 * 1.3,          // on-screen height of the GO! art; width follows aspect
   goHandH: 54 * 1.3,      // on-screen height of the hand; width follows its aspect

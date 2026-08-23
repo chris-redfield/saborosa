@@ -185,8 +185,15 @@ class Sound {
    *
    * `rate` detunes a repeat so a five-hit combo is not the same 300ms sample
    * five times, which reads as a stuck record rather than as five punches.
+   *
+   * `delaySec` starts the voice later, ON THE AUDIO CLOCK. That clock is
+   * sample-accurate and runs on its own thread; a setTimeout runs on the main
+   * one, behind whatever the frame is doing, and would land the voice tens of
+   * ms out either way. It exists for the DOUBLED death sting -- two voices off
+   * one buffer, a fixed gap apart -- where a variable gap is the one thing the
+   * effect cannot survive. Still Life's finding; see its sound.js.
    */
-  play(name, rate) {
+  play(name, rate, delaySec) {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return;
     const buf = this.sfx[name];
@@ -207,7 +214,12 @@ class Sound {
     } else {
       s.connect(this.sfxGain);
     }
-    s.start(0);
+    /* `start(0)` means "now" and `start(t)` means "at audio-clock time t", so
+       a delay is an absolute time and not an offset -- passing the delay
+       straight in would schedule the voice for the first second of the page's
+       life, which is already long past, and the browser would play it
+       immediately. */
+    s.start(delaySec > 0 ? ctx.currentTime + delaySec : 0);
   }
 
   /** The game wants music. Everything after this is the browser's timing. */

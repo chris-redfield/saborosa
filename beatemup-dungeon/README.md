@@ -49,7 +49,8 @@ CHARACTERS.coconut.drawScale:  0.9,     // the player, DRAWN size
 CHARACTERS.cigarro.drawScale:  1.452,   // raised 45% over three requests
 CHARACTERS.cigarro2.drawScale: 1.691,   // the stub, 1.164x the above
 CHARACTERS.cigarro3.drawScale: 1.691,   // drawn at the stub's size
-CHARACTERS.barata.drawScale:   1.888,   // both roaches
+CHARACTERS.barata.drawScale:   2.4544,  // both roaches; 1.888 + another 30%
+CHARACTERS.horse.drawScale:    2.2243,  // HIPÓLITO; 1.711 + 30%, paired with sizePx
 flyBossSizePx: 304,                     // the Mosca, drawn AND simulated
 ```
 
@@ -72,15 +73,22 @@ cigarette's 348, so his 1.164 ratio restores exactly that.
 
 **⚠️ A ROACH IS NOT AS BIG AS ITS NUMBER SAYS.** That normalisation measures the
 whole body, and for a barata the top 44px of 168 — **26%** — is horns and
-antennae, so only ~124px is animal. It is why they need 1.888 to stand as big as
-a cigarette rather than merely as tall.
+antennae, so only ~124px is animal. It is why they needed 1.888 to stand as big
+as a cigarette rather than merely as tall.
+
+**They then took another flat 30% on 2026-08-22** (1.888 → 2.4544), which is
+past that argument entirely: they are no longer matching a cigarette's mass,
+they are bigger than the men. That is a choice about what the fight looks like
+rather than a correction — and ⚠️ **their boxes did not move with it**, so the
+gap this section warns about is now roughly 30% of a roach.
 
 | | body drawn |
 |---|---|
 | LEBRON (coconut) | 123px |
 | DUDU (cigarro) | 199px |
 | DIDI / DEDÉ (cigarro2, cigarro3) | 231px |
-| CLAUDINHO & ZIDANE (baratas) | 258px (~191px of animal) |
+| CLAUDINHO & ZIDANE (baratas) | 336px (~248px of animal) |
+| HIPÓLITO (horse) | 304px — **and his hurtbox and reaches grew with him** |
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
 the boss's size in the simulation moves with its drawn size.
@@ -101,6 +109,61 @@ boss in, because the jump apex drops while `flyBossHoverY` stays put:
 
 If that gets too tight, lower **`flyBossHoverY`** (150) rather than touching
 `verticalReach`. 142 restores the 0.80 window at 0.72 scale.
+
+---
+
+## The projector — built, and switched OFF
+
+**`film: false`. It is off in the shipping build and that is a decision, not a
+default.** Still Life's old-film post effect was ported on request, seen, and
+turned down the same day — *"it causes a terrible feeling"*. The flicker had
+already been softened once (see below) and it still was not wanted, so **another
+pass on these numbers is not the answer**.
+
+Everything stays wired: `src/film.js` is that game's file copied unchanged,
+`renderFilmed()` in `game.js` still routes every frame through the pass, and
+this whole config block is live. Set `film: true` to see it. **Do not delete any
+of it to tidy up** — keeping it toggleable was the ask.
+
+What it does when it is on: grain, a brightness flicker, a vignette, vertical
+gate weave, the odd scratch, and a rolling frame line that is switched off.
+
+| knob | what it does |
+|---|---|
+| `film` | **`false` — shipped off.** `true` turns the whole thing on |
+| `filmGrain` | 0.11 — grain opacity |
+| `filmFlicker` | **0.042** — the brightness dip. Still Life's is 0.06 |
+| `filmFlickerMs` | **80** — how long one dip is held, i.e. the **blink rate**. Still Life's is 24 |
+| `filmVignette` | 0.22 — corner darkening |
+| `filmWeave` | 1.4 — px of vertical gate jitter of the whole picture |
+| `filmScratchChance` | **0.028** — per-frame odds of a scratch. Still Life's is 0.04 |
+| `filmBarHeight` | 0 — the rolling frame line, off. `filmBarSpeed` / `filmBarDark` size it if it goes on |
+| `filmCss` | a CSS grade on the canvas element. Empty. `contrast(1.08)` would add punch; desaturation would be a different effect |
+
+**Three of those no longer match Still Life, deliberately.** On this game's
+plate the flicker read as a blink rather than as a lamp, and the knob that was
+actually wrong is `filmFlickerMs`: at 24 the value is re-rolled ~42 times a
+second, which the eye reads as strobing. At 80 it changes ~12 times a second and
+breathes instead. The dip came down 30% with it and the scratch 30% with that.
+**Everything else is that game's value for value** — if the grain, the vignette
+or the weave move, move them in `flying-dungeon/src/config.js` too. The point of
+the request was that the two games look like they came off one projector.
+
+**It is the last thing drawn, over everything — including the HUD.** That is the
+one structural difference from Still Life, where the HUD sits outside the film
+pass. Here the whole frame is one projected picture, so the health bar grains
+and weaves with the fight. `renderFilmed()` in `game.js` is the split point if
+that ever needs to change.
+
+Two rules inside `renderFilmed()` that are not obvious:
+
+* **The frame is cleared BEFORE the weave**, in unshifted space — otherwise the
+  strip the picture has just moved off keeps last frame's pixels, a smear along
+  one edge that looks like a rendering bug rather than like a projector.
+* **The overlay is not weaved with the picture.** Grain, vignette, frame line
+  and flicker are the *projector*; they stay nailed to the screen while the
+  picture moves under them. Drawn inside the translate they would ride along and
+  the weave would stop being visible at all.
 
 ---
 
@@ -287,8 +350,36 @@ The three frames are read **in place** out of `assets-v2/flying-dungeon/`, like
 the health bar and the gamepad map. They are the same files this game's title
 screen used to crawl on before that became a photograph.
 
-A press restarts play immediately — a death is a retry. (Finishing the game goes
-to the title instead; see below.)
+**A press goes back to the title.** It used to restart play immediately, on the
+arcade rule that a death is a retry — but ⚠️ *this panel is not a death*. The
+retry already happened twice: a life is spent and the fight resumes where it
+fell, and only the **third** death reaches this screen. By then the run is over
+in the same sense the CLEAR board's is, so it ends where a run ends. Changed on
+request, 2026-08-22.
+
+### And it plays STILL LIFE's death music
+
+The panel arrives on that game's `game-over.ogg`, read **in place** out of its
+folder like the three frames above it, and played the way it plays it.
+
+| knob | what it does |
+|---|---|
+| `GAME_OVER_STING.on` | `false` for silence |
+| `.rate` | 0.9 — 10% slow. ⚠️ It **resamples**, so the pitch drops with it (~1.8 semitones). A tape-speed change, not a tempo change |
+| `.doubleDelayMs` | 50 — a second voice off the same buffer, that far behind. ⚠️ In the **clip's** time, so game.js divides it by `rate` before scheduling |
+| `.musicFadeSec` | 0.35 — the level's bed getting out of the way |
+| `SFX_GAIN.gameOver` | 0.67 — ⚠️ not taste: Still Life plays it at 1.0 on a 0.6 bus, and 0.9 × 0.67 is that same 0.6. Re-derive it if `sfxVolume` ever moves |
+
+**It fires when the panel is armed, not when the body hits the floor** — the
+death animation and its hold run first. That is where Still Life fires its own
+too. And **the bed stops for it**: this is music replacing music, not an effect
+layered over one, which is the opposite of the CLEAR board, where the game
+carries on.
+
+50 ms is right on the **edge of fusion** — the ear stops hearing two attacks at
+around 40 ms, so the double is nearly one thickened sound with a hard edge
+rather than two. Below ~40 it fuses completely and starts colouring the tone
+instead. Small changes there are not subtle.
 
 ## The ending screen
 
@@ -319,8 +410,10 @@ as slot 2 of the `jump` row, which is simply where the packer put that drawing.
 > against the atlas, not against the pose name.
 
 **After the tally, a press goes back to the title screen** (`toTitle()`), which
-resets the run and replays the title's hold from the top. **Dying is different** —
-a press there restarts play immediately, because a death is a retry.
+resets the run and replays the title from the top. **Dying now does the same** —
+it used to restart play immediately on the "a death is a retry" rule, but the
+retry already happened twice and only the third death reaches that panel. See
+*The game over panel*.
 
 **The last fight used to hand straight to the tally.** `game.js` carried a note
 saying walking him off the edge there would be "walking him out of the level
@@ -731,8 +824,20 @@ Three knobs and three pipelines.
 | `sfxVolume` | 0.9 — effects sit above the music on purpose |
 | `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume` |
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
+| `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
+| `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
 
 `M` mutes everything, in every phase.
+
+**Taking a punch is the punch sample, on purpose.** It was asked for as "the
+porrada noise when the player gets hit, like when he hits the enemies", so it is
+the same recording rather than a second one — a fight should sound like one
+fight. The pitch is what says which direction the blow went, and it is the only
+cue in the fight that has no picture of its own: an enemy's swing stamps the
+same impact burst the player's does. It fires from `Combat._takeHitSound()`, the
+one place both damage paths (the crowd's swings, a boss's contact) meet. Do not
+go far under ~0.7 — a 300 ms crack slowed that far becomes a thud, which reads
+as something falling over.
 
 **⚠️ `musicLoopSec` must match the mix.** `AudioBufferSourceNode.loop` with no
 bounds wraps at whatever the decoded buffer turned out to be, and decoders
@@ -792,16 +897,19 @@ Wiring a cut effect is two lines: an entry in `CONFIG.SFX`, and a
 
 ## The title screen
 
-A photograph of a wall, held on its own, then the name fades up over it. Any
-button starts the fight — **from the first frame**, before the name arrives; the
-hold is there to be looked at, not sat through.
+A photograph of a wall. The name **falls in from off the top of the frame** on
+the first frame, and once it has landed **LEBRON walks across the picture**, in
+from the left and out to the right. Any button starts the fight — from the first
+frame, before any of that has finished.
 
 | knob | what it does |
 |---|---|
 | `title` | `false` goes straight into the fight |
 | `TITLE_BG` | the photograph. Drawn **cover** — it is 4:3 on a 16:9 canvas, so about an eighth is cropped off top and bottom |
-| `titleNameAtMs` | 2000 — one second of bare wall, then a second more, then the name |
-| `titleNameFadeMs` | 320, or 0 for a hard cut |
+| `titleDropAtMs` | 0 — when the fall starts. 0 is the first frame |
+| `titleDropMs` | 700 — how long it takes, eased out so it lands rather than stops |
+| `titleDropFromRel` | 1.0 — how far above its resting place it starts, in screen heights |
+| `titleNameFadeMs` | 0 — the drop *is* the entrance. Set it for a fade over the top of it |
 | `TITLE_NAME` / `TITLE_SUBNAME` | the two lines. First is heavy and large, second is a gloss under it |
 | `TITLE_FONT` | **the flying dungeon's lettering stack**, copied from its `overTitle.family` — heaviest Futura cuts first, geometric stand-ins after |
 | `titleNameWeight` / `titleSubWeight` | 900 and 400. The weight difference *is* the hierarchy |
@@ -811,10 +919,35 @@ hold is there to be looked at, not sat through.
 | `titleNameColor` | `#FAFA30` — the flying dungeon's end-panel yellow, so the two games match |
 | `titleFadeOutMs` | to black, once dismissed |
 
-**The wait is the design.** Open on the bare photograph and it reads as a place —
-the same kind of place the level is filmed in. Cut the type in at zero and the
-photo instantly reads as a background for some text instead. `titleNameAtMs` is
-what that costs.
+### LEBRON crossing it
+
+| knob | what it does |
+|---|---|
+| `titleWalk` | `false` and the screen is just the photograph and the name |
+| `titleWalkAfterMs` | 250 — when he sets off, counted **from the name landing**, not from the top of the screen |
+| `titleWalkStartXRel` / `titleWalkEndXRel` | −0.12 / 1.12 — off one edge and clear of the other |
+| `titleWalkSpeed` | 210 px/s, the ending screen's, so the two walks match |
+| `titleWalkGroundYRel` | 0.93 — his feet down the canvas: the near dirt |
+| `titleWalkScale` | 1.0 — **exactly his size in the fight** |
+| `titleWalkRepeatMs` | 0 — he crosses once. Set it to a gap in ms and he comes round again; a crossing takes about 7 s |
+
+> ⚠️ **He is drawn, not simulated.** Two numbers and a frame clock reading the
+> same packs the fight reads — never a `Player`, which is a belt entity with
+> depth, a camera, gates, an attack machine and a life total, none of which
+> exists on a photograph. `ending.js` makes the same call and its header argues
+> it at length. The cost is that this walk is not `Fighter.update`; if the two
+> ever visibly disagree, that is why.
+
+> ⚠️ **`titleWalkScale` 1.0 is the house rule, not a default.** A character who
+> changes size between screens stops reading as the same character. If he needs
+> to fill more of the frame, that is a crop of the photograph — same argument
+> `ENDING.scale` makes, where it cost a 1.55 that was wrong on sight.
+
+**It used to hold the bare photograph for two seconds** before fading the name
+up, on the argument that a picture given time reads as a place while type cut in
+at zero turns it into a background. That was overruled on 2026-08-22 — the title
+drops in immediately now. `titleDropAtMs` 2000 with `titleDropMs` 0 and
+`titleNameFadeMs` 320 is roughly the old screen if it is ever wanted back.
 
 > ⚠️ **No drop shadow, nothing darkened under the type.** House rule for every
 > title screen in this project. If the type stops reading, move it to a cleaner
@@ -1179,7 +1312,8 @@ why. All the knobs are `CONFIG.HORSE_BOSS`.
 | knob | what it does |
 |---|---|
 | `health` | 150. A full player combo is 28, so a little over five clean combos |
-| `sizePx` | 234 — the drawn body height **and** what the hurtbox is derived from, so picture and target grow together |
+| `sizePx` | **304** — the drawn body height **and** what the hurtbox is derived from, so picture and target grow together |
+| `shadow` | `false` — he is the only character in the game without a ground shadow. `true` puts it back |
 | `hitWRel` / `hitZ` | hurtbox, as a fraction of `sizePx` and in belt px. Wide (0.86) because he is longer than he is tall |
 | `turnMs` | **460 — the most load-bearing number here.** Seven frames of coming about, during which he cannot attack. It is the fight's only opening |
 | `ACTIONS` | **relative weights inside each distance band** — `{charge: 50, kick: 50, approach: 50}`. Far: charge vs approach. Near: kick vs approach |
@@ -1221,9 +1355,72 @@ only knocks you back 70 px (`knockback / knockbackDecay`), so hugging him is a
 real choice with a real answer.
 | `chargeTellMs` | 420 — stood still, facing you. The only warning |
 | `chargeSpeed` | 520, faster than the player runs. Step out of the lane |
-| `kickReachX` | 260 — **measured off the drawing**, see below |
+| `kickReachX` | **338** — measured off the drawing, see below |
+| `chargeReachX` | **218** — likewise |
 | `runMs` / `trotAnimMs` / `walkAnimMs` / `kickAnimMs` | per-frame holds; these are the gait |
-| `dieMs` / `dieTipRad` | there is no death row, so he tips over and fades |
+| `dieMs` | 2000 — the whole death, and what `finished()` waits for |
+| `dieTipRad` | the old tip-over. Dead while `DEATH_BOOM.on` is true |
+| `DEATH_BOOM` | the explosions he goes up in; see below |
+
+### He is 30% bigger than he was, and so is his reach
+
+Asked for flat on 2026-08-22: `drawScale` 1.711 → **2.2243**, so a 234 px animal
+is drawn at 304 against a 137 px fighter.
+
+Three things went with it, and the reasoning matters more than the numbers:
+
+* **`sizePx` 234 → 304.** The hurtbox comes off it, so the target grows with the
+  picture — the pairing this file keeps everywhere.
+* **`kickReachX` 260 → 338 and `chargeReachX` 168 → 218.** Both were *measured
+  off the drawing*; when the drawing grew 30% they had to, or the boxes would
+  have stopped where his hooves and chest used to be.
+* **Nothing measured in DEPTH moved** — `hitZ`, `kickReachZ`, `chargeReachZ`.
+  The belt is as deep as it was and a 2-D drawing does not get deeper when it
+  gets taller.
+
+> ⚠️ **His decision ranges did not move.** `kickRange` (210) and
+> `chargeMinRange` (240) are about the fight's spacing, not about the drawing.
+> The practical effect is that a kick he commits to now lands more reliably —
+> which is a difficulty change, and it was not separately asked for.
+
+> ⚠️ **The texture is upscaled now.** 1.711 put the atlas on screen at almost
+> exactly 1:1, which is what the master was reduced *for*. At 2.2243 there is no
+> more detail in it to find, so he may read very slightly softer than the men.
+> The fix would be a bigger master through `shrink-master.py`, not a smaller
+> number here.
+
+### He blows up
+
+He used to tip over and fade, for want of a death row. Since 2026-08-22 he goes
+up in a string of explosions — **Still Life's blast sheet**, read in place, all
+twelve frames of it. `CONFIG.HORSE_BOSS.DEATH_BOOM`:
+
+| knob | what it does |
+|---|---|
+| `on` | `false` brings the tip-over back, unchanged |
+| `count` | 7 |
+| `startMs` / `everyMs` | 0 / 180 — when the first goes off and how far apart the rest are |
+| `spreadXRel` / `spreadYRel` | 0.55 / 0.75 — where they land, as fractions of `sizePx`. Wider than high, because he is |
+| `sizePx` | 210 — width of the **peak** frame on screen |
+| `sizeJitter` | 0.3 — ± that fraction, per blast |
+| `fadeMs` | 620 — how long *he* takes to go. Shorter than the blasts run for, on purpose |
+
+Sheet-side: `BOOM_SHEET`, `BOOM_RECTS` and `boomMs` (78/1.1, ~852 ms for the
+twelve frames) at the top of the file, all Still Life's.
+
+> ⚠️ **Check the arithmetic if you retime it.** The last blast *starts* at
+> `startMs + (count−1) × everyMs` = 1080 and runs 852 ms more, so the string ends
+> at 1932 — which is what `dieMs` 2000 is sized for. `finished()` waits for
+> `dieMs`, and the level advancing early would cut a blast off mid-frame.
+
+> ⚠️ **The pattern is rolled once, on the frame he dies.** Re-rolled per frame it
+> is not an explosion, it is static — the same lesson `hit-fx.js` records. And
+> the times are shuffled against the positions deliberately: fired in position
+> order the blasts unzip him nose to tail; dealt at random he comes apart.
+
+> ⚠️ **He does not tip while he explodes.** A body toppling *through* the blasts
+> reads as two deaths playing at once — the eye follows the rotation and stops
+> reading the explosions as what killed him.
 
 ### Three things not to change without reading first
 

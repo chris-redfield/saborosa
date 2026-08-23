@@ -22,12 +22,16 @@
   /* Built early because Combat takes it: the resolver is where a blow is
      decided, so it is where the blow is heard. */
   const sound = new Sound(assets);
-  const title = new Title(assets);
   const sheets = new Sheets(assets);
-  /* AFTER `sheets`, because it takes it. `const` is not hoisted the way `var`
+  /* AFTER `sheets`, because they take it. `const` is not hoisted the way `var`
      is -- reading one before its declaration line throws "can't access lexical
      declaration before initialization" and takes the whole boot down, which is
-     exactly what putting this line above `sheets` did. */
+     exactly what putting this line above `sheets` did.
+
+     ⚠️ THE TITLE MOVED DOWN HERE FOR THAT REASON. It used to be built before
+     `sheets` because it only needed a photograph; since 2026-08-22 LEBRON walks
+     across it, so it draws out of the same packs the fight does. */
+  const title = new Title(assets, sheets);
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
   const backdrop = new Backdrop(assets);
@@ -41,6 +45,11 @@
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
   const crowd = new Crowd();
+  /* STILL LIFE'S PROJECTOR, the file copied over unchanged and driven from the
+     same knobs (CONFIG.film*). It is a post effect and it is the LAST thing
+     drawn every frame -- see renderFilmed(). */
+  const film = new Film(CONFIG);
+  canvas.style.filter = (CONFIG.film && CONFIG.filmCss) ? CONFIG.filmCss : '';
 
   let player = null;
   let phase = 'boot';          /* boot | title | play | outro | ending | fade
@@ -207,6 +216,12 @@
     let dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     input.poll();
+    /* THE PROJECTOR RUNS IN EVERY PHASE, and it is ticked here rather than in
+       any of them: the grain, the flicker and the gate weave belong to the
+       projector, not to what happens to be on the screen. That includes the
+       hitstop return below -- the picture is HELD, but a projector holding a
+       frame still weaves and still shows grain. */
+    if (CONFIG.film) film.update(dt);
 
     if (input.takePause() && (phase === 'play')) { /* reserved */ }
     /* Mute is read in EVERY phase, not only in play: a player who wants the
@@ -224,7 +239,7 @@
        input being dead on a screen that looks completely normal. */
     if (phase === 'title') {
       const finished = title.update(dt, input);
-      title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
+      renderFilmed(() => title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
       if (finished) { start(); return; }
       requestAnimationFrame(loop);
       return;
@@ -253,7 +268,7 @@
        too would show up as a dropped frame — a stutter — rather than as a held
        moment of impact. */
     if (combat.tickFreeze(dt)) {
-      render();
+      renderFilmed(render);
       requestAnimationFrame(loop);
       return;
     }
@@ -345,6 +360,7 @@
       } else {
         phase = 'gameover';
         phaseT = 0;
+        playDeathSting();
       }
       input.flush();
     }
@@ -378,16 +394,20 @@
          shape as the shadow exception in the bug list — anything that leaves
          loop() early has to have called start(), which schedules its own. */
       if (rolling) boardSkip = hud.resultsRunS(stats);
-      /* THE TWO ENDINGS PART COMPANY HERE. Finishing the game goes back to the
-         FRONT of it -- the run is over, and the title is where a run begins.
-         Dying goes straight back into play, because a death is a retry and
-         making the player sit through a title screen to have another go is the
-         one thing an arcade game must not do. */
-      else if (phase === 'clear') { toTitle(); return; }
-      else { start(); return; }   // the game over panel: straight back in
+      /* BOTH ENDINGS GO BACK TO THE FRONT OF THE GAME, and dying used to be the
+         exception -- it went straight back into play, on the arcade rule that a
+         death is a retry and nobody should have to sit through a title screen
+         to have another go.
+
+         ⚠️ THAT RULE IS ABOUT A DEATH, AND THIS IS NOT ONE. The retry already
+         happened, twice: a life is spent and the fight resumes where it fell,
+         and only the THIRD death reaches this panel. By then the run is over in
+         exactly the sense the CLEAR board's is, so it ends where a run ends.
+         Changed on request, 2026-08-22. */
+      else { toTitle(); return; }
     }
 
-    render();
+    renderFilmed(render);
     requestAnimationFrame(loop);
   }
 
@@ -445,7 +465,69 @@
     input.flush();
   }
 
+  /**
+   * The music the run ends on. STILL LIFE'S, and played the way that game plays
+   * it -- see CONFIG.GAME_OVER_STING.
+   *
+   * ⚠️ FIRED WHEN THE PANEL IS ARMED, NOT WHEN THE BODY HITS THE FLOOR. The
+   * death animation and its hold run first; starting the sting under them would
+   * spend its opening bars on a fight that is still visibly finishing, and the
+   * screen it belongs to would arrive halfway through it. That is also where
+   * Still Life fires its own -- on the panel, not on the death.
+   *
+   * ⚠️ AND THE BED GETS OUT OF THE WAY. This is music replacing music, not an
+   * effect over it; left running, the level's loop plays through the whole
+   * thing. `stopMusic` releases the source, so the next run's start() builds a
+   * fresh one -- which is what it already does on every restart.
+   */
+  function playDeathSting() {
+    const S = CONFIG.GAME_OVER_STING || {};
+    if (S.on === false) return;
+    sound.stopMusic(S.musicFadeSec != null ? S.musicFadeSec : 0.35);
+    const rate = S.rate || 1;
+    sound.play('gameOver', rate);
+    /* The second voice, off the same decoded buffer -- one more source node and
+       nothing else. Divided by `rate` because the gap is written in the clip's
+       own time; see the config note. */
+    if (S.doubleDelayMs > 0) {
+      sound.play('gameOver', rate, (S.doubleDelayMs / 1000) / rate);
+    }
+  }
+
   // --- Render --------------------------------------------------------------
+  /**
+   * ONE FRAME, THROUGH THE PROJECTOR.
+   *
+   * Everything this game draws goes through here, in every phase -- the title,
+   * the fight, the fades, the panels. `body` draws the picture; this puts it on
+   * film.
+   *
+   * ⚠️ THE FRAME IS CLEARED BEFORE THE WEAVE, NOT AFTER. The gate jitter
+   * translates the whole picture by a pixel or so, so the clear has to happen
+   * in UNSHIFTED space or the strip the picture has just moved off keeps last
+   * frame's pixels -- a smear along one edge that looks like a rendering bug
+   * rather than like a projector.
+   *
+   * ⚠️ AND THE OVERLAY IS NOT WEAVED WITH IT. Grain, vignette, frame line and
+   * flicker are the PROJECTOR; they stay nailed to the screen while the picture
+   * moves under them. Drawn inside the translate they would ride along and the
+   * weave would stop being visible at all. Still Life's arrangement, kept.
+   */
+  function renderFilmed(body) {
+    const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+
+    ctx.save();
+    if (CONFIG.film) ctx.translate(0, film.weaveOffset());
+    body();
+    ctx.restore();
+
+    if (CONFIG.film) film.render(ctx, W, H);
+  }
+
   function render() {
     ctx.save();
     ctx.fillStyle = '#0b0714';
@@ -581,6 +663,7 @@
      read where a jump will land, or which of two fighters is in front. It
      shrinks and fades with height, which is what makes the arc legible. */
   function drawShadow(f, camX) {
+    if (f.noShadow) return;          // the horse -- see its constructor
     if (f.dead && f.downPhase === 'lie') return;
     const x = f.groundX(camX);
     const y = CONFIG.beltTopY + f.z;
