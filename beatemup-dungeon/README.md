@@ -852,6 +852,8 @@ Three knobs and three pipelines.
 | knob | what it does |
 |---|---|
 | `MUSIC_TRACK` | the looping bed, one file |
+| `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
+| `MUSIC_GAIN` | per-track trim on the music bus, by asset key. `musicBoss` 0.85 |
 | `musicLoopSec` | **6.146** — where the loop wraps. NOT decoration; see below |
 | `musicVolume` | 0.55 |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
@@ -862,6 +864,32 @@ Three knobs and three pipelines.
 | `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
 
 `M` mutes everything, in every phase.
+
+### The boss room's song
+
+**Music is a property of the ROOM**, not of the boss in it: `ROOMS[n].music` is
+an asset key, and `roomMusic()` in game.js plays it on every room entry. Only
+one piece of music ever plays, so asking for one stops the other — and asking
+for the one already playing is a no-op, not a restart.
+
+> ⚠️ **It starts when the player walks in, not when the horse arrives.** It was
+> hung off the boss spawning first, and the boss room opens with a wave of
+> roaches — so the song only turned up once they were dead and the room's whole
+> first fight played under the street's bed.
+
+> ⚠️ **Nothing stops it.** By request it runs through the fight, the horse's
+> death, the walk-out, the ending photograph and the tally, so the last thing
+> the player hears is what they beat the game to. `toTitle()` is the only thing
+> that ends it, because that is where the run ends.
+
+> ⚠️ **`musicLoopSec` is the BED's crop and is not applied to it.** That number
+> exists because the bed is six seconds long and a few ms of codec padding at
+> the wrap is an audible tick; applied to a four-and-a-half-minute song it cuts
+> it off after six seconds. `Sound._startIfReady()` guards it to the bed alone.
+
+It is 4.5MB of mp3 — a fifth of the build again, and the one asset big enough to
+notice. mp3 because that is how it was delivered; re-encoding to ogg would save
+about a third if the build ever needs it.
 
 **Taking a punch is the punch sample, on purpose.** It was asked for as "the
 porrada noise when the player gets hit, like when he hits the enemies", so it is
@@ -1053,6 +1081,156 @@ row's last frame, the roach on its back.
 | `returnMs` | 1500 / 2100 off-screen. This is what the move costs him |
 | `minX` / `maxX` | the band he will charge from |
 | `exitMarginPx` | how far past the wall counts as gone |
+
+## Barrels and food
+
+`src/prop.js`, `CONFIG.PROPS`, art in `CONFIG.CHARACTERS.barril`. Placed by hand
+per ROOM (not per segment) in `CONFIG.ROOMS[n].props`:
+
+```js
+props: [
+  { kind: 'barrel',  x: 1450, z: 60 },
+  { kind: 'coxinha', x: 1900, z: 105 },
+  { kind: 'chicken', x: 460,  z: 110 },
+]
+```
+
+`x` is world space, the same axis the enemies use; `z` is belt depth (0..210). A
+barrel at an arena's x is IN that fight; one 200px short of it is on the way in.
+
+**Six barrels in the whole game** (four in the street, two in the boss room) and
+two drumsticks, after two thinning passes on the day they were built — eleven
+and five were both "too many" on sight.
+
+> ⚠️ **Barrels are most of the food you actually see.** At `dropChance` 0.35,
+> six barrels are worth about two more chickens on the floor on top of the two
+> placed drumsticks. "Three things on the ground when the config places two" is
+> not a contradiction — the third came out of a barrel. Count with the DEV
+> readout (`2+1 food` = placed + dropped), not with the config.
+
+### The barrel
+
+| knob (`PROPS.barrel`) | what it does |
+|---|---|
+| `on` | **`true`. The feature switch — `false` removes barrels from the game entirely** |
+| `hp` | 5 — **one punch**, and every punch in the game does at least 5 |
+| `sizePx` | 110 — drawn height, and what the hit box comes off. ⚠️ Must agree with `CHARACTERS.barril.drawScale` (0.8 × 137) |
+| `hitWRel` / `hitZ` | 0.8 / 46 — hurtbox, as a fraction of `sizePx` and in belt px |
+| `liftRangeX` / `liftRangeZ` | 74 / 46 — how close he has to be. Generous across, tight in depth |
+| `carryYRel` | 0.70 — height of the barrel's **base** while carried, in bodies (96px) |
+| `throwSpeed` / `throwLift` / `throwGravity` | 520 / 120 / 900 — fast and flat, about two thirds of a screen |
+| `throwDamage` | 22 — the hardest single blow in the game (a full 5-hit combo is 36) |
+| `throwKnockback` / `throwLiftHit` / `throwKnockdown` | 260 / 90 / true |
+| `throwReachY` | 130 — ⚠️ how high off the floor it still connects; without it a barrel sails over a head and knocks him down from above it |
+| `throwPierce` | `false` — it breaks on the first enemy. `true` carries it through the crowd, a much stronger move |
+| `spinMs` / `smashMs` | 90 per tumble frame; 480 for the three break frames |
+| `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ Barrels are most of the food on the floor; thin the food by thinning this as well as the placed drumsticks |
+
+**Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
+the one he is holding. *punch* (J / Z / Space) **throws** it. He cannot jump
+while carrying one; there is no drawing of it.
+
+> ⚠️ **`dropChance` is rolled when the barrel is BUILT, not when it breaks.**
+> A barrel either has a chicken in it or it does not — which is what "os barris
+> podem conter um frango" describes. Rolled at the break, the same barrel could
+> answer differently if anything ever broke it twice.
+
+> ⚠️ **A barrel is not solid.** Everything walks through it. Nothing in this game
+> has body collision — fighters pass through each other, which is what keeps a
+> five-enemy crowd from wedging the player against a wall — and one solid object
+> in a world without collision is where a player gets stuck. Making it solid is
+> a mechanic for everything, not a flag on this.
+
+> ⚠️ **One punch is deliberate.** The resolver only ever hits the NEAREST target,
+> so a barrel standing between the player and an enemy eats a blow meant for the
+> enemy. At two punches every barrel becomes an ambush instead of a thing you
+> smash on the way past.
+
+**A held barrel is not a position, it is an owner.** It reads its x and z off the
+holder every frame rather than being pushed around by him — otherwise it
+desynchronises the moment anything else moves the player (knockback, the
+walk-out, a room fade) and stays where he was.
+
+**`player.carrying` and `prop.holder` are one relationship stored twice**, and
+every path that ends a hold must break BOTH ends (`Prop._release()`). Three ways
+to orphan a barrel were found and fixed on the day it was built; STATE.md lists
+them. If a barrel ever follows the player around invisibly, this is the family.
+
+### Turning barrels off
+
+`PROPS.barrel.on: false`. That is the whole of it, and it was built in on
+2026-08-22 against the possibility that the mechanic does not survive
+playtesting.
+
+None are laid out, so nothing can be punched apart, lifted or thrown, and the
+pickup button goes back to a stoop at empty air — exactly what it did before
+barrels existed. Three things it deliberately does **not** do:
+
+* **It does not take the food with it.** Drumsticks are placed by hand and are
+  their own feature. What does go is the chicken that would have been *inside* a
+  barrel, because there is no barrel.
+* **It does not delete the placements.** `ROOMS[n].props` keeps its barrel
+  entries, unread. Turning them back on is the same one line.
+* **It does not unload the art.** Barrels and food are one sheet.
+
+The gate is in `Props.add()` — the one funnel every prop goes through, including
+the chicken a break leaves behind — rather than in the room layout, so nothing
+added later can slip past a switch that is supposed to mean "there are no
+barrels in this game".
+
+### The food
+
+| knob (`PROPS.food`) | what it does |
+|---|---|
+| `chickenRel` | 0.5 — half the visible bar (55 HP of 110) |
+| `coxinhaRel` | 1/3 — a third of it (37 HP) |
+| `rangeX` / `rangeZ` / `rangeY` | 52 / 40 / 60 — reach, and not while jumping over it |
+| `bobPx` / `bobRate` | **0 — food sits still.** It bobbed at first and read as not being able to decide whether it was on the floor. Drawn-only either way: `z` never moves, so what can be reached does not breathe |
+
+**Walked over, never picked up with the button.** The button lifts barrels; two
+verbs on it means the player who wanted the barrel gets the chicken next to it.
+**And it is not eaten at full health** — it stays on the floor rather than being
+wasted on the way past.
+
+> ⚠️ **The heal is capped, not banked.** Anything past a full bar is lost; it
+> does not roll over into restoring a life. That was asked as a question and
+> this is the answer chosen (2026-08-22) — `Pickup.update()` is the one place
+> that clamps.
+
+### Re-cutting the sheet
+
+```
+python3 tools/build-beat-prop-defs.py barril
+python3 tools/build-beat-prop-defs.py barril --dry-run
+```
+
+Nine bands off `barril-coconutbash.png` → 29 tiles, 808KB. Three things in that
+tool that are not obvious, all argued in its header:
+
+* **It cuts on INK BANDS, not on bodies**, unlike `build-beat-enemy-defs.py`.
+  Half this sheet is a barrel exploding; frame three of a break is forty loose
+  splinters and not one of them is a "body". Connected components find 200
+  frames where the table says 30.
+* **The sheet has invisible ghosts on it.** Four bomb outlines in
+  near-transparent white sit at the right of the first two rows — ~280 opaque
+  pixels against a real frame's 30000. They do not show in a viewer and a column
+  scan finds them. `MIN_INK` drops them; the gap to the smallest real frame is
+  38×.
+* **The anchor is the base, not the bbox centre.** A break expands from 235px of
+  barrel to a 572px cloud and does not expand symmetrically — anchored on the
+  box centre the pile visibly walks a third of a barrel sideways as it grows.
+
+**The repeats are the illustrator's and are not a mistake.** The four upright
+barrels are two drawings and their MIRRORS; rows 4-5 are those two rotated onto
+their side; rows 2-3 are the same three break drawings twice. Do not delete rows
+from the table to "clean it up" — the table is what proves the sheet has not
+changed under us. (Dedupe folds pixel-identical tiles, but not mirrored ones:
+the defs have no per-frame flip flag, and `sheets.js` mirrors whole draws by
+facing.)
+
+The sheet also carries **six frames of a lit bomb**, cut and named (`bomb`,
+`bomb2`) and wired to nothing. There is no bomb mechanic; the art is there for
+when there is one.
 
 ## Adding an enemy kind
 
@@ -1301,10 +1479,21 @@ All the knobs are in `CONFIG.HIT_FX`:
 | `ms` | life of the burst; the four frames divide it evenly |
 | `fadeTail` | fraction of that life spent fading out, at the **end** only |
 | `mirror` | randomly flip horizontally — twelve marks out of six animations |
-| `colorByRole` | `false` (shipped): colour is part of the random draw. `true`: yellow when the player lands one, red when the player takes one |
+| `colorByRole` | **`true` (shipped)**: yellow when the player lands one, red when the player takes one. `false` puts all six in the hat whoever is hit |
 
 `sizePx` and `bigSizePx` are `* BODY_SCALE` like the fighters are, so rescaling
 the cast rescales the marks with it.
+
+> ⚠️ **The colour is INFORMATION now**, on request (2026-08-22). The six-variant
+> random draw became a three-variant draw *inside* a colour — the variety did not
+> go away, it moved. Do not turn it back off to "restore variety".
+
+> ⚠️ **It only works because `_impact` is told which way the blow went.**
+> `byPlayer` is passed in rather than derived — combat.js has no idea which of
+> two fighters is the player. A new damage path that gets it wrong now tells a
+> lie rather than tossing a coin. There are four call sites: the player's
+> connects, a boss's contact, the crowd's swings, and a thrown barrel (the
+> player's).
 
 **`sizePx` is the reference for the whole pack, not a per-variant target.** The
 defs carry one `baseSize` and every frame of every variant scales by the same
@@ -1456,7 +1645,23 @@ twelve frames of it. `CONFIG.HORSE_BOSS.DEATH_BOOM`:
 | `fadeMs` | 620 — how long *he* takes to go. Shorter than the blasts run for, on purpose |
 
 Sheet-side: `BOOM_SHEET`, `BOOM_RECTS` and `boomMs` (78/1.1, ~852 ms for the
-twelve frames) at the top of the file, all Still Life's.
+twelve frames) at the top of the file, all Still Life's. The machinery is
+`src/boom.js`, shared with the Mosca — see below.
+
+### The Mosca goes up too
+
+`CONFIG.flyBossDeathBoom`, same shape and same file (`Booms`), its own numbers:
+**five** blasts at **170px** rather than seven at 210.
+
+> ⚠️ **Fewer and smaller because it dies in the AIR.** There is no floor to hide
+> the bottom of a blast and nothing else in frame to measure against, so seven
+> full-size explosions around a fly read as a screen-filling mess rather than as
+> a fly coming apart.
+
+`on: false` gives back its old death intact — the tumble out of the sky and the
+slow fade where it lands. Its `finished()` waits for `max(2.0s, the blast span)`
+derived from the config, so retiming the string moves it and the level cannot
+advance through a blast still on screen.
 
 > ⚠️ **Check the arithmetic if you retime it.** The last blast *starts* at
 > `startMs + (count−1) × everyMs` = 1080 and runs 852 ms more, so the string ends

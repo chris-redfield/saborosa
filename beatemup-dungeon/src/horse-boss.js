@@ -72,9 +72,10 @@ class HorseBoss {
        purpose -- combat.js reads `hasHit` off whatever hitbox() came from, and
        one shape for "a blow in progress" is one less thing to get wrong. */
     this.atk = null;
-    /* The death explosions, rolled on the frame he dies and not before -- see
-       _armBooms(). Empty until then, so draw() has nothing to skip. */
-    this.blasts = [];
+    /* The death explosions, rolled on the frame he dies and not before. The
+       machinery is shared with the Mosca -- see boom.js, which is where all the
+       reasoning about freezing the pattern lives. */
+    this.booms = new Booms();
     this.turnTo = null;      // facing being turned toward, during 'turn'
     this.passes = 0;         // charges completed; only used to vary the rhythm
     this.chargeZ = null;     // the lane a charge committed to; see _charge()
@@ -153,7 +154,7 @@ class HorseBoss {
       this.atk = null;
       this.phase = 'die';
       this.t = 0;
-      this._armBooms();
+      this.booms.arm(CONFIG.HORSE_BOSS.DEATH_BOOM, CONFIG.HORSE_BOSS.sizePx);
     }
     return true;
   }
@@ -604,51 +605,6 @@ class HorseBoss {
     // Nothing to drive: the blasts and the fade are read off `t` by draw().
   }
 
-  /**
-   * Roll the explosions, ONCE, on the frame he dies.
-   *
-   * ⚠️ ROLLED HERE AND STORED, NOT IN draw(). A scatter re-rolled every frame
-   * is not an explosion, it is static -- the same lesson hit-fx.js records for
-   * the impact bursts, where the random pick is frozen on the event. Everything
-   * random about this death happens in this function and nowhere else.
-   *
-   * THE TIMES ARE SHUFFLED AGAINST THE POSITIONS on purpose. Laid out along his
-   * body and then fired in that order, the blasts sweep from nose to tail like
-   * something being unzipped; dealt out at random they read as him coming apart
-   * from the inside, which is what was asked for.
-   */
-  _armBooms() {
-    this.blasts = [];
-    const B = (CONFIG.HORSE_BOSS.DEATH_BOOM) || {};
-    if (!B.on) return;
-    const n = Math.max(1, B.count || 7);
-    const h = CONFIG.HORSE_BOSS.sizePx;
-
-    // The order the blasts go off in: 0..n-1, shuffled.
-    const order = [];
-    for (let i = 0; i < n; i++) order.push(i);
-    for (let i = n - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = order[i]; order[i] = order[j]; order[j] = tmp;
-    }
-
-    const jit = B.sizeJitter || 0;
-    for (let i = 0; i < n; i++) {
-      /* Spread ALONG him first and jittered second, so seven blasts cover the
-         whole animal instead of clustering wherever the rolls happened to fall
-         -- a horse is longer than he is tall and the middle of him is not where
-         this reads. */
-      const spanX = (n === 1) ? 0 : ((i + 0.5) / n * 2 - 1);
-      this.blasts.push({
-        ox: (spanX * (B.spreadXRel || 0.55) + (Math.random() - 0.5) * 0.16) * h,
-        // Up from his feet: never at ground level, never over his head.
-        oy: -(0.18 + Math.random() * (B.spreadYRel || 0.75)) * h,
-        at: (B.startMs || 0) + order[i] * (B.everyMs || 180),
-        size: (B.sizePx || 210) * (1 + (Math.random() * 2 - 1) * jit),
-      });
-    }
-  }
-
   /* Waits for the WHOLE death, not for `dead`. The level advances on this, and
      advancing on `dead` is what once left a corpse hanging in mid-air through
      an outro -- see the bug family in STATE.md. */
@@ -760,55 +716,16 @@ class HorseBoss {
       alpha, rotate: rot, flash: this.flash,
     });
 
-    // OVER him, always -- an explosion behind the thing exploding is a sunrise.
-    if (boom) this._drawBooms(ctx, sheets, gx, gy);
-  }
-
-  /**
-   * The death explosions.
-   *
-   * ⚠️ THE SHEET COMES THROUGH `sheets.assets` RATHER THAN THROUGH A SECOND
-   * ARGUMENT. `draw(ctx, sheets, camX)` is the interface every drawable in this
-   * game answers to, and widening it for one boss's death would have meant
-   * touching the shell, the Mosca and the crowd for something none of them
-   * needs. Sheets owns an Assets; this borrows it. If a second effect ever
-   * wants raw art, THAT is the moment to give the interface an assets slot
-   * rather than to borrow twice.
-   *
-   * NOTHING IS TICKED HERE. Each blast knows when it starts, and `this.t` says
-   * what time it is -- so the whole string is a pure function of the death
-   * clock, which is the same arrangement the game over panel uses and it means
-   * there is no second thing to keep in step.
-   */
-  _drawBooms(ctx, sheets, gx, gy) {
-    if (!this.blasts || !this.blasts.length) return;
-    const img = sheets.assets && sheets.assets.getDrawable('boom');
-    const rects = CONFIG.BOOM_RECTS || [];
-    if (!img || !rects.length) return;               // no art: no explosion, no crash
-    const ms = CONFIG.boomMs || 71;
-    const t = this.t * 1000;
-
-    /* Measured off the WIDEST frame, not the first. With the full 12-frame set
-       the first frame is the smallest one -- the blast growing -- so anchoring
-       the scale on it would make every explosion enormous. */
-    let peak = 1;
-    for (const r of rects) if (r[2] > peak) peak = r[2];
-
-    ctx.save();
-    for (const b of this.blasts) {
-      const local = t - b.at;
-      if (local < 0) continue;
-      const i = Math.floor(local / ms);
-      if (i >= rects.length) continue;               // this one has finished
-      const r = rects[i];
-      const s = b.size / peak;
-      const w = r[2] * s, h = r[3] * s;
-      /* Centred on its own point, so the frames grow and shrink about it. Every
-         frame shares one scale, which is what keeps their RELATIVE sizes -- the
-         animation is the sheet's, not something re-timed here. */
-      ctx.drawImage(img, r[0], r[1], r[2], r[3],
-                    gx + b.ox - w / 2, gy + b.oy - h / 2, w, h);
+    /* OVER him, always -- an explosion behind the thing exploding is a sunrise.
+       ⚠️ THE SHEET COMES THROUGH `sheets.assets`, because `draw(ctx, sheets,
+       camX)` is the interface every drawable in this game answers to and
+       widening it for one boss's death would mean touching the shell, the Mosca
+       and the crowd for something none of them needs. Sheets owns an Assets;
+       this borrows it. */
+    if (boom) {
+      this.booms.draw(ctx, sheets.assets && sheets.assets.getDrawable('boom'),
+                      gx, gy, this.t);
     }
-    ctx.restore();
   }
+
 }

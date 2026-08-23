@@ -61,7 +61,13 @@ class Sound {
     this.ctx = null;
     this.master = null;
     this.musicGain = null;
-    this.buffer = null;
+    /* DECODED MUSIC, BY ASSET KEY. It was a single `buffer` until the horse got
+       a theme of its own (2026-08-22); now the level bed and the boss track are
+       two entries in here and only one is ever playing. Keyed by the asset key
+       so a track is decoded once however many times it is started. */
+    this.buffers = {};
+    this.decoding = {};
+    this.track = null;         // which key `source` is playing
     this.source = null;
     this.sfxGain = null;
     this.sfx = {};             // name -> decoded AudioBuffer
@@ -75,7 +81,10 @@ class Sound {
        start. Without it, the one gesture that unlocks audio would unlock
        silence. */
     this.wanted = false;
-    this._decoding = false;
+    /* WHICH track was asked for. Paired with `wanted` rather than replacing it:
+       `wanted` is "the game wants music at all", which is what the autoplay
+       retry reads, and this is which one. */
+    this.wantedTrack = null;
 
     /* Retry the resume on any gesture until one works. `once` is wrong here:
        the FIRST gesture is not necessarily the one that succeeds -- a keydown
@@ -116,6 +125,9 @@ class Sound {
     this.primeSfx();
   }
 
+  /** Which track the game has asked for, or null. */
+  _wantedKey() { return this.wanted ? (this.wantedTrack || 'music') : null; }
+
   /**
    * Decode the bytes the loader fetched.
    *
@@ -125,28 +137,29 @@ class Sound {
    * else and turn into a buffer here, the first time there is somewhere to
    * decode them to.
    */
-  _decode() {
-    if (this.buffer || this._decoding) return;
+  _decode(key) {
+    key = key || 'music';
+    if (this.buffers[key] || this.decoding[key]) return;
     const ctx = this._ensure();
     if (!ctx) return;
-    const bytes = this.assets && this.assets.getBytes('music');
+    const bytes = this.assets && this.assets.getBytes(key);
     if (!bytes) return;
-    this._decoding = true;
+    this.decoding[key] = true;
     /* decodeAudioData DETACHES the ArrayBuffer it is given on some engines, so
        it gets a copy. The original stays in Assets, which means a later reload
        -- a restart that rebuilt this object, say -- still has something to
        decode instead of an empty husk. */
     const copy = bytes.slice(0);
     const done = buf => {
-      this._decoding = false;
-      this.buffer = buf || null;
+      delete this.decoding[key];
+      if (buf) this.buffers[key] = buf;
       this._startIfReady();
     };
-    const fail = () => { this._decoding = false; };
+    const fail = () => { delete this.decoding[key]; };
     try {
       const p = ctx.decodeAudioData(copy, done, fail);
       if (p && p.then) p.then(done, fail);
-    } catch (e) { this._decoding = false; }
+    } catch (e) { delete this.decoding[key]; }
   }
 
   /**
@@ -222,34 +235,60 @@ class Sound {
     s.start(delaySec > 0 ? ctx.currentTime + delaySec : 0);
   }
 
-  /** The game wants music. Everything after this is the browser's timing. */
-  playMusic() {
+  /**
+   * The game wants music. Everything after this is the browser's timing.
+   *
+   * `key` is the ASSET key of the track -- 'music' (the level bed) by default,
+   * 'musicBoss' for the horse's theme. ⚠️ ASKING FOR A DIFFERENT ONE SWITCHES:
+   * only one piece of music plays at a time, which is what "it should play on
+   * its own" means. Asking for the one already playing is a no-op and NOT a
+   * restart -- start() calls this on every run, and a boss theme that restarted
+   * from the top each frame would be silence with a heartbeat.
+   */
+  playMusic(key) {
+    const want = key || 'music';
+    if (this.wanted && this.track === want && this.source) return;
+    if (this.source && this.track !== want) this.stopMusic(0.35);
     this.wanted = true;
+    this.wantedTrack = want;
     this._ensure();
-    this._decode();
+    this._decode(want);
     this.primeSfx();
     this._resume();
   }
 
   _startIfReady() {
-    if (!this.wanted || this.source) return;
+    const key = this._wantedKey();
+    if (!key || this.source) return;
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return;   // a gesture will come back
-    if (!this.buffer) { this._decode(); return; }
+    const buffer = this.buffers[key];
+    if (!buffer) { this._decode(key); return; }
 
     const s = ctx.createBufferSource();
-    s.buffer = this.buffer;
+    s.buffer = buffer;
     s.loop = true;
     /* See the header: the decoded buffer may be a few ms longer than the music.
        Clamped so a wrong CONFIG number cannot ask for a loop past the end of
        the buffer, which throws in some engines and silently plays nothing in
        others. */
-    const want = (CONFIG.musicLoopSec || 0);
+    /* ⚠️ THE PIN IS THE LEVEL BED'S, NOT EVERY TRACK'S. `musicLoopSec` exists
+       because that bed is six seconds long and a few ms of codec padding at the
+       wrap is an audible tick every six seconds. The boss theme is four and a
+       half MINUTES and was never cropped to a downbeat, so pinning it to some
+       other track's loop length would cut it off after six seconds -- which is
+       exactly what happens if this is written as one rule for both. */
+    const want = (key === 'music') ? (CONFIG.musicLoopSec || 0) : 0;
     s.loopStart = 0;
-    s.loopEnd = want > 0 ? Math.min(want, this.buffer.duration) : this.buffer.duration;
+    s.loopEnd = want > 0 ? Math.min(want, buffer.duration) : buffer.duration;
+    /* Per-track level, so a song mixed hotter than the bed does not have to be
+       re-rendered to sit under the effects. */
+    const vol = (CONFIG.MUSIC_GAIN && CONFIG.MUSIC_GAIN[key]);
+    this.musicGain.gain.value = this.volume * (vol == null ? 1 : vol);
     s.connect(this.musicGain);
     s.start(0);
     this.source = s;
+    this.track = key;
   }
 
   /**
@@ -263,9 +302,11 @@ class Sound {
    */
   stopMusic(fadeSec) {
     this.wanted = false;
+    this.wantedTrack = null;
     const s = this.source;
     if (!s || !this.ctx) return;
     this.source = null;
+    this.track = null;
     const t = this.ctx.currentTime;
     const f = fadeSec == null ? 0.25 : fadeSec;
     try {
@@ -274,7 +315,9 @@ class Sound {
       g.setValueAtTime(g.value, t);
       g.linearRampToValueAtTime(0.0001, t + f);
       s.stop(t + f + 0.02);
-      // The bus is shared, so it has to come back up for whatever plays next.
+      /* The bus is shared, so it has to come back up for whatever plays next --
+         at the PLAIN volume, because the next track sets its own trim in
+         _startIfReady(). */
       g.setValueAtTime(this.volume, t + f + 0.03);
     } catch (e) {
       try { s.stop(); } catch (e2) {}

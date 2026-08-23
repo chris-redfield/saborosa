@@ -109,6 +109,9 @@ function assetManifest() {
      suspended until the player has interacted with the page. Fetching is not
      gated on that; decoding is. */
   out.push({ key: 'music', src: CONFIG.MUSIC_TRACK, how: 'audio' });
+  /* The horse's theme, under its own key. Loaded exactly like the bed -- raw
+     bytes now, decoded by sound.js when there is a context to decode into. */
+  if (CONFIG.BOSS_TRACK) out.push({ key: 'musicBoss', src: CONFIG.BOSS_TRACK, how: 'audio' });
   for (const [name, src] of Object.entries(CONFIG.SFX || {}))
     out.push({ key: 'sfx:' + name, src: src, how: 'audio' });
 

@@ -107,7 +107,7 @@ class Combat {
    * is the genre default: a punch hits a person, not a row of them. A sweeping
    * attack that hits everyone would be a different move with a different name.
    */
-  playerHits(player, crowd, boss) {
+  playerHits(player, crowd, boss, props) {
     const box = player.hitbox();
     if (!box) return;
     /* COUNTED HERE, AFTER THE BOX EXISTS — the order of these two lines is the
@@ -124,7 +124,16 @@ class Combat {
     /* The boss is just another target. It answers vulnerable()/overlaps()/hurt()
        with the same shapes a Fighter does, which is why it needs no special case
        here — the one place the resolver would otherwise have grown a branch. */
-    const targets = boss ? crowd.list.concat([boss]) : crowd.list;
+    /* BARRELS ARE TARGETS LIKE ANYTHING ELSE. They answer vulnerable(),
+       overlaps() and hurt() with the fighters' shapes, so they join the list
+       rather than growing a branch -- the same bargain the bosses make.
+
+       ⚠️ A BARREL CAN THEREFORE STEAL A PUNCH from an enemy standing behind it,
+       because only the NEAREST target is hit. That is the genre's behaviour and
+       it is why a barrel breaks in one blow: the punch is not wasted, it is
+       spent on the thing that was in the way. */
+    let targets = boss ? crowd.list.concat([boss]) : crowd.list;
+    if (props) targets = targets.concat(props.targets());
     let best = null, bestD = Infinity;
     for (const e of targets) {
       if (!e.vulnerable()) continue;
@@ -184,7 +193,9 @@ class Combat {
       // The kill is read AFTER the blow, and only on the transition: `dead`
       // stays true while the body falls and fades, so testing it alone would
       // score one death every frame of the fall.
-      if (!wasDead && best.dead) this.stats.killed(best.kind);
+      // ⚠️ `scores` KEEPS BARRELS OFF THE BOARD. Everything else this can hit is
+      // a fighter; a smashed barrel would otherwise count as an enemy downed.
+      if (!wasDead && best.dead && best.scores !== false) this.stats.killed(best.kind);
     }
     this._impact(player, best, box.def.pose, true);
   }
@@ -242,6 +253,67 @@ class Combat {
       if (this.stats) this.stats.tookHit(box.def.damage);
       this._takeHitSound();
       this._impact(e, player, 'straight', false);
+    }
+  }
+
+  /**
+   * A THROWN BARREL, against the crowd.
+   *
+   * ⚠️ IT COUNTS AS THE PLAYER'S BLOW, and that is not a detail now that the
+   * impact marks carry information: `byPlayer` true is what makes the burst
+   * yellow. The player threw it, so it is their hit -- it is scored as theirs
+   * and it sounds like theirs.
+   *
+   * ⚠️ ONE ENEMY PER THROW, unless `throwPierce` says otherwise. A barrel
+   * crossing an arena would otherwise hit each of five enemies as it passed
+   * through them, which is a different move from the one that was asked for --
+   * and it never breaks, because breaking is what hitting is supposed to do.
+   * `hitIds` is what remembers; it is per-throw, not per-barrel, so a barrel
+   * picked up and thrown twice starts fresh.
+   */
+  propHits(prop, crowd, player, boss) {
+    if (!prop || prop.state !== 'thrown') return;
+    /* ⚠️ THE THROW IS COUNTED AS A SWING, ONCE, or accuracy goes over 100%.
+       `hits` and `swings` are the two halves of one ratio (see stats.js), so a
+       hit that never had a swing behind it makes SAGACIDADE read 110%. The prop
+       itself is the identity `countSwing` compares against -- it builds no
+       attack object -- and the flag is reset by throwFrom(), so a barrel thrown
+       twice counts twice. A throw that misses still counts, which is right: it
+       was an attempt. */
+    if (this.stats && !prop.swingCounted) {
+      prop.swingCounted = true;
+      this.stats.countSwing(prop);
+    }
+    const C = prop.cfg || {};
+    const hw = prop.halfW(), hz = prop.halfZ();
+    /* ⚠️ A BOSS IS IN THE LIST. The boss room has barrels in it and the first
+       thing any player does with a barrel and a horse in the same room is throw
+       one at the other; finding that it passes straight through reads as the
+       mechanic being broken rather than as a rule. Both bosses answer
+       vulnerable() and hurt() like a mook, so they cost this one concat. */
+    const targets = boss ? (crowd ? crowd.list.concat([boss]) : [boss])
+                         : (crowd ? crowd.list : []);
+    for (const e of targets) {
+      if (!e.vulnerable() || prop.hitIds.indexOf(e) >= 0) continue;
+      if (Math.abs(e.x - prop.x) > hw + CONFIG.fighterSizePx * 0.3) continue;
+      if (Math.abs(e.z - prop.z) > hz + 20) continue;
+      /* ⚠️ HEIGHT MATTERS FOR A THROWN THING and this is the one place in the
+         game where it is the ARC that decides: the barrel is only dangerous
+         while it is at body height. Without it a barrel sailing over an enemy's
+         head knocks him down from three feet above his hat. */
+      if (Math.abs(prop.jumpY - e.jumpY) > (C.throwReachY || 130)) continue;
+
+      prop.hitIds.push(e);
+      const dir = prop.vx >= 0 ? 1 : -1;
+      e.hurt(C.throwDamage || 22, dir, C.throwKnockback || 260,
+             C.throwLiftHit || 90, C.throwKnockdown !== false);
+      if (this.stats) {
+        this.stats.hit(C.throwDamage || 22);
+        if (e.dead) this.stats.killed(e.kind);
+      }
+      if (this.sound) this.sound.play('hit', 0.92);
+      this._impact(prop, e, 'finisher', true);
+      if (!C.throwPierce) { prop.smash(true); return; }
     }
   }
 

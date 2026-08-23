@@ -443,6 +443,45 @@ const CONFIG = {
       name: 'street',
       plate: 'plate',
       startX: 220,
+      /* --- WHAT IS LYING AROUND ------------------------------------------
+         BARRELS AND FOOD, placed by hand like the enemies are, and belonging to
+         the ROOM rather than to a segment: a wave is an event, a barrel is
+         scenery, and hanging these off segments would make them appear as the
+         player walked into a fight -- the "materialising in front of you" that
+         the enemy walk-in exists to avoid.
+
+         WHERE THEY ARE IS THE DESIGN. The first sits in the opening walk,
+         before anything can hit back, so the lift and the throw are learned
+         somewhere safe; after that they cluster at the near edge of each arena,
+         where a player who is being surrounded can reach one. The food sits
+         BETWEEN fights rather than inside them, so eating is a decision made
+         while walking rather than a scramble mid-combo.
+
+         ⚠️ THINNED TWICE ON 2026-08-22, AFTER PLAYING IT: nine barrels here
+         became six and then FOUR, so the level now holds six all told (four
+         here, two in the boss room) against eleven when it was first built.
+         Placed food went four to two, and the boss room's chicken went with the
+         second pass. Both were "too many" on sight, twice. If they are ever added
+         back, add them in the ARENAS -- what makes a barrel worth having is
+         being able to reach one while surrounded, and a corridor lined with
+         them is just scenery to punch through.
+
+         ⚠️ x IS WORLD SPACE, THE SAME AXIS THE ENEMIES USE, and z is the belt
+         depth (0..beltDepth, 210). A barrel at the same x as an arena's enemies
+         is IN that fight; one 200px short of it is on the way in. */
+      props: [
+        // The opening walk: a barrel, and nothing that can hit back.
+        { kind: 'barrel',  x: 1450, z: 60 },
+        { kind: 'coxinha', x: 1900, z: 105 },
+        // The first arena.
+        { kind: 'barrel',  x: 2180, z: 40 },
+        // Past the sub-boss: the roaches. Far side of the belt, for variety --
+        // the other three are all within a lane of the near edge.
+        { kind: 'coxinha', x: 3480, z: 120 },
+        { kind: 'barrel',  x: 3860, z: 180 },
+        // The last stand.
+        { kind: 'barrel',  x: 4120, z: 55 },
+      ],
       /* Far enough right that the camera can reach 3424 — the end of the film
          at `worldPxPerSecond` 116. `camX` is clamped to `endX - GAME_W`, so
          this is a hard ceiling on how much of the shot can ever be seen. */
@@ -558,6 +597,27 @@ const CONFIG = {
       name: 'boss-room',
       plate: 'bossPlate',
       startX: 220,
+      /* THE ROOM'S OWN MUSIC, and it starts the moment the player walks in --
+         NOT when the horse arrives. The room opens with a wave of roaches, and
+         starting the song on the boss left that whole first fight playing under
+         the street's bed with the door already shut behind you. See roomMusic()
+         in game.js; nothing ever stops it, so it carries the ending too. */
+      music: 'musicBoss',
+      /* TWO BARRELS AND NOTHING ELSE -- the chicken that was here was removed on
+         request the same day. This is the one room where the placement is
+         tactical rather than scenic: they sit BEHIND where the player enters
+         and to either side of the belt, so they are still there when the horse
+         arrives -- a thrown barrel is 22 damage against his 150, which is most
+         of a clean combo for one press, and it is the answer to a charge you
+         cannot get out of the way of.
+
+         ⚠️ THE ROACHES COME FIRST and will happily eat both barrels. That is
+         the choice the room is asking: spend them on the wave, or save them for
+         the horse. */
+      props: [
+        { kind: 'barrel',  x: 620, z: 55 },
+        { kind: 'barrel',  x: 780, z: 170 },
+      ],
       /* 337px of pan + one screen. The camera crosses the whole shot and
          stops, which is the room's right-hand wall. */
       endX: 1617,
@@ -931,6 +991,48 @@ const CONFIG = {
                  turn:      { anim: 'turn' },
                } },
 
+    /* THE BARREL, AND THE FOOD, AND THEY ARE ONE PACK because they are one
+       sheet -- `barril-coconutbash.png`, cut by tools/build-beat-prop-defs.py.
+
+       ⚠️ IT IS IN `CHARACTERS` AND IT IS NOT A CHARACTER. Nothing spawns it as
+       a fighter; it is here because this table is what manifest.js loads and
+       what sheets.js builds, so an entry here is how a ragged pack gets into
+       the game at all. The horse is in the same position and for the same
+       reason -- see its note. Adding a `PACKS` table beside this one would be
+       the tidier shape and would mean touching both loaders for no behaviour.
+
+       ⚠️ THE POSES ARE AN EXPLICIT MAP, LIKE THE HORSE'S, and load-bearing for
+       the same reason: `sheets.draw()` resolves a pose through `pack.poses` and
+       an unknown one falls back silently to `idle`. What this pack must NOT get
+       is the fighter vocabulary -- no walk, no combo, no hurt -- because there
+       is no art behind any of it.
+
+       `drawScale` 0.8: the atlas holds 140px of barrel and this puts it on
+       screen at 110 against LEBRON's 123, so it comes up to his shoulder. It is
+       the number PROPS.barrel.sizePx is measured against -- ⚠️ move one and
+       move the other, or the hit box stops matching the picture. */
+    barril:  { sheet: 'v2:beatemup-dungeon/barril-beat', pack: 'ragged',
+               name: 'BARRIL',
+               drawScale: 0.8,
+               poses: {
+                 idle:      { anim: 'idle' },       // 4: two drawings + mirrors
+                 smash:     { anim: 'brk' },
+                 smash2:    { anim: 'brk2' },
+                 side:      { anim: 'side' },       // carried, and in flight
+                 smashSide: { anim: 'brkSide' },
+                 /* ONE ROW, TWO OBJECTS: slot 0 is the roast chicken and slot 1
+                    the drumstick, so each is a one-frame slice of `food`. */
+                 chicken:   { anim: 'food', from: 0, to: 1 },
+                 coxinha:   { anim: 'food', from: 1, to: 2 },
+                 /* ⚠️ CUT BUT NOT WIRED, like the coconut's pickup rows were
+                    before barrels arrived. The sheet carries six frames of a
+                    lit bomb and there is no bomb mechanic; they are named here
+                    so that deciding to have one is a one-line change rather
+                    than a trip back to the cutter. */
+                 bomb:      { anim: 'bomb' },
+                 bomb2:     { anim: 'bomb2' },
+               } },
+
     cigarro3: { sheet: 'v2:beatemup-dungeon/cigarro3-beat', pack: 'ragged',
                 name: 'DEDÉ',
                 drawScale: 1.691,
@@ -1216,7 +1318,150 @@ const CONFIG = {
      two of stooping -- and because a barrel should cost more to pick up than a
      bottle. It is the only difference between them today; when there are real
      objects it is the natural place to hang a weight penalty. */
-  PICKUP_MS: { ground: 420, heavy: 640 },
+  /* How long a reach takes, in ms. `heavy` is the over-the-head hoist a barrel
+     gets, `ground` the stoop for anything else -- the object chooses; see
+     Fighter.pickup(). `throw` is the wind-and-release, and `throwReleaseRel` is
+     how far through it the object actually leaves his hands.
+
+     ⚠️ 0.45 IS NOT A ROUND NUMBER BY ACCIDENT. `liftThrow` is five drawings --
+     reach, reach forward, arms up, arm swinging through, follow-through -- so
+     the arm passes his head somewhere around the middle. Release at 0 and the
+     barrel leaves before he has moved; release at 1 and it leaves after the arm
+     has already come down, which reads as it falling out of his hands. */
+  PICKUP_MS: { ground: 420, heavy: 640, throw: 420, throwReleaseRel: 0.45 },
+
+  /* =========================================================================
+     PROPS -- BARRELS AND FOOD
+     =========================================================================
+     Added 2026-08-22 off one sheet. A barrel can be punched apart or picked up
+     and thrown; food is walked over and eaten. The art and the pose names are
+     CHARACTERS.barril; this is how they behave.
+
+     ⚠️ A BARREL IS NOT SOLID. The player and the enemies walk straight through
+     it, and that is a decision rather than an omission: nothing else in this
+     game has body collision -- fighters pass through each other freely, which
+     is what keeps a five-enemy crowd from wedging the player against a wall --
+     and one solid object in a world with no collision is where a player gets
+     stuck. If it ever wants to be solid, that is a mechanic for everything, not
+     a flag on this. */
+  PROPS: {
+    barrel: {
+      /* ⚠️ THE FEATURE SWITCH. `false` and there are no barrels in the game:
+         none are laid out, nothing can be punched apart, lifted or thrown, and
+         the pickup button goes back to a stoop at empty air -- which is what it
+         did before they existed. Added 2026-08-22 at the user's request, ON,
+         against the possibility that the mechanic does not survive playtesting.
+
+         WHAT IT DOES NOT DO, on purpose:
+           * it does not touch the FOOD. Drumsticks are placed by hand and are
+             their own feature; only the chicken that would have been inside a
+             barrel goes, because there is no barrel.
+           * it does not delete the PLACEMENTS. `ROOMS[n].props` keeps its
+             barrel entries, unread, so turning them back on is this same line.
+           * it does not unload the ART. Barrels and food are one sheet.
+
+         The gate is `Props.add()` -- the one funnel every prop goes through --
+         rather than the room layout, so nothing added later can slip past it. */
+      on: true,
+      /* ONE PUNCH BREAKS IT, and every punch in the game does at least 5. That
+         is deliberate: the resolver only ever hits the NEAREST target, so a
+         barrel standing between the player and an enemy eats a blow meant for
+         the enemy. Costing two punches would turn every barrel into an ambush
+         rather than a thing you smash on the way past. */
+      hp: 5,
+      /* Drawn height in canvas px, and what the hit box is derived from.
+         ⚠️ IT MUST AGREE WITH CHARACTERS.barril.drawScale -- the picture comes
+         from there and this is what can be hit. 0.8 x fighterSizePx is 110. */
+      sizePx: 110,
+      hitWRel: 0.8,      // hurtbox width, as a fraction of sizePx
+      hitZ: 46,          // and its depth on the belt, in px
+      /* How close he has to be to pick it up. Generous in x and tight in z, the
+         same shape every reach in this game has: the belt is 210px deep and a
+         barrel two lanes away should not jump into his hands. */
+      liftRangeX: 74,
+      liftRangeZ: 46,
+      /* Height above his feet the BASE of the barrel is drawn at while carried,
+         as a fraction of a body (`fighterSizePx`, 137) -- so 0.7 is 96px up.
+
+         ⚠️ MEASURED OFF THE CARRY DRAWING, NOT GUESSED. `carryWalk` frame 0 is
+         140px tall against an anchor 132 up, which at the coconut's pack scale
+         puts the top of his raised hands 104px above his feet. 96 sets the
+         barrel down INTO that grip by 8px; the first value here was 1.15 (157px)
+         and left it floating half a barrel above his fingers. Re-measure if the
+         coconut's sheet is ever re-cut -- this number depends on his drawing,
+         not on the barrel's.
+
+         It is also where a throw leaves from -- see Prop.throwFrom(). */
+      carryYRel: 0.70,
+      /* THE THROW. Fast and flat: 520px/s with a small upward kick, so it
+         crosses about two thirds of the screen before it lands rather than
+         lobbing. `throwGravity` is what brings it down; raise the lift and the
+         gravity together to keep the same distance with a higher arc. */
+      throwSpeed: 520,
+      throwLift: 120,
+      throwGravity: 900,
+      /* What it does to whoever it hits. It is the hardest single blow in the
+         game -- a full player combo is 36 across five hits -- and it knocks
+         down, which is the point of it: a thrown barrel is how you answer being
+         surrounded. */
+      throwDamage: 22,
+      throwKnockback: 260,
+      throwLiftHit: 90,
+      throwKnockdown: true,
+      /* ⚠️ HOW HIGH OFF THE FLOOR IT CAN STILL HIT. Without this a barrel
+         sailing over an enemy's head knocks him down from above it. 130 is a
+         little under a body height, so it connects while it is at chest level
+         and stops mattering once it is genuinely overhead. */
+      throwReachY: 130,
+      /* false = it breaks on the first enemy it touches. true = it carries on
+         through the crowd, which is a different (and much stronger) move than
+         the one that was asked for. */
+      throwPierce: false,
+      spinMs: 90,        // per frame of the tumble while in flight
+      smashMs: 480,      // the three break frames, then it is gone
+      /* HOW OFTEN A BARREL HAS A CHICKEN IN IT. ⚠️ Rolled when the barrel is
+         BUILT, not when it breaks -- see prop.js.
+
+         ⚠️ 0.35, DOWN FROM 0.5, AND IT IS HALF OF A THINNING PASS. The first
+         build had too much food lying about, and the placed drumsticks are only
+         part of where it comes from: every barrel is a potential chicken on the
+         floor as well. Cutting the placed food alone would have missed most of
+         it. At 0.35 against the eight barrels in the level that is under three
+         chickens a run, on top of two placed drumsticks and the boss room's
+         chicken -- against about ten items before. */
+      dropChance: 0.35,
+    },
+    food: {
+      /* WHAT EATING IS WORTH, as a fraction of the visible bar. A half and a
+         third, as asked for: 55 and 37 HP against `playerHealth` 110.
+
+         ⚠️ CAPPED, NOT BANKED, decided 2026-08-22. The heal fills the bar and
+         anything past it is LOST -- it does not roll over into restoring a life.
+         Both readings were put and this is the one chosen, so a chicken eaten
+         at 100/110 is worth ten points and not a spare life. Pickup.update()
+         is the one place that clamps. */
+      chickenRel: 0.5,
+      coxinhaRel: 1 / 3,
+      /* Reach. ⚠️ FOOD IS TAKEN BY WALKING OVER IT, not with the button -- the
+         button lifts barrels, and putting both on it means the player who
+         wanted the barrel gets the chicken lying next to it. */
+      rangeX: 52,
+      rangeZ: 40,
+      /* And not while jumping over it. A drumstick eaten from the top of a jump
+         is a drumstick that was never picked up. */
+      rangeY: 60,
+      /* ⚠️ 0 -- FOOD SITS STILL. It bobbed gently at first, on the usual
+         argument that a floating pickup reads as something to take rather than
+         as scenery; seen in the level it read as the drumstick being unable to
+         decide whether it was on the floor. Turned off on request the same day.
+         The machinery stays (`bobPx` is the whole of it) and it was always
+         drawn-only -- `z` never moved, so what could be reached never breathed
+         in and out with the picture. */
+      bobPx: 0,
+      bobRate: 3.2,
+    },
+  },
+
 
   /* Drawn height of a fighter, in the fixed 1280x720 canvas — NOT a fraction
      of it. A fighter is sized against the belt and the other fighters, all of
@@ -1475,8 +1720,21 @@ const CONFIG = {
        marks with six animations for the cost of a negative scale. */
     mirror: true,
     /* false = all six in the hat, whoever is being hit. true = the colour
-       carries the information instead. See above. */
-    colorByRole: false,
+       carries the information instead. See above.
+
+       ⚠️ TRUE SINCE 2026-08-22, ON REQUEST: yellow is always the player landing
+       one, red is always the player taking one. It was built as a taste call
+       with both sides argued and this is the side that was chosen -- so the
+       colour is now INFORMATION, and the six-variant random draw has become a
+       three-variant draw within a colour. Do not "restore variety" by turning
+       it back off; the variety is still there, it is just inside each colour.
+
+       ⚠️ AND IT ONLY WORKS BECAUSE `_impact` IS TOLD WHICH WAY THE BLOW WENT.
+       `byPlayer` is passed in rather than derived -- combat.js has no idea
+       which of two fighters is the player. Any new damage path has to pass it
+       correctly or its marks come out the wrong colour, which is now a lie
+       rather than a coin toss. */
+    colorByRole: true,
     playerColour: 'yellow',   // used only when colorByRole is on
     enemyColour: 'red',
   },
@@ -1969,6 +2227,32 @@ const CONFIG = {
      What it does change is the ARENA. At 304 it is well over twice a fighter's
      137px and takes up correspondingly more of the belt it sweeps along, so the
      ground pass is harder to stand clear of than when that attack was tuned. */
+  /* --- The Mosca's death ---------------------------------------------------
+     IT BLOWS UP RATHER THAN FALLING, asked for on 2026-08-22 in the same breath
+     as the horse's. Same machinery (boom.js), same sheet, its own numbers.
+
+     ⚠️ FEWER AND SMALLER THAN THE HORSE'S, deliberately. It dies IN THE AIR,
+     where there is no floor to hide the bottom of a blast and nothing else in
+     the frame to measure against, so seven full-size explosions around a fly
+     read as a screen-filling mess rather than as a fly coming apart. Five at
+     170 sit inside its own silhouette.
+
+     ⚠️ AND `on: false` GIVES BACK THE OLD DEATH INTACT -- the tumble out of the
+     sky and the slow fade where it lands. Nothing was deleted for this. */
+  flyBossDeathBoom: {
+    on: true,
+    count: 5,
+    startMs: 0,
+    everyMs: 165,
+    spreadXRel: 0.45,
+    spreadYRel: 0.6,
+    sizePx: 170,
+    sizeJitter: 0.3,
+    /* How long the fly itself takes to go. Shorter than the string, so it is
+       gone before the last blasts fire and they read as wreckage. */
+    fadeMs: 560,
+  },
+
   /* ===== THE HORSE BOSS ======================================================
      The final boss, and the last fight in the game. Five rows of art and no
      hurt/knockdown/death among them -- see CHARACTERS.horse.
@@ -2752,6 +3036,39 @@ const CONFIG = {
   MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
   musicLoopSec: 6.146,
   musicVolume: 0.55,
+
+  /* --- The horse's theme ---------------------------------------------------
+     A SONG, NOT A BED, and the difference is the whole entry. The level's music
+     is a six-second loop built to disappear under a fight; this is 4m39s of
+     finished track handed over on 2026-08-22 to play over the last fight.
+
+     ⚠️ IT IS NOT PINNED TO `musicLoopSec`. That number is the BED's crop, and
+     applying it here would cut the song off after six seconds -- see the guard
+     in Sound._startIfReady(). It loops at its own end instead, which it will
+     almost certainly never reach: the fight is a couple of minutes at most.
+
+     ⚠️ AND IT PLAYS ALONE. Sound only ever holds one music source, so asking
+     for this stops the bed -- which is what "tocar sozinha" asked for. Asking
+     for a track already playing is a no-op and not a restart, or the theme
+     would start again from the top every frame.
+
+     ⚠️ IT IS DELIBERATELY NOT STOPPED WHEN THE HORSE DIES. Requested: it runs
+     through his death, the walk-out, the ending photograph and the tally, and
+     only the return to the title ends it. So the last thing the player hears is
+     the same thing they beat the game to.
+
+     4.5MB of mp3, which is a fifth of the whole build again -- the one asset
+     here big enough to be worth noticing. It is mp3 rather than ogg because
+     that is how it was delivered; re-encoding to ogg at the same quality would
+     save about a third if the build ever needs it. */
+  BOSS_TRACK: 'v2:beatemup-dungeon/audio/song-enmakun2011.mp3',
+  /* Per-track trim on the music bus, by ASSET KEY. Anything unlisted plays at
+     `musicVolume` flat. The song is a finished mix and comes in hotter than the
+     bed, so it is pulled down rather than the bed being pushed up -- the bed's
+     level is balanced against the punches and must not move. */
+  MUSIC_GAIN: {
+    musicBoss: 0.85,
+  },
 
   /* --- Sound effects -------------------------------------------------------
      name -> file. The name is what the game asks for (`sound.play('hit')`);

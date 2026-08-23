@@ -30,6 +30,15 @@ class Player extends Fighter {
        motion comes from calling `walk()` once a frame. See `update`. */
     this.airIx = 0;
     this.airIz = 0;
+    /* What the current reach is FOR, held across the reach's own duration --
+       see update(). Null except during a pickup. */
+    this.liftTarget = null;
+    /* Has the barrel left his hands yet this throw? The animation outlasts the
+       release, so "still throwing" is not "still holding". */
+    this.threw = false;
+    /* The room's props, handed in by the shell so the player can find what is
+       within reach. Null is a legal state and means a room with nothing in it. */
+    this.props = null;
   }
 
   /**
@@ -78,15 +87,67 @@ class Player extends Fighter {
          combo, and dropping it because the machine was busy for 40ms is how a
          brawler comes to feel unresponsive. take*() is only called once the
          action can actually start. */
-      if (input.takeAttack()) this.attack(this._comboDefs());
+      /* ⚠️ WITH A BARREL UP, THE PUNCH BUTTON THROWS IT. One button, and which
+         verb it is depends on what is in his hands -- the same arrangement the
+         pickup button already has (stoop or hoist, chosen by the object). A
+         separate throw button would be a fourth thing to teach for a move that
+         can only ever mean one thing while you are holding something. */
+      if (this.carrying && input.takeAttack()) {
+        this.throwHeld((CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.throw) || 420);
+        this.threw = false;
+      }
+      else if (input.takeAttack()) this.attack(this._comboDefs());
       else if (input.takeJump()) this.jump();
-      /* PICK UP. Which animation comes out is the OBJECT's business, not the
-         button's -- `pickup(heavy)` picks the stoop or the hoist. There are no
-         liftable objects in this game yet, so nothing is ever in range and the
-         default stoop always plays. When they exist, the only change here is
-         finding what is in reach and asking it how heavy it is. */
-      else if (input.takePickup()) this.pickup(this._liftTargetHeavy());
+      /* PICK UP -- or PUT DOWN, if his hands are already full.
+         Which animation comes out is the OBJECT's business, not the button's:
+         `pickup(heavy)` picks the stoop or the hoist. This used to carry a note
+         saying there were no liftable objects in the game yet and that when
+         they arrived the only change here would be "finding what is in reach
+         and asking it how heavy it is". Barrels arrived on 2026-08-22 and that
+         turned out to be exactly true.
+
+         ⚠️ THE DROP BRANCH IS NOT A CONVENIENCE, IT IS A BUG FIX. Without it,
+         pressing pickup while already holding a barrel starts a second reach
+         and `carrying` is overwritten -- and the FIRST barrel is orphaned: it is
+         still `held`, still following the player, drawn over his head forever,
+         and nothing can ever release it. Two verbs on one button is also the
+         right feel here: punch throws it, pickup puts it down. */
+      else if (input.takePickup()) {
+        if (this.carrying) {
+          this.carrying.drop(this);
+          this.carrying = null;
+        } else {
+          /* ⚠️ THE TARGET IS FOUND AND REMEMBERED BEFORE THE REACH STARTS, not
+             when it ends. `pickup()` already makes the same argument about the
+             POSE: an object destroyed or snatched during the reach would
+             otherwise change the animation halfway through it, and here it
+             would also mean reaching for a barrel and standing up holding a
+             different one. What is caught is what was reached for. */
+          this.liftTarget = this.props ? this.props.liftTarget(this) : null;
+          this.pickup(!!this.liftTarget);
+        }
+      }
+      /* THE CATCH. The reach ends and whatever was reached for comes up -- as
+         long as it is still there and still on the floor. It can fail: a barrel
+         smashed by a stray punch during the 640ms hoist is simply gone, and he
+         stands up empty-handed rather than holding a ghost. */
+      if (this.liftTarget && this.state !== 'pickup') {
+        if (this.liftTarget.lift(this)) this.carrying = this.liftTarget;
+        this.liftTarget = null;
+      }
     } else {
+      /* THE RELEASE, partway through the throw animation. Outside `canAct()`
+         because `throwing` is exactly one of the states that blocks it -- this
+         is the game finishing an action the player already committed to, not
+         the player asking for a new one. */
+      if (this.state === 'throwing' && this.carrying && !this.threw) {
+        const rel = (CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.throwReleaseRel);
+        if (this.stateT >= (this.throwMs / 1000) * (rel == null ? 0.5 : rel)) {
+          this.carrying.throwFrom(this);
+          this.carrying = null;
+          this.threw = true;
+        }
+      }
       /* BEING HIT DROPS THE BUFFER. Everything else that blocks acting is
          the player's own doing — their punch, their jump — and holding their
          next press through it is the courtesy above. Being knocked about is
@@ -98,6 +159,16 @@ class Player extends Fighter {
         input.takeAttack();
         input.takeJump();
         input.takePickup();
+        /* ⚠️ AND HE DROPS THE BARREL. Being hit while carrying one has to cost
+           it, or the barrel is a free extra life bar's worth of pressure the
+           player can hold indefinitely while walking through a fight. It lands
+           where he was standing, intact, and can be picked back up -- taking a
+           hit should cost the position, not the object. */
+        if (this.carrying) {
+          this.carrying.drop(this);
+          this.carrying = null;
+        }
+        this.liftTarget = null;
       }
       /* AIR PUNCHES KEEP FLYING. This is the ONLY branch an airborne fighter
          can reach with his hands busy: `canAct` does not test `jumping`, so a
@@ -135,18 +206,5 @@ class Player extends Fighter {
   walkOut(dt) {
     this.walk(dt, 1, 0, null, 1);
     super.update(dt, null);
-  }
-
-  /**
-   * Is the thing within reach a heavy one?
-   *
-   * THE SEAM FOR THE LIFT MECHANIC, and deliberately the whole of it. There are
-   * no liftable objects in this game yet, so this is always false and the
-   * ground stoop always plays. When objects land, this is where "what is in
-   * range, and how heavy is it" goes -- nothing above it has to change, because
-   * the button, the state and both animations are already wired.
-   */
-  _liftTargetHeavy() {
-    return false;
   }
 }

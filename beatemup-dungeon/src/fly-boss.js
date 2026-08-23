@@ -52,6 +52,10 @@ class FlyBoss {
     this.maxHp = CONFIG.flyBossHealth;
     this.hp = this.maxHp;
     this.dead = false;
+    /* The death explosions. Shared with the horse -- see boom.js. Empty until
+       it dies, and it never fills if `flyBossDeathBoom.on` is false, in which
+       case the old tumble out of the sky plays instead. */
+    this.booms = new Booms();
     this.downPhase = '';        // drawShadow reads it; a fly never lies down
 
     this.facing = 0.5;          // 0 profile-left · 0.5 head-on · 1 profile-right
@@ -123,6 +127,7 @@ class FlyBoss {
       this.hp = 0;
       this.dead = true;
       this.phase = 'die';
+      this.booms.arm(CONFIG.flyBossDeathBoom, CONFIG.flyBossSizePx);
       this.t = 0;
     }
     return true;
@@ -425,7 +430,16 @@ class FlyBoss {
   }
 
   _die(dt) {
-    // Falls out of the sky, tumbling, and fades where it lands.
+    /* IT USED TO FALL OUT OF THE SKY, tumbling, and fade where it landed. Since
+       2026-08-22 it BLOWS UP WHERE IT IS HIT, on request -- so it neither falls
+       nor turns, and the explosions do the work the fall used to.
+
+       ⚠️ THE FALL IS KEPT, NOT DELETED, and it is one flag away: with
+       `flyBossDeathBoom.on` false this is exactly the old death again. A boss
+       that tumbles out of the sky WHILE exploding reads as two deaths playing
+       at once -- the eye follows the fall and stops reading the blasts as the
+       thing that killed it, which is the same trap the horse's tip-over set. */
+    if (this.booms.armed) return;
     this.jumpY = Math.max(0, this.jumpY - CONFIG.flyBossFallSpeed * dt);
     this.faceTarget = 0.5;
   }
@@ -477,12 +491,21 @@ class FlyBoss {
       const period = CONFIG.hurtBlinkMs / 1000;
       alpha = (Math.floor(this.hurtT / period) % 2) ? 0.4 : 1;
     }
-    if (this.dead) alpha *= Math.max(0, 1 - Math.max(0, this.t - 0.9) / 1.1);
+    if (this.dead) {
+      /* IT GOES FASTER THAN THE BLASTS DO. The old fade started at 0.9s and ran
+         to 2.0; against a string of explosions that left a fly still faintly
+         visible under the thing that was supposed to have destroyed it. */
+      const B = CONFIG.flyBossDeathBoom;
+      alpha *= this.booms.armed
+        ? Math.max(0, 1 - this.t / (((B && B.fadeMs) || 620) / 1000))
+        : Math.max(0, 1 - Math.max(0, this.t - 0.9) / 1.1);
+    }
 
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.translate(gx, gy);
-    if (this.dead) ctx.rotate(Math.min(1, this.t * 1.6) * 0.9);
+    // The tumble belongs to the fall; see _die().
+    if (this.dead && !this.booms.armed) ctx.rotate(Math.min(1, this.t * 1.6) * 0.9);
     ctx.drawImage(img, rect[0], rect[1], rect[2], rect[3], -w / 2, -h, w, h);
     if (this.flash > 0) {
       ctx.globalCompositeOperation = 'lighter';
@@ -490,8 +513,25 @@ class FlyBoss {
       ctx.drawImage(img, rect[0], rect[1], rect[2], rect[3], -w / 2, -h, w, h);
     }
     ctx.restore();
+
+    /* OVER it, and OUTSIDE the transform above -- that one is translated to the
+       ground point and, on the old death, rotated. Blasts drawn inside it would
+       inherit both and swing around with the corpse. */
+    this.booms.draw(ctx, assets.getDrawable('boom'), gx, gy, this.t);
   }
 
-  /** True once the death animation has played out and it can be cleared away. */
-  finished() { return this.dead && this.t > 2.0; }
+  /**
+   * True once the death has played out and it can be cleared away.
+   *
+   * ⚠️ IT WAITS FOR THE BLASTS, NOT FOR THE FADE. The level advances on this,
+   * and advancing while a blast is still on screen cuts it off mid-frame -- the
+   * same bug shape that once hung a corpse in mid-air through an outro. The
+   * span is derived from the boom config rather than written as a second
+   * constant, so retiming the string moves this with it.
+   */
+  finished() {
+    if (!this.dead) return false;
+    const span = this.booms.armed ? Booms.spanMs(CONFIG.flyBossDeathBoom) / 1000 : 0;
+    return this.t > Math.max(2.0, span);
+  }
 }

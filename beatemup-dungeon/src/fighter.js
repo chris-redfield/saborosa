@@ -71,6 +71,12 @@ class Fighter {
        see pickup(). */
     this.pickupPose = 'pickGround';
     this.pickupMs = 0;
+    /* WHAT HE IS HOLDING, or null. A `Prop`, and it is the PROP that reads its
+       position off him rather than him pushing it around -- see prop.js. From
+       this side it is only two things: which pose he draws, and whether the
+       punch button throws instead of punching. */
+    this.carrying = null;
+    this.throwMs = 0;
     // Time left holding the landing frame after the arc ends. See
     // CONFIG.jumpLandHoldMs -- cosmetic only, it blocks nothing.
     this.landHoldT = 0;
@@ -96,7 +102,8 @@ class Fighter {
   /** Can it start a new action this frame? */
   canAct() {
     return !this.dead && this.state !== 'hurt' && this.state !== 'down'
-      && this.state !== 'enter' && this.state !== 'pickup' && !this.atk;
+      && this.state !== 'enter' && this.state !== 'pickup'
+      && this.state !== 'throwing' && !this.atk;
   }
 
   /** Can it be hit? i-frames run for the whole of hurt AND the whole knockdown,
@@ -182,8 +189,30 @@ class Fighter {
     return true;
   }
 
+  /**
+   * Put whatever he is carrying somewhere else.
+   *
+   * ⚠️ THE STATE IS NOT THE RELEASE. This starts the ANIMATION; the barrel
+   * actually leaves his hands partway through it (`throwReleaseRel`), which is
+   * the caller's business because only the caller knows what is being thrown.
+   * Fusing the two would either release on frame one -- the barrel leaving
+   * before the arm moves -- or on the last frame, after the arm has already
+   * come down.
+   */
+  throwHeld(ms) {
+    if (!this.carrying || !this.canAct() || this.jumping) return false;
+    this.state = 'throwing';
+    this.stateT = 0;
+    this.throwMs = ms || (CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.throw) || 420;
+    return true;
+  }
+
   jump() {
     if (!this.canAct() || this.jumping) return false;
+    /* NO JUMPING WITH A BARREL OVER YOUR HEAD. There is no drawing of it -- the
+       jump row is a fighter with his hands free -- and inventing one by drawing
+       the barrel over the jump pose puts it through his own arms. */
+    if (this.carrying) return false;
     this.jumping = true;
     this.jumpT = 0;
     return true;
@@ -291,6 +320,10 @@ class Fighter {
     }
     if (this.state === 'down') this._updateDown(dt);
     if (this.state === 'pickup' && this.stateT >= this.pickupMs / 1000) {
+      this.state = 'idle';
+      this.stateT = 0;
+    }
+    if (this.state === 'throwing' && this.stateT >= this.throwMs / 1000) {
       this.state = 'idle';
       this.stateT = 0;
     }
@@ -438,6 +471,14 @@ class Fighter {
     if (this.state === 'hurt') return 'hurt';
     if (this.atk) return this.atk.def.pose;
     if (this.state === 'pickup') return this.pickupPose;
+    if (this.state === 'throwing') return 'liftThrow';
+    /* ⚠️ CARRYING IS DRAWN BY `carryWalk` WHETHER HE IS WALKING OR NOT, and
+       there is no carry-idle to fall back to: the sheet's rows 7-10 are lift,
+       throw, stoop and carry-walk, and that is all of them. Standing still on
+       frame 0 of the walk is a fighter holding a barrel over his head with his
+       feet together, which is exactly right; falling back to plain `idle` would
+       drop his arms out from under a barrel still drawn above them. */
+    if (this.carrying) return 'carryWalk';
     /* IN THE AIR, BUT BELOW THE ATTACK — punching while jumping draws the
        punch, because that is the thing with a hitbox on it.
 
@@ -530,6 +571,19 @@ class Fighter {
       const t = Math.min(1, this.stateT / ((this.pickupMs || 420) / 1000));
       return Math.min(n - 1, Math.floor(t * n));
     }
+
+    /* The throw, spread across its own action for the same reason -- and it is
+       what makes `throwReleaseRel` mean something: the release fraction and the
+       drawing are then reading the same clock, so the barrel always leaves his
+       hands on the same frame however that action is retimed. */
+    if (p === 'liftThrow') {
+      const t = Math.min(1, this.stateT / ((this.throwMs || 420) / 1000));
+      return Math.min(n - 1, Math.floor(t * n));
+    }
+
+    /* THE CARRY CYCLES ONLY WHILE HE IS WALKING. Standing still it holds frame
+       0 -- a man holding a barrel over his head does not keep stepping. */
+    if (p === 'carryWalk' && this.state !== 'walk') return 0;
 
     /* THE KNOCKDOWN PHASES ARE SPREAD ACROSS THEIR OWN PHASE, like the jump is
        across its arc: the fall's frames run out exactly as the body lands, and

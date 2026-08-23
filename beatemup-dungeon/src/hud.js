@@ -146,16 +146,39 @@ class Hud {
    * punch does 50 looks broken rather than switched on, and by then the person
    * looking at it is usually not the person who left it on.
    */
-  drawDev(ctx, roomName) {
+  /**
+   * `props` is the live collection, and it is COUNTED FROM THE LIST THE GAME
+   * DRAWS FROM -- not from CONFIG.
+   *
+   * ⚠️ THAT DISTINCTION IS THE WHOLE POINT OF PUTTING IT HERE. Counting the
+   * config would answer "what did I write down", which is the question that has
+   * already been answered every time this is asked; the useful question is
+   * "what is actually in the room right now", and the two differ for real
+   * reasons -- a barrel that has been smashed is gone from the list, and a
+   * chicken that came OUT of one was never in the config at all. Same rule as
+   * the debug overlay: read from the code the game runs, or the readout is just
+   * a second opinion about a file. See STATE.md on verifiable views.
+   */
+  drawDev(ctx, roomName, props) {
     if (!(CONFIG.DEV && CONFIG.DEV.on)) return;
     ctx.save();
     ctx.font = '700 14px system-ui, sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'top';
+    let tally = '';
+    if (props) {
+      let barrels = 0, placedFood = 0, dropped = 0;
+      for (const o of props.all()) {
+        if (o.kind === 'barrel') barrels++;
+        else if (o.fromBarrel) dropped++;
+        else placedFood++;
+      }
+      tally = '  ·  ' + barrels + ' barrels  ' + placedFood + '+' + dropped + ' food';
+    }
     // The room is on the marker because the number keys can change it, and a
     // dev who has jumped rooms should not have to guess which one they are in.
     const label = 'DEV  ' + CONFIG.DEV.punchDamage + ' dmg'
-      + (roomName ? '  ·  ' + roomName + '  (1-9 to jump)' : '');
+      + (roomName ? '  ·  ' + roomName + '  (1-9 to jump)' : '') + tally;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillText(label, CONFIG.GAME_W - 9, 9);
     ctx.fillStyle = '#E4463A';

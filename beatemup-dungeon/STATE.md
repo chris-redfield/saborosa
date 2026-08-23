@@ -270,6 +270,145 @@ else; he does neither, and the boss room holds exactly two characters.
 
 ---
 
+## And the rest of 2026-08-22: things in the level
+
+The second list of the day, and the first one that added a MECHANIC rather than
+retuning what was there.
+
+**THE LEVEL HAS THINGS IN IT NOW.** Barrels, which can be punched apart or
+picked up and thrown, and FOOD, which is walked over and eaten. One sheet
+(`barril-coconutbash.png`), one new cutter, one new file (`src/prop.js`), and
+they are placed by hand in `CONFIG.ROOMS[n].props` the way enemies are placed in
+segments. See *Props* below and *Barrels and food* in README.md.
+
+⚠️ **THEY ANSWER THE FIGHTERS' INTERFACE AND THAT IS THE WHOLE DESIGN.** A
+barrel has `x`, `z`, `jumpY`, `vulnerable()`, `overlaps()`, `hurt()`,
+`groundX()`, `depthScale()` and `draw()` -- the same shapes `Fighter` and both
+bosses answer -- so the z-sort, the shadow pass and the hit resolver took props
+with no branch anywhere. The whole mechanic cost combat.js about ten lines. That
+is the same bargain HorseBoss made, and it is now the pattern for anything new
+that lives on the belt.
+
+⚠️ **THE LIFT SEAM WAS ALREADY THERE AND IT FITTED EXACTLY.** `Fighter.pickup()`,
+the `pickup` state, the pickup BUTTON, and the coconut's `lift` / `liftThrow` /
+`pickGround` / `carryWalk` rows were all cut and wired on 2026-08-18 against a
+mechanic that did not exist, with a note in player.js saying what would have to
+change when objects arrived: "finding what is in reach and asking it how heavy
+it is". That turned out to be true to the line.
+
+⚠️ **AND THE CARRY ART HOLDS NOTHING.** `carryWalk` is five drawings of him with
+both arms raised and empty space between them, so the barrel is a separate draw
+at `carryYRel` above his feet -- 96px, MEASURED off the top of that drawing
+rather than guessed. It shipped at 157 first and floated half a barrel above his
+fingers.
+
+**THREE WAYS TO ORPHAN A BARREL, ALL FOUND BY READING RATHER THAN PLAYING**, and
+they are all one shape: `player.carrying` and `prop.holder` are ONE relationship
+stored TWICE, and every path that ends a hold has to break both ends.
+
+* Press pickup while already holding one: a second reach begins, `carrying` is
+  overwritten, and the first barrel follows the player forever with nothing able
+  to release it. (Pickup now PUTS DOWN when his hands are full.)
+* Die holding one: the prop noticed and let go, the player did not, so he
+  revived stuck in the carry pose with the punch button throwing an invisible
+  barrel.
+* Walk out of the room holding one: the room's prop list is discarded on entry
+  to the next, and what is left is a prop that exists only as `player.carrying`
+  -- never drawn, never updated, never released.
+
+`Prop._release()` and `Props.enterRoom(room, player)` are the fix; both ends,
+every time.
+
+**THE MOSCA BLOWS UP TOO**, and the horse's explosion machinery moved into
+`src/boom.js` the same day to make that one line rather than a copy. Fewer and
+smaller blasts than the horse gets, because it dies in the AIR where there is no
+floor to hide the bottom of a blast. Its tumble out of the sky is kept and one
+flag away, exactly like the horse's tip-over.
+
+**THE IMPACT MARKS MEAN SOMETHING NOW.** `HIT_FX.colorByRole` was built on
+2026-08-21 as a taste call with both sides argued, and it is on: yellow is
+always the player landing one, red is always the player taking one. ⚠️ The
+six-variant random draw is now a three-variant draw INSIDE a colour -- the
+variety did not go away, it moved. And it only works because `_impact` is TOLD
+which way the blow went; any new damage path that gets `byPlayer` wrong now
+tells a lie rather than tossing a coin.
+
+**THE BOSS ROOM HAS ITS OWN SONG.** 4m39s of finished track, playing from the
+moment the player walks through the door -- ⚠️ **not from when the horse
+arrives**, which is what it did first and which left the room's opening wave
+playing under the street's bed. It is a property of the ROOM (`ROOMS[n].music`),
+because the room is the unit the player experiences.
+
+⚠️ **AND NOTHING STOPS IT.** Requested: it runs through the fight, the horse's
+death, the walk-out, the ending photograph and the tally, so the last thing the
+player hears is what they beat the game to. Only `toTitle()` ends it. `Sound`
+grew a second track for this and the level bed's `musicLoopSec` pin is now
+guarded to the bed alone -- applied to a four-minute song it would cut it off
+after six seconds.
+
+---
+
+### Props
+
+`src/prop.js`. Two classes and a collection: `Prop` (a barrel), `Pickup` (food),
+`Props` (what the room has). The states a barrel moves through, and every arrow
+out of `held` clears BOTH ends of the hold:
+
+```
+     idle ──punched──► smash ──► gone
+       │                 ▲
+     lifted              │
+       │                 │
+     held ──thrown──► thrown ─(lands, or hits someone)─┘
+       │
+     dropped (hit, or the pickup button again) ──► idle
+```
+
+**HOW MANY THERE ARE, after two thinning passes on the day they were built:**
+**six barrels in the whole game** -- four in the street, two in the boss room --
+against eleven when it was first laid out, plus two drumsticks in the street and
+nothing in the boss room. ⚠️ Barrels are also most of the FOOD, at
+`dropChance` 0.35 each, which is why "there are three things on the floor and
+the config places two" is not a contradiction: the third came out of a barrel.
+The DEV readout counts placed and dropped food separately for exactly that
+reason, and counts them off the LIVE list rather than off the config.
+
+⚠️ **THE WHOLE MECHANIC HAS A SWITCH: `PROPS.barrel.on`.** Asked for on
+2026-08-22, ON, against the possibility that barrels do not survive
+playtesting -- so that removing them is one line rather than an excavation. Off,
+none are laid out and the pickup button goes back to a stoop at empty air, which
+is what it did before they existed. It does not take the FOOD with it (its own
+feature), does not delete the placements, and does not unload the art (one
+sheet). The gate is `Props.add()`, the one funnel every prop goes through.
+
+**A barrel is not solid**, and that is a decision: nothing in this game has body
+collision -- fighters walk through each other, which is what stops a five-enemy
+crowd wedging the player against a wall -- and one solid object in a world with
+no collision is where a player gets stuck.
+
+**A barrel breaks in one punch** because the resolver only hits the NEAREST
+target, so a barrel between the player and an enemy eats a blow meant for the
+enemy. At two punches every barrel becomes an ambush.
+
+**A thrown barrel is the hardest single blow in the game** (22 against a full
+five-hit combo's 36) and it knocks down. It hits ONE enemy and breaks --
+`throwPierce` makes it carry through the crowd, which is a much stronger move
+than the one that was asked for. It hits BOSSES too: the first thing anyone does
+with a barrel and a horse in the same room is throw one at the other, and having
+it pass through would read as the mechanic being broken.
+
+**Food is taken by walking over it**, never with the button -- the button lifts
+barrels, and two things on one button means the player who wanted the barrel
+gets the chicken lying next to it. It is NOT eaten at full health, so it cannot
+be wasted on the way past.
+
+⚠️ **THE HEAL IS CAPPED, NOT BANKED.** Half a bar for a chicken and a third for a
+drumstick, and anything past full is LOST -- it does not roll over into
+restoring a life. Both readings of "podendo até recuperar para a barra anterior"
+were put to the user and this is the one chosen.
+
+---
+
 ### Sound
 
 Three pieces, and they were built in this order because each needs the one
@@ -864,7 +1003,9 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/hit-fx.js` | the impact burst: six variants, picked per blow |
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
 | `src/title.js` | the photo title screen: the name drops in, LEBRON walks past |
-| `src/film.js` | **STILL LIFE'S PROJECTOR**, copied unchanged — the post effect |
+| `src/film.js` | **STILL LIFE'S PROJECTOR**, copied unchanged — the post effect (OFF) |
+| `src/prop.js` | barrels and food: punched, lifted, thrown, eaten |
+| `src/boom.js` | the string of explosions both bosses die in |
 | `src/ending.js` | the WON screen: walk in, arms up, then the tally |
 | `src/game-over.js` | the LOST panel: the flying dungeon's worms, saying PERDEU! |
 | `src/sheets.js` | two pack formats, **two facings**; see below |
@@ -878,6 +1019,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `tools/build-beat-coconut-defs.py` | cuts the coconut's ragged sheet + anchors |
 | `tools/build-beat-enemy-defs.py` | the same for a VILLAIN sheet, plus the smoke rules |
 | `tools/build-beat-fx-defs.py` | cuts the impact-burst sheet into six animations |
+| `tools/build-beat-prop-defs.py` | cuts the BARREL sheet: bands, not bodies; drops the ghosts |
 | `tools/shrink-master.py` | crops + downscales an artist master; **overwrites, lossily** |
 | `tools/build-boss-plate.py` | crops the boss shot at its turn, re-encodes for reverse |
 | `tools/build-plate-panorama.py` | **unused** — the rejected panorama; see the plate note |

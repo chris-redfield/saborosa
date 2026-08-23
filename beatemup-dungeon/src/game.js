@@ -47,6 +47,10 @@
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
   const crowd = new Crowd();
+  /* Barrels and food. Owned here rather than by the stage for the same reason
+     the crowd is: the shell is what has a player to hand them, and they outlive
+     any one segment -- see prop.js. */
+  const props = new Props();
   /* STILL LIFE'S PROJECTOR, the file copied over unchanged and driven from the
      same knobs (CONFIG.film*). It is a post effect and it is the LAST thing
      drawn every frame -- see renderFilmed(). */
@@ -163,6 +167,7 @@
     if (!CONFIG.title) { start(); return; }   // no front screen to go back to
     stage.reset();
     crowd.clear();
+    props.clear(player);
     stats.reset();
     player = null;
     endingShown = false;
@@ -181,9 +186,34 @@
     requestAnimationFrame(loop);
   }
 
+  /**
+   * The music this ROOM plays. Called on every room entry, and on the frame a
+   * run begins.
+   *
+   * ⚠️ IT IS A PROPERTY OF THE ROOM, NOT OF THE BOSS IN IT. The horse's theme
+   * was first started when the horse spawned, and that was wrong on sight: the
+   * boss room opens with a wave of roaches, so the song only arrived once they
+   * were dead and the room's first minute played under the street's bed. The
+   * room is the unit the player experiences -- walking through that door is the
+   * moment the music changes.
+   *
+   * ⚠️ AND NOTHING EVER STOPS IT. Requested 2026-08-22: the boss room's track
+   * runs through the fight, the horse's death, the walk-out, the ending
+   * photograph and the tally, so the last thing the player hears is what they
+   * beat the game to. Only toTitle() ends it, because that is where the run
+   * ends. Rooms with no `music` get the level bed, and `playMusic` is a no-op
+   * when it is asked for what is already playing -- so calling this on every
+   * entry cannot restart a track mid-room.
+   */
+  function roomMusic() {
+    const r = stage.room();
+    sound.playMusic((r && r.music) || 'music');
+  }
+
   function start() {
     stage.reset();
     crowd.clear();
+    props.clear(player);
     stats.reset();
     /* Cleared here TOO, not only in toTitle(): the title hands straight here,
        and so does the DEV room-jump, so this is the other way a run can begin. */
@@ -195,6 +225,14 @@
     if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
       stage.enterRoom(CONFIG.DEV.startRoom, player);
     }
+    /* ⚠️ AFTER the DEV jump, not before it: the props belong to whichever room
+       the run is actually starting in, and laying out the street's barrels and
+       then jumping to the boss room would leave them there. */
+    props.enterRoom(stage.room(), player);
+    /* How the player finds what is within reach. Handed over rather than looked
+       up globally, so a Player built for the ending screen or a test has none
+       and simply cannot pick anything up. */
+    player.props = props;
     phase = 'play';
     phaseT = 0;
     boardSkip = 0;
@@ -203,7 +241,7 @@
        reads as the game having begun when it has not. Asking twice is harmless:
        Sound only ever holds one source, and on a restart the old one was
        already released by stopMusic(). */
-    sound.playMusic();
+    roomMusic();
     input.flush();
     last = performance.now();
     requestAnimationFrame(loop);
@@ -259,7 +297,10 @@
          only a shortcut can produce. */
       crowd.clear();
       player = new Player(220, CONFIG.beltDepth * 0.6);
+      player.props = props;
       stage.enterRoom(jump, player);
+      props.enterRoom(stage.room(), player);
+      roomMusic();
       phase = 'play';
       phaseT = 0;
       input.flush();
@@ -322,6 +363,8 @@
         faded = true;
         crowd.clear();
         stage.enterRoom(stage.roomIndex + 1, player);
+        props.enterRoom(stage.room(), player);
+        roomMusic();
         input.flush();
       }
       if (phaseT >= (CONFIG.fadeMs || 900) / 1000) { phase = 'play'; phaseT = 0; }
@@ -430,11 +473,16 @@
 
     // Hits are resolved AFTER both sides have moved, so a punch and a step that
     // happen on the same frame are judged against where everyone ended up.
-    combat.playerHits(player, crowd, stage.boss);
+    /* ⚠️ PROPS ARE UPDATED BEFORE HITS ARE RESOLVED, like everything else that
+       moves: a barrel in flight has to be where it actually is this frame
+       before anything asks what it is touching. */
+    props.update(dt, player, crowd, combat, stage.bounds(), stage.boss);
+    combat.playerHits(player, crowd, stage.boss, props);
     combat.crowdHits(crowd, player);
     combat.bossHits(stage.boss, player);
 
     const ev = stage.update(dt, player, crowd);
+
     /* THE WALK-OUT IS A DOOR, NOT AN ENDING. Running out of segments with
        another room to go ('room') walks him off the right-hand edge and fades
        into it -- he is leaving for somewhere. Running out in the LAST room
@@ -583,7 +631,7 @@
       ctx.restore();
     }
 
-    hud.drawDev(ctx, stage.room() ? stage.room().name : '');
+    hud.drawDev(ctx, stage.room() ? stage.room().name : '', props);
 
     /* Hold C. Everything the overlay draws is read from the same code the
        resolver uses — see the header of debug.js. The boss is included so its
@@ -641,9 +689,15 @@
        walks that list, and re-ordering it under the AI every frame would make
        "the closest eligible enemy" a different question each time for no
        reason. */
-    const all = [player].concat(crowd.list).filter(Boolean);
+    /* ⚠️ PROPS SORT INTO THE SAME PASS, and it is `sortZ` rather than `z` that
+       is sorted on. For everything else the two are the same number; for a
+       barrel being CARRIED it is the holder's z plus a hair, which is what puts
+       it in front of the man holding it over his head rather than behind his
+       own face. Barrels and food answer the same tiny interface fighters do, so
+       nothing here needs to know which is which. */
+    const all = [player].concat(crowd.list, props.all()).filter(Boolean);
     if (stage.boss) all.push(stage.boss);
-    all.sort((a, b) => a.z - b.z);
+    all.sort((a, b) => (a.sortZ != null ? a.sortZ : a.z) - (b.sortZ != null ? b.sortZ : b.z));
 
     for (const f of all) drawShadow(f, camX);
     /* A BOSS SAYS WHICH ART SOURCE IT WANTS, because the two do not agree. The
