@@ -222,6 +222,43 @@ class Sheets {
   }
 
   /**
+   * How far a pose sticks out to either side of its GROUND POINT, in drawn px.
+   *
+   * THE ANSWER TO "HOW FAR OFF SCREEN DOES THIS HAVE TO START". A sprite is
+   * drawn around its anchor, and a ragged pack's anchor is NOT its centre --
+   * for a barata it sits well over toward one side, so the drawing reaches
+   * 169px one way and 89 the other. Spawning it a flat margin past the edge
+   * therefore puts its horns on screen while its ground point is safely off it,
+   * which is exactly what happened when the roaches were scaled up.
+   *
+   * ⚠️ IT WALKS EVERY FRAME OF THE POSE, not just the first. A walk cycle is
+   * widest mid-stride (frame 3 for all four packs), so measuring frame 0 would
+   * under-report it by the exact amount that shows.
+   *
+   * ⚠️ AND IT DOES NOT KNOW ABOUT MIRRORING. A flipped frame swaps these two
+   * around, so a caller that does not know which way the sprite will face
+   * should use the LARGER of them -- see Stage._spawn(), which does.
+   *
+   * Grid packs have no anchor and are drawn bbox-centred, so both sides come
+   * back as half the width, which is correct for them.
+   */
+  overhang(kind, pose) {
+    const pack = this.packs[kind];
+    if (!pack) return { left: 0, right: 0 };
+    const n = Math.max(1, this.poseLength(kind, pose));
+    let left = 0, right = 0;
+    for (let i = 0; i < n; i++) {
+      const f = this.rect(kind, pose, i);
+      if (!f) continue;
+      const w = f.w * pack.scale;
+      const ax = (f.ax != null) ? f.ax * pack.scale : w / 2;
+      if (ax > left) left = ax;
+      if (w - ax > right) right = w - ax;
+    }
+    return { left, right };
+  }
+
+  /**
    * Drawn size of a pose, for the health bar and the debug boxes.
    *
    * THE HEIGHT IS THE BODY'S WHERE THE DEFS KNOW IT (`bh`), not the frame's.

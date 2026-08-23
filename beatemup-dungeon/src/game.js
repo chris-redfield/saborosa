@@ -35,7 +35,9 @@
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
   const backdrop = new Backdrop(assets);
-  const stage = new Stage(backdrop);
+  /* `sheets` so it can measure how far off screen an enemy must start -- see
+     Stage._spawn(). It is declared above, which this relies on. */
+  const stage = new Stage(backdrop, sheets);
   const stats = new Stats();
   /* The impact art. Built before Combat for the same reason Sound is: the
      resolver is where a blow is decided, so it is where the mark is stamped. */

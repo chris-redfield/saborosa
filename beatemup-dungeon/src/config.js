@@ -43,11 +43,13 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    /* OFF FOR THE ITCH BUILD, 2026-08-22. `package.sh` refuses to build while
-       this is true, which is the point of it. Turn it back on for testing --
-       but note that everything below is dead while it is false, including the
-       number-key room jumps. */
-    on: false,
+    /* ⚠️ ON, FOR TESTING -- and it MUST go back to false before packaging.
+       `package.sh` refuses to build while this is true, which is the point of
+       it, so a forgotten `true` costs a failed build rather than a shipped
+       cheat. It was turned off for the itch build on 2026-08-22 and back on the
+       same day to test the horse fight. Everything below is dead while it is
+       false, including the number-key room jumps. */
+    on: true,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
@@ -98,6 +100,20 @@ const CONFIG = {
 
   fitMaxScale: 0,        // 0 = uncapped, so itch's fullscreen button can fill a
                          // big monitor — see flying-dungeon/STATE.md for why
+
+  /* How far PAST the edge of the view an enemy is placed to walk in from, in
+     px -- ON TOP OF its own sprite's reach past its ground point, which
+     Stage._spawn() measures off the drawing and adds. So this is clearance,
+     not the whole distance, and it does not need revisiting when a pack is
+     rescaled.
+
+     ⚠️ IT USED TO BE THE WHOLE DISTANCE, a bare 70 in stage.js, and that broke
+     silently the day the roaches were scaled up: a barata's drawing reaches
+     169px from its ground point on one side, so 70px past the edge left its
+     horns on screen, announcing where it would come from before it walked on.
+     The cigarettes reach 60-68 and had always just fitted, which is why this
+     had never shown. */
+  spawnMarginPx: 70,
 
   /* --- Old-film style (post effect) ---------------------------------------
      STILL LIFE'S FILTER, COPIED VALUE FOR VALUE on request (2026-08-22), and
@@ -2467,7 +2483,28 @@ const CONFIG = {
      being teleported. It falls from clear of the top edge, so nothing is ever
      seen half-drawn at the top of the frame. */
   titleDropAtMs: 0,      // when the fall starts. 0 = the first frame
-  titleDropMs: 700,      // how long the fall takes
+  /* How long the fall takes. ⚠️ IT READS FASTER THAN THIS NUMBER LOOKS, because
+     with the bounce on the fall ACCELERATES -- most of a screen height is
+     covered in the last third of it. 620 was the first value and was called too
+     fast on sight; raise this rather than flattening the easing, which is what
+     marries the fall to the bounce. */
+  titleDropMs: 900,      // how long the fall takes
+  /* THE LANDING BOUNCE, asked for as "a little bit of juice, no exaggeration".
+     The block overshoots down, springs back, and settles -- a damped sine, one
+     and a half cycles over `titleBounceMs`, `titleBouncePx` at its deepest.
+
+     ⚠️ TURNING IT ON CHANGES THE FALL ITSELF, and that is the point. With a
+     bounce the fall ACCELERATES (it is falling); without one it decelerates
+     into place. A fall that eases to a stop and THEN bounces reads as two
+     unrelated moves played back to back -- the type has already arrived, and
+     then something shakes it. Set `titleBouncePx` to 0 and the old eased-out
+     landing comes back with it.
+
+     12px against a 74px name is about a sixth of a line: visible as weight, not
+     as a wobble. Past ~25 it starts to read as comedy. */
+  titleBouncePx: 12,
+  titleBounceMs: 460,
+  titleBounceCycles: 1.5,   // 1 = one dip and back. 2+ starts to jiggle
   /* Where it falls FROM, as a fraction of canvas height above its resting
      place. 1 = a full screen height up, which clears the top edge by a wide
      margin whatever the type is set at. */

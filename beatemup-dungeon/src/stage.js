@@ -25,8 +25,13 @@
  * one call is the join.
  */
 class Stage {
-  constructor(backdrop) {
+  /* `sheets` is here for ONE job: measuring how far off screen an enemy has to
+     start so that nothing of it is visible before it walks on. See _spawn().
+     Optional -- without it the spawn falls back to the bare margin, which is
+     what this did before the packs got big enough for it to matter. */
+  constructor(backdrop, sheets) {
     this.backdrop = backdrop;
+    this.sheets = sheets;
     this.reset();
   }
 
@@ -358,8 +363,26 @@ class Stage {
          without a special case. Only its starting side and its first-frame
          facing are set here. */
       const behind = e.from === 'behind';
-      const fromX = behind ? this.camX - 70
-                           : this.camX + CONFIG.GAME_W + 70;
+      /* ⚠️ THE MARGIN IS MEASURED OFF THE DRAWING, NOT PICKED. It used to be a
+         flat 70px past the edge, and that quietly stopped working the moment
+         the roaches were scaled up: a barata's sprite reaches 169px from its
+         ground point on one side (the anchor is nowhere near its centre), so
+         at 70 its horns sat on screen announcing where it would come from
+         while the fighter itself was still legitimately off it.
+
+         So the pad clears the sprite as well as the edge, and it now follows
+         `drawScale` for free -- which matters, because that number has moved
+         three times in one day.
+
+         THE LARGER OF THE TWO SIDES, because a mirrored frame swaps them and
+         this does not know which way the pack faces natively. It costs a few
+         px of extra walk-in and it cannot be wrong. */
+      const over = this.sheets ? this.sheets.overhang(e.kind, 'walk')
+                               : { left: 0, right: 0 };
+      const pad = (CONFIG.spawnMarginPx != null ? CONFIG.spawnMarginPx : 70)
+                + Math.max(over.left, over.right);
+      const fromX = behind ? this.camX - pad
+                           : this.camX + CONFIG.GAME_W + pad;
       const en = new Enemy(e.kind, fromX, e.z, {
         delayMs: e.delayMs || 0,
         entryX: e.x,          // the spot it walks IN to before it starts fighting

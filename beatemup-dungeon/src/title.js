@@ -89,9 +89,18 @@ class Title {
   /**
    * 0..1 through the FALL. 1 once the name has landed.
    *
-   * EASED OUT (cubic), which is the whole difference between a title landing
-   * and a title being teleported: it comes in fast, decelerates into place, and
-   * the last few pixels take as long as the first hundred.
+   * TWO EASINGS, AND WHICH ONE IS RIGHT DEPENDS ON THE BOUNCE.
+   *
+   *   bounce on   the fall ACCELERATES (p squared) -- it is falling, and it has
+   *               to arrive with speed for the bounce to be the thing that
+   *               absorbs it.
+   *   bounce off  eased OUT (cubic): fast in, decelerating into place, the last
+   *               few pixels taking as long as the first hundred. That is the
+   *               difference between a title landing and one being teleported.
+   *
+   * ⚠️ THE PAIRING IS NOT COSMETIC. A fall that eases to a stop and then
+   * bounces reads as two unrelated moves played one after the other -- the type
+   * has already arrived, and then something shakes it.
    */
   _dropP() {
     const at = CONFIG.titleDropAtMs != null ? CONFIG.titleDropAtMs : 0;
@@ -99,7 +108,31 @@ class Title {
     if (this.t < at) return 0;
     if (ms <= 0) return 1;
     const p = Math.min(1, (this.t - at) / ms);
-    return 1 - Math.pow(1 - p, 3);
+    return (CONFIG.titleBouncePx > 0) ? p * p : 1 - Math.pow(1 - p, 3);
+  }
+
+  /**
+   * The landing bounce, in px DOWN from the resting place. 0 before it lands
+   * and 0 once it has settled.
+   *
+   * A DAMPED SINE, and it starts at zero going POSITIVE -- down. That order is
+   * the whole read: the block arrives, overshoots into the surface, springs
+   * back past the line, and settles. Started negative it would leap upward on
+   * contact, which is not a landing, it is a flinch.
+   *
+   * `(1-u)^2` is the damping. Squared rather than linear because the second dip
+   * has to be much smaller than the first: at linear decay the two are close
+   * enough in size to read as a wobble rather than as settling.
+   */
+  _bounceOffset() {
+    const amp = CONFIG.titleBouncePx || 0;
+    const ms = CONFIG.titleBounceMs || 0;
+    if (amp <= 0 || ms <= 0) return 0;
+    const t = this.t - this._landedAtMs();
+    if (t < 0 || t >= ms) return 0;
+    const u = t / ms;
+    const cycles = CONFIG.titleBounceCycles || 1.5;
+    return amp * Math.sin(Math.PI * 2 * cycles * u) * Math.pow(1 - u, 2);
   }
 
   /** ms on the clock when the name has finished falling. */
@@ -266,7 +299,7 @@ class Title {
          place, which clears the top edge with room to spare whatever the type
          is set at, so nothing is ever seen half-drawn against the frame edge. */
       const from = H * (CONFIG.titleDropFromRel != null ? CONFIG.titleDropFromRel : 1);
-      const drop = -from * (1 - this._dropP());
+      const drop = -from * (1 - this._dropP()) + this._bounceOffset();
       const top = cy - total / 2 + drop;
       const fam = CONFIG.TITLE_FONT || CONFIG.hudFont;
 

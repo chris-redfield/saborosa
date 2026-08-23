@@ -49,7 +49,7 @@ CHARACTERS.coconut.drawScale:  0.9,     // the player, DRAWN size
 CHARACTERS.cigarro.drawScale:  1.452,   // raised 45% over three requests
 CHARACTERS.cigarro2.drawScale: 1.691,   // the stub, 1.164x the above
 CHARACTERS.cigarro3.drawScale: 1.691,   // drawn at the stub's size
-CHARACTERS.barata.drawScale:   2.4544,  // both roaches; 1.888 + another 30%
+CHARACTERS.barata.drawScale:   2.20896, // both roaches; 1.888 +30% then -10%
 CHARACTERS.horse.drawScale:    2.2243,  // HIPÓLITO; 1.711 + 30%, paired with sizePx
 flyBossSizePx: 304,                     // the Mosca, drawn AND simulated
 ```
@@ -76,18 +76,19 @@ whole body, and for a barata the top 44px of 168 — **26%** — is horns and
 antennae, so only ~124px is animal. It is why they needed 1.888 to stand as big
 as a cigarette rather than merely as tall.
 
-**They then took another flat 30% on 2026-08-22** (1.888 → 2.4544), which is
-past that argument entirely: they are no longer matching a cigarette's mass,
-they are bigger than the men. That is a choice about what the fight looks like
-rather than a correction — and ⚠️ **their boxes did not move with it**, so the
-gap this section warns about is now roughly 30% of a roach.
+**They then took another flat 30% on 2026-08-22** (1.888 → 2.4544), **and 10%
+back off the same day** (→ 2.20896, where it sits). That is still past the
+argument above entirely: they are no longer matching a cigarette's mass, they
+are bigger than the men. A choice about what the fight looks like rather than a
+correction — and ⚠️ **their boxes did not move with any of it**, so the gap this
+section warns about is now roughly 17% of a roach.
 
 | | body drawn |
 |---|---|
 | LEBRON (coconut) | 123px |
 | DUDU (cigarro) | 199px |
 | DIDI / DEDÉ (cigarro2, cigarro3) | 231px |
-| CLAUDINHO & ZIDANE (baratas) | 336px (~248px of animal) |
+| CLAUDINHO & ZIDANE (baratas) | 302px (~224px of animal) |
 | HIPÓLITO (horse) | 304px — **and his hurtbox and reaches grew with him** |
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
@@ -619,6 +620,34 @@ python3 tools/build-boss-plate.py     # crops at the pan's turn, keyframe every 
 locking, with the whole room as walls rather than one screen. That is what a
 small room wants.
 
+### Where enemies come from
+
+They are placed **off screen and walk in**, rather than appearing at the spot
+they will fight from — a fighter that materialises in front of the player reads
+as a bug even when it is the design, and the walk-in is also how the player sees
+how many are coming and from where. `from: 'behind'` brings one in from the left
+instead, out of the ground already cleared.
+
+**How far off screen is measured off the drawing, not picked.**
+`Stage._spawn()` asks `Sheets.overhang()` how far the walk cycle reaches past
+the enemy's ground point and adds `spawnMarginPx` (70) of clearance on top.
+
+> ⚠️ **It used to be a flat 70 and that broke silently when the roaches grew.**
+> A barata's sprite reaches **169 px** from its ground point on one side — the
+> ragged anchor is nowhere near the frame's centre — so at 70 its horns sat on
+> screen advertising where it would come from while the fighter itself was still
+> legitimately off it. The cigarettes reach 60–68 and had always just fitted,
+> which is why it had never shown before.
+
+Two things `overhang()` does that matter: it walks **every frame of the pose**
+(a walk cycle is widest mid-stride — frame 3 in all four packs, not frame 0),
+and callers take the **larger of its two sides**, because a mirrored frame swaps
+them and the spawn does not know which way a pack faces natively. That costs a
+few px of extra walk-in and cannot be wrong.
+
+Because it is derived, rescaling a pack moves its spawn point with it — which
+matters, since `drawScale` moved three times in one day.
+
 ## Walking between fights
 
 **The GO arrow only appears when the next segment is a `scroll`.** It means "the
@@ -665,6 +694,11 @@ video backwards.
 ```js
 DEV: { on: true, punchDamage: 50 },   // top of config.js
 ```
+
+> ⚠️ **It is currently ON, for testing, and `package.sh` refuses to build while
+> it is.** That refusal is the safety net — a forgotten `true` costs a failed
+> build rather than a shipped cheat — so turn it back to `false` when you are
+> done rather than working around the build.
 
 Every player punch does `punchDamage` instead of its own. **Damage and nothing
 else** — reach, timing, knockdown, the combo and every enemy's HP behave exactly
@@ -907,7 +941,10 @@ frame, before any of that has finished.
 | `title` | `false` goes straight into the fight |
 | `TITLE_BG` | the photograph. Drawn **cover** — it is 4:3 on a 16:9 canvas, so about an eighth is cropped off top and bottom |
 | `titleDropAtMs` | 0 — when the fall starts. 0 is the first frame |
-| `titleDropMs` | 700 — how long it takes, eased out so it lands rather than stops |
+| `titleDropMs` | 900 — how long the fall takes. ⚠️ Reads faster than it looks: the fall accelerates, so most of the distance is covered in its last third |
+| `titleBouncePx` | 12 — how deep it overshoots on landing. **0 turns the bounce off *and* switches the fall back to eased-out** |
+| `titleBounceMs` | 460 — how long it takes to settle |
+| `titleBounceCycles` | 1.5 — one dip, one smaller rise back. 2+ starts to jiggle |
 | `titleDropFromRel` | 1.0 — how far above its resting place it starts, in screen heights |
 | `titleNameFadeMs` | 0 — the drop *is* the entrance. Set it for a fade over the top of it |
 | `TITLE_NAME` / `TITLE_SUBNAME` | the two lines. First is heavy and large, second is a gloss under it |
@@ -930,6 +967,19 @@ frame, before any of that has finished.
 | `titleWalkGroundYRel` | 0.93 — his feet down the canvas: the near dirt |
 | `titleWalkScale` | 1.0 — **exactly his size in the fight** |
 | `titleWalkRepeatMs` | 0 — he crosses once. Set it to a gap in ms and he comes round again; a crossing takes about 7 s |
+
+**The bounce and the fall are one move, not two.** With `titleBouncePx > 0` the
+fall *accelerates* — it is falling — and the bounce is what absorbs it. With the
+bounce off it eases *out* instead, decelerating into place. ⚠️ Mixing them (ease
+out, then bounce) reads as two unrelated moves back to back: the type has
+already arrived, and then something shakes it. `_dropP()` picks the easing off
+that one knob, so you cannot get the mismatched pair by accident.
+
+The bounce itself is a damped sine that starts **downward**. That order is the
+read: it arrives, overshoots into the surface, springs back past the line and
+settles. Started upward it would leap on contact, which is a flinch rather than
+a landing. The damping is squared, so the second dip is much smaller than the
+first — at linear decay the two are close enough in size to read as a wobble.
 
 > ⚠️ **He is drawn, not simulated.** Two numbers and a frame clock reading the
 > same packs the fight reads — never a `Player`, which is a belt entity with

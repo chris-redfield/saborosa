@@ -195,11 +195,18 @@ covers the HUD, which is the one deliberate difference from Still Life, where
 the HUD is drawn outside the film pass — `renderFilmed()` is the split point if
 that ever matters.
 
-**THE TITLE NO LONGER WAITS.** The 08-19 note below defends a two-second hold on
+**THE TITLE NO LONGER WAITS, AND IT LANDS WITH A BOUNCE.** The 08-19 note below defends a two-second hold on
 the bare photograph before the name arrives — *the wait is the design* — and the
-name now **falls in from off the top of the frame on the first frame** instead,
-eased out so it lands rather than stops. The argument was heard and overruled;
-the hold is one config line away (`titleDropAtMs`) if it is ever wanted back.
+name now **falls in from off the top of the frame on the first frame** instead.
+The argument was heard and overruled; the hold is one config line away
+(`titleDropAtMs`) if it is ever wanted back.
+
+⚠️ **AND THE FALL AND THE BOUNCE ARE ONE MOVE.** Asked for as "a little bit of
+juice, no exaggeration": the block overshoots down 12px, springs back and
+settles, on a damped sine. Turning the bounce on also changes the FALL, from
+eased-out to accelerating -- a fall that decelerates to a stop and then bounces
+reads as two unrelated moves back to back, because the type has already arrived
+before anything shakes it. `titleBouncePx` 0 puts both back.
 
 **AND LEBRON WALKS ACROSS IT.** Once the name has landed he enters from the left
 and leaves by the right, drawn out of the same packs the fight uses. ⚠️ He is
@@ -228,15 +235,26 @@ audio clock rather than by a timer. See *Sound*.
 recording rather than a second one: a fight should sound like one fight, and the
 pitch is what says which direction the blow went.
 
-**THE ROACHES AND THE HORSE ARE 30% BIGGER.** Both were asked for flat. ⚠️ The
-roaches took the drawn size ONLY — their boxes did not move, so the picture is
-now about 30% wider than what can be hit, which is the standing warning on
-`drawScale` and it is now a real gap rather than a theoretical one. The horse
+**THE ROACHES AND THE HORSE ARE BIGGER.** Both were asked for flat: +30% each,
+and the roaches then gave 10% of it back the same day (1.888 → 2.4544 →
+2.20896). ⚠️ The roaches took the drawn size ONLY — their boxes did not move, so
+the picture is about 17% wider than what can be hit, which is the standing
+warning on `drawScale` and it is now a real gap rather than a theoretical one. The horse
 took it properly: `drawScale`, `HORSE_BOSS.sizePx` (the hurtbox) and both attack
 REACHES all went up by 1.3, because this file's rule is that a reach is measured
 off the drawing. His DECISION ranges did not, so a kick he commits to now lands
 more reliably — a bigger animal doing what a bigger animal does, but it is a
 difficulty change and it was not separately asked for.
+
+**AND ENEMIES NOW START FURTHER OFF SCREEN, BY MEASUREMENT.** The roaches got
+big enough that their horns were visible at their spawn point, announcing where
+they would come from before they walked on. The spawn margin was a flat 70px in
+stage.js; it is now `spawnMarginPx` of clearance ON TOP OF what `Sheets
+.overhang()` measures the walk cycle to reach past the fighter's ground point --
+169px for a barata against 60-68 for a cigarette, which is why this had never
+shown before. ⚠️ It is derived, so it follows `drawScale` from now on. That is
+the recurring failure in this codebase caught one more time: a number measured
+off a drawing that did not move when the drawing did.
 
 **AND THE HORSE BLOWS UP.** He used to tip over and fade, for want of a death
 row; he now goes up in a string of seven explosions rolled once on the frame he
@@ -746,9 +764,9 @@ BODY is `fighterSizePx` tall. For a cigarette every pixel of that is cigarette;
 for a barata the top 44px of 168 — **26%** — is horns and antennae, so the
 animal itself gets the remaining 124. That is why they needed 1.888 to stand as
 big as the gang they replaced rather than merely as tall. ⚠️ **They took another
-flat 30% on 2026-08-22 (2.4544) and that is past this argument** — they are not
-matching a cigarette's mass any more, they are bigger than the men, and their
-boxes did not move with them.
+flat 30% on 2026-08-22, then gave 10% back (2.4544 → 2.20896), and that is past
+this argument either way** — they are not matching a cigarette's mass any more,
+they are bigger than the men, and their boxes did not move with them.
 
 
 ## The one constraint that will break things if forgotten
