@@ -1634,14 +1634,38 @@ const CONFIG = {
      IT DOES THE SAME 9 DAMAGE, deliberately. Alternating is a LOOK, not a
      rotation the player has to track: if one ending hit harder, the string
      would become worth counting, and mashing would silently become optimal on
-     every other chain. What differs is the shape of the blow -- no `lift`,
-     because the fist drives forward and down rather than up, so this one shoves
-     the target down the belt instead of launching it, and reaches slightly
-     further for the lunge. */
+     every other chain. What differs is the reach -- slightly further, for the
+     lunge -- and the knockback, 420 against the uppercut's 320.
+
+     ⚠️ `lift: 150` IS THE CODE'S NUMBER, NOT THE DESIGN'S, AND IT IS WRITTEN
+     HERE SO THE FILE STOPS LYING. This was `lift: 0` with a note saying the
+     fist drives forward and DOWN, so the low ending shoved the target along the
+     belt where the uppercut launched it. It never did that. `fighter.js` reads
+     the value as `lift || 150` -- and 0 is falsy in JavaScript, so a
+     deliberate zero is indistinguishable from an unset field and becomes the
+     150 default. There is a SECOND copy of the same trap in `_updateDown`
+     (`this.launch || 150`), so correcting one line would not have changed
+     anything either.
+
+     The result is that the low punch has always launched HIGHER than the
+     uppercut (150 against 136.8), which is the opposite of what was intended
+     and is what the game has been played and tuned with for weeks. So the value
+     now records what happens. ⚠️ THE DESIGN IS STILL WORTH HAVING: two endings
+     that differ in SHAPE rather than only in reach is a better move than two
+     that both pop. Restoring it means fixing both `||` reads AND looking at
+     what `downLandMs` (520ms of falling animation) does over a knockdown with
+     no arc in it -- see the bug list in STATE.md. It was raised on 2026-08-22
+     and deliberately left for later.
+
+     ⚠️ AND IT IS A FLAT 150, NOT `* BODY_SCALE`, unlike every other body
+     measurement in this file -- because the number it is recording is a
+     hardcoded fallback in fighter.js, which does not scale either. If the cast
+     is ever rescaled, this and the two `|| 150` fallbacks are what will not
+     follow it. */
   COMBO_ALT_FINISH: {
     pose: 'comboLow5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
     damage: 12, reachX: 124 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 420,
-    lift: 0, knockdown: true,
+    lift: 150, knockdown: true,
   },
 
   /* HITSTOP — both fighters freeze for a moment on a connect. It is the single

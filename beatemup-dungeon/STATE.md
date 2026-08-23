@@ -1777,6 +1777,35 @@ Embed settings: **1280×720**, fullscreen **on**, mobile **off**, autostart
 
 ## Bugs whose causes are not guessable
 
+### A configured ZERO is not a configured value (2026-08-22)
+
+**`x.key || default` cannot tell "unset" from "deliberately zero"**, because 0
+is falsy. Two of these were found on one day and they are worth knowing as a
+family, because neither errors, neither logs, and both leave the config file
+saying one thing while the game does another:
+
+* **The food bob.** `PROPS.food.bobPx: 0` was set to stop drumsticks bobbing.
+  `prop.js` read it as `F.bobPx || 3` and they kept bobbing at exactly the old
+  rate. ⚠️ The config was right, the browser console answered `0`, the server was
+  serving the correct bytes — and I checked all three and told the user their
+  page was stale. It was not. **Verifying a value, and verifying its delivery,
+  is not verifying its effect.** Fixed.
+* **The alternate finisher's lift.** `COMBO_ALT_FINISH` was written `lift: 0`
+  with a comment saying the low punch drives forward and down, shoving the
+  target along the belt where the uppercut launches it. `fighter.js` reads it as
+  `lift || 150`, so it has always launched — and at 150 against the uppercut's
+  136.8, HIGHER than the uppercut. There is a second copy of the same trap in
+  `_updateDown` (`this.launch || 150`), so fixing one line changes nothing.
+  ⚠️ **NOT FIXED, DELIBERATELY.** The game has been tuned for weeks with both
+  endings launching; the config was changed to `lift: 150` to record what
+  actually happens. Restoring the design means fixing both reads AND judging
+  what `downLandMs` (520ms of falling animation) looks like over a knockdown
+  with no arc in it.
+
+**The rule:** any knob whose OFF value is 0 must be read with `!= null`. When a
+knob does not take effect, evaluate the expression the code runs before doubting
+the file, the server or the cache.
+
 ### A scroll can be already finished before it starts
 
 **Found in play, 2026-08-21: the wave after the Mosca spawned on top of the
