@@ -471,7 +471,7 @@ class Fighter {
     if (this.state === 'hurt') return 'hurt';
     if (this.atk) return this.atk.def.pose;
     if (this.state === 'pickup') return this.pickupPose;
-    if (this.state === 'throwing') return 'liftThrow';
+    if (this.state === 'throwing') return 'carryThrow';
     /* ⚠️ CARRYING IS DRAWN BY `carryWalk` WHETHER HE IS WALKING OR NOT, and
        there is no carry-idle to fall back to: the sheet's rows 7-10 are lift,
        throw, stoop and carry-walk, and that is all of them. Standing still on
@@ -576,7 +576,7 @@ class Fighter {
        what makes `throwReleaseRel` mean something: the release fraction and the
        drawing are then reading the same clock, so the barrel always leaves his
        hands on the same frame however that action is retimed. */
-    if (p === 'liftThrow') {
+    if (p === 'carryThrow') {
       const t = Math.min(1, this.stateT / ((this.throwMs || 420) / 1000));
       return Math.min(n - 1, Math.floor(t * n));
     }

@@ -338,6 +338,13 @@ variety did not go away, it moved. And it only works because `_impact` is TOLD
 which way the blow went; any new damage path that gets `byPlayer` wrong now
 tells a lie rather than tossing a coin.
 
+**THE TITLE SCREEN STAYS SILENT.** The main game's theme (`assets/MIKE.mp3`)
+was wired to it late on 2026-08-22 -- read in place, like the character packs --
+and taken out the same day: it did not suit the screen. ⚠️ Do not re-propose it.
+Nothing is left behind; the front screen stops the music and plays none, exactly
+as before. The multi-track machinery in `Sound` stays, because the boss room
+needs it.
+
 **THE BOSS ROOM HAS ITS OWN SONG.** 4m39s of finished track, playing from the
 moment the player walks through the door -- ⚠️ **not from when the horse
 arrives**, which is what it did first and which left the room's opening wave

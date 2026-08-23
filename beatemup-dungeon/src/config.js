@@ -43,13 +43,16 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    /* ⚠️ ON, FOR TESTING -- and it MUST go back to false before packaging.
-       `package.sh` refuses to build while this is true, which is the point of
-       it, so a forgotten `true` costs a failed build rather than a shipped
-       cheat. It was turned off for the itch build on 2026-08-22 and back on the
-       same day to test the horse fight. Everything below is dead while it is
-       false, including the number-key room jumps. */
-    on: true,
+    /* ⚠️ OFF. This is the shipping state, and `package.sh` refuses to build
+       while it is true -- so a forgotten `true` costs a failed build rather
+       than a shipped cheat.
+
+       It went off for the first itch build on 2026-08-22, back on the same day
+       to test the horse fight and the barrels, and off again for the final
+       package. Everything below is dead while it is false, and so is the
+       number-key ROOM JUMP, which is now refused in input.js as well as here
+       (see the note there). */
+    on: false,
     punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
@@ -1119,7 +1122,22 @@ const CONFIG = {
     ball:       { anim: 'ball' },
 
     lift:       { anim: 'lift' },
+    /* THE WHOLE ROW: reach, reach forward, arms up, swing, follow-through. It
+       is a complete pick-up-AND-throw, which is why the game does not play it
+       whole -- see `carryThrow`. Kept mapped because it is the row as drawn. */
     liftThrow:  { anim: 'liftThrow' },
+    /* ⚠️ THE THROW STARTS AT FRAME 2, AND THAT IS A BUG FIX. Played from the
+       top while he is ALREADY holding a barrel, frames 0 and 1 replay the grab
+       -- and frame 1 is a fist punched straight forward, so pressing throw made
+       him throw a PUNCH first and then heave. It read as the animation chain
+       breaking, because it was two animations.
+
+       Frame 2 is both arms overhead -- the same POSE the carry holds, though a
+       separate drawing of it (atlas 26 against carryWalk's 25; the cutter's
+       dedupe kept them apart, so they are two hands-up drawings and not one).
+       Close enough that the chain reads straight through: carry -> heave ->
+       follow-through, with nothing repeated. */
+    carryThrow: { anim: 'liftThrow', from: 2, to: 5 },
     pickGround: { anim: 'pickGround' },
     carryWalk:  { anim: 'carryWalk' },
   },

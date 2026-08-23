@@ -695,10 +695,15 @@ video backwards.
 DEV: { on: true, punchDamage: 50 },   // top of config.js
 ```
 
-> ⚠️ **It is currently ON, for testing, and `package.sh` refuses to build while
-> it is.** That refusal is the safety net — a forgotten `true` costs a failed
-> build rather than a shipped cheat — so turn it back to `false` when you are
-> done rather than working around the build.
+> ⚠️ **It is OFF — that is the shipping state**, and `package.sh` refuses to
+> build while it is `true`. That refusal is the safety net: a forgotten `true`
+> costs a failed build rather than a shipped cheat, so turn it back to `false`
+> when you are done testing rather than working around the build.
+
+> ⚠️ **The number-key room jump is refused in `input.js` too**, not only in
+> `game.js`. A shortcut that skips most of the game should not depend on one
+> `if` in the shell being right. The keys still count as "press anything" on the
+> end screens, because a dead key there would be inexplicable.
 
 Every player punch does `punchDamage` instead of its own. **Damage and nothing
 else** — reach, timing, knockdown, the combo and every enemy's HP behave exactly
@@ -1021,6 +1026,10 @@ first — at linear decay the two are close enough in size to read as a wobble.
 > to fill more of the frame, that is a crop of the photograph — same argument
 > `ENDING.scale` makes, where it cost a 1.55 that was wrong on sight.
 
+**The title screen is silent**, and that is a decision: the main game's theme
+(`assets/MIKE.mp3`) was wired to it on 2026-08-22 and removed the same day for
+not suiting the screen. Don't re-propose it.
+
 **It used to hold the bare photograph for two seconds** before fading the name
 up, on the argument that a picture given time reads as a place while type cut in
 at zero turns it into a background. That was overruled on 2026-08-22 — the title
@@ -1130,7 +1139,15 @@ and five were both "too many" on sight.
 | `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ Barrels are most of the food on the floor; thin the food by thinning this as well as the placed drumsticks |
 
 **Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
-the one he is holding. *punch* (J / Z / Space) **throws** it. He cannot jump
+the one he is holding. *punch* (J / Z / Space) **throws** it.
+
+> ⚠️ **The throw plays `carryThrow`, not `liftThrow`.** The illustrator's row is
+> a complete pick-up-*and*-throw — reach, reach forward, arms up, swing,
+> follow-through — and **frame 1 is a fist punched straight forward**. Played
+> from the top while he is already holding a barrel it replayed the grab, so
+> pressing throw threw a punch and *then* heaved. `carryThrow` is frames 2–5:
+> arms up, swing, follow-through. If a future sheet re-cuts that row, re-check
+> where the arms-up frame lands. He cannot jump
 while carrying one; there is no drawing of it.
 
 > ⚠️ **`dropChance` is rolled when the barrel is BUILT, not when it breaks.**

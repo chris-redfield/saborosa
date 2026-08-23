@@ -67,12 +67,25 @@ class Input {
       } else if (e.code === 'KeyL' || e.code === 'KeyE') {
         e.preventDefault(); this._pickupQueued = true; this._anyPress = true;
       } else if (e.code === 'KeyC') { this.debug = true; }
-      /* DEV: the number keys jump straight to a room. Captured unconditionally
-         and acted on only when CONFIG.DEV.on, so the shipping build reads them
-         as "press anything" like any other key and nothing else. */
+      /* DEV: the number keys jump straight to a room -- to the BOSS ROOM, in
+         practice, which is what 2 is.
+
+         ⚠️ GATED HERE AS WELL AS AT THE POINT OF ACTION, on request
+         (2026-08-22). game.js has always refused to act on it unless
+         CONFIG.DEV.on, so the shortcut was never live in a shipping build; this
+         stops the request even being RECORDED, so there is no path from a
+         number key to a room change that depends on one `if` in the shell being
+         right. Two gates for a shortcut that skips most of the game is not
+         belt-and-braces, it is the difference between "we check" and "it cannot
+         happen".
+
+         ⚠️ `_anyPress` IS STILL SET EITHER WAY, and that is deliberate: every
+         end screen in this game is dismissed by pressing ANYTHING, and a number
+         key that stopped counting would be a dead key on the game over panel
+         for no reason a player could ever work out. */
       else if (e.code.slice(0, 5) === 'Digit' && e.code.length === 6) {
         const n = +e.code[5];
-        if (n >= 1) this._roomJump = n - 1;
+        if (n >= 1 && CONFIG.DEV && CONFIG.DEV.on) this._roomJump = n - 1;
         this._anyPress = true;
       }
       else if (e.code === 'KeyP' || e.code === 'Escape') { this._pauseQueued = true; }

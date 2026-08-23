@@ -177,7 +177,11 @@
     title.reset();
     /* The bed belongs to the level, not to the front screen -- it is started by
        start() and has to stop here or it would play under the title and then be
-       started a second time on the next run. */
+       started a second time on the next run.
+
+       ⚠️ THE TITLE SCREEN IS SILENT ON PURPOSE. The main game's theme (MIKE)
+       was put here on 2026-08-22 and taken out the same day -- it did not suit
+       the screen. Do not re-propose it. */
     sound.stopMusic(0.4);
     phase = 'title';
     phaseT = 0;
