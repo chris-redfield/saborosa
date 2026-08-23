@@ -125,15 +125,26 @@ class Player extends Fighter {
              different one. What is caught is what was reached for. */
           this.liftTarget = this.props ? this.props.liftTarget(this) : null;
           this.pickup(!!this.liftTarget);
+          /* ⚠️ THE BARREL STARTS MOVING NOW, not when the reach ends. It rides
+             the arms up an arc over `pickupMs` -- the same clock the animation
+             runs on, passed in so the two cannot drift. Started at the END it
+             teleported from the floor to above his head on a single frame. */
+          if (this.liftTarget) this.liftTarget.lift(this, this.pickupMs);
         }
       }
-      /* THE CATCH. The reach ends and whatever was reached for comes up -- as
-         long as it is still there and still on the floor. It can fail: a barrel
-         smashed by a stray punch during the 640ms hoist is simply gone, and he
-         stands up empty-handed rather than holding a ghost. */
-      if (this.liftTarget && this.state !== 'pickup') {
-        if (this.liftTarget.lift(this)) this.carrying = this.liftTarget;
-        this.liftTarget = null;
+      /* THE CATCH, AND IT ASKS THE BARREL RATHER THAN THE CLOCK. The barrel is
+         travelling up its own arc; his hands close when it ARRIVES (`held`),
+         which is the same moment either way but says so in terms of the thing
+         being caught.
+
+         IT CAN FAIL, three ways, and all three end with him empty-handed rather
+         than holding a ghost: the barrel was smashed by a stray punch mid-hoist
+         (`smash`), the hoist was aborted because he was hit (`idle` again), or
+         it is simply still on its way (neither -- keep waiting). */
+      if (this.liftTarget) {
+        const st = this.liftTarget.state;
+        if (st === 'held') { this.carrying = this.liftTarget; this.liftTarget = null; }
+        else if (st !== 'lifting') { this.liftTarget = null; }
       }
     } else {
       /* THE RELEASE, partway through the throw animation. Outside `canAct()`
@@ -168,7 +179,15 @@ class Player extends Fighter {
           this.carrying.drop(this);
           this.carrying = null;
         }
-        this.liftTarget = null;
+        /* ⚠️ AND THE ONE HE IS STILL LIFTING, which is NOT the same object and
+           is the one-frame race `letGo` exists for -- a barrel that arrived in
+           his hands this very frame is `held` while `carrying` is still null,
+           and clearing the reference without letting go of it strands the
+           barrel on him forever. */
+        if (this.liftTarget) {
+          this.liftTarget.letGo(this);
+          this.liftTarget = null;
+        }
       }
       /* AIR PUNCHES KEEP FLYING. This is the ONLY branch an airborne fighter
          can reach with his hands busy: `canAct` does not test `jumping`, so a

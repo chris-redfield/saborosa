@@ -128,12 +128,68 @@ class Prop {
         && Math.abs(f.z - this.z) <= (C.liftRangeZ || 46);
   }
 
-  lift(by) {
+  /**
+   * Start being picked up. `ms` is how long the reach takes, so the barrel and
+   * the animation finish together.
+   *
+   * ⚠️ THIS BEGINS AT THE PRESS, NOT AT THE END OF THE REACH. It used to be
+   * called when the hoist animation finished, which meant the barrel spent
+   * 640ms on the floor and then TELEPORTED to above his head on one frame. The
+   * arms swing through an arc and the barrel has to be on it -- see
+   * `_liftArc()`.
+   */
+  lift(by, ms) {
     if (this.state !== 'idle') return false;
-    this.state = 'held';
+    this.state = 'lifting';
     this.holder = by;
     this.t = 0;
+    this.liftMs = ms || (CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.heavy) || 640;
+    this.fromX = this.x;
+    this.fromZ = this.z;
+    this.liftQ = 0;              // 0..1 along the arc; the draw reads it
     return true;
+  }
+
+  /**
+   * One frame of the hoist: along the arc, turning over as it goes.
+   *
+   * THE PATH IS A STRAIGHT LINE PLUS A BULGE, which is the cheapest thing that
+   * reads as an arm's swing: lerp from where it stood to where it will be
+   * carried, then add a hump of `bulgePx` at the middle, biggest exactly when
+   * the barrel is furthest from both ends. A straight lerp reads as the barrel
+   * being slid up an invisible ramp.
+   *
+   * ⚠️ IT WAITS BEFORE IT MOVES. `startRel` of the reach is spent with the
+   * barrel still on the floor, because the first frames of `lift` are him
+   * REACHING DOWN for it -- start the barrel at zero and it leaves before he
+   * has touched it.
+   *
+   * ⚠️ AND IT ABORTS IF HE IS HIT. Nothing else would: `player.carrying` is not
+   * set until the hoist COMPLETES, so a barrel interrupted mid-lift would sail
+   * up to a pair of hands that are busy being knocked over, arrive `held` with
+   * nobody holding it, and follow him around forever. That is the fourth way
+   * this pair of references can come apart -- see the header.
+   */
+  _liftArc(dt) {
+    const h = this.holder;
+    if (!h || h.dead || h.state === 'hurt' || h.state === 'down') { this.letGo(); return; }
+    const L = (this.cfg.LIFT_ARC) || {};
+    const startRel = L.startRel != null ? L.startRel : 0.3;
+    const p = Math.min(1, this.t * 1000 / Math.max(1, this.liftMs));
+    const raw = p <= startRel ? 0 : (p - startRel) / (1 - startRel);
+    // Smoothstep: it leaves the floor gently and settles gently into the hands.
+    const q = raw * raw * (3 - 2 * raw);
+    this.liftQ = q;
+
+    const toY = this._carryY();
+    this.x = this.fromX + (h.x - this.fromX) * q;
+    this.z = this.fromZ + (h.z - this.fromZ) * q;
+    this.jumpY = toY * q + (L.bulgePx != null ? L.bulgePx : 34) * Math.sin(Math.PI * q);
+    this.facing = h.facing;
+    if (p >= 1) {
+      this.state = 'held';
+      this.liftQ = 1;
+    }
   }
 
   /**
@@ -181,6 +237,31 @@ class Prop {
     this.t = 0;
   }
 
+  /**
+   * Let go of it, whatever stage of the pickup it is at.
+   *
+   * ⚠️ IT COVERS `lifting` AS WELL AS `held`, AND THAT CLOSES A ONE-FRAME RACE.
+   * The barrel arrives (`held`) on the frame the reach ends, and the player
+   * takes hold of it on the NEXT frame -- his catch runs at the top of update
+   * and the arc finishes below it. Get hit in that gap and the old code cleared
+   * `liftTarget`, found `carrying` still null, and let go of nothing: the
+   * barrel stayed `held`, following a player who did not know he had it, with
+   * no way to throw or drop it ever again. Fifth of the family, same shape as
+   * the other four -- two references, one relationship.
+   *
+   * Back where it stood if it never made it up; at his feet if it did. Intact
+   * either way: being hit costs the lift, not the barrel.
+   */
+  letGo(f) {
+    if (this.state === 'held') { this.drop(f); return; }
+    if (this.state !== 'lifting') return;
+    this.x = this.fromX;
+    this.z = this.fromZ;
+    this.jumpY = 0;
+    this.liftQ = 0;
+    this._release();
+  }
+
   /** Break the hold, from both ends. See the note in update(). */
   _release() {
     if (this.holder && this.holder.carrying === this) this.holder.carrying = null;
@@ -214,11 +295,20 @@ class Prop {
 
   /** Where it sorts in the draw order. See the header: a held barrel is drawn
       just after the fighter holding it, never behind his own head. */
-  get sortZ() { return this.state === 'held' && this.holder ? this.holder.z + 0.5 : this.z; }
+  get sortZ() {
+    /* IN FRONT OF THE MAN HOLDING IT, and in front of the man LIFTING it too:
+       the hoist ends with the barrel over his head, and drawing it behind him
+       for the second half of that -- which is what sorting on its own `z` does
+       once the arc has carried it to his -- puts his face through it. */
+    return (this.holder && (this.state === 'held' || this.state === 'lifting'))
+      ? this.holder.z + 0.5 : this.z;
+  }
 
   update(dt, bounds) {
     this.t += dt;
     const C = this.cfg;
+
+    if (this.state === 'lifting') { this._liftArc(dt); return; }
 
     if (this.state === 'held') {
       /* READ OFF THE HOLDER, never pushed by it -- see the header. */
@@ -271,11 +361,20 @@ class Prop {
       const p = Math.min(1, this.t * 1000 / (C.smashMs || 480));
       return { pose, step: Math.min(n - 1, Math.floor(p * n)) };
     }
-    if (this.state === 'thrown' || this.state === 'held') {
+    if (this.state === 'lifting' || this.state === 'thrown' || this.state === 'held') {
       /* ON ITS SIDE the moment it leaves the floor. The sheet's `side` row is
          the upright drawings rotated, so a barrel over the head and a barrel in
          the air are both drawn from it; `spinMs` is what makes a thrown one
-         tumble and a held one sit still. */
+         tumble and a held one sit still.
+
+         ⚠️ THE HOIST DRAWS THE **SIDE** FRAME TOO, ROTATED BACK UPRIGHT, and
+         that is what makes the turn seamless. The obvious way round -- draw the
+         upright frame and rotate it to 90 -- ends the move on a rotated `idle`
+         frame and then swaps to the `side` frame for the carry, and the two do
+         not land on the same pixels because they are cut with their own
+         anchors. Starting from the side frame at -90 and rotating to 0 puts the
+         discontinuity at the START instead, where the barrel is lifting off the
+         floor and the eye is following the movement. */
       const n = Math.max(1, sheets.poseLength('barril', 'side'));
       const ms = C.spinMs || 90;
       const step = this.state === 'thrown'
@@ -290,6 +389,52 @@ class Prop {
   draw(ctx, sheets, camX) {
     if (this.state === 'gone') return;
     const f = this._frame(sheets);
+    const L = (this.cfg.LIFT_ARC) || {};
+    /* THE TURN. -90 degrees is the barrel standing up; 0 is it lying on its
+       side, which is how the `side` frame is drawn. So the hoist rotates from
+       -90 to 0 as it travels, and everything after it is at 0.
+
+       ⚠️ IT ROTATES ABOUT ITS OWN MIDDLE, not about its ground point, and that
+       is what `pivotY` is for (see sheets.js). About the ground point it swings
+       like a felled tree -- the far end scribes a huge arc and leaves his hands
+       completely.
+
+       ⚠️ AND THE SIGN IS NOT MIRRORED HERE. `sheets.draw` applies the facing
+       flip AFTER the rotation, so a barrel lifted while facing left turns the
+       other way for free; doing it here as well would cancel that out. */
+    let rot = 0, pivotY = 0, drawY = this.groundY();
+    if (this.state === 'lifting') {
+      const spin = (L.spinDeg != null ? L.spinDeg : 90) * Math.PI / 180;
+      rot = -(1 - this.liftQ) * spin;
+
+      /* ⚠️ ROTATING IS NOT ENOUGH -- THE POSITION HAS TO BE CORRECTED WITH IT,
+         and getting this wrong is a 40px sideways jump on the frame the hoist
+         starts, which looks exactly like the teleport this was built to remove.
+         The reason is that the frame is placed by its ANCHOR (the base of the
+         lying barrel) and rotating about the middle swings that anchor away:
+         at -90 degrees it lands a half-height to one side, so the drawing is
+         offset by that much from where the barrel actually is.
+   
+         So the arithmetic is done on the CENTRE instead, which is the one point
+         a rotation about the centre leaves alone:
+   
+           half      how far the centre sits above the floor, and it CHANGES as
+                     the barrel turns -- half its width while standing on end,
+                     half its height once flat (55px and 40px here)
+           drawY     the anchor position that puts that centre where it belongs,
+                     which is `centre + pivotY` because sheets.js pivots at
+                     `pivotY` ABOVE whatever ground point it is given
+   
+         At liftQ 1 this collapses to plain `groundY()`, so the hoist ends
+         exactly where the carry begins with nothing to reconcile. */
+      const sz = sheets.size('barril', f.pose, f.step);
+      const ds = this.depthScale();
+      const halfLying = sz.h * ds / 2;         // flat: half its height
+      const halfStanding = sz.w * ds / 2;      // on end: half its width
+      const half = halfStanding + (halfLying - halfStanding) * this.liftQ;
+      pivotY = halfLying;
+      drawY = this.groundY() - half + halfLying;
+    }
     /* ⚠️ THE SMASH DOES NOT SHRINK WITH DEPTH-SCALE THE WAY THE BARREL DOES.
        It does -- both use `depthScale()` -- and that is the point of saying so:
        the burst is drawn at the barrel's own depth, so a barrel broken at the
@@ -297,8 +442,8 @@ class Prop {
        (which looked like more spectacle) makes the debris arrive from nowhere
        in a different perspective from the thing it came out of. */
     sheets.draw(ctx, 'barril', this.facing, f.pose, f.step,
-                this.groundX(camX), this.groundY(),
-                { scale: this.depthScale() });
+                this.groundX(camX), drawY,
+                { scale: this.depthScale(), rotate: rot, pivotY: pivotY });
   }
 }
 

@@ -316,8 +316,13 @@ stored TWICE, and every path that ends a hold has to break both ends.
   to the next, and what is left is a prop that exists only as `player.carrying`
   -- never drawn, never updated, never released.
 
-`Prop._release()` and `Props.enterRoom(room, player)` are the fix; both ends,
-every time.
+A FIFTH turned up when the hoist was animated: the barrel now ARRIVES a frame
+before his hands close on it (`held` while `carrying` is still null), so being
+hit in that one-frame gap cleared the reference without letting go of the
+barrel. `Prop.letGo()` covers `lifting` and `held` together for that reason.
+
+`Prop._release()`, `Prop.letGo()` and `Props.enterRoom(room, player)` are the
+fix; both ends, every time.
 
 **THE MOSCA BLOWS UP TOO**, and the horse's explosion machinery moved into
 `src/boom.js` the same day to make that one line rather than a copy. Fewer and

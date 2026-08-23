@@ -1393,6 +1393,31 @@ const CONFIG = {
 
          It is also where a throw leaves from -- see Prop.throwFrom(). */
       carryYRel: 0.70,
+      /* --- THE HOIST -------------------------------------------------------
+         HOW THE BARREL GETS FROM THE FLOOR TO OVER HIS HEAD. It used to not:
+         it sat still for the whole 640ms reach and then appeared above him on a
+         single frame, which read as a teleport because it was one. It now rides
+         an arc for the length of the reach, turning 90 degrees onto its side as
+         it goes -- the arms swing through an arc, so the barrel is on it.
+
+         ⚠️ THE CLOCK IS `PICKUP_MS.heavy`, PASSED IN, not a duration of its own.
+         The barrel and the animation have to finish together, and two numbers
+         for one action drift the moment either is retuned. */
+      LIFT_ARC: {
+        /* How much of the reach passes before the barrel moves at all. The
+           first frames of `lift` are him REACHING DOWN for it; start the barrel
+           at zero and it leaves the floor before he has touched it. */
+        startRel: 0.3,
+        /* Extra height at the middle of the path, in px. This is the whole
+           difference between an arc and a straight line -- without it the
+           barrel slides up an invisible ramp. 34 is about a third of a barrel. */
+        bulgePx: 34,
+        /* Upright to flat. 90 is the drawing's own turn: the sheet's `side` row
+           IS the upright row rotated a quarter turn, so the hoist ends exactly
+           on the frame the carry uses and there is nothing to blend. */
+        spinDeg: 90,
+      },
+
       /* THE THROW. Fast and flat: 520px/s with a small upward kick, so it
          crosses about two thirds of the screen before it lands rather than
          lobbing. `throwGravity` is what brings it down; raise the lift and the

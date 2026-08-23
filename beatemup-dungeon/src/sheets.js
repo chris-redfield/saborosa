@@ -197,7 +197,19 @@ class Sheets {
     // the sprite about its own anchor rather than sliding it sideways.
     const blit = () => {
       ctx.translate(gx, gy + nudge * (o.scale || 1));
-      if (o.rotate) ctx.rotate(o.rotate);
+      /* ⚠️ `pivotY` MOVES WHERE THE ROTATION HAPPENS, and without it every
+         rotation in this game is about the GROUND POINT -- which is right for a
+         horse tipping over (it falls about its feet) and wrong for anything
+         turning over in mid-air. A barrel being hoisted has to rotate about its
+         own middle, or it swings around its base like a felled tree and leaves
+         the hands entirely. Given in drawn px above the ground point; absent, it
+         is 0 and this is exactly the old behaviour. */
+      if (o.rotate) {
+        const py = o.pivotY || 0;
+        if (py) ctx.translate(0, -py);
+        ctx.rotate(o.rotate);
+        if (py) ctx.translate(0, py);
+      }
       if (flip) ctx.scale(-1, 1);
       ctx.drawImage(pack.img, f.x, f.y, f.w, f.h, ox, oy, w, h);
     };

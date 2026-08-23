@@ -1118,6 +1118,9 @@ and five were both "too many" on sight.
 | `hitWRel` / `hitZ` | 0.8 / 46 — hurtbox, as a fraction of `sizePx` and in belt px |
 | `liftRangeX` / `liftRangeZ` | 74 / 46 — how close he has to be. Generous across, tight in depth |
 | `carryYRel` | 0.70 — height of the barrel's **base** while carried, in bodies (96px) |
+| `LIFT_ARC.startRel` | 0.3 — how much of the reach passes before the barrel moves (he is still reaching down) |
+| `LIFT_ARC.bulgePx` | 34 — how far the path bows above a straight line. This is what makes it an arc |
+| `LIFT_ARC.spinDeg` | 90 — upright to flat, over the same window |
 | `throwSpeed` / `throwLift` / `throwGravity` | 520 / 120 / 900 — fast and flat, about two thirds of a screen |
 | `throwDamage` | 22 — the hardest single blow in the game (a full 5-hit combo is 36) |
 | `throwKnockback` / `throwLiftHit` / `throwKnockdown` | 260 / 90 / true |
@@ -1145,6 +1148,32 @@ while carrying one; there is no drawing of it.
 > so a barrel standing between the player and an enemy eats a blow meant for the
 > enemy. At two punches every barrel becomes an ambush instead of a thing you
 > smash on the way past.
+
+### The hoist
+
+The barrel rides an arc from the floor to over his head across the whole reach
+(`PICKUP_MS.heavy`, 640ms — passed in, so the barrel and the animation cannot
+drift apart), turning 90° onto its side as it goes. **It used to teleport**: it
+sat still for the reach and appeared above him on one frame.
+
+Two things in there that are not obvious:
+
+* **It draws the `side` frame rotated *back* upright, not the upright frame
+  rotated forward.** The sheet's side row is the upright row turned a quarter
+  turn, so either would look right in motion — but ending on the `side` frame at
+  0° means the hoist finishes on exactly the frame the carry uses, with nothing
+  to blend. The other way round leaves a seam at the moment it settles, which is
+  the moment you are looking at it.
+* **Rotating needs the position corrected with it.** A frame is placed by its
+  anchor (the base), and rotating about the *middle* swings that anchor away —
+  at 90° it lands a half-height to one side, so the barrel draws 40px off from
+  where it is. `draw()` works on the centre instead and converts back; at
+  `liftQ` 1 the arithmetic collapses to plain `groundY()`, which is what makes
+  the handover to the carry exact.
+
+`sheets.draw` grew `pivotY` for this — how far above the ground point to rotate
+about. Absent it is 0, which is the old behaviour and still what the horse's
+tip-over wants (it falls about its feet).
 
 **A held barrel is not a position, it is an owner.** It reads its x and z off the
 holder every frame rather than being pushed around by him — otherwise it
