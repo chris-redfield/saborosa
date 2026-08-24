@@ -338,6 +338,29 @@ variety did not go away, it moved. And it only works because `_impact` is TOLD
 which way the blow went; any new damage path that gets `byPlayer` wrong now
 tells a lie rather than tossing a coin.
 
+**AND THE GAME HAS TWO FRONT SCREENS AGAIN.** The crawling vermin with the
+SABOROSA logo -- the screen that WAS the title until 08-21, when a photograph
+replaced it -- is back, in FRONT of that photograph rather than instead of it:
+logo (3s, or a press) -> title (a press) -> the fight. `src/logo.js`, a sibling
+of title.js and ending.js with the same contract.
+
+⚠️ **IT COST ONE 30KB FILE.** Nothing was recovered from the deleted code --
+there was nothing to recover, it was six lines of draw call -- and neither asset
+had ever been removed: the three frames are the game over panel's, and the logo
+had sat unused in the other game's folder since July.
+
+⚠️ **THE TWO SCREENS SHARE THE FRAMES *AND* THE DRAW.** `VERMIN_FRAMES` is one
+list loaded once (`vermin0..2`, renamed from `gameover0..2`, which stopped being
+an honest name the moment the front screen drew them again), and the crawl comes
+from `GameOver.renderBackdrop()` so the two can never end up on different frames
+of one animation. Still Life's split, and its reasoning.
+
+⚠️ **THE LOGO AUTO-ADVANCES AND THE TITLE DOES NOT.** That is what keeps two
+screens from being two things to dismiss. And a restart goes back to the TITLE,
+not through the logo (`LOGO.onRestart` false): the run ending at the front of
+the game was decided when the game over panel was pointed there, and three
+seconds of branding after every death is a different decision.
+
 **THE TITLE SCREEN STAYS SILENT.** The main game's theme (`assets/MIKE.mp3`)
 was wired to it late on 2026-08-22 -- read in place, like the character packs --
 and taken out the same day: it did not suit the screen. ⚠️ Do not re-propose it.

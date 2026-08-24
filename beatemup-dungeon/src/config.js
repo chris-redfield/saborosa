@@ -2950,13 +2950,67 @@ const CONFIG = {
      the crossing itself takes about seven seconds at these numbers. */
   titleWalkRepeatMs: 0,
 
+  /* --- THE VERMIN, and BOTH screens that crawl on them ----------------------
+     Three photographed frames, read IN PLACE out of `assets-v2/flying-dungeon/`
+     rather than copied -- two copies of a picture drift the moment one is recut
+     and the wrong one is always the one you are not looking at.
+
+     ⚠️ ONE LIST, TWO CONSUMERS, LOADED ONCE. The LOGO screen at the front of
+     the game and the GAME OVER panel at the end of a run are the same three
+     photographs, and they share the draw as well as the files (see
+     `GameOver.renderBackdrop`) so they can never end up on different frames of
+     one animation. They were separate lists for about ten minutes and that is
+     ten minutes longer than two copies of the same three paths deserved.
+
+     The keys are `vermin0..2`. They used to be `gameover0..2`, which stopped
+     being an honest name the moment the title screen drew them again. */
+  VERMIN_FRAMES: [
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-001.webp',
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-002.webp',
+    'v2:flying-dungeon/game-over/saborosa-natureza-vermes-003.webp',
+  ],
+
+  /* --- THE LOGO SCREEN: the front door -------------------------------------
+     The crawling vermin with the SABOROSA logo over them, and then it hands to
+     the BATIDÃO DE CÔCO title. Two front screens: the label, then the name.
+
+     ⚠️ THIS SCREEN WAS DELETED ON 2026-08-21 AND ASKED FOR AGAIN ON 08-22 --
+     in FRONT of the photograph this time rather than instead of it. It cost one
+     30KB file to bring back, because neither of its assets was ever removed:
+     the frames are the game over panel's, and the logo has been sitting unused
+     in the other game's folder since July.
+
+     ⚠️ IT AUTO-ADVANCES AND THE TITLE AFTER IT DOES NOT, which is the whole
+     reason two screens is not two things to dismiss: this one is a label being
+     shown to you and it leaves on its own; the next is where the game waits.
+     `holdMs` 0 makes it wait for a press instead.
+
+     ⚠️ AND IT IS ONLY THE FRONT DOOR OF THE SESSION. Finishing a run or losing
+     one goes back to the TITLE, not to here -- decided when the game over panel
+     was pointed at the title on this same day. `onRestart: true` sends restarts
+     through the logo as well, which costs the player three seconds of branding
+     every time they die. */
+  LOGO: {
+    on: true,
+    onRestart: false,
+    SHEET: 'v2:flying-dungeon/saborosa-logo.webp',
+    wRel: 0.52,        // logo width as a fraction of the canvas. Still Life's
+    yRel: 0.5,         // and its centre, down the canvas
+    holdMs: 3000,      // it leaves on its own after this. 0 = wait for a press
+    armMs: 250,        // before a press counts -- see the note in logo.js
+    fadeInMs: 400,     // up out of the loading bar's black
+    fadeOutMs: 600,    // down into the title screen
+    /* Per-frame holds for the crawl, ms. Left to the game over panel's own
+       `holdsMs` if absent, which is what shares the ~9.5fps cycle. */
+  },
+
   /* --- The game over panel -------------------------------------------------
      THE FLYING DUNGEON'S SCREEN, brought over: its three photographed frames of
      crawling vermin, looping, with one word revealed over them. There it says
      TIME OVER; here it says PERDEU!
 
-     ⚠️ THE FRAMES ARE READ IN PLACE out of `assets-v2/flying-dungeon/`, not
-     copied. Two copies of a picture drift the moment one is recut, and the copy
+     ⚠️ THE FRAMES ARE `CONFIG.VERMIN_FRAMES`, SHARED WITH THE LOGO SCREEN and
+     read in place out of `assets-v2/flying-dungeon/`, not copied. Two copies of a picture drift the moment one is recut, and the copy
      that is wrong is always the one you are not looking at. They are the same
      three files the TITLE screen used to crawl on before it became a
      photograph, so this game already knows how to load them.
@@ -2974,11 +3028,6 @@ const CONFIG = {
      reason the panel exists. */
   GAME_OVER: {
     on: true,
-    FRAMES: [
-      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-001.webp',
-      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-002.webp',
-      'v2:flying-dungeon/game-over/saborosa-natureza-vermes-003.webp',
-    ],
     holdsMs: [105, 105, 105],   // ~9.5fps, looping 1-2-3
     fadeOutMs: 900,             // the fight dipping to black
     holdMs: 350,                // black, before the panel

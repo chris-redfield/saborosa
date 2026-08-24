@@ -48,13 +48,25 @@ function assetManifest() {
     out.push({ key: 'titleBg', src: CONFIG.TITLE_BG, how: 'big' });
   }
 
-  /* THE GAME OVER PANEL: the flying dungeon's three crawling-vermin frames, read
-     IN PLACE out of that game's folder rather than copied. `big` because they
-     are 3002px wide and drawn at 1280 -- the same VRAM reasoning as every other
-     oversized plate here. */
-  if (CONFIG.GAME_OVER && CONFIG.GAME_OVER.on !== false) {
-    (CONFIG.GAME_OVER.FRAMES || []).forEach((src, i) =>
-      out.push({ key: 'gameover' + i, src: src, how: 'big' }));
+  /* THE CRAWLING VERMIN: three frames read IN PLACE out of the flying dungeon's
+     folder, and loaded ONCE for the TWO screens that use them -- the logo screen
+     at the front and the game over panel at the end. `big` because they are
+     3002px wide and drawn at 1280 -- the same VRAM reasoning as every other
+     oversized plate here.
+
+     ⚠️ GATED ON EITHER CONSUMER. Turning the game over panel off must not take
+     the front door's backdrop with it. */
+  const wantsVermin = (CONFIG.GAME_OVER && CONFIG.GAME_OVER.on !== false)
+                   || (CONFIG.LOGO && CONFIG.LOGO.on);
+  if (wantsVermin) {
+    (CONFIG.VERMIN_FRAMES || []).forEach((src, i) =>
+      out.push({ key: 'vermin' + i, src: src, how: 'big' }));
+  }
+
+  /* The SABOROSA logo, for the front door. `image` rather than `big`: it is
+     705x166 and drawn at 666 wide, so there is nothing to downscale. */
+  if (CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.SHEET) {
+    out.push({ key: 'logo', src: CONFIG.LOGO.SHEET, how: 'image' });
   }
 
   /* The ending plate. Same treatment as the title's for the same reasons, and

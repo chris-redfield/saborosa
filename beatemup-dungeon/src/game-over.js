@@ -28,8 +28,8 @@ class GameOver {
   _cfg() { return CONFIG.GAME_OVER || {}; }
 
   ready() {
-    const n = (this._cfg().FRAMES || []).length;
-    for (let i = 0; i < n; i++) if (!this.assets.getDrawable('gameover' + i)) return false;
+    const n = (CONFIG.VERMIN_FRAMES || []).length;
+    for (let i = 0; i < n; i++) if (!this.assets.getDrawable('vermin' + i)) return false;
     return n > 0;
   }
 
@@ -109,18 +109,32 @@ class GameOver {
     const a = since <= 0 ? 0
       : Math.min(1, since / Math.max(1, c.fadeInMs || 900));
     if (a > 0) {
-      const img = this.assets.getDrawable('gameover' + this._frameAt(t));
-      if (img) {
-        ctx.save();
-        ctx.globalAlpha = a;
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        // The band IS the picture and it is already 16:9 — fill the canvas.
-        ctx.drawImage(img, 0, 0, W, H);
-        ctx.restore();
-      }
+      this.renderBackdrop(ctx, W, H, t, a);
       this._title(ctx, W, H, since, a);
     }
+    ctx.restore();
+  }
+
+  /**
+   * THE CRAWL ON ITS OWN, without the word over it.
+   *
+   * ⚠️ SPLIT OUT BECAUSE THE LOGO SCREEN BORROWS IT -- the game opens and closes
+   * on the same three photographs. Sharing the draw rather than copying it means
+   * the two screens cannot end up on different frames of the same animation, or
+   * drift apart if the art is ever recut. That is Still Life's arrangement and
+   * its reasoning, and this is the same split it made.
+   */
+  renderBackdrop(ctx, W, H, t, alpha) {
+    const a = Math.min(1, Math.max(0, alpha === undefined ? 1 : alpha));
+    if (a <= 0) return;
+    const img = this.assets.getDrawable('vermin' + this._frameAt(t));
+    if (!img) return;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    // The band IS the picture and it is already 16:9 — fill the canvas.
+    ctx.drawImage(img, 0, 0, W, H);
     ctx.restore();
   }
 

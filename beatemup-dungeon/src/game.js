@@ -34,6 +34,10 @@
   const title = new Title(assets, sheets);
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
+  /* The front door: the vermin and the SABOROSA logo, ahead of the title. It
+     takes `gameOver` for its BACKDROP only -- the two screens crawl on one set
+     of frames and share the draw, so they cannot fall out of step. */
+  const logo = new Logo(assets, gameOver);
   const backdrop = new Backdrop(assets);
   /* `sheets` so it can measure how far off screen an enemy must start -- see
      Stage._spawn(). It is declared above, which this relies on. */
@@ -58,8 +62,8 @@
   canvas.style.filter = (CONFIG.film && CONFIG.filmCss) ? CONFIG.filmCss : '';
 
   let player = null;
-  let phase = 'boot';          /* boot | title | play | outro | ending | fade
-                                  | dead | gameover | clear */
+  let phase = 'boot';          /* boot | logo | title | play | outro | ending
+                                  | fade | dead | gameover | clear */
   /* WHAT THE WALK-OUT HANDS TO. The outro is the same beat either way -- he
      walks off the right-hand edge -- but it means two different things: a door
      into the next room, or the end of the game. It used to be able to assume
@@ -142,7 +146,16 @@
        would leave TWO requestAnimationFrame chains running the same loop, and a
        game that ran at double speed with every dt halved. It would look like a
        physics bug and it would not be one. */
-    if (CONFIG.title) {
+    /* THE FRONT DOOR, IN ORDER: logo, then title, then the fight. Each screen
+       hands to the next and each is independently switchable, so `LOGO.on`
+       false opens on the title exactly as it did before the logo existed, and
+       `title` false goes straight into the fight from either. */
+    if (CONFIG.LOGO && CONFIG.LOGO.on) {
+      phase = 'logo';
+      logo.reset();
+      last = performance.now();
+      requestAnimationFrame(loop);
+    } else if (CONFIG.title) {
       phase = 'title';
       last = performance.now();
       requestAnimationFrame(loop);
@@ -175,6 +188,12 @@
     boardSkip = 0;
     faded = false;
     title.reset();
+    /* ⚠️ A RESTART GOES TO THE TITLE, NOT THROUGH THE LOGO, unless asked. The
+       run ending at the front of the game was decided when the game over panel
+       was pointed here; making the player sit through three seconds of branding
+       every time they die is a different thing and it is opt-in. */
+    const viaLogo = CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.onRestart;
+    if (viaLogo) logo.reset();
     /* The bed belongs to the level, not to the front screen -- it is started by
        start() and has to stop here or it would play under the title and then be
        started a second time on the next run.
@@ -183,7 +202,7 @@
        was put here on 2026-08-22 and taken out the same day -- it did not suit
        the screen. Do not re-propose it. */
     sound.stopMusic(0.4);
-    phase = 'title';
+    phase = viaLogo ? 'logo' : 'title';
     phaseT = 0;
     input.flush();
     last = performance.now();
@@ -281,6 +300,26 @@
        schedules its own and is why this returns immediately after it. Leaving
        loop() without scheduling is this game's recurring bug: it presents as
        input being dead on a screen that looks completely normal. */
+    /* THE LOGO SCREEN. Same shape as the title's branch below it and for the
+       same reasons: it is not the game, so there is nothing to simulate, and
+       ⚠️ BOTH EXITS SCHEDULE A FRAME -- the one that carries on showing it and
+       the one that hands to the title. Leaving loop() without scheduling is
+       this game's recurring bug and it presents as input being dead on a screen
+       that looks completely normal. */
+    if (phase === 'logo') {
+      const finished = logo.update(dt, input);
+      renderFilmed(() => logo.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
+      if (finished) {
+        /* Straight to the title, or straight into the fight if there is no
+           title screen -- start() schedules its own frame, which is why that
+           branch returns immediately. */
+        if (CONFIG.title) { phase = 'title'; title.reset(); input.flush(); }
+        else { start(); return; }
+      }
+      requestAnimationFrame(loop);
+      return;
+    }
+
     if (phase === 'title') {
       const finished = title.update(dt, input);
       renderFilmed(() => title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));

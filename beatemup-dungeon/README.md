@@ -962,6 +962,49 @@ recording that holds a second quiet event, which several of these do.
 Wiring a cut effect is two lines: an entry in `CONFIG.SFX`, and a
 `sound.play('name')` where it should be heard.
 
+## The front door: two screens
+
+```
+loading bar ──► LOGO ──(3s, or a press)──► TITLE ──(a press)──► the fight
+```
+
+**`src/logo.js`** — the crawling vermin with the SABOROSA logo over them, then
+it hands to the BATIDÃO DE CÔCO title.
+
+| knob (`CONFIG.LOGO`) | what it does |
+|---|---|
+| `on` | `false` opens straight on the title, exactly as before this screen existed |
+| `onRestart` | `false` — a run that ends goes back to the TITLE, not through the logo again |
+| `SHEET` | the logo, read in place out of the flying dungeon's folder |
+| `wRel` / `yRel` | 0.52 / 0.5 — width as a fraction of the canvas (height follows), and its centre |
+| `holdMs` | 3000 — it leaves on its own after this. **0 = wait for a press** |
+| `armMs` | 250 — before a press counts. See below |
+| `fadeInMs` / `fadeOutMs` | 400 up out of the loading bar's black, 600 down into the title |
+
+**This screen was deleted on 2026-08-21 and asked for again on 08-22** — in
+*front* of the photograph this time rather than instead of it. It cost one 30KB
+file, because neither asset was ever removed: the frames are the game over
+panel's and the logo had been sitting unused since July.
+
+> ⚠️ **It auto-advances and the title after it does not.** That asymmetry is the
+> whole reason two screens is not two things to dismiss: the logo is a label
+> being shown to you and it leaves on its own; the title is where the game waits
+> for you. Making both wait would mean two presses to reach a game that used to
+> take one.
+
+> ⚠️ **`armMs` exists because this is the FIRST screen of the session.**
+> Everywhere else a press is taken from frame one, on the argument that anyone
+> who has seen a screen once must be able to leave it at once. Here, a key still
+> down from launching the game would blow through it before it had drawn twice.
+
+**The vermin are `CONFIG.VERMIN_FRAMES`, one list for two screens**, loaded once
+under `vermin0..2`, and the *draw* is shared too — `GameOver.renderBackdrop()`.
+Sharing the draw rather than copying it means the front door and the game over
+panel can never end up on different frames of the same animation, or drift apart
+if the art is recut. (Still Life makes exactly this split, for exactly this
+reason.) The manifest gates the load on **either** consumer, so turning the game
+over panel off does not take the front door's backdrop with it.
+
 ## The title screen
 
 A photograph of a wall. The name **falls in from off the top of the frame** on
