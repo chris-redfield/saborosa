@@ -1042,7 +1042,7 @@ Three knobs and three pipelines.
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
 | `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
 | `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
-| `VICTORY_STING` | `{ on, musicFadeSec: 1.2, stopFadeSec: 0.4 }` — **the win, in two moments**. The horse's song rolls off when the walk-out starts; the fanfare (Still Life's, read in place) begins when the ending screen does. ⚠️ Played with `playOnce` so `frontMusic()` can stop it — at 10.7 s it outlives a skipped tally |
+| `VICTORY_STING` | `{ on, musicFadeSec: 1.2, stopFadeSec: 0.4 }` — **the win, in two moments**. The horse's song rolls off when the walk-out starts; the fanfare (Still Life's, read in place) begins when the ending screen does. ⚠️ Played with `playOnce` so `frontEnter()` can stop it — at 10.7 s it outlives a skipped tally |
 | `RESULTS.TICK` | `{ on, sfx: 'coin', ms: 90, rise: 0.25 }` — **the count-up tick**. Still Life's coin hit, once every `ms` for exactly as long as a number is moving, pitching up 1.0→1.25 across the roll. ⚠️ Stops at `resultsRollS`, not at the end of the board — the beat before the rank stamp has to stay silent |
 
 `M` mutes everything, in every phase.
@@ -1349,13 +1349,15 @@ the screen. What plays now is a **60s loop cut out of the fullest part of it**
 player sees for ten seconds. `CONFIG.TITLE_TRACK`; unset it and the screen is
 silent again. See *Cutting a loop out of a song*.
 
-> ⚠️ **A cold first boot may be silent, and that is the browser.** No page can
-> play audio before the visitor has interacted with it, and on a fresh load the
-> first interaction is the press that *leaves* the title. The theme is therefore
-> asked for one screen early, on the **logo**, so a press that skips the logo
-> (`LOGO.armMs` 250) lands the music on the title. A player who sits through the
-> logo hears nothing until they have played once and come back. Any real fix
-> costs the player a press and is a design change, not a wiring one.
+> ⚠️ **It starts on the TITLE, not on the logo** (2026-08-24) — the logo is
+> silent. `frontEnter()` stops what the level was playing; `titleMusic()` starts
+> the theme, from the three places the title phase can begin.
+>
+> A cold boot works because the title's press now starts the **walk** rather
+> than dismissing the screen: no page can play audio before the visitor has
+> interacted, and the press both unlocks the context and leaves seven seconds of
+> crossing for the theme to play over. It used to be asked for on the logo
+> purely to work around that, back when the press left the screen immediately.
 
 **It used to hold the bare photograph for two seconds** before fading the name
 up, on the argument that a picture given time reads as a place while type cut in
@@ -1544,6 +1546,43 @@ room's theme every frame.
 ⚠️ **It reverts on `dead`, not on `finished()`.** She has a death fall and a
 fade to play out; waiting for those would leave her theme running over her own
 corpse.
+
+### He walks on at the start of a run
+
+`CONFIG.playerEnterPx` (360, 0 = off). His centre starts 140 px off the left
+edge and he walks to his mark in 1.2 s.
+
+- **`state: 'enter'` does the gating**, and it already existed — `canAct()` and
+  `vulnerable()` have always tested for it, so the controls are dead and nothing
+  can hit him with no new check anywhere. Nothing had ever *set* it before.
+- ⚠️ **The pose had to be taught.** `walk()` only promotes `idle` → `walk`,
+  which is what keeps `enter` meaning "not yours yet" — so `pose()` returned
+  `idle` and he slid on. One line in `pose()`.
+- ⚠️ **The walk passes no bounds.** He starts outside the left gate; clamping
+  would teleport him to the wall on frame one.
+- **It measures from where he would have stood**, so it is called *after* the
+  DEV room jump in `start()` — the jump is what puts him on his mark.
+
+### ⚠️ A locked camera freezes the backdrop
+
+The plate is `kind: 'video'` and `_drawVideo` scrubs it from **camera position
+only** — when the camera stops, it pauses the element. So a fight that locks the
+camera shows one frozen frame for its whole duration.
+
+`setMode('plate', 'play')` does **not** save you: it only touches a source of
+kind `film`, and the plate is a `video`, which has no 'play' mode. That call has
+been a no-op for as long as the plate has been a video.
+
+**The escape hatch is `lock: false` on the segment** — the camera follows the
+player and the footage runs. Both segments in the boss room have it (the roach
+wave and, since 2026-08-24, the horse).
+
+> ⚠️ **Do not add it to the Mosca's segment.** She computes her fly-in from the
+> camera *at spawn*, so a camera that moved afterwards would land her somewhere
+> that is no longer mid-screen — and the street cannot seek backwards anyway
+> (keyframes eleven seconds apart, which is why `allowReverse` is the boss
+> room's alone). Her backdrop does still freeze during her fight; that is the
+> same cause and needs a different answer.
 
 ### Which rooms get them
 

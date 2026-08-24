@@ -593,6 +593,11 @@ class Fighter {
        branch above has already claimed. */
     if ((this.jumping || (this.landHoldT > 0 && this.state !== 'walk'))
         && sheets && sheets.has(this.kind, 'jump')) return 'jump';
+    /* WALKING ON AT THE START OF A RUN. `walk()` will not promote `enter` to
+       `walk` -- it only ever promotes `idle` -- which is what keeps the state
+       meaning "not in the player's hands yet" for canAct/vulnerable. So the
+       POSE has to say so instead, or he slides on holding his idle frame. */
+    if (this.state === 'enter') return 'walk';
     if (this.state === 'walk') return 'walk';
     return 'idle';
   }

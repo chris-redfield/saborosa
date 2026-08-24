@@ -157,12 +157,13 @@
     if (CONFIG.LOGO && CONFIG.LOGO.on) {
       phase = 'logo';
       logo.reset();
-      frontMusic();
+      frontEnter();          // the logo is SILENT; see titleMusic()
       last = performance.now();
       requestAnimationFrame(loop);
     } else if (CONFIG.title) {
       phase = 'title';
-      frontMusic();
+      frontEnter();
+      titleMusic();
       last = performance.now();
       requestAnimationFrame(loop);
     } else {
@@ -190,23 +191,54 @@
    * ⚠️ SAFE TO CALL TWICE. playMusic() is a no-op when asked for the track
    * already playing, so this cannot restart the theme mid-screen.
    */
-  function frontMusic() {
-    /* ⚠️ AND THE VICTORY FANFARE STOPS HERE, WHICH IS WHY IT IS IN THIS
-       FUNCTION AND NOT AT THE ONE CALL SITE THAT NEEDS IT. The clip is 10.7s
-       and the ending screen plus the whole results board is about ten, so a
-       player who skips the tally reaches the front of the game with it still
-       going -- underneath MIKE, starting on the next line.
-
-       Every route to the front screens goes through here: boot, the logo
-       handing to the title, and toTitle() after a win, a loss or a skip. Put in
-       `toTitle()` alone it would be correct today and wrong the first time a
-       fourth route appeared -- and it WAS written there first, into the wrong
-       function, which is the same mistake one step earlier. Nothing else in the
-       game needs this, because nothing else is long enough to outlive the
-       screen that started it. */
+  /**
+   * ARRIVING AT THE FRONT OF THE GAME -- the logo, or the title behind it.
+   * Everything that has to STOP when the level does.
+   *
+   * ⚠️ THE VICTORY FANFARE STOPS HERE, AND THAT IS WHY IT IS IN THIS FUNCTION
+   * AND NOT AT THE ONE CALL SITE THAT NEEDS IT. The clip is 10.7s and the
+   * ending screen plus the whole results board is about ten, so a player who
+   * skips the tally reaches the front of the game with it still going. Every
+   * route to the front screens goes through here: boot, and toTitle() after a
+   * win, a loss or a skip. Put in `toTitle()` alone it would be correct today
+   * and wrong the first time a fourth route appeared -- and it WAS written
+   * there first, into the wrong function, which is the same mistake one step
+   * earlier.
+   *
+   * ⚠️ AND THE LEVEL'S MUSIC STOPS HERE RATHER THAN BEING SWITCHED. It used to
+   * hand straight to MIKE, which meant the theme began on the LOGO. Asked for
+   * 2026-08-24: MIKE starts on the BATIDÃO DE CÔCO screen and not before, so
+   * the logo is silent and `titleMusic()` is a separate moment.
+   */
+  function frontEnter() {
     sound.stopOnce('victory', (CONFIG.VICTORY_STING || {}).stopFadeSec);
+    sound.stopMusic(0.4);
+  }
+
+  /**
+   * THE TITLE SCREEN'S OWN THEME, on the frame that screen begins.
+   *
+   * ⚠️ A COLD BOOT NOW WORKS, AND IT DID NOT USED TO. No browser plays audio
+   * before the visitor has interacted, so this was asked for one screen EARLY
+   * (on the logo) purely so that a press skipping the logo would unlock the
+   * context with the title still to come -- otherwise the first interaction was
+   * the press that LEFT the title and MIKE was never heard on a first run.
+   *
+   * That is no longer true, because the title's press now starts the WALK
+   * rather than dismissing the screen: the press unlocks the context, `wanted`
+   * in sound.js is already set, and there are seven seconds of crossing left
+   * for the theme to play over. The workaround is not merely unnecessary now,
+   * it was the thing standing between MIKE and the screen it was asked for.
+   *
+   * ⚠️ THREE CALL SITES, LIKE `roomMusic()`, and for the same reason: there is
+   * no single place the title phase begins. boot() opens on it, the logo hands
+   * to it, and toTitle() returns to it without the logo. Asking every frame
+   * from the title branch would be a no-op once playing but would call
+   * `ctx.resume()` sixty times a second for the whole of a cold boot, which is
+   * the exact case this has to be good at.
+   */
+  function titleMusic() {
     if (CONFIG.TITLE_TRACK) sound.playMusic('musicTitle');
-    else sound.stopMusic(0.4);
   }
 
   /**
@@ -251,9 +283,12 @@
        for it back, and what is there now is not what was tried: a 60s loop cut
        out of the fullest part of the song rather than the whole 4m10s track
        from its quiet opening. See CONFIG.TITLE_TRACK. `TITLE_TRACK` unset takes
-       the silent screen back, and frontMusic() is the one place to look. */
-    frontMusic();
+       the silent screen back, and titleMusic() is the one place to look. */
+    frontEnter();
     phase = viaLogo ? 'logo' : 'title';
+    // Straight to the title: this IS the moment it begins. Via the logo, the
+    // logo's own hand-off calls it instead.
+    if (!viaLogo) titleMusic();
     phaseT = 0;
     input.flush();
     last = performance.now();
@@ -406,6 +441,11 @@
     if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
       stage.enterRoom(CONFIG.DEV.startRoom, player);
     }
+    /* HE WALKS ON RATHER THAN BEING THERE. ⚠️ AFTER the DEV jump, because
+       `enterRoom` is what puts him on his mark and this backs him off WHEREVER
+       that is -- read before the jump it would measure from the street's mark
+       and walk him in from the wrong place. See CONFIG.playerEnterPx. */
+    player.enterWalk(CONFIG.playerEnterPx);
     /* ⚠️ AFTER the DEV jump, not before it: the props belong to whichever room
        the run is actually starting in, and laying out the street's barrels and
        then jumping to the boss room would leave them there. */
@@ -473,7 +513,7 @@
         /* Straight to the title, or straight into the fight if there is no
            title screen -- start() schedules its own frame, which is why that
            branch returns immediately. */
-        if (CONFIG.title) { phase = 'title'; title.reset(); input.flush(); }
+        if (CONFIG.title) { phase = 'title'; title.reset(); titleMusic(); input.flush(); }
         else { start(); return; }
       }
       requestAnimationFrame(loop);

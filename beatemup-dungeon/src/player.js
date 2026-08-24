@@ -52,6 +52,9 @@ class Player extends Fighter {
     /* The room's props, handed in by the shell so the player can find what is
        within reach. Null is a legal state and means a room with nothing in it. */
     this.props = null;
+    /* Where the walk-on ends. Only meaningful while `state === 'enter'`; see
+       enterWalk(). */
+    this.enterToX = 0;
   }
 
   /**
@@ -276,6 +279,25 @@ class Player extends Fighter {
          the tell and keep walking through their own `atk` (Enemy `_step`, the
          `ai === 'leap'` branch, the one state that moves mid-attack). */
       if (this.jumping) this.walk(dt, this.airIx, this.airIz, bounds);
+
+      /* WALKING ON AT THE START OF A RUN. `state === 'enter'` already means
+         "not in the player's hands": `canAct()` and `vulnerable()` both test
+         for it, so this branch is the only thing moving him and nothing can
+         hit him on the way in.
+
+         ⚠️ NO BOUNDS, and it is the same reason the enemies' walk-in passes
+         none: he starts OUTSIDE the left gate, and clamping him to it would
+         teleport him to the wall on his first frame -- the materialising-in-
+         front-of-you problem the walk-on exists to avoid, with an extra step.
+         He becomes subject to the walls the moment he arrives. */
+      if (this.state === 'enter') {
+        this.walk(dt, 1, 0, null);
+        if (this.x >= this.enterToX) {
+          this.x = this.enterToX;
+          this.state = 'idle';
+          this.stateT = 0;
+        }
+      }
     }
 
     super.update(dt, bounds);
@@ -294,6 +316,23 @@ class Player extends Fighter {
    * some tidier lane. The walk animation, the facing and the depth scale all
    * follow from `walk` as they always do.
    */
+  /**
+   * Start the run by walking ON from the left, instead of being there already.
+   *
+   * ⚠️ IT IS MEASURED FROM WHERE HE WOULD HAVE STOOD, not to a fixed mark. The
+   * caller has already placed him -- at the room's `startX`, or wherever a DEV
+   * room jump put him -- so this reads that as the destination and backs him
+   * off it. A hardcoded target would be wrong in every room but the first.
+   */
+  enterWalk(px) {
+    if (!(px > 0)) return;
+    this.enterToX = this.x;
+    this.x -= px;
+    this.facing = 'right';
+    this.state = 'enter';
+    this.stateT = 0;
+  }
+
   walkOut(dt) {
     this.walk(dt, 1, 0, null, 1);
     super.update(dt, null);

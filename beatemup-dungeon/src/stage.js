@@ -91,7 +91,7 @@ class Stage {
     if (r && this.backdrop) this.backdrop.setPlate(r.plate);
     if (player && r) {
       player.x = r.startX != null ? r.startX : 220;
-      player.z = CONFIG.beltDepth * 0.6;
+      player.z = CONFIG.beltDepth * CONFIG.playerStartZRel;
     }
   }
   isArena() {
@@ -173,15 +173,42 @@ class Stage {
 
     // --- boss --------------------------------------------------------------
     if (s.kind === 'boss') {
-      // Same locked, living shot an arena gets — the world carries on around a
-      // fight the player cannot walk away from.
+      /* ⚠️ THIS IS A NO-OP FOR THE PLATE AND HAS ALWAYS BEEN ONE. `setMode`
+         only touches a source of kind `film`, and the plate is kind `video` --
+         which has no 'play' mode at all: `_drawVideo` is scrubbed by the CAMERA
+         and by nothing else. The call is kept because the film contract is
+         real and a film plate would want it, but do not read it as "the shot
+         carries on by itself during a fight". It does not, and that is what
+         made a locked boss fight freeze its own backdrop. */
       this.backdrop.setMode('plate', 'play');
-      if (this.lockX == null) {
-        this.lockX = s.camX != null ? s.camX : this.camX;
-        this.banner = 0;         // penned in; see the arena branch
-        this.lastPlayerX = null; // and the follow budget; see the arena branch
+      /* A BOSS THE CAMERA FOLLOWS, `lock: false`, exactly as an arena can be --
+         the branch is a copy of the one below and deliberately so.
+
+         ⚠️ AND IT IS NOT ONLY A FRAMING CHOICE HERE, IT IS WHAT KEEPS THE
+         BACKDROP ALIVE. The plate is a video scrubbed by camera position, so a
+         camera that does not move is a shot that does not move: lock the boss
+         fight and the room freezes on one frame for the whole of it. The horse
+         room is the one that needed this -- reported 2026-08-24 as "the
+         background animation gets stuck when the boss enters".
+
+         ⚠️ IT IS SAFE FOR THE HORSE AND WOULD NOT BE FOR THE MOSCA. He is pure
+         world coordinates -- the `camX` his constructor takes is vestigial and
+         never read. The Mosca computes `enterFromX`/`enterToX` from the camera
+         AT SPAWN, so a camera that moved afterwards would leave her flying in
+         to a place that is no longer the middle of the screen. Her street also
+         cannot seek backwards (its keyframes are eleven seconds apart), which
+         is the other reason her fight stays penned. */
+      if (s.lock === false) {
+        this.banner = 0;
+        this._followCamera(dt, player);
+      } else {
+        if (this.lockX == null) {
+          this.lockX = s.camX != null ? s.camX : this.camX;
+          this.banner = 0;         // penned in; see the arena branch
+          this.lastPlayerX = null; // and the follow budget; see the arena branch
+        }
+        this._lockCamera(dt, this.lockX);
       }
-      this._lockCamera(dt, this.lockX);
 
       if (!this.spawned) {
         this.spawned = true;

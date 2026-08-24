@@ -247,6 +247,21 @@ const CONFIG = {
      same height (see `titleWalkGroundYRel`). Three copies of a number that has
      to agree with itself is two too many. */
   playerStartZRel: PLAYER_START_ZREL,
+  /* --- HE WALKS ON AT THE START OF A RUN -----------------------------------
+     How far LEFT of his starting mark he begins, in px. Asked for 2026-08-24:
+     "instead of just making the coconut fade in with the background, also make
+     him come from the left". 0 turns it off and he is simply there.
+
+     ⚠️ IT MUST CLEAR THE LEFT EDGE OF THE FRAME. His mark is `ROOMS[n].startX`
+     (220 in the street) and he is about 100px wide, so anything under ~280
+     starts him partly on screen and the walk-on reads as a slide. 360 puts his
+     centre 140px off the edge, and at `walkSpeedX` 300 the walk takes 1.2s.
+
+     ⚠️ HE IS `state: 'enter'` FOR IT, which `canAct()` and `vulnerable()`
+     ALREADY tested for -- that state existed and nothing had ever set it. So
+     the controls are dead and nothing can hit him until he arrives, with no new
+     gate to add anywhere. */
+  playerEnterPx: 360,
   /* Optional perspective: how much smaller a fighter is drawn at the FAR edge
      than at the near one. 1.0 = off, which is the classic arcade look (Final
      Fight and Streets of Rage both scale nothing). Kept as a knob because the
@@ -706,7 +721,21 @@ const CONFIG = {
            is the Mosca, which is what every existing one means. The Mosca is a
            SUB-boss mid-street and is long spent by the time the player gets
            here, so this is the only place `who` is not the default. */
-        { kind: 'boss', who: 'horse' },
+        /* ⚠️ `lock: false` LIKE THE WAVE BEFORE IT, and it is not only framing.
+           The plate is a VIDEO scrubbed by camera position, so a camera that
+           does not move is a shot that does not move -- locked, this fight
+           froze the room on one frame for its whole duration. Reported
+           2026-08-24: "the background animation gets stuck when the boss
+           enters". The camera following the player is what keeps the footage
+           running.
+
+           ⚠️ THE MOSCA'S BOSS SEGMENT IS DELIBERATELY NOT GIVEN THIS. She
+           computes her fly-in from the camera AT SPAWN, so a camera that moved
+           afterwards would land her somewhere that is no longer the middle of
+           the screen -- and the street cannot seek backwards anyway (keyframes
+           eleven seconds apart). Her backdrop does still freeze during her
+           fight; that is the same cause and a separate decision. */
+        { kind: 'boss', who: 'horse', lock: false },
       ],
     },
   ],

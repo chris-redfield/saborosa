@@ -1070,6 +1070,78 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### He walks on at the start of a run
+
+**INSTEAD OF BEING THERE ALREADY**, asked for 2026-08-24: "make him come from
+the left". `CONFIG.playerEnterPx` 360 -- his centre starts 140px off the left
+edge and he walks to his mark in 1.2s at `walkSpeedX`.
+
+⚠️ **`state: 'enter'` ALREADY EXISTED AND NOTHING HAD EVER SET IT.** `canAct()`
+and `vulnerable()` have both tested for it since the fighter machine was
+written: the controls are dead and nothing can hit him, with no new gate added
+anywhere. It was a state waiting for a user. **Look for one before inventing a
+flag** -- the alternative here was an `entering` boolean plus two new tests in
+exactly the two places that already had them.
+
+⚠️ **BUT THE POSE HAD TO BE TAUGHT.** `walk()` only ever promotes `idle` to
+`walk`, which is precisely what keeps `enter` meaning "not in the player's hands
+yet" while he is moving -- so `pose()` returned `idle` and he SLID on. One line
+in `pose()`. The half of a state that nothing had exercised was the drawing.
+
+⚠️ **NO BOUNDS ON THE WALK**, the same reason the enemies' walk-in passes none:
+he starts OUTSIDE the left gate, and clamping to it would teleport him to the
+wall on his first frame -- the materialising-in-front-of-you problem the walk-on
+exists to avoid, with an extra step.
+
+**IT IS MEASURED FROM WHERE HE WOULD HAVE STOOD**, not to a fixed mark: the
+caller has already placed him (the room's `startX`, or wherever a DEV jump put
+him) and `enterWalk` backs him off THAT. ⚠️ Which is why it is called AFTER the
+DEV room jump in `start()` -- read before it, it would measure against the
+street's mark and walk him in from the wrong place in every other room.
+
+**THE CAMERA NEEDED NOTHING.** `_followCamera` only moves when the player pushes
+past the focus band, and going the other way it returns unless the room allows
+reverse -- so a player at -140 leaves `camX` at 0. Checked rather than assumed.
+
+### The boss room froze its own backdrop, and the cause was in the camera
+
+**THE HORSE FIGHT LOCKED THE CAMERA, AND A LOCKED CAMERA IS A FROZEN SHOT.**
+Reported 2026-08-24: "the background animation gets stuck when the boss enters",
+and confirmed by the user in the same breath -- "the arena already works, it
+just stops working after the horse boss enters".
+
+⚠️ **THE PLATE IS SCRUBBED BY CAMERA POSITION AND BY NOTHING ELSE.**
+`_drawVideo` derives the target time from `scrollX / worldPxPerSecond`, and when
+the camera stops it PAUSES the element ("the player stopped: freeze the frame").
+So the shot is only alive while the camera is moving. The roach wave before the
+horse is `lock: false`, so it follows the player and the footage runs; the boss
+segment always locked, so the room froze on one frame for the whole fight.
+
+⚠️ **AND A COMMENT HAS BEEN LYING ABOUT THIS SINCE THE FILM SOURCE WAS
+DESIGNED.** The boss branch called `setMode('plate', 'play')` under "the world
+carries on around a fight" -- but `setMode` only touches a source of kind
+`film`, and the plate is kind `video`, which has no 'play' mode at all. The call
+has been a no-op for as long as the plate has been a video. It is kept (a film
+plate would want it) and the comment now says so. **A mode that exists in one
+source kind and not in another is a rule that reads as satisfied and is not.**
+
+**THE FIX IS THE ARENA'S OWN ESCAPE HATCH, WHICH THE BOSS BRANCH NEVER GOT.**
+`lock: false` already existed and already meant "follow instead of pen"; the
+boss branch simply never honoured it. It does now, and the horse's segment
+declares it. The two branches are deliberately the same shape.
+
+⚠️ **SAFE FOR THE HORSE, AND IT WOULD NOT BE FOR THE MOSCA.** He is pure world
+coordinates -- the `camX` his constructor takes is vestigial and never read. She
+computes `enterFromX`/`enterToX` FROM THE CAMERA AT SPAWN, so a camera that
+moved afterwards would fly her in to somewhere that is no longer the middle of
+the screen; and the street cannot seek backwards at all (keyframes eleven
+seconds apart, which is why `allowReverse` is the boss room's alone). ⚠️ **Her
+backdrop does still freeze during her fight.** Same cause, different answer
+needed, and it was left rather than quietly changed.
+
+**AND THE LAST `beltDepth * 0.6` WENT.** `enterRoom` had the third copy of the
+spawn depth that `playerStartZRel` was extracted for; it reads the knob now.
+
 ### The whistle plays OVER the bed, and nothing was baked
 
 **A SECOND LOOPING VOICE AT RUNTIME**, asked for 2026-08-24: the whistle plays
@@ -1281,10 +1353,10 @@ a 300ms punch would be bookkeeping for a sound that cannot outlast anything.
 `_voice()` builds both so a clip cannot be routed two different ways depending
 on which call started it.
 
-⚠️ **AND THE STOP WENT IN `frontMusic()`, NOT AT THE CALL SITE THAT NEEDED IT.**
+⚠️ **AND THE STOP WENT IN `frontEnter()`, NOT AT THE CALL SITE THAT NEEDED IT.**
 It was first written into `toTitle()` -- and actually landed in `boot()`, one
 function off, which is the same mistake one step earlier. Every route to the
-front screens goes through `frontMusic()`: boot, the logo handing to the title,
+front screens goes through `frontEnter()`: boot, the logo handing to the title,
 and toTitle after a win, a loss or a skip. At one call site it would have been
 correct today and wrong the first time a fourth route appeared. **Put a cleanup
 where the possibility ends, not where today's instance is.**
@@ -1703,10 +1775,17 @@ is quiet.**
 ⚠️ **THE FIRST BOOT MAY BE SILENT AND THAT IS THE BROWSER, NOT THE WIRING.** No
 page plays audio before the visitor has interacted with it, and on a cold load
 the first interaction is the press that LEAVES the title. So the theme is asked
-for one screen EARLY, on the logo, by `frontMusic()` -- a press that skips the
-logo unlocks the context with the title still to come. A player who sits through
-all three seconds of the logo hears nothing until they have played once and come
-back. Every real fix costs the player a press and is a design change.
+for one screen EARLY, on the logo -- a press that skips the logo unlocks the
+context with the title still to come.
+
+> ⚠️ **SUPERSEDED THE SAME DAY, AND THE WORKAROUND BECAME THE PROBLEM.** MIKE
+> now starts on the TITLE and the logo is silent (asked for: "make the MIKE song
+> only start at the second intro screen"). That is safe ONLY because the title's
+> press was changed to start the WALK rather than dismiss the screen -- the
+> press unlocks the context, `wanted` is already set, and there are seven
+> seconds of crossing left to play over. Two changes that were made for
+> unrelated reasons cancelled each other's constraint. `frontEnter()` stops
+> things, `titleMusic()` starts the theme.
 
 **`musicLoopSec` BECAME `MUSIC_LOOP`, KEYED BY ASSET KEY.** The pin was one
 number and `sound.js` applied it `if (key === 'music')` -- a guard that existed
