@@ -52,6 +52,16 @@ class FlyBoss {
     this.maxHp = CONFIG.flyBossHealth;
     this.hp = this.maxHp;
     this.dead = false;
+    /* THE MUSIC SHE BRINGS WITH HER, by asset key. Declared as a PROPERTY OF
+       THE BOSS rather than tested for in game.js, because that is the bargain
+       every other thing about a boss makes here: `combat.js` and the overlay
+       talk to an interface and never ask which boss this is. The horse simply
+       does not declare one, which is exactly what "his theme belongs to the
+       ROOM" should look like from the outside.
+
+       ⚠️ NULL WITHOUT THE CONFIG ENTRY, or game.js would ask Sound for a key
+       the manifest never loaded -- `manifest.js` gates on the same field. */
+    this.musicKey = CONFIG.MOSCA_TRACK ? 'musicMosca' : null;
     /* The death explosions. Shared with the horse -- see boom.js. Empty until
        it dies, and it never fills if `flyBossDeathBoom.on` is false, in which
        case the old tumble out of the sky plays instead. */

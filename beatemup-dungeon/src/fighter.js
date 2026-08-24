@@ -247,7 +247,17 @@ class Fighter {
       this.state = 'down';
       this.downPhase = 'land';
       this.stateT = 0;
-      this.launch = Math.max(lift || 0, 140);
+      /* ⚠️ A DEATH IS THROWN, WHATEVER LANDED IT. Both of these are FLOORS, not
+         replacements: a finisher that already lifts 137 and shoves 320 is
+         unchanged, and a jab worth 45 of knockback still puts a body on the
+         floor rather than tipping it over on the spot. The vertical floor has
+         always been here as a bare 140; the horizontal one is new on
+         2026-08-24, and it is what "um pouco launched" asked for.
+         See CONFIG.DEATH_THROW. */
+      const D = CONFIG.DEATH_THROW || {};
+      this.launch = Math.max(lift || 0, D.up != null ? D.up : 140);
+      const back = D.back != null ? D.back : 0;
+      if (back && Math.abs(this.vx) < back) this.vx = (dir || (this.facing === 'left' ? 1 : -1)) * back;
       this.dead = true;
       this.deathT = 0;
       return true;
@@ -290,6 +300,28 @@ class Fighter {
     return moving;
   }
 
+  /**
+   * Knockback drift, decayed exponentially toward rest.
+   *
+   * ⚠️ A METHOD RATHER THAN SIX LINES IN `update()` BECAUSE A CORPSE NEEDS IT
+   * TOO. When the player dies the world STOPS -- `update()` is not called for
+   * anything -- and `tickDeath()` is the only thing still running. It used to
+   * advance the animation clock alone, which meant the death ROW played while
+   * the BODY did not move: no arc, no travel, he died standing on the spot. See
+   * tickDeath().
+   */
+  _drift(dt, bounds) {
+    if (!this.vx && !this.vz) return;
+    this.x += this.vx * dt;
+    this.z += this.vz * dt;
+    const k = Math.exp(-CONFIG.knockbackDecay * dt);
+    this.vx *= k;
+    this.vz *= k;
+    if (Math.abs(this.vx) < 2) this.vx = 0;
+    if (Math.abs(this.vz) < 2) this.vz = 0;
+    this.clamp(bounds);
+  }
+
   clamp(bounds) {
     this.z = Math.max(0, Math.min(CONFIG.beltDepth, this.z));
     if (bounds) this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
@@ -300,17 +332,7 @@ class Fighter {
     this.animT += dt;
     if (this.flash > 0) this.flash = Math.max(0, this.flash - dt * 6);
 
-    // Knockback drift, decayed exponentially toward rest.
-    if (this.vx || this.vz) {
-      this.x += this.vx * dt;
-      this.z += this.vz * dt;
-      const k = Math.exp(-CONFIG.knockbackDecay * dt);
-      this.vx *= k;
-      this.vz *= k;
-      if (Math.abs(this.vx) < 2) this.vx = 0;
-      if (Math.abs(this.vz) < 2) this.vz = 0;
-      this.clamp(bounds);
-    }
+    this._drift(dt, bounds);
 
     if (this.landHoldT > 0) this.landHoldT -= dt;
     if (this.dead) this.deathT += dt;
@@ -475,10 +497,35 @@ class Fighter {
    * calls this instead of update(): the clock the death row runs on, and
    * nothing else.
    */
-  tickDeath(dt) {
+  /**
+   * One frame of a corpse while the WORLD IS STOPPED.
+   *
+   * ⚠️ IT USED TO TICK THE DRAWING AND NOTHING ELSE, and that is the whole of
+   * the bug fixed on 2026-08-24: "o player tem que cair pra trás depois ao
+   * morrer, igual os inimigos". Freezing the world the moment the player dies
+   * is right -- nothing should still be punching a dead player -- but a frozen
+   * world also froze his BODY. The death row played out while `stateT` never
+   * advanced, `_updateDown` never ran and `vx` never moved him, so he died
+   * standing exactly where he was hit. An ENEMY looks launched because the
+   * world is still running around it; the player looked different because he
+   * was the one thing the freeze applied to.
+   *
+   * WHAT A CORPSE STILL NEEDS is exactly three things and no more: its own
+   * clocks, the knockback drift, and the knockdown arc. Not `walk`, not the
+   * attack machine, not `hurt` -- it is a body falling, and the freeze is
+   * still doing its job for everything else.
+   *
+   * ⚠️ `bounds` MATTERS. Without it the drift is unclamped and a death near
+   * the edge of a locked arena slides the corpse out through the wall.
+   */
+  tickDeath(dt, bounds) {
     if (!this.dead) return;
     this.deathT += dt;
     this.animT += dt;
+    // The arc reads this, and it is what `update()` would have advanced.
+    this.stateT += dt;
+    this._drift(dt, bounds);
+    if (this.state === 'down') this._updateDown(dt);
   }
 
   /**

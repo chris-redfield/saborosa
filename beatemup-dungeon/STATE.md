@@ -12,12 +12,17 @@ Package it:  ./package.sh   →  dist/ + beatemup-dungeon-itch.zip
 Inspect it:  node tools/build-manifest.js --list
 ```
 
-Controls: **arrows/WASD** move · **J / Z / Space** punch (tap again to combo) ·
-**K / X** jump · **L / E** pick up · **hold C** debug.
+Controls: **arrows/WASD** move · **J / Z / Space** punch — tap again to combo,
+and **stand on food and press it to pick the food up** · **K / X** jump ·
+**hold C** debug.
+
+⚠️ **L / E does NOTHING** as of 2026-08-24 (`CONFIG.pickupButton` false), so
+barrels cannot be lifted, carried or thrown. See *Food is taken on purpose now,
+and the pickup button is off*.
 
 On a pad: **A** (bottom face) jump · **X** (left face) punch · **B** (right
-face) pick up · **d-pad / left stick** move · any button dismisses an end
-screen. The mapping is the main
+face) is the dead pickup button · **d-pad / left stick** move · any button
+dismisses an end screen. The mapping is the main
 game's own `assets/gamepad-mapping.json`, shared and not copied — but it names
 no `jump`, because the main game has none. `applyMapping` puts jump on the first
 free button and **tries 0 first on purpose**, so it lands on A rather than
@@ -276,7 +281,8 @@ The second list of the day, and the first one that added a MECHANIC rather than
 retuning what was there.
 
 **THE LEVEL HAS THINGS IN IT NOW.** Barrels, which can be punched apart or
-picked up and thrown, and FOOD, which is walked over and eaten. One sheet
+picked up and thrown, and FOOD, which is stooped for with the punch button
+(walked over and eaten until 2026-08-24). One sheet
 (`barril-coconutbash.png`), one new cutter, one new file (`src/prop.js`), and
 they are placed by hand in `CONFIG.ROOMS[n].props` the way enemies are placed in
 segments. See *Props* below and *Barrels and food* in README.md.
@@ -437,7 +443,9 @@ than the one that was asked for. It hits BOSSES too: the first thing anyone does
 with a barrel and a horse in the same room is throw one at the other, and having
 it pass through would read as the mechanic being broken.
 
-**Food is taken by walking over it**, never with the button -- the button lifts
+**Food WAS taken by walking over it** -- see *Food is taken on purpose now*
+below, which replaced this on 2026-08-24. The reasoning below is why it never
+went on the PICKUP button, and that half still stands. The button lifts
 barrels, and two things on one button means the player who wanted the barrel
 gets the chicken lying next to it. It is NOT eaten at full health, so it cannot
 be wasted on the way past.
@@ -1061,6 +1069,295 @@ a 20ms RMS dump, and the whole diagnosis is one picture. Note the FLOOR matters
 as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
+
+### The win got a fanfare, and the horse's song got an ending
+
+Two changes to the last minute of the game, 2026-08-24.
+
+**HE HOLDS THE POSE A SECOND LONGER.** `ENDING.poseHoldMs` 1500 -> 2500:
+"deixa mais um segundo" before the numbers start. ⚠️ It is measured from the
+POSE LANDING, not from the start of the walk-in, so lengthening the walk later
+will not quietly eat it.
+
+**AND THE WIN IS TWO MOMENTS, NOT ONE.** The first version of this put both on
+the same frame and the correction was immediate: *"when the boss fight ends and
+the screen fades out (the cavalo boss fight), stop the song of the boss fight.
+Then the last screen is loaded and the coconut comes from the left, start
+playing the victory song."*
+
+  1. `endBossMusic()` at the `'clear'` outro -- the horse's song rolls off over
+     1.2s as he walks out of the boss room.
+  2. `playVictory()` on the frame the ending screen begins -- Still Life's
+     10.7s fanfare, as he comes in from the left.
+
+**THE BEAT OF SILENCE BETWEEN THEM IS THE POINT**, and it is the whole reason
+this is two calls rather than one: the song ENDING is what makes the fanfare an
+arrival. Fused, it would have been a crossfade, which is a transition rather
+than a punctuation mark.
+
+⚠️ **THIS REVERSES THE HORSE'S "NOTHING EVER STOPS IT" RULE**, which was itself
+an explicit request on 2026-08-22 -- the song was to run through his death, the
+walk-out, the ending photograph and the tally, "so the last thing the player
+hears is the same thing they beat the game to". That is now the fanfare instead.
+Both notes are kept in config.js, because the reasoning has not stopped being
+good; it was outvoted.
+
+⚠️ **`only on the win`, AND `outroTo` IS THE TEST.** The other outro is a walk
+to the NEXT room, which already has its own handling -- the fade calls
+`roomMusic()` at its blackest point -- and stopping the bed there would leave
+that walk-out silent for nothing.
+
+**`Sound` GREW `playOnce`/`stopOnce` FOR THIS, AND IT IS NOT A CONVENIENCE.**
+The fanfare is 10.7s; the ending screen plus the whole results board is about
+ten. A player who skips the tally reaches the title with it still ringing, under
+MIKE. Still Life had already found this and has its own `stopOnce('victory')`
+with the note "at 10.7s it easily outlives a run" -- inherited rather than
+rediscovered. `play` stays fire-and-forget for everything else, because tracking
+a 300ms punch would be bookkeeping for a sound that cannot outlast anything.
+`_voice()` builds both so a clip cannot be routed two different ways depending
+on which call started it.
+
+⚠️ **AND THE STOP WENT IN `frontMusic()`, NOT AT THE CALL SITE THAT NEEDED IT.**
+It was first written into `toTitle()` -- and actually landed in `boot()`, one
+function off, which is the same mistake one step earlier. Every route to the
+front screens goes through `frontMusic()`: boot, the logo handing to the title,
+and toTitle after a win, a loss or a skip. At one call site it would have been
+correct today and wrong the first time a fourth route appeared. **Put a cleanup
+where the possibility ends, not where today's instance is.**
+
+**NO CUTTING NEEDED, AND IT WAS CHECKED.** `victory-sound-01.ogg` is a finished
+clip that starts on its first beat, so it is READ IN PLACE like the death sting.
+The coin tick next to it looked equally finished and was a take with the event
+672ms in -- so the envelope was read before wiring, not after.
+
+### The results board counts up in coins
+
+**STILL LIFE'S COIN HIT TICKS WHILE THE NUMBERS CLIMB**, asked for 2026-08-24
+and then narrowed in a second message: *"o sfx precisa acompanhar a contagem dos
+números, começa quando os números começam a subir e para junto com eles"*. Once
+every 90ms, pitched up 1.0 to 1.25 across the whole roll, for exactly as long as
+a figure is moving.
+
+⚠️ **THE FILE LOOKED LIKE A FINISHED EFFECT AND WAS A TAKE.** `coin-hit-01.ogg`
+in the flying dungeon's folder is 1.11s and holds TWO events: something quiet at
+the top, and the actual coin **672ms in**, peaking at 831ms. Played raw it would
+have ticked two thirds of a second late, every time. This game's own SFX note
+already warns about exactly that shape -- "the takes are performances into a
+phone" -- and `tools/build-beat-sfx.py` exists to find the event and cut it.
+That other game plays the file from 0 with no offset, which is worth someone
+looking at over there. **A borrowed sound is not automatically a cut one:
+envelope it before wiring it.**
+
+**SO THIS ONE IS COPIED WHERE EVERYTHING ELSE BORROWED IS READ IN PLACE.** Her
+sheets, her music and the death sting all point straight at the other game's
+files; a CUT cannot, because it is a new file rather than a view of the
+original, and leaving it beside that game's take would give that game a file
+only this one plays. `build-beat-sfx.py` grew a `--src` for it: the take can now
+come from anywhere in the repo, and the cut always lands in this game's `sfx/`.
+
+⚠️ **IT STOPS AT `resultsRollS`, WHICH IS A THIRD MOMENT THE BOARD DID NOT
+HAVE.** The board already knew two: `stampAt` (the rank lands) and `promptAt`
+(it asks to be dismissed). The numbers actually STOP `rankDelayMs` before the
+first of those, and that 400ms of silence is what makes the stamp land -- tick
+through it and the rank arrives in the middle of a noise. `resultsRollS` is
+derived from `_resultsTimes` rather than re-multiplied, so the sound and the
+drawing cannot disagree about when the numbers stopped.
+
+**A SKIPPED BOARD GOES QUIET WITH NO CASE OF ITS OWN.** Pressing during the roll
+sets `boardSkip` to the END of the board, which jumps the clock straight past
+the roll -- so the same `t >= until` test that ends a normal tally ends a
+skipped one. That is the whole reason `boardTick` reads the same clock
+EXPRESSION `drawEndCards` draws from, rather than counting its own time.
+
+**THE LEVEL IS DERIVED AND THEN DELIBERATELY IGNORED.** Still Life plays this
+clip at 0.605 on a 0.6 bus, so it reaches master at 0.363; matching that on this
+game's 0.9 bus is 0.40, which is the same arithmetic `gameOver: 0.67` uses. ⚠️
+**Matching it would be far too loud**, because that game plays ONE coin and this
+plays about fifty, three or four ringing at once. What has to match is the sound
+of the EFFECT, not of one voice in it -- so `coin` is 0.14, about a third of the
+derived figure. If the tick is ever pulled apart from the roll (one per row,
+say), 0.40 is the number to go back to.
+
+### The player's corpse was the one thing the freeze applied to
+
+**HE NOW FALLS BACKWARDS WHEN HE DIES, LIKE THE ENEMIES DO.** Asked for
+2026-08-24: *"o player tem que cair pra trás depois ao morrer, igual os
+inimigos. um pouco launched"*.
+
+⚠️ **AND IT WAS NOT A TUNING PROBLEM. HIS BODY WAS NOT MOVING AT ALL.** The
+world STOPS the moment the player dies -- `update()` is not called for anything,
+which is right, because nothing should still be punching a dead player. The one
+thing still running was `player.tickDeath(dt)`, and it ticked `deathT` and
+`animT`: the DRAWING. So `stateT` never advanced, `_updateDown` never ran, the
+knockdown arc never happened and `vx` never moved him. The death ROW played out
+over a body standing exactly where it was hit.
+
+**AN ENEMY LOOKED RIGHT FOR THE OPPOSITE REASON:** it dies in a world that is
+still running, so `crowd.update` gives it the arc and the drift for free. The
+two deaths ran through completely different amounts of code and only one of them
+was a fall. That is why the request came in as "like the enemies" rather than as
+"he does not move".
+
+⚠️ **THIS IS THE SAME BUG AS THE COMMENT SITTING DIRECTLY ABOVE IT.** That note
+already said "THE WORLD IS STOPPED, BUT THE CORPSE IS NOT" -- it was written
+when the death ANIMATION was found frozen on frame one, and it fixed the clock
+it noticed. The body was the other half and went unnoticed for months. **When
+something is exempted from a freeze, list everything it needs, not the thing
+that was visibly wrong.** A corpse needs exactly three: its own clocks, the
+knockback drift, and the knockdown arc.
+
+**`_drift()` IS A METHOD NOW** rather than six lines inside `update()`, because
+a corpse needs it too and a second copy would have been a second copy. ⚠️ It
+takes `bounds` -- unclamped, a death near the edge of a locked arena slides the
+body out through the wall.
+
+**AND `DEATH_THROW` IS THE SECOND HALF.** `{ up: 140, back: 300 }`, both FLOORS
+on the fatal blow rather than replacements. `up` had always been here as a bare
+140 in fighter.js; `back` is new. Enemy jabs are worth 45 to 140 of knockback,
+which at `knockbackDecay` 6 is 7 to 23px of travel -- a stumble. 300 is 50px,
+which is what the player's own finisher already gives an enemy, so a death now
+reads the same whichever way round it happened.
+
+⚠️ **IT APPLIES TO ENEMY DEATHS TOO, ON PURPOSE.** One rule. In practice it
+changes almost nothing: enemies are usually finished by the 320/420 finisher and
+the player is usually killed by the 200-300 blow that ENDS an enemy string, so
+both common cases were already over the floor. It catches the odd death by a
+weak hit, which was the same stumble on both sides.
+
+### The Mosca brings her own music
+
+**STILL LIFE'S SOUNDTRACK PLAYS WHILE NARUTÃO IS ALIVE**, and the street gets
+its bed back the moment she dies. Asked for 2026-08-24: *"botar a música do
+still life quando a mosca boss entra. Quando ela morre, volta o batidão tchum
+tcha normal."*
+
+**IT IS THAT GAME'S FILE, READ IN PLACE.** `v2:flying-dungeon/audio/trilha-mix
+.ogg`, 14.45s, 240KB -- exactly the arrangement `MOSCA_SHEETS` already makes
+with her sprites, and for the same reason: this boss IS that game's boss, so the
+fight should be able to change there and change here. Nothing was copied and
+nothing was cut.
+
+⚠️ **THIS IS THE FIRST BOSS-SCOPED TRACK, AND THE ASYMMETRY WITH THE HORSE IS
+THE DESIGN.** `ROOMS[n].music` exists because the horse's room OPENS with a wave
+of roaches -- hanging his song on the boss made it arrive a minute late, with
+the room's first fight playing under the street's bed, and that is written up
+above as a thing that was wrong on sight. The Mosca is a SUB-BOSS MID-STREET:
+the bed is already playing, she flies in, and **the switch IS the event.** There
+is no room change to hang it on, so nothing room-scoped could have expressed it.
+Both rules are now in the file and neither is the general case.
+
+⚠️ **AND HERS STOPS, WHICH IS THE EXACT OPPOSITE OF HIS.** The horse's theme is
+documented as "⚠️ AND NOTHING EVER STOPS IT" -- it runs through his death, the
+walk-out, the ending photograph and the tally, because his death IS the end of
+the game. Hers ends because the street carries on without her: there is a roach
+stretch after the Mosca, and it gets the bed.
+
+**THE BOSS DECLARES IT; game.js DOES NOT ASK WHICH BOSS THIS IS.** `FlyBoss
+.musicKey` is `'musicMosca'`, the horse has no such field, and `bossMusic()`
+reads the property. That is the bargain every other thing about a boss makes
+here -- `combat.js` and the debug overlay talk to an interface and never test a
+type -- and it means "the horse's theme belongs to his ROOM" is expressed as an
+ABSENCE rather than as a branch.
+
+⚠️ **EDGE-TRIGGERED, AND THE CHEAP VERSION WOULD HAVE BROKEN THE HORSE.**
+`playMusic` is a no-op for the track already playing, so calling it every frame
+looks free -- but the OTHER side of the test calls `roomMusic()`, and that would
+have fought the boss room's theme on every frame after the horse died, which is
+precisely his rule being broken by the cheaper implementation. One boolean,
+compared against the world rather than against itself, and reset in `start()`
+because it is run-scoped.
+
+⚠️ **IT REVERTS ON `dead`, NOT ON `finished()`.** She has a death fall and a
+fade, and the segment holds her until they are done; waiting for that would
+leave her theme playing over her own corpse. "Quando ela morre" is when she
+dies.
+
+**NO `MUSIC_GAIN` ENTRY, AND THAT IS MEASURED RATHER THAN ASSUMED.** Her track
+is -17.2 dBFS RMS against our bed's -16.9, so it already sits where the bed sits
+and the punches stay balanced against it. ⚠️ Its `MUSIC_LOOP` pin (14.452) is
+NOT ours to re-derive -- it is `loopMs` out of `tools/music-lab.html`, the
+flying dungeon's arrangement. The container says 14.4585, so unpinned it ticks
+every fourteen seconds.
+
+### Food is taken on purpose now, and the pickup button is off
+
+**L / E / PAD B NOW DOES NOTHING.** Asked for immediately after the food change,
+with the consequence named by the user before they asked: *"I understand that
+now the player won't be able to pick up the barrels, ok?"*. `CONFIG
+.pickupButton` is false.
+
+**WHAT WENT WITH IT:** lifting a barrel, carrying one, throwing one, putting one
+down. That is the whole verb, and it is all that button did.
+
+**WHAT DID NOT:** barrels are still punched apart and still drop a chicken, so
+they keep the job they do in the level. And the stoop animation is not orphaned
+-- taking food plays it now, which is what the previous change was for.
+
+⚠️ **THE MACHINERY IS BEHIND A FLAG, NOT DELETED, AND THAT IS A JUDGEMENT
+RATHER THAN TIMIDITY.** `Prop.lift`/`_liftArc`/`throwFrom`, `Props.liftTarget`,
+`Player.carrying`/`liftTarget`/`throwHeld`, `combat.propHits` and three poses
+are a WORKING FEATURE with one caller switched off. This is a taste call made in
+play -- the kind this project reverses (the title theme, the panorama, the film
+filter, the fly sizes twice) -- so it should cost one boolean to come back, not
+a re-implementation. Deleting it would also strand `PROPS.barrel`'s throw
+tuning, which is real data nobody would reconstruct.
+
+⚠️ **THE PRESS IS STILL CONSUMED.** `input.takePickup() && CONFIG.pickupButton`
+reads the queue and then discards it, so a press cannot sit there and fire later
+if the flag is turned back on mid-run. Guarding the flag FIRST would have left
+exactly that.
+
+
+**WALKING OVER A DRUMSTICK DOES NOTHING.** Standing on it and pressing PUNCH
+makes him stoop for it -- `pickGround`, row 9, the same drawing the pickup
+button already uses for a light object. Requested 2026-08-24, in Portuguese:
+*"ao invés de agaixar ao apertar o L, fazer ser o soco em cima da coxinha ou o
+frango pra ele agaixar e pegar"*. Nothing was cut for it and nothing new was
+drawn.
+
+⚠️ **IT WENT ON THE PUNCH BUTTON, AND THE OLD ARGUMENT IS WHY.** The note that
+stood in prop.js said food must not share the PICKUP button, because "the player
+who wanted the barrel gets the chicken that was lying next to it". That is still
+true, and it is exactly why the verb moved to the other button: punch already
+chooses its verb by what is in his hands -- it throws when he is carrying -- so
+a third case costs nothing new to explain. The pickup button is untouched.
+
+⚠️ **THE PRICE IS THAT A PLAYER STANDING ON FOOD CANNOT PUNCH**, and it is
+accepted rather than solved. Making it conditional on no enemy being in range
+would be a button that silently does a different thing depending on something
+the player cannot see. The level already places food BETWEEN fights rather than
+inside them, so the case is rare BY DESIGN -- ⚠️ put food inside an arena and
+this is the thing that will go wrong.
+
+**`pickup()` IS ASKED, NOT TOLD, and that removed a test rather than adding
+one.** It already refuses in mid-air, so `if (food && this.pickup(false))`
+falls through to the AIR ATTACK for a player who jumps over a drumstick and
+punches. Writing a `jumping` test at the call site would have been a second copy
+of a rule that already existed one level down, and the two would have drifted
+the first time either moved.
+
+**THE FOOD OWNS THE REACH, NOT THE PLAYER.** `Pickup.claim(by, ms)` takes the
+animation's own clock -- the same bargain `Prop.lift()` makes with the hoist --
+and the food applies the heal itself when that clock runs out. ⚠️ It ABORTS if
+the hand reaching for it is knocked over, the same test and the same reason as
+`Prop._liftArc`: a heal applied to a player who is at that moment being punched
+across the room is this game's recurring bug family, and it would have read as a
+chicken vanishing for nothing. The player's `eatTarget` is then only a reference
+to drop -- there is nothing left for it to decide, which is the point.
+
+⚠️ **IT IS TAKEN AT FULL HEALTH TOO, WHERE IT IS WORTH NOTHING.** The first cut
+kept the old rule -- refuse it at a full bar so it cannot be wasted -- and that
+was changed on request within the hour. The rule was right for eat-on-contact,
+where the player had no say and losing a chicken was an ACCIDENT. On a button it
+is a CHOICE, and a punch coming out of a press the player made to pick something
+up is worse than a wasted drumstick. **A guard that existed to protect the
+player from an accident stops making sense the moment the action becomes
+deliberate** -- worth checking for whenever an automatic thing is put on a
+button.
+
+⚠️ **AND `_comboDefs()` IS NOT REACHED ON THIS PATH**, for the same reason the
+air attack does not reach it: it flips which finisher the next chain ends on,
+and stooping for a chicken must not quietly consume the alternation.
 
 ### The air attack, and what `sweep` cost the geometry
 

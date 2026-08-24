@@ -335,6 +335,22 @@ class Hud {
   /** When the board is finished: the shell's skip-or-restart line. */
   resultsRunS(stats) { return this._resultsTimes(stats).promptAt; }
 
+  /**
+   * When the last NUMBER lands -- which is not when the board finishes.
+   *
+   * ⚠️ THREE MOMENTS, NOT TWO, AND THIS IS THE FIRST. The numbers stop rolling,
+   * then `rankDelayMs` later the rank is stamped, then the prompt arrives. The
+   * count-up SOUND has to end here and not at either of the others: ticking
+   * through the beat before the stamp would fill the silence that makes the
+   * stamp land, and `resultsRunS` is half a second further still.
+   *
+   * Derived from `_resultsTimes` rather than re-multiplied, so the tick and the
+   * drawing can never disagree about when the numbers stopped.
+   */
+  resultsRollS(stats) {
+    return this._resultsTimes(stats).stampAt - CONFIG.RESULTS.rankDelayMs / 1000;
+  }
+
   drawCard(ctx, lines, alpha, color) {
     ctx.save();
     ctx.globalAlpha = alpha;

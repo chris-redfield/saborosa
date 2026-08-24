@@ -2,7 +2,7 @@
  * prop.js — the things in the level that are not fighters.
  *
  * BARRELS, which can be punched apart or picked up and thrown, and FOOD, which
- * is walked over and eaten. Both arrived on 2026-08-22 off one sheet
+ * is stooped for with the punch button. Both arrived on 2026-08-22 off one sheet
  * (`barril-coconutbash.png`, cut by tools/build-beat-prop-defs.py).
  *
  * ⚠️ THEY ANSWER THE FIGHTERS' INTERFACE, AND THAT IS THE WHOLE DESIGN. A prop
@@ -448,17 +448,39 @@ class Prop {
 }
 
 /**
- * A thing on the floor that is eaten by walking over it.
+ * A thing on the floor that is picked up with the PUNCH button, on purpose.
  *
- * ⚠️ NO BUTTON. Food is taken on contact, which is the genre's arrangement and
- * the reason the pickup BUTTON stays free for barrels: two things on one button
- * means the player who wanted the barrel gets the chicken that was lying next
- * to it. The button lifts, walking eats.
+ * ⚠️ IT USED TO BE EATEN BY WALKING OVER IT, AND THAT WAS REPLACED ON
+ * 2026-08-24. The old note here argued that contact-eating was the genre's
+ * arrangement and kept the pickup BUTTON free for barrels, "two things on one
+ * button means the player who wanted the barrel gets the chicken that was lying
+ * next to it". That reasoning was about the PICKUP button and it still holds --
+ * which is why the verb moved to the PUNCH button instead. Standing over food
+ * and punching stoops for it; the pickup button is untouched and still lifts
+ * barrels.
  *
- * ⚠️ AND IT IS NOT EATEN AT FULL HEALTH. It stays on the floor instead, so a
- * chicken cannot be wasted by walking over it on the way past -- which matters
- * here more than in most games, because the heal is capped rather than banked
- * (see PROPS.food) and a wasted one is gone for nothing.
+ * ⚠️ SO A PLAYER STANDING ON FOOD CANNOT PUNCH. That is the cost of the third
+ * verb on that button and it is accepted: the level places food BETWEEN fights
+ * rather than inside them (see CONFIG.ROOMS), so the case is rare by design. If
+ * food ever ends up inside an arena, this is the thing that will go wrong.
+ *
+ * ⚠️ HE STOOPS FOR IT WITH THE PICKUP ANIMATION -- `pickGround`, row 9, the
+ * same drawing the pickup button uses for a light object. Requested: the crouch
+ * should be what taking food looks like. Nothing new was cut for it.
+ *
+ * ⚠️ IT IS TAKEN AT FULL HEALTH TOO, AND THAT IS DELIBERATE. The heal is
+ * CAPPED rather than banked (see PROPS.food), so a chicken taken at a full bar
+ * is worth nothing and is gone. The old rule refused it for exactly that
+ * reason -- but that rule was written when food was eaten by WALKING OVER IT,
+ * where the player had no say and losing one was an accident. With a button
+ * there is no accident: he stoops because the player asked him to, and a punch
+ * coming out of a press made to pick something up is worse than a wasted
+ * drumstick. Changed on request 2026-08-24.
+ *
+ * ⚠️ THE FOOD OWNS THE REACH, NOT THE PLAYER, and it aborts itself if the
+ * hand reaching for it is knocked over -- the same rule and the same test as
+ * `Prop._liftArc`. A heal applied by a caller that had stopped existing is the
+ * bug family this game keeps finding.
  */
 class Pickup {
   constructor(kind, x, z) {
@@ -468,6 +490,13 @@ class Pickup {
     this.jumpY = 0;
     this.t = 0;
     this.taken = false;
+    /* 'idle' | 'taking'. The same two-word vocabulary Prop uses, so the player
+       can ask this the way it asks a barrel whether it has arrived rather than
+       counting frames of its own. */
+    this.state = 'idle';
+    this.claimedBy = null;
+    this.claimT = 0;
+    this.claimMs = 0;
     this.fromBarrel = false;      // set by whoever spawned it; DEV readout only
     this.dead = false;
     this.downPhase = '';
@@ -491,21 +520,68 @@ class Pickup {
     return Math.round(CONFIG.playerHealth * rel);
   }
 
-  update(dt, player) {
-    this.t += dt;
-    if (this.taken || !player || player.dead) return;
+  /**
+   * Is `f` standing close enough to stoop for this? The geometry only -- what
+   * the player's HEALTH is, is Props.eatTarget()'s business.
+   *
+   * ⚠️ `!= null` THROUGHOUT: a 0 here means "cannot be reached", which is a
+   * legitimate thing to configure and which `||` would turn into the default.
+   * See the bob in draw() below for what that mistake cost once already.
+   */
+  inEatRange(f) {
+    if (this.taken || this.state !== 'idle' || !f || f.dead) return false;
     const F = (CONFIG.PROPS && CONFIG.PROPS.food) || {};
-    if (player.hp >= player.maxHp) return;         // not wasted -- see the header
-    // `!= null` throughout: a 0 here means "cannot be reached", which is a
-    // legitimate thing to configure and which `||` would turn into the default.
-    if (Math.abs(player.x - this.x) > (F.rangeX != null ? F.rangeX : 52)) return;
-    if (Math.abs(player.z - this.z) > (F.rangeZ != null ? F.rangeZ : 40)) return;
-    if (Math.abs(player.jumpY) > (F.rangeY != null ? F.rangeY : 60)) return;
+    if (Math.abs(f.x - this.x) > (F.rangeX != null ? F.rangeX : 52)) return false;
+    if (Math.abs(f.z - this.z) > (F.rangeZ != null ? F.rangeZ : 40)) return false;
+    if (Math.abs(f.jumpY) > (F.rangeY != null ? F.rangeY : 60)) return false;
+    return true;
+  }
+
+  /**
+   * He has started stooping for it. `ms` is the reach's own duration, handed in
+   * so the food and the animation cannot drift apart -- the same bargain
+   * `Prop.lift()` makes with the hoist.
+   */
+  claim(by, ms) {
+    if (this.state !== 'idle' || this.taken) return false;
+    this.state = 'taking';
+    this.claimedBy = by;
+    this.claimT = 0;
+    this.claimMs = ms || (CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.ground) || 420;
+    return true;
+  }
+
+  /** Put it back on the floor, untouched. */
+  letGo() {
+    this.state = 'idle';
+    this.claimedBy = null;
+    this.claimT = 0;
+  }
+
+  /* `player` is still passed by Props.update and is deliberately not read: the
+     food answers to whoever CLAIMED it, which is not necessarily whoever is
+     being updated, and reading the argument would be a second opinion about
+     the same thing. */
+  update(dt) {
+    this.t += dt;
+    if (this.taken || this.state !== 'taking') return;
+    /* ⚠️ IT ABORTS IF THE HAND REACHING FOR IT IS KNOCKED OVER, and this is the
+       same test `Prop._liftArc` makes for the same reason. Being hit out of a
+       stoop must leave the food ON THE FLOOR -- healing a player who is at that
+       moment being punched across the room is the "what was still moving when
+       this started" bug, and it would have read as a chicken vanishing for
+       nothing. */
+    const h = this.claimedBy;
+    if (!h || h.dead || h.state === 'hurt' || h.state === 'down') { this.letGo(); return; }
+    this.claimT += dt;
+    if (this.claimT * 1000 < this.claimMs) return;
     /* ⚠️ CAPPED, NOT BANKED. Decided 2026-08-22: the heal fills the visible bar
        and anything past it is lost -- it does not roll into a life. Written as
        a clamp here rather than in the caller so there is one place that knows
        what eating does. */
-    player.hp = Math.min(player.maxHp, player.hp + this.heal());
+    h.hp = Math.min(h.maxHp, h.hp + this.heal());
+    this.state = 'idle';
+    this.claimedBy = null;
     this.taken = true;
     this.dead = true;
   }
@@ -606,6 +682,30 @@ class Props {
     let best = null, bestD = Infinity;
     for (const o of this.list) {
       if (!(o instanceof Prop) || !o.inLiftRange(f)) continue;
+      const d = Math.abs(o.x - f.x);
+      if (d < bestD) { bestD = d; best = o; }
+    }
+    return best;
+  }
+
+  /**
+   * The food a fighter could stoop for right now, or null. Nearest wins, the
+   * same way `liftTarget` picks a barrel.
+   *
+   * ⚠️ HEALTH IS NOT ASKED ABOUT, AND THAT IS A DECISION. It used to return
+   * nothing at a full bar, so a chicken could not be wasted by taking it when
+   * it was worth nothing -- that rule dated from when food was eaten by WALKING
+   * OVER IT, where the player had no say and a wasted one was an accident.
+   * With a button there is no accident: he stoops because the player asked him
+   * to. Requested 2026-08-24, and the button being predictable is worth more
+   * than the chicken -- the alternative is a punch coming out of a press the
+   * player made to pick something up.
+   */
+  eatTarget(f) {
+    if (!f) return null;
+    let best = null, bestD = Infinity;
+    for (const o of this.list) {
+      if (!(o instanceof Pickup) || !o.inEatRange(f)) continue;
       const d = Math.abs(o.x - f.x);
       if (d < bestD) { bestD = d; best = o; }
     }

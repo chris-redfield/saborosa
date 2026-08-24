@@ -74,6 +74,10 @@ class Sound {
     this.source = null;
     this.sfxGain = null;
     this.sfx = {};             // name -> decoded AudioBuffer
+    /* LONG one-shots that may need stopping, by name -> { src, gain }. See
+       playOnce(). Ordinary effects are fire-and-forget and are not tracked:
+       a 300ms punch cannot outlive anything. */
+    this.once = {};
     this._sfxPending = {};     // name -> true while a decode is in flight
     this.muted = false;
     this.volume = (typeof CONFIG !== 'undefined' && CONFIG.musicVolume != null)
@@ -210,32 +214,96 @@ class Sound {
    * effect cannot survive. Still Life's finding; see its sound.js.
    */
   play(name, rate, delaySec) {
-    const ctx = this.ctx;
-    if (!ctx || ctx.state !== 'running') return;
-    const buf = this.sfx[name];
-    if (!buf) { this.primeSfx(); return; }
-    const s = ctx.createBufferSource();
-    s.buffer = buf;
-    if (rate) s.playbackRate.value = rate;
-    /* A per-effect trim gets its OWN gain node rather than moving the bus:
-       the bus is the balance between all effects and the music, and nudging it
-       for one clip would move every other clip with it -- and leave it moved,
-       because nothing puts it back. The node dies with the source. */
-    const trim = (CONFIG.SFX_GAIN && CONFIG.SFX_GAIN[name]) || 1;
-    if (trim !== 1) {
-      const g = ctx.createGain();
-      g.gain.value = trim;
-      g.connect(this.sfxGain);
-      s.connect(g);
-    } else {
-      s.connect(this.sfxGain);
-    }
+    const v = this._voice(name, rate, false);
+    if (!v) return;
     /* `start(0)` means "now" and `start(t)` means "at audio-clock time t", so
        a delay is an absolute time and not an offset -- passing the delay
        straight in would schedule the voice for the first second of the page's
        life, which is already long past, and the browser would play it
        immediately. */
-    s.start(delaySec > 0 ? ctx.currentTime + delaySec : 0);
+    v.src.start(delaySec > 0 ? this.ctx.currentTime + delaySec : 0);
+  }
+
+  /**
+   * Build one voice. Shared by `play` and `playOnce` so a clip cannot be routed
+   * two different ways depending on which of them started it.
+   *
+   * `withGain` forces the trim node into existence even at 1.0, which is what
+   * makes a voice RAMPABLE later -- see playOnce/stopOnce. Ordinary effects do
+   * not get one: a per-effect trim gets its OWN gain node rather than moving
+   * the bus, because the bus is the balance between all effects and the music,
+   * and nudging it for one clip would move every other clip with it -- and
+   * leave it moved, because nothing puts it back. The node dies with the
+   * source.
+   */
+  _voice(name, rate, withGain) {
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return null;
+    const buf = this.sfx[name];
+    if (!buf) { this.primeSfx(); return null; }
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    if (rate) s.playbackRate.value = rate;
+    const trim = (CONFIG.SFX_GAIN && CONFIG.SFX_GAIN[name]) || 1;
+    if (trim !== 1 || withGain) {
+      const g = ctx.createGain();
+      g.gain.value = trim;
+      g.connect(this.sfxGain);
+      s.connect(g);
+      return { src: s, gain: g };
+    }
+    s.connect(this.sfxGain);
+    return { src: s, gain: null };
+  }
+
+  /**
+   * A one-shot long enough to OUTLIVE the moment that started it, and therefore
+   * one that has to be stoppable.
+   *
+   * ⚠️ THIS IS NOT A STYLE CHOICE ON TOP OF `play`. The victory fanfare is 10.7
+   * seconds; the ending screen and the whole results board together are about
+   * ten. A player who skips the tally is back on the title with a fanfare still
+   * ringing over it, which is Still Life's finding (its `stopOnce`) inherited
+   * rather than rediscovered. Anything under a second or two wants `play` --
+   * tracking a punch would be bookkeeping for a sound that cannot outlast
+   * anything.
+   *
+   * ⚠️ IT REPLACES ITS OWN NAME. Asking twice is one fanfare, not two on top of
+   * each other.
+   */
+  playOnce(name, rate) {
+    this.stopOnce(name, 0);
+    const v = this._voice(name, rate, true);
+    if (!v) return;
+    this.once[name] = v;
+    /* Forget it when it ends on its own, so `stopOnce` later is not ramping a
+       node that finished a minute ago. */
+    v.src.onended = () => { if (this.once[name] === v) this.once[name] = null; };
+    v.src.start(0);
+  }
+
+  /**
+   * Stop one, with a short ramp. RAMPED RATHER THAN CUT for the same reason
+   * `stopMusic` is: a buffer stopped outright ends on whatever sample it
+   * happened to be on, and a waveform truncated mid-cycle is a click.
+   */
+  stopOnce(name, fadeSec) {
+    const v = this.once[name];
+    if (!v) return;
+    this.once[name] = null;
+    const ctx = this.ctx;
+    const f = fadeSec != null ? fadeSec : 0.25;
+    try {
+      if (v.gain && ctx && f > 0) {
+        const t = ctx.currentTime;
+        v.gain.gain.cancelScheduledValues(t);
+        v.gain.gain.setValueAtTime(v.gain.gain.value, t);
+        v.gain.gain.linearRampToValueAtTime(0.0001, t + f);
+        v.src.stop(t + f);
+      } else {
+        v.src.stop();
+      }
+    } catch (e) { /* already stopped */ }
   }
 
   /**

@@ -621,6 +621,56 @@ as weight and starts reading as a dash.
 - **Hitstop handles itself.** A connect freezes the simulation, so the step
   holds at the moment of impact and completes afterwards.
 
+#### Taking food — the punch button, not the pickup one
+
+**Walking over a drumstick does nothing** (changed 2026-08-24). Stand on it and
+press **punch**: he stoops with `pickGround` — row 9, the same drawing the
+pickup button uses for a light object — and the heal lands when the stoop ends.
+
+| | |
+|---|---|
+| button | **punch** (J / Z / Space). ⚠️ The pickup button is now **inert** — see `pickupButton` |
+| animation | `pickGround`, over `PICKUP_MS.ground` (420 ms) |
+| reach | `PROPS.food.rangeX/rangeZ/rangeY` — unchanged numbers, they now mean *close enough to reach down for* |
+| at full health | **still taken, and worth nothing** — the heal is capped. Deliberate: the button stays predictable |
+| in mid-air | `pickup()` refuses, so the press falls through to the **air attack** |
+| interrupted | the food puts itself back on the floor, untouched |
+
+> ⚠️ **A player standing on food cannot punch.** That is the cost of a third
+> verb on that button, and it is accepted rather than solved — making it
+> conditional on no enemy being nearby would be a button that silently does a
+> different thing depending on something the player cannot see. The level places
+> food *between* fights, so the case is rare by design. **Put food inside an
+> arena and this is what will go wrong.**
+
+The food owns the reach: `Pickup.claim(by, ms)` takes the animation's own clock
+and applies the heal itself, and **aborts if the hand reaching for it is knocked
+over** — the same test `Prop._liftArc` makes. `Player.eatTarget` is only a
+reference to drop.
+
+#### How a death is thrown — `CONFIG.DEATH_THROW`
+
+`{ up: 190 * BODY_SCALE * 0.9, back: 440 }` — both **floors** on the fatal blow, not replacements. **`up` is LEBRON's own drawn height** (123 px = `fighterSizePx` × his `drawScale`) and the arc peaks at exactly this number, so he is thrown his own height and no further. It was a bare 140, which put him 14% over his own head. `back / knockbackDecay` is the total travel, so 440 is **73 px**; read those two numbers together before moving either. Tuned in play: 300 (50 px) was invisible, 520 (87 px) was too hard.
+A finisher that already lifts 137 and shoves 320 is unchanged; a jab worth 45
+still puts a body on the floor rather than tipping it over on the spot. Applied
+in `Fighter.hurt()`, so it is one rule for everyone who dies.
+
+> ⚠️ **The player's corpse used to not move at all.** The world stops when he
+> dies and `tickDeath()` ticked only the *drawing* — `stateT`, the knockdown arc
+> and the knockback drift were all frozen, so the death row played out over a
+> body standing where it was hit. Enemies looked right because they die in a
+> world that is still running. Fixed 2026-08-24; `tickDeath(dt, bounds)` now
+> moves the body, and **needs the bounds** or a death near a locked arena's edge
+> slides the corpse through the wall.
+
+> ⚠️ **An arena eats the launch.** `Stage.bounds()` pens the player to one
+> screen while the camera is locked, and dying with your back to that wall is
+> common — the corpse cannot be thrown through it. Nothing is broken when that
+> happens; it is the same wall that stops him walking there. **There is no
+> lives-dependent path** — `tickDeath` is called once, `phase = 'dead'` is set
+> once, and nothing in the death code reads `lives`. Every death runs the same
+> code.
+
 #### The air attack — `CONFIG.AIR_ATTACK`
 
 **Punching while jumping is its own move.** It sweeps, it knocks down and it
@@ -981,7 +1031,8 @@ Three knobs and three pipelines.
 | `MUSIC_TRACK` | the looping bed, one file. Loaded under the key `music` |
 | `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
 | `TITLE_TRACK` | the title screen's theme — a 60s loop cut out of MIKE. Loaded under the key `musicTitle`. Unset = silent title screen |
-| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
+| `MOSCA_TRACK` | **the Mosca's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
+| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107, `musicMosca` 14.452. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
 | `MUSIC_GAIN` | per-track level on the music bus, by asset key. `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
 | `musicVolume` | 0.55. ⚠️ The **bed** is the fixed point — it is balanced against the punches, so bring other tracks to it with `MUSIC_GAIN` rather than moving this |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
@@ -990,6 +1041,8 @@ Three knobs and three pipelines.
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
 | `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
 | `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
+| `VICTORY_STING` | `{ on, musicFadeSec: 1.2, stopFadeSec: 0.4 }` — **the win, in two moments**. The horse's song rolls off when the walk-out starts; the fanfare (Still Life's, read in place) begins when the ending screen does. ⚠️ Played with `playOnce` so `frontMusic()` can stop it — at 10.7 s it outlives a skipped tally |
+| `RESULTS.TICK` | `{ on, sfx: 'coin', ms: 90, rise: 0.25 }` — **the count-up tick**. Still Life's coin hit, once every `ms` for exactly as long as a number is moving, pitching up 1.0→1.25 across the roll. ⚠️ Stops at `resultsRollS`, not at the end of the board — the beat before the rank stamp has to stay silent |
 
 `M` mutes everything, in every phase.
 
@@ -1039,6 +1092,7 @@ number moves with it; both cutters print the value to paste:
 |---|---|---|
 | `music` | `trilha-mix.ogg` | `tools/crop-beat-trilha.py` |
 | `musicTitle` | `mike-title.ogg` | `tools/cut-song-loop.py` |
+| `musicMosca` | the flying dungeon's `trilha-mix.ogg` | ⚠️ **not ours** — it is `loopMs` in `tools/music-lab.html`, that game's arrangement. Re-bake there and move this with it |
 
 A track with **no entry** is not pinned and loops at the end of its own buffer.
 That is right for a finished song (`musicBoss`) and wrong for anything cropped
@@ -1129,6 +1183,19 @@ samples, which is a click.
     python3 tools/build-beat-sfx.py enemy-hit-1              # the loudest event
     python3 tools/build-beat-sfx.py combo-2-5-hits --event last --out combo-finish2
     python3 tools/build-beat-sfx.py combo-1-4-hits --event all --dry-run
+
+**⚠️ A sound borrowed from another game usually still needs cutting.**
+
+    python3 tools/build-beat-sfx.py coin-tick --src assets-v2/flying-dungeon/audio/coin-hit-01.ogg
+
+`--src` reads the take from anywhere in the repo; `name` then only decides what
+the cut is called. That file looks like a finished effect and is not one — it
+holds a quiet first event and then the actual coin **672 ms in**, so playing it
+raw ticks two thirds of a second late. The cut is 340 ms.
+
+The cut always lands in **this** game's `audio/sfx/`, even when the take came
+from elsewhere: a cut is a new file, not a view of the original, so it cannot be
+read in place the way the Mosca's sheets and her music are.
 
 Takes come from `assets-v2/beatemup-dungeon/audio/`, cuts land in `audio/sfx/`.
 Always `--dry-run` first: it prints every event it found with its timing and
@@ -1370,6 +1437,30 @@ one left-to-right** (2026-08-24).
 | `marginPx` | 140 — how far past each screen edge one lives before it is recycled |
 | `alpha` | 0.92 — a touch back, so they sit *into* the plate |
 
+### Who owns a track — room, or boss
+
+Two rules, and the difference is which one the player experiences as the change.
+
+| track | scoped to | starts | stops |
+|---|---|---|---|
+| `musicBoss` (the horse) | the **room** — `ROOMS[1].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`VICTORY_STING`, 2026-08-24). It used to run through everything to the title — that was an explicit request and it was explicitly reversed |
+| `musicMosca` (Still Life) | the **boss** — `FlyBoss.musicKey` | she flies in | ⚠️ **when she dies** — the street gets its bed back |
+
+**The horse's is room-scoped because his room opens with a wave of roaches.**
+Hanging it on the boss made it arrive a minute late, with the room's first fight
+playing under the street's bed.
+
+**The Mosca's is boss-scoped because she is a sub-boss mid-street.** The bed is
+already playing, she flies in, and *the switch is the event* — there is no room
+change to hang it on. She declares `musicKey`; the horse declares nothing, which
+is what "his theme belongs to the room" looks like from the outside. `game.js`
+`bossMusic()` is the whole of it — edge-triggered, so it cannot fight the boss
+room's theme every frame.
+
+⚠️ **It reverts on `dead`, not on `finished()`.** She has a death fall and a
+fade to play out; waiting for those would leave her theme running over her own
+corpse.
+
 ### Which rooms get them
 
 `flies: true` on the **room**, the same way `music` and `props` are room data:
@@ -1508,7 +1599,16 @@ not part of the request.
 | `spinMs` / `smashMs` | 90 per tumble frame; 480 for the three break frames |
 | `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ Barrels are most of the food on the floor; thin the food by thinning this as well as the placed drumsticks |
 
-**Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
+> ⚠️ **THE PICKUP BUTTON IS OFF SINCE 2026-08-24** — `CONFIG.pickupButton` is
+> `false`, so L / E / pad B does nothing and **barrels cannot be lifted, carried
+> or thrown**. Requested in play, with the consequence named up front. Barrels
+> are still punched apart and still drop a chicken, and the stoop animation is
+> not orphaned because taking food plays it. Everything below still works and is
+> one flag away: the lift arc, the carry, the throw, `propHits`, and the
+> `lift` / `liftThrow` / `carryWalk` poses are all intact. Set `pickupButton`
+> true to restore the whole verb.
+
+**Controls (while `pickupButton` is true):** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
 the one he is holding. *punch* (J / Z / Space) **throws** it.
 
 > ⚠️ **The throw plays `carryThrow`, not `liftThrow`.** The illustrator's row is
@@ -1696,9 +1796,9 @@ The illustrator's rows, 1-indexed as delivered:
 | 4 | pulando e socando | 7 | `airPunch` — **cut, not wired** |
 | 5 | combo 1 | 10 | `combo` — 5 hits, ends in the **uppercut** |
 | 6 | combo 2 | 10 | `comboLow` — same 5 hits, ends in a low punch. **Wired**, alternates |
-| 7 | levanta objeto | 4 | `lift` — the heavy hoist, **wired** to pickup |
+| 7 | levanta objeto | 4 | `lift` — the heavy hoist, wired to pickup (⚠️ **unreachable** while `pickupButton` is false) |
 | 8 | levanta e joga | 5 | `liftThrow` — **cut, not wired** |
-| 9 | pega do chao | 2 | `pickGround` — the stoop, **wired** to pickup (default) |
+| 9 | pega do chao | 2 | `pickGround` — the stoop. **Now wired to the PUNCH button, over food** |
 | 10 | carregando e andando | 5 | `carryWalk` — **cut, not wired** |
 | 11 | apanhando 1 | 2 | `hurt` |
 | 12 | apanhando e caindo | 6 | `down` |
@@ -1740,17 +1840,16 @@ direction it is moving.
 named but have no mechanic behind them. To wire one it is a `POSE_RAGGED` entry
 (already there) plus whatever state drives it.
 
-**The lift mechanic is half wired.** The button (L/E, pad B), the `pickup` state
-and both animations are in; what is missing is anything to pick up. The whole
-seam is one method:
+**The lift mechanic went all the way in and then back out.** This paragraph used
+to say it was half wired, with `_liftTargetHeavy()` returning false and nothing
+to pick up — ⚠️ **that has been stale since barrels landed on 2026-08-22**; the
+method is gone and the whole verb (find, hoist along an arc, carry, throw,
+`propHits`) was built and shipped.
 
-```js
-// player.js -- returns false today, so the stoop always plays
-_liftTargetHeavy() { return false; }
-```
-
-Give it something to find and the hoist starts appearing on its own. Carrying
-and throwing still need `carryWalk` and `liftThrow` wired on top.
+It is now switched **off** instead: `CONFIG.pickupButton` is `false` as of
+2026-08-24, so L / E / pad B does nothing. All of it is intact behind that one
+flag — see *Barrels and food*. `pickGround` is not orphaned by it, because
+taking food plays that stoop off the **punch** button.
 
 ---
 

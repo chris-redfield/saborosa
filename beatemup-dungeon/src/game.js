@@ -191,6 +191,20 @@
    * already playing, so this cannot restart the theme mid-screen.
    */
   function frontMusic() {
+    /* ⚠️ AND THE VICTORY FANFARE STOPS HERE, WHICH IS WHY IT IS IN THIS
+       FUNCTION AND NOT AT THE ONE CALL SITE THAT NEEDS IT. The clip is 10.7s
+       and the ending screen plus the whole results board is about ten, so a
+       player who skips the tally reaches the front of the game with it still
+       going -- underneath MIKE, starting on the next line.
+
+       Every route to the front screens goes through here: boot, the logo
+       handing to the title, and toTitle() after a win, a loss or a skip. Put in
+       `toTitle()` alone it would be correct today and wrong the first time a
+       fourth route appeared -- and it WAS written there first, into the wrong
+       function, which is the same mistake one step earlier. Nothing else in the
+       game needs this, because nothing else is long enough to outlive the
+       screen that started it. */
+    sound.stopOnce('victory', (CONFIG.VICTORY_STING || {}).stopFadeSec);
     if (CONFIG.TITLE_TRACK) sound.playMusic('musicTitle');
     else sound.stopMusic(0.4);
   }
@@ -265,9 +279,83 @@
    * when it is asked for what is already playing -- so calling this on every
    * entry cannot restart a track mid-room.
    */
+  /* Seconds until the next count-up tick. Reset to 0 whenever the numbers are
+     not moving, so re-entering the window always fires on its first frame --
+     "starts when the numbers start going up". */
+  let boardTickT = 0;
+
+  /**
+   * The CLEAR board's numbers, ticking as they climb. `t` is the BOARD's own
+   * clock, or -1 when it is not up.
+   *
+   * ⚠️ IT ENDS WHEN THE NUMBERS DO, NOT WHEN THE BOARD DOES. `resultsRollS` is
+   * the moment the last figure lands; `rankDelayMs` of silence then leads into
+   * the rank stamp, and `resultsRunS` is half a second further still. Ticking
+   * to either of those would fill the pause the stamp lands in.
+   *
+   * ⚠️ AND A SKIPPED BOARD GOES QUIET BY ITSELF. Pressing during the roll sets
+   * `boardSkip` to the end of the board, which jumps `t` straight past the roll
+   * -- so the test below stops the tick with no case of its own. That is the
+   * whole reason this reads the same clock expression the drawing does rather
+   * than counting its own time.
+   */
+  function boardTick(dt, t) {
+    const K = (CONFIG.RESULTS && CONFIG.RESULTS.TICK) || {};
+    // Cheap tests first: this runs every frame of the whole game, and the board
+    // is up for four seconds of it.
+    if (!K.on || t <= 0) { boardTickT = 0; return; }
+    const until = hud.resultsRollS(stats);
+    if (t >= until) { boardTickT = 0; return; }
+    boardTickT -= dt;
+    if (boardTickT > 0) return;
+    boardTickT = (K.ms || 90) / 1000;
+    /* Pitched up across the roll -- a counter at one pitch for four and a half
+       seconds is a metronome. `t / until` is the whole climb, not one row's, so
+       it rises once rather than eight times. */
+    sound.play(K.sfx || 'coin', 1 + (K.rise || 0) * (t / until));
+  }
+
   function roomMusic() {
     const r = stage.room();
     sound.playMusic((r && r.music) || 'music');
+  }
+
+  /* Is a boss's own theme playing right now? EDGE-TRIGGERED STATE, not a
+     question asked of Sound -- `sound.track` is what is audible, which lags a
+     fade and is not the same thing as what the level has decided. */
+  let bossTheme = false;
+
+  /**
+   * A boss that brings its own music, and the street getting its bed back when
+   * she dies. Called every frame of play; it does nothing on the frames where
+   * nothing changed.
+   *
+   * ⚠️ IT IS THE MOSCA AND NOT BOSSES IN GENERAL, and the asymmetry is the
+   * design rather than an oversight. She is a SUB-boss mid-street: the bed is
+   * already playing, she flies in, and the switch IS the event -- there is no
+   * room change to hang it on. The horse's theme is `ROOMS[n].music` because
+   * his room opens with a wave of roaches and hanging it on him made it arrive
+   * a minute late. So the horse declares no `musicKey`, this does nothing for
+   * him, and his "nothing ever stops it" rule is untouched.
+   *
+   * ⚠️ EDGE-TRIGGERED ON PURPOSE. `playMusic` is a no-op for the track already
+   * playing, so calling it every frame would be harmless -- but `roomMusic()`
+   * on the other side would then fight the boss room's theme every frame after
+   * the horse dies, which is precisely the rule above being broken by the
+   * cheaper implementation.
+   *
+   * ⚠️ AND IT REVERTS ON `dead`, NOT ON `finished()`. She has a death fall and
+   * a fade to play out and the segment holds her until they are done; waiting
+   * for that would leave her theme running over her own corpse. "Quando ela
+   * morre" is when she dies.
+   */
+  function bossMusic() {
+    const b = stage.boss;
+    const want = !!(b && b.musicKey && !b.dead);
+    if (want === bossTheme) return;
+    bossTheme = want;
+    if (want) sound.playMusic(b.musicKey);
+    else roomMusic();
   }
 
   function start() {
@@ -278,6 +366,12 @@
     /* Cleared here TOO, not only in toTitle(): the title hands straight here,
        and so does the DEV room-jump, so this is the other way a run can begin. */
     endingShown = false;
+    /* RUN-SCOPED, so it is reset where a run begins. `bossMusic()` would sort
+       itself out on its first frame anyway -- it compares against the world and
+       not against itself -- but a flag left true from a fight two runs ago is
+       the shape of bug this file keeps finding, and it stops being harmless the
+       moment the branch it guards grows a side effect. */
+    bossTheme = false;
     outroTo = 'fade';
     player = new Player(220, CONFIG.beltDepth * 0.6);
     /* DEV: start somewhere other than the beginning. Applied after the player
@@ -439,6 +533,8 @@
           ending.reset();
           endingShown = true;
           phase = 'ending';
+          // He comes in from the left over this. See playVictory().
+          playVictory();
         } else {
           phase = 'fade';
           faded = false;
@@ -478,8 +574,15 @@
          moment the player dies is right -- nothing should still be punching a
          dead player -- but the death animation runs on the player's own clock,
          and a frozen clock holds it on frame one. That reads as no death
-         animation at all, which is exactly how it looked. */
-      if (phase === 'dead') player.tickDeath(dt);
+         animation at all, which is exactly how it looked.
+
+         ⚠️ AND THE SAME WAS TRUE OF HIS BODY, WHICH TOOK LONGER TO NOTICE.
+         Ticking the DRAWING alone left `stateT`, the knockdown arc and the
+         knockback drift all frozen, so the row played out over a body standing
+         exactly where it was hit -- while every enemy, killed in a world that
+         was still running, was thrown backwards properly. Fixed 2026-08-24;
+         `tickDeath` now moves the body too and needs the BOUNDS to clamp it. */
+      if (phase === 'dead') player.tickDeath(dt, stage.bounds());
     }
 
     /* NOTHING IS ACCEPTED UNTIL THE DEATH HAS BEEN SEEN. The row plays out and
@@ -519,6 +622,9 @@
     // board draws itself from, so the two can never disagree about it.
     const rolling = phase === 'clear'
       && Math.max(boardSkip, phaseT - 0.45) < hud.resultsRunS(stats);
+    /* THE COUNT-UP TICK, on the SAME clock expression the board is drawn from
+       (see drawEndCards) so the sound cannot run on a different one. */
+    boardTick(dt, phase === 'clear' ? Math.max(boardSkip, phaseT - 0.45) : -1);
     /* The panel arms its own press, derived from when the word finishes
        arriving -- so retiming the reveal moves the arming with it. */
     const overArmed = phase === 'gameover'
@@ -587,6 +693,12 @@
 
     const ev = stage.update(dt, player, crowd);
 
+    /* AFTER the stage, so a boss that spawned or died THIS frame is already
+       visible to it -- asked a frame early it would start her theme one frame
+       after she arrived, which is inaudible, and revert one frame after she
+       died, which is not. */
+    bossMusic();
+
     /* THE WALK-OUT IS A DOOR, NOT AN ENDING. Running out of segments with
        another room to go ('room') walks him off the right-hand edge and fades
        into it -- he is leaving for somewhere. Running out in the LAST room
@@ -597,7 +709,11 @@
        level into nothing" -- true until there was an ending screen for him to
        arrive on. `outroTo` is what the walk-out hands to. */
     if (ev === 'room') { phase = 'outro'; outroTo = 'fade'; phaseT = 0; endScreen(); }
-    else if (ev === 'clear') { phase = 'outro'; outroTo = 'ending'; phaseT = 0; endScreen(); }
+    else if (ev === 'clear') {
+      phase = 'outro'; outroTo = 'ending'; phaseT = 0; endScreen();
+      // The fight is over. See endBossMusic() for why it is not the other outro.
+      endBossMusic();
+    }
 
     if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
   }
@@ -634,6 +750,35 @@
    * thing. `stopMusic` releases the source, so the next run's start() builds a
    * fresh one -- which is what it already does on every restart.
    */
+  /**
+   * THE HORSE'S SONG GETTING OUT OF THE WAY, at the moment the last fight is
+   * over and the coconut starts walking out.
+   *
+   * ⚠️ ONLY ON THE WIN, and `outroTo` is the test. The other outro is a walk to
+   * the NEXT room, which has its own handling: the fade calls `roomMusic()` at
+   * its blackest point, and stopping the bed here would leave the walk-out
+   * silent for no reason.
+   */
+  function endBossMusic() {
+    const V = CONFIG.VICTORY_STING || {};
+    if (V.on === false) return;
+    sound.stopMusic(V.musicFadeSec != null ? V.musicFadeSec : 1.2);
+  }
+
+  /**
+   * THE FANFARE, on the frame the ending screen begins and he walks in from the
+   * left. Deliberately NOT at the same moment the song stops -- the beat of
+   * silence between them is what makes this an arrival.
+   *
+   * ⚠️ `playOnce`, so `toTitle()` can stop it. At 10.7s it outlives a skipped
+   * tally and would otherwise ring over the title screen.
+   */
+  function playVictory() {
+    const V = CONFIG.VICTORY_STING || {};
+    if (V.on === false) return;
+    sound.playOnce('victory');
+  }
+
   function playDeathSting() {
     const S = CONFIG.GAME_OVER_STING || {};
     if (S.on === false) return;

@@ -41,6 +41,11 @@ class Player extends Fighter {
     /* What the current reach is FOR, held across the reach's own duration --
        see update(). Null except during a pickup. */
     this.liftTarget = null;
+    /* The same, for FOOD, and a separate reference on purpose: they are reached
+       for with different buttons, they end differently (one arrives in his
+       hands, the other is simply gone), and one field holding either would need
+       a type test at every use. */
+    this.eatTarget = null;
     /* Has the barrel left his hands yet this throw? The animation outlasts the
        release, so "still throwing" is not "still holding". */
     this.threw = false;
@@ -117,8 +122,40 @@ class Player extends Fighter {
          attack does -- so the next ground press starts fresh and alternates,
          which is the same courtesy a chain broken by a hit already gets. */
       else if (input.takeAttack()) {
-        this.attack(this.jumping && this.airString ? this.airString
-                                                   : this._comboDefs());
+        /* ⚠️ STANDING OVER FOOD, THE PUNCH BUTTON STOOPS FOR IT. Requested
+           2026-08-24, replacing eat-on-contact: food is now taken deliberately,
+           with the pickup animation, rather than swept up by walking past.
+
+           IT IS THIS BUTTON AND NOT THE PICKUP ONE for the reason the pickup
+           one gives about barrels: two things on one button means the player
+           who wanted the barrel gets the chicken lying next to it. The punch
+           button already chooses a verb by what is in his hands (throw when
+           carrying), so it is the one that already works this way.
+
+           ⚠️ THIS BRANCH WINS WHENEVER FOOD IS IN REACH, full bar or not. The
+           button is predictable in exchange for the odd wasted drumstick --
+           see Props.eatTarget().
+
+           ⚠️ `pickup()` IS ASKED, NOT TOLD. It refuses in mid-air, so a player
+           who jumps over a drumstick and presses punch gets the AIR ATTACK
+           rather than a stoop he cannot perform -- the fall-through below is
+           the whole handling of that case, and there is no `jumping` test here
+           to keep in step with the one inside `pickup()`.
+
+           ⚠️ AND `_comboDefs()` IS NOT REACHED ON THIS PATH, which matters: it
+           flips which finisher the next chain ends on. Stooping for a chicken
+           must not quietly consume the alternation. */
+        const food = this.props ? this.props.eatTarget(this) : null;
+        if (food && this.pickup(false)) {
+          this.eatTarget = food;
+          /* THE FOOD GETS THE REACH'S OWN CLOCK, the same one the animation
+             runs on, so the heal lands when he actually reaches it. Same
+             bargain the barrel makes in the pickup branch below. */
+          food.claim(this, this.pickupMs);
+        } else {
+          this.attack(this.jumping && this.airString ? this.airString
+                                                     : this._comboDefs());
+        }
       }
       else if (input.takeJump()) this.jump();
       /* PICK UP -- or PUT DOWN, if his hands are already full.
@@ -135,7 +172,12 @@ class Player extends Fighter {
          still `held`, still following the player, drawn over his head forever,
          and nothing can ever release it. Two verbs on one button is also the
          right feel here: punch throws it, pickup puts it down. */
-      else if (input.takePickup()) {
+      /* ⚠️ AND THE WHOLE BRANCH IS OFF. `CONFIG.pickupButton` is false since
+         2026-08-24 -- the button does nothing and barrels cannot be lifted; see
+         the note there for what that costs and what it does not. The press is
+         READ FIRST and then discarded by the `&&`, which is what keeps it from
+         queueing up and firing later if the flag is ever turned back on. */
+      else if (input.takePickup() && CONFIG.pickupButton) {
         if (this.carrying) {
           this.carrying.drop(this);
           this.carrying = null;
@@ -169,6 +211,13 @@ class Player extends Fighter {
         if (st === 'held') { this.carrying = this.liftTarget; this.liftTarget = null; }
         else if (st !== 'lifting') { this.liftTarget = null; }
       }
+      /* THE SAME QUESTION FOR FOOD, and it is only a reference to drop: the
+         food heals him itself when the stoop completes, and puts itself back on
+         the floor if he was knocked out of it. Either way it stops being
+         `taking` and there is nothing here to decide -- which is the point.
+         Reached on the first frame he can act again, exactly like the catch
+         above. */
+      if (this.eatTarget && this.eatTarget.state !== 'taking') this.eatTarget = null;
     } else {
       /* THE RELEASE, partway through the throw animation. Outside `canAct()`
          because `throwing` is exactly one of the states that blocks it -- this

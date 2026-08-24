@@ -129,6 +129,10 @@ def main():
     p = argparse.ArgumentParser(description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('name', help='take under assets-v2/beatemup-dungeon/audio, with or without .ogg')
+    p.add_argument('--src', default=None,
+                   help='repo-relative path to the take instead of looking `name` up in '
+                        "this game's audio folder. For a sound BORROWED from another game "
+                        '-- `name` then only decides what the cut file is called.')
     p.add_argument('--event', default='loudest',
                    help="'loudest' (default), 'last', 'all', or a 1-based event number")
     p.add_argument('--margin', type=float, default=12.0,
@@ -152,7 +156,12 @@ def main():
     args = p.parse_args()
 
     name = args.name[:-4] if args.name.endswith('.ogg') else args.name
-    src = os.path.join(SRC, name + '.ogg')
+    # ⚠️ THE CUT ALWAYS LANDS IN THIS GAME'S sfx/ FOLDER even when the take is
+    # borrowed from another one. A cut is a NEW FILE, not a view of the
+    # original, so it cannot be read in place the way the Mosca's sheets and
+    # her music are -- and putting it back beside the other game's take would
+    # leave that game owning a file only this one plays.
+    src = os.path.join(ROOT, args.src) if args.src else os.path.join(SRC, name + '.ogg')
     if not os.path.isfile(src):
         sys.exit(f'ERROR: no take at {src}')
 

@@ -140,6 +140,10 @@ function assetManifest() {
      silently unpins the loop and drops it back to `musicVolume` flat -- neither
      of which errors, and both of which are audible. */
   if (CONFIG.TITLE_TRACK) out.push({ key: 'musicTitle', src: CONFIG.TITLE_TRACK, how: 'audio' });
+  /* The Mosca's theme -- Still Life's soundtrack, read in place out of that
+     game's folder the way her sprite sheets are. ⚠️ ASSET KEY `musicMosca`,
+     spelled again in CONFIG.MUSIC_LOOP and in FlyBoss's `musicKey`. */
+  if (CONFIG.MOSCA_TRACK) out.push({ key: 'musicMosca', src: CONFIG.MOSCA_TRACK, how: 'audio' });
   for (const [name, src] of Object.entries(CONFIG.SFX || {}))
     out.push({ key: 'sfx:' + name, src: src, how: 'audio' });
 
