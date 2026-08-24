@@ -55,6 +55,10 @@
      the crowd is: the shell is what has a player to hand them, and they outlive
      any one segment -- see prop.js. */
   const props = new Props();
+  /* The vermin crossing the sky above the belt. Owned here for the same reason
+     the props are -- they belong to a ROOM, and the shell is what changes
+     rooms. Pure scenery: nothing else in this file asks them anything. */
+  const flies = new Flies(assets);
   /* STILL LIFE'S PROJECTOR, the file copied over unchanged and driven from the
      same knobs (CONFIG.film*). It is a post effect and it is the LAST thing
      drawn every frame -- see renderFilmed(). */
@@ -181,6 +185,7 @@
     stage.reset();
     crowd.clear();
     props.clear(player);
+    flies.clear();
     stats.reset();
     player = null;
     endingShown = false;
@@ -252,6 +257,8 @@
        the run is actually starting in, and laying out the street's barrels and
        then jumping to the boss room would leave them there. */
     props.enterRoom(stage.room(), player);
+    // Same rule, same reason: the flies belong to the room actually starting.
+    flies.enterRoom(stage.room(), stage.camX);
     /* How the player finds what is within reach. Handed over rather than looked
        up globally, so a Player built for the ending screen or a test has none
        and simply cannot pick anything up. */
@@ -343,6 +350,7 @@
       player.props = props;
       stage.enterRoom(jump, player);
       props.enterRoom(stage.room(), player);
+      flies.enterRoom(stage.room(), stage.camX);
       roomMusic();
       phase = 'play';
       phaseT = 0;
@@ -357,6 +365,22 @@
       renderFilmed(render);
       requestAnimationFrame(loop);
       return;
+    }
+
+    /* THE FLIES ARE AMBIENCE AND THEY TICK ON THEIR OWN, above the phase
+       machine, in every phase where the world is still on screen. Hanging them
+       off update() alone would freeze them through the walk-out and through the
+       room fade -- both of which are seconds long and both of which the player
+       is watching. They stop with HITSTOP (the early return above) because the
+       held moment of impact is supposed to stop everything, and they stop on
+       'dead' because the world does.
+
+       ⚠️ THEY TAKE NOTHING AND CHANGE NOTHING. No player, no crowd, no bounds
+       -- so there is no order to get wrong here and nothing that can be left
+       mid-state by a phase change. That is the whole licence for ticking them
+       outside the machine. */
+    if (phase === 'play' || phase === 'outro' || phase === 'fade') {
+      flies.update(dt, stage.camX);
     }
 
     if (phase === 'play') {
@@ -407,6 +431,11 @@
         crowd.clear();
         stage.enterRoom(stage.roomIndex + 1, player);
         props.enterRoom(stage.room(), player);
+        /* ⚠️ AT THE BLACKEST POINT WITH EVERYTHING ELSE. The street has flies
+           and the boss room does not, so swapping them a moment early or late
+           would show three of them blinking out over a room that is still
+           visible. */
+        flies.enterRoom(stage.room(), stage.camX);
         roomMusic();
         input.flush();
       }
@@ -644,6 +673,7 @@
     for (const layer of CONFIG.LAYERS) {
       if (layer.on === false) continue;
       if (layer.entities) { drawEntities(camX); continue; }
+      if (layer.flies) { flies.draw(ctx, camX); continue; }
       backdrop.drawLayer(ctx, layer, camX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
     }
 

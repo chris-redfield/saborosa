@@ -177,7 +177,11 @@ class Hud {
     }
     // The room is on the marker because the number keys can change it, and a
     // dev who has jumped rooms should not have to guess which one they are in.
-    const label = 'DEV  ' + CONFIG.DEV.punchDamage + ' dmg'
+    /* `null` is a real setting, not a missing one -- it is how a dev session
+       keeps the room jumps while leaving the damage table alone (see the note
+       in CONFIG.DEV). Printing it as "null dmg" made that look like a bug. */
+    const dmg = CONFIG.DEV.punchDamage == null ? 'real' : CONFIG.DEV.punchDamage;
+    const label = 'DEV  ' + dmg + ' dmg'
       + (roomName ? '  ·  ' + roomName + '  (1-9 to jump)' : '') + tally;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillText(label, CONFIG.GAME_W - 9, 9);

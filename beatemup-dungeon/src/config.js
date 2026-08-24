@@ -48,12 +48,21 @@ const CONFIG = {
        than a shipped cheat.
 
        It went off for the first itch build on 2026-08-22, back on the same day
-       to test the horse fight and the barrels, and off again for the final
-       package. Everything below is dead while it is false, and so is the
-       number-key ROOM JUMP, which is now refused in input.js as well as here
-       (see the note there). */
+       to test the horse fight and the barrels, off again for the final package,
+       on again on 2026-08-23 to walk the level end to end after the jam pass,
+       and off again to package it. Everything below is dead while it is false,
+       and so is the number-key ROOM JUMP, which is refused in input.js as well
+       as here (see the note there). */
     on: false,
-    punchDamage: 50,     // vs the real string's 4 / 5 / 6 / 4 / 9
+    /* vs the real string's 4 / 5 / 6 / 4 / 9.
+
+       ⚠️ THIS IS THE ONE THING THAT MAKES A DEV SESSION UNABLE TO JUDGE THE
+       FIGHT -- at 50 a punch the horse dies in three combos and every mook in
+       one. So it has its own escape hatch: `combat.js` reads it as
+       `punchDamage != null`, which means setting this to **null** keeps the
+       room jumps and the readout while leaving the DAMAGE REAL. Use that to
+       walk the level for pacing; use 50 to get somewhere quickly. */
+    punchDamage: 50,
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
        the boss room. Testing a late room by playing to it is how a late room
@@ -255,6 +264,14 @@ const CONFIG = {
        move already carries its own parallax inside the frame. Anything else
        here would be sliding the photograph against itself. */
     { name: 'plate',      source: 'plate',      parallax: 1.0 },
+    /* THE FLIES, BETWEEN THE PLATE AND THE FIGHTERS. They live in the band
+       above the belt, so in practice they overlap nothing and the order barely
+       matters -- except for a jumping coconut at the back of the belt, who
+       should pass IN FRONT of something that is up by the rooftops. Declared as
+       a layer rather than drawn inline for the reason the entities layer is:
+       where a thing sits in the stack is level data, not a line buried in
+       render(). Off with `CONFIG.FLIES.on` -- see the note there. */
+    { name: 'flies',      flies: true },
     { name: 'fighters',   entities: true },
     /* The plane in front of everything. Off until there is art for it — the
        stack is what had to exist early, not the layer itself. Turn `on` to true
@@ -446,6 +463,12 @@ const CONFIG = {
       name: 'street',
       plate: 'plate',
       startX: 220,
+      /* THE FLIES BELONG TO THIS ROOM AND NOT TO THE OTHER ONE. See CONFIG.FLIES:
+         they cross the band above the belt, and the boss room is indoors. The
+         flag is here rather than a room name tested in flies.js so that a third
+         room says which it wants by declaring it, the way `music` and `props`
+         already do. */
+      flies: true,
       /* --- WHAT IS LYING AROUND ------------------------------------------
          BARRELS AND FOOD, placed by hand like the enemies are, and belonging to
          the ROOM rather than to a segment: a wave is an event, a barrel is
@@ -461,29 +484,38 @@ const CONFIG = {
          while walking rather than a scramble mid-combo.
 
          ⚠️ THINNED TWICE ON 2026-08-22, AFTER PLAYING IT: nine barrels here
-         became six and then FOUR, so the level now holds six all told (four
-         here, two in the boss room) against eleven when it was first built.
-         Placed food went four to two, and the boss room's chicken went with the
-         second pass. Both were "too many" on sight, twice. If they are ever added
-         back, add them in the ARENAS -- what makes a barrel worth having is
-         being able to reach one while surrounded, and a corridor lined with
-         them is just scenery to punch through.
+         became six and then FOUR. Both passes were "too many" on sight.
+
+         ⚠️ AND ON 2026-08-23 THE STREET LOST ITS BARRELS ALTOGETHER, on
+         request -- "remova todos os barris na fase principal, mantenha somente
+         na boss room". The four entries are COMMENTED OUT rather than deleted,
+         the same way the bomb rows and `trotMs` are kept: where they went was a
+         design decision that took two passes to reach, and re-deriving it costs
+         more than the six lines. Uncommenting is how they come back.
+
+         SO THE BARREL IS NOW A BOSS-ROOM OBJECT ONLY -- two of them, against
+         eleven in the level when they were first built. ⚠️ THAT ALSO MOVES
+         WHERE THE MECHANIC IS TAUGHT: the barrel at 1450 sat in the opening
+         walk precisely so the lift and the throw were learned somewhere nothing
+         could hit back, and the first barrel a player now meets is on the floor
+         of the last fight. The FOOD is untouched -- it was never part of the
+         request and it is its own feature.
 
          ⚠️ x IS WORLD SPACE, THE SAME AXIS THE ENEMIES USE, and z is the belt
          depth (0..beltDepth, 210). A barrel at the same x as an arena's enemies
          is IN that fight; one 200px short of it is on the way in. */
       props: [
         // The opening walk: a barrel, and nothing that can hit back.
-        { kind: 'barrel',  x: 1450, z: 60 },
+        // { kind: 'barrel',  x: 1450, z: 60 },
         { kind: 'coxinha', x: 1900, z: 105 },
         // The first arena.
-        { kind: 'barrel',  x: 2180, z: 40 },
+        // { kind: 'barrel',  x: 2180, z: 40 },
         // Past the sub-boss: the roaches. Far side of the belt, for variety --
         // the other three are all within a lane of the near edge.
         { kind: 'coxinha', x: 3480, z: 120 },
-        { kind: 'barrel',  x: 3860, z: 180 },
+        // { kind: 'barrel',  x: 3860, z: 180 },
         // The last stand.
-        { kind: 'barrel',  x: 4120, z: 55 },
+        // { kind: 'barrel',  x: 4120, z: 55 },
       ],
       /* Far enough right that the camera can reach 3424 — the end of the film
          at `worldPxPerSecond` 116. `camX` is clamped to `endX - GAME_W`, so
@@ -901,7 +933,8 @@ const CONFIG = {
 
                   AND 30% AGAIN, ASKED FOR ON 2026-08-22: 1.888 x 1.3 = 2.4544
                   -- then 10% BACK OFF the same day, 2.4544 x 0.9 = 2.20896,
-                  which is where it sits. He is still well past the mass
+                  and a last 5% on 2026-08-23: 2.20896 x 1.05 = 2.3194, which
+                  is where it sits. He is still well past the mass
                   argument above: this is not matching a cigarette any more, it
                   is a roach that is bigger than the men, which is a choice
                   about what the fight looks like rather than a correction.
@@ -914,7 +947,7 @@ const CONFIG = {
                   so a swing that looks like it grazed him will miss. If that
                   starts to read wrong in play, the fix is ENEMY_COMBOS'
                   reaches, not this number. */
-               drawScale: 2.20896,
+               drawScale: 2.3194,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -928,9 +961,9 @@ const CONFIG = {
                // assumed: both sheets cut to an identical 167.8px body, so the
                // pair is drawn at one size and there is no ratio to preserve
                // between them the way there is between the cigarettes. They
-               // took the 2026-08-22 +30% and the -10% after it together, for
-               // the same reason.
-               drawScale: 2.20896,
+               // took the 2026-08-22 +30% and the -10% after it together, and
+               // the 2026-08-23 +5% as well, for the same reason.
+               drawScale: 2.3194,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -969,23 +1002,25 @@ const CONFIG = {
        (tools/shrink-master.py).
 
        ⚠️ 30% BIGGER ON REQUEST, 2026-08-22: 1.711 x 1.3 = 2.2243, so he is
-       drawn at 304px against a 137px fighter. THAT IS PAST 1:1 AND THE TEXTURE
-       IS NOW UPSCALED -- there is no more detail in the atlas to find, so he
-       will be very slightly softer than the men he is fighting. If that shows,
-       the answer is a bigger master through shrink-master.py, not a smaller
-       number here.
+       drawn at 304px against a 137px fighter -- AND 5% MORE ON 2026-08-23,
+       2.2243 x 1.05 = 2.3355, which puts him at 319px. THAT IS PAST 1:1 AND THE
+       TEXTURE IS NOW UPSCALED -- there is no more detail in the atlas to find,
+       so he will be very slightly softer than the men he is fighting. If that
+       shows, the answer is a bigger master through shrink-master.py, not a
+       smaller number here.
 
-       ⚠️ AND HE DID NOT GROW ALONE. `HORSE_BOSS.sizePx` went to 304 with him so
-       the hurtbox tracks the picture, and the two attack REACHES went up by the
-       same 1.3 because this file's rule is that a reach is measured off the
-       drawing -- see the notes on each. What did NOT scale is anything measured
-       in DEPTH (hitZ, kickReachZ, chargeReachZ): the belt is as deep as it was
-       and a 2D drawing does not get deeper when it gets taller.
+       ⚠️ AND HE DID NOT GROW ALONE, EITHER TIME. `HORSE_BOSS.sizePx` went to
+       304 and then 319 with him so the hurtbox tracks the picture, and the two
+       attack REACHES went up by the same factor because this file's rule is
+       that a reach is measured off the drawing -- see the notes on each. What
+       did NOT scale is anything measured in DEPTH (hitZ, kickReachZ,
+       chargeReachZ): the belt is as deep as it was and a 2D drawing does not
+       get deeper when it gets taller.
 
        NAMED HIPOLITO BY THE USER, 2026-08-21. */
     horse:   { sheet: 'v2:beatemup-dungeon/horse-beat', pack: 'ragged',
                name: 'HIPÓLITO',
-               drawScale: 2.2243,
+               drawScale: 2.3355,
                poses: {
                  runAttack: { anim: 'runAttack' },
                  trot:      { anim: 'trot' },
@@ -2237,6 +2272,109 @@ const CONFIG = {
   enemyEnterMs: 500,
 
   /* =========================================================================
+     THE FLIES -- background vermin
+     =========================================================================
+     Added 2026-08-23, on request: "traga as moscas do flying_dungeon". They are
+     STILL LIFE's fly, the small one -- the same sheet its swarm is drawn from,
+     read IN PLACE out of that game's folder like the Mosca Boss above and the
+     explosion below. NARUTAO was already here; this is the rest of the family.
+
+     ⚠️ THEY ARE SCENERY, NOT ENEMIES. Nothing about them touches the fight:
+     no health, no hitbox, no hurt window, no death, no z, no shadow, no entry
+     in the crowd and no entry in `stats`. That is the whole reason this is 200
+     lines rather than the flying dungeon's 430 -- everything that file carries
+     is there to be SHOT (health, i-frames, knockback, a burst, a corpse that
+     lands on a pile) or to be REWOUND (the leg memory, the death snapshot), and
+     a beat 'em up has neither gun nor clock. What was worth keeping is the
+     steering, which is what makes a fly look like a fly.
+
+     ⚠️ AND THEY FLY WHERE THE PLAYER CANNOT GO, which is the point of the
+     request: the band ABOVE the belt. `beltTopY` (520) is the far edge of the
+     walkable strip, so anything drawn above it is in the part of the shot the
+     fight never reaches. `bottomY` is kept well clear of that line rather than
+     sat on it -- a fly grazing the back wall reads as one that is about to join
+     in, and they must never look like they can be punched.
+
+     ⚠️ RIGHT TO LEFT, ALWAYS. `vx` is re-rolled on every heading change and is
+     negative every time, so the wander never carries one backwards; the
+     vertical dart is what makes the path erratic. A fly that crosses the left
+     edge is RECYCLED to just past the right one with a fresh height, so they
+     are a procession across the shot rather than a loop of the same path. They live in WORLD x at parallax 1.0 -- the same space the
+     fighters and the plate use -- so they stay put in the street while the
+     camera travels, instead of being glued to the viewport.
+
+     ⚠️ THE STREET ONLY. It is `flies: true` on the ROOM (see ROOMS) rather than
+     a room name tested here, for the same reason props belong to the room:
+     asked for explicitly -- the boss room is indoors and a fly wandering
+     through the last fight would be one more thing to read on a screen that
+     already has a horse on it. */
+  FLIES: {
+    /* The feature switch, like PROPS.barrel.on. `false` and the sheet is not
+       even loaded -- manifest.js gates on this -- so turning them off costs
+       nothing at runtime and nothing in the download. */
+    on: true,
+    /* STILL LIFE's fly sheet, and only ITS FIRST RECT. That sheet is five
+       frames -- one live fly and four of it coming apart -- and the burst is
+       unreachable here because nothing can kill one. The other four rects are
+       deliberately not copied in: they would be dead data pointing at art no
+       code path can select. */
+    SHEET: 'v2:flying-dungeon/enemy-sheets/saborosa-mosca.png',
+    RECT: [20, 98, 168, 181],
+    /* ⚠️ THIS IS A POPULATION, NOT A SPAWN RATE, and the difference is the
+       whole reason the first number was wrong. There are ALWAYS exactly this
+       many flies in the band: one that crosses the left edge is recycled to the
+       right one on the same frame, so nothing ever thins out and no gap ever
+       opens. `count` is therefore literally "how many flies can be seen at
+       once", and 3 read as an infestation.
+
+       TWO, ASKED FOR ON 2026-08-23 after seeing three in play -- "use 2 as a
+       reference number for my request".
+
+       ⚠️ IF TWO IS STILL TOO MANY, THIS IS THE WRONG KNOB TO KEEP TURNING. At
+       1 the sky is empty for most of a crossing and then has a fly in it, which
+       reads as a bug rather than as sparseness. Making it genuinely INFREQUENT
+       means a fly waiting off-camera before it re-enters -- a gap between
+       crossings, which is a frequency -- and that does not exist yet. Ask for
+       it rather than dropping this to 1.
+
+       They are spread ACROSS the view when a room starts rather than released
+       together from the right edge -- flies entering in file looks like a
+       spawn, flies already in the air looks like a place that has flies in
+       it. */
+    count: 2,
+    /* Drawn height in canvas px, before the per-fly jitter. The source frame is
+       181px tall, so 30 is about 1:6 -- small enough to read as something up
+       near the rooftops rather than as an enemy that has not arrived yet.
+       ⚠️ SIZE IS THE ONLY DEPTH CUE THEY HAVE (there is no z up there and no
+       parallax to separate them from the plate), so this number and the jitter
+       below are what stop the three reading as one flat sprite repeated. */
+    sizePx: 30,
+    sizeJitter: 0.28,        // +/- this fraction, rolled once per fly
+    /* THE BAND, in SCREEN y. Both are above `beltTopY` (520) -- see the warning
+       above -- and `topY` is off the top edge by enough that a fly at the
+       ceiling is still whole. */
+    topY: 64,
+    bottomY: 404,
+    /* Speed, in world px/sec. Slower than the flying dungeon's 200: there the
+       fly is a target closing on the player, here it is something crossing the
+       sky behind a fight, and at 200 the three of them shot past like debris.
+       Each leg rolls 0.55..1.45 of this. */
+    speed: 118,
+    vSpeed: 165,             // vertical dart speed -- what makes it erratic
+    retargetMin: 0.22,       // s -- shortest hold before a new heading
+    retargetMax: 0.85,       // s -- longest
+    wobbleAmp: 4,            // px -- the fast micro-buzz on top of the wander
+    wobbleFreq: 13,          // rad/sec
+    maxTilt: 15,             // deg -- bank at full vertical speed
+    tiltEase: 9,             // how fast the bank eases toward the heading (1/s)
+    /* How far past each screen edge a fly lives before it is recycled. Wide
+       enough that the swap always happens off-camera; a fly popping in at the
+       edge of frame is the one way this effect can look cheap. */
+    marginPx: 140,
+    alpha: 0.92,             // a touch back, so they sit INTO the plate
+  },
+
+  /* =========================================================================
      THE MOSCA BOSS
      =========================================================================
      STILL LIFE's fly boss, read IN PLACE out of the flying dungeon's asset
@@ -2350,8 +2488,10 @@ const CONFIG = {
     /* Drawn body height. The pack already scales to this through
        CHARACTERS.horse.drawScale; this is the number the SIMULATION uses --
        hurtbox width and height both come off it -- so the picture and the
-       target grow together, the same pairing flyBossSizePx keeps. */
-    sizePx: 304,
+       target grow together, the same pairing flyBossSizePx keeps.
+
+       304, then x1.05 with the drawing on 2026-08-23. */
+    sizePx: 319,
     /* 150 against the Mosca's 88. A full five-hit combo is 28 damage, so this
        is a little over five clean combos -- long enough to be the last fight,
        short enough that a player who never learns the turn opening can still
@@ -2516,11 +2656,11 @@ const CONFIG = {
        chest arrives about there; 168 kept the box just inside the picture, so
        a charge that looks like it went through you did.
 
-       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (168 -> 218). The measurement is
-       of the PICTURE, so when the picture grew 30% this had to grow with it or
-       the box would have stopped where his chest used to be. The 202 above is
-       likewise now 263 on screen. */
-    chargeReachX: 218,
+       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (168 -> 218), THEN x1.05 ON
+       2026-08-23 (218 -> 229). The measurement is of the PICTURE, so when the
+       picture grows this has to grow with it or the box would stop where his
+       chest used to be. The 202 above is likewise now 276 on screen. */
+    chargeReachX: 229,
     chargeReachZ: 52,
     chargeKnockback: 480,
     chargeKnockdown: true, // it bowls you over, which is the whole point
@@ -2550,14 +2690,15 @@ const CONFIG = {
        chooses to kick. A reach shorter than the range he commits from is an
        attack that can never land, which is the rule in STATE.md.
 
-       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (260 -> 338), for the same reason
-       as chargeReachX: the 300px measurement it was cut from is 390px now. The
-       ranges he DECIDES from (`kickRange`, `chargeMinRange`) were deliberately
-       left where they are -- they are about the fight's spacing, not about the
-       drawing -- so the practical effect is that a kick he commits to now lands
-       more reliably. That is a bigger animal doing what a bigger animal does,
-       but it IS a difficulty change and it was not separately asked for. */
-    kickReachX: 338,
+       ⚠️ x1.3 WITH THE DRAWING ON 2026-08-22 (260 -> 338), THEN x1.05 ON
+       2026-08-23 (338 -> 355), for the same reason as chargeReachX: the 300px
+       measurement it was cut from is 409px now. The ranges he DECIDES from
+       (`kickRange`, `chargeMinRange`) were deliberately left where they are --
+       they are about the fight's spacing, not about the drawing -- so the
+       practical effect is that a kick he commits to now lands more reliably.
+       That is a bigger animal doing what a bigger animal does, but it IS a
+       difficulty change and it was not separately asked for. */
+    kickReachX: 355,
     kickReachZ: 50,
     kickKnockback: 420,
     kickKnockdown: true,

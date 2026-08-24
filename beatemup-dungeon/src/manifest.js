@@ -94,6 +94,16 @@ function assetManifest() {
      there is nothing to downscale. */
   if (CONFIG.BOOM_SHEET) out.push({ key: 'boom', src: CONFIG.BOOM_SHEET, how: 'image' });
 
+  /* THE BACKGROUND FLIES: STILL LIFE's small fly, one sheet, read in place out
+     of that game's folder like the Mosca's. `image` rather than `big` -- it is
+     1324x381 and every fly on screen is 30px tall, so there is nothing a
+     downscale would save that the GPU is not already throwing away.
+
+     ⚠️ GATED ON `FLIES.on`, so turning them off costs the download too. */
+  if (CONFIG.FLIES && CONFIG.FLIES.on && CONFIG.FLIES.SHEET) {
+    out.push({ key: 'fly', src: CONFIG.FLIES.SHEET, how: 'image' });
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>

@@ -938,10 +938,139 @@ BODY is `fighterSizePx` tall. For a cigarette every pixel of that is cigarette;
 for a barata the top 44px of 168 — **26%** — is horns and antennae, so the
 animal itself gets the remaining 124. That is why they needed 1.888 to stand as
 big as the gang they replaced rather than merely as tall. ⚠️ **They took another
-flat 30% on 2026-08-22, then gave 10% back (2.4544 → 2.20896), and that is past
-this argument either way** — they are not matching a cigarette's mass any more,
-they are bigger than the men, and their boxes did not move with them.
+flat 30% on 2026-08-22, then gave 10% back (2.4544 → 2.20896) and a last 5% on
+2026-08-23 (→ 2.3194), and that is past this argument either way** — they are
+not matching a cigarette's mass any more, they are bigger than the men, and
+their boxes did not move with them.
 
+---
+
+## And then on 2026-08-23: the jam pass
+
+Four small items before submission — three of them one number each, and one new
+file.
+
+**THE ROACHES AND THE HORSE ARE 5% BIGGER.** Both flat requests, both the same
+recipe the 08-22 pass established, and the recipe is the interesting half.
+`CHARACTERS.barata*.drawScale` is **drawn size only** and moved alone, because
+nothing under a roach knows about it — its picture is now well wider than its
+boxes and that is a known, standing gap. The horse moved as a SET: `drawScale`
+2.2243 → 2.3355, `HORSE_BOSS.sizePx` 304 → 319 so the hurtbox tracks the
+picture, and `chargeReachX` 218 → 229 / `kickReachX` 338 → 355 because both were
+measured off the drawing and a reach that does not follow it stops where his
+chest used to be. The DEPTHS (`hitZ`, `kickReachZ`, `chargeReachZ`) and the
+DECISION RANGES (`kickRange`, `chargeMinRange`) were left alone — the first
+because a 2-D drawing does not get deeper when it gets taller, the second
+because they are about the fight's spacing rather than about the art.
+
+**THE STREET HAS NO BARRELS LEFT.** Asked for flat: *"remova todos os barris na
+fase principal, mantenha somente na boss room"*. Four entries commented out of
+`ROOMS[0].props` — commented, not deleted, because where they went took two
+thinning passes to decide. The two in the boss room stay, and the food is
+untouched. ⚠️ **That moves where the mechanic is taught.** The barrel at x 1450
+sat in the opening walk precisely so the lift and the throw were learned
+somewhere nothing could hit back; the first barrel a player now meets is on the
+floor of the last fight, with a horse on it. Flagged rather than worked around —
+it is the level's shape, not a bug.
+
+**AND THE SKY HAS FLIES IN IT.** STILL LIFE's small fly, borrowed the same way
+its Mosca, its blast sheet, its health bar and its worms already were — crossing
+the band ABOVE the belt, right to left, in the street only. New file
+`src/flies.js`, `CONFIG.FLIES`, a `flies: true` on the room and a `flies` entry
+in `LAYERS`. See *The flies* below.
+
+⚠️ **THE PORT WAS A DELETION, NOT A COPY.** That game's `src/fly.js` is 430
+lines; this is 200, and the 230 that did not come across are all one of two
+things — machinery for being SHOT (health, i-frames, knockback, a burst, a
+corpse that falls and lands on a pile) or machinery for being REWOUND (a memory
+of every heading it has flown, a snapshot of the instant it died). A beat 'em up
+has neither a gun nor a clock. What was worth carrying was the STEERING, which
+is the part that makes a fly look like a fly. **"Bring X from the other game"
+means read X and decide what of it this game can even express** — the same
+lesson the title screen and the music lab taught on 2026-08-21, arrived at from
+the other direction.
+
+---
+
+## The flies
+
+Three of Still Life's flies, crossing the sky behind the street. Everything
+about them is in `CONFIG.FLIES` and `src/flies.js`; the knobs are in README.md.
+What is worth knowing here is why they are shaped this way.
+
+**THEY FLY WHERE THE PLAYER CANNOT GO, AND THAT IS THE REQUEST.** "As moscas
+deverão voar na parte da fase que o player não chega (fora do belt principal),
+aquela parte de cima." `beltTopY` (520) is the far edge of the walkable strip,
+so the band above it is exactly the part of the shot the fight never reaches.
+`bottomY` is 404 — kept well clear of that line rather than sat on it, because a
+fly grazing the back wall reads as one that is about to join in, and they must
+never look like they can be punched.
+
+**THEY ARE SCENERY AND THEY ANSWER NOTHING.** No health, no hitbox, no hurt
+window, no death, no `z`, no shadow, no entry in the crowd, nothing in `stats`.
+This is the opposite of the bargain props made — a barrel earned its cheapness
+by answering the FIGHTERS' interface so the z-sort and the hit resolver took it
+with no branch; a fly earns its cheapness by being outside all of that. Nothing
+in `game.js` asks a fly anything. The two are worth holding side by side: the
+question for a new object is which of the two it is, and answering "half of
+each" is how a mechanic ends up wired into six files.
+
+**RIGHT TO LEFT, ALWAYS, AND THE ERRATIC PART IS VERTICAL.** `vx` is re-rolled
+on every heading change and is negative every time, so the wander cannot carry
+one backwards; the dart in y flips sign freely, and that is what makes the path
+read as a fly rather than as a bird. On top of it sits a fast micro-buzz and a
+bank into whichever way it is climbing. Straight from Still Life's steering,
+which is the only part that came across.
+
+**RECYCLED, NOT WRAPPED.** Reach the left margin and a fly is moved to just past
+the right one at a fresh height with a fresh heading — everything re-rolled
+except its size, which is what keeps it the same fly. So they are a procession
+across the shot rather than a couple of fixed paths on a loop.
+
+⚠️ **AND THAT MAKES `count` A POPULATION RATHER THAN A RATE — WHICH IS THE ONE
+THING ABOUT THIS THAT MISLED THE PERSON ASKING FOR IT.** The recycle happens on
+the frame the fly leaves, so `count` flies are in the band at ALL times and no
+gap ever opens: the number is literally "how many can be seen at once". Three
+was asked for and three read as an infestation; the user corrected it to **two**
+the same day, saying they did not know what the number meant. **A knob whose
+name implies a frequency but whose behaviour is a headcount will be misread
+every time — say which it is at the read site, not just in the doc.** If two is
+still too many the answer is NOT one (the sky then sits empty for most of a
+crossing, which reads as a bug); it is a fly waiting off-camera before
+re-entering, which would make it a real frequency and does not exist yet.
+
+⚠️ **THE RECYCLE TEST IS AGAINST THE SCREEN, NOT AGAINST A WORLD NUMBER.** They
+live in WORLD x at parallax 1.0 — the fighters' axis — so they stay put in the
+street while the camera travels, which is the whole reason they read as being in
+the place rather than stuck to the viewport. But the camera crosses several
+thousand px of street, so a fixed world bound would recycle every fly at the
+same landmark. There is a second test the other way round for a camera that
+moves LEFT out from under one; that cannot happen in the street, and it is there
+because the boss room's camera pans both ways and a third room might.
+
+⚠️ **SIZE IS THE ONLY DEPTH CUE THEY HAVE.** There is no `z` up there and no
+parallax to separate them from the plate, so `sizeJitter` is not decoration —
+without it the three read as one sprite drawn three times.
+
+**THE STREET ONLY, DECLARED ON THE ROOM.** `flies: true` in `ROOMS[0]`, the way
+`music` and `props` are already room data, rather than a room name tested inside
+`flies.js`. The boss room does not get them: it is indoors, and a fly wandering
+through the last fight is one more thing to read on a screen that already has a
+horse on it. `Flies.enterRoom` is called at every site `props.enterRoom` is —
+`start()`, the DEV room jump, and the room fade **at its blackest point**, which
+is where the swap has to happen or three flies would blink out over a room that
+is still visible.
+
+**THEY TICK ABOVE THE PHASE MACHINE.** `play`, `outro` and `fade` — the walk-out
+and the fade are both seconds long and both are watched, and hanging the flies
+off `update()` alone would freeze them through each. They stop with HITSTOP,
+because a held moment of impact is supposed to stop everything, and on `dead`,
+because the world does. The licence for living outside the machine is that they
+take nothing and change nothing: there is no order to get wrong and nothing that
+can be left mid-state by a phase change, which is this codebase's one recurring
+bug family.
+
+---
 
 ## The one constraint that will break things if forgotten
 
@@ -1040,6 +1169,7 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/title.js` | the photo title screen: the name drops in, LEBRON walks past |
 | `src/film.js` | **STILL LIFE'S PROJECTOR**, copied unchanged — the post effect (OFF) |
 | `src/prop.js` | barrels and food: punched, lifted, thrown, eaten |
+| `src/flies.js` | STILL LIFE's flies, crossing the sky above the belt — **pure scenery** |
 | `src/boom.js` | the string of explosions both bosses die in |
 | `src/ending.js` | the WON screen: walk in, arms up, then the tally |
 | `src/game-over.js` | the LOST panel: the flying dungeon's worms, saying PERDEU! |

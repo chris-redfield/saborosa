@@ -715,6 +715,16 @@ rather than by rewriting `CONFIG.COMBO` — the table documents a 28-damage stri
 that every enemy's HP is tuned against, and a config that lies about that is
 worse than a branch.
 
+> **`punchDamage: null` is a real setting, not a missing one.** The read site
+> tests `!= null`, so `null` keeps the room jumps and the marker while leaving
+> the **damage table alone**. That is the mode for walking the level to judge
+> pacing and length; 50 is the mode for getting somewhere quickly. The marker
+> prints `DEV real dmg` in that state so it never looks like a bug.
+>
+> ⚠️ **The fight cannot be judged at 50.** The horse dies in three combos and
+> every mook in one, which is exactly the situation that shipped the first itch
+> build with an unplayed balance.
+
 **Jumping straight to a room.** Testing a late room by playing to it is how a
 late room stops getting tested.
 
@@ -1101,6 +1111,18 @@ draw call, not a rebuild.
 
 ## The baratas
 
+`drawScale` **2.3194** for both, and it got there in four requested steps rather
+than by measurement: 1.452 (the cigarettes') × 1.3 × 1.3 × 0.9 × 1.05. Both
+sheets cut to an identical 167.8 px body, so the pair is drawn at one number and
+there is no ratio to preserve between them.
+
+> ⚠️ **Their reaches have never moved with it**, and that is the standing warning
+> on `drawScale`: it is drawn size only. The hurtbox, the punch boxes and the
+> charge lane are global or per-attack numbers and none of them knows about it,
+> so the picture is now well wider than the boxes underneath it and a swing that
+> looks like it grazed one will miss. If that reads wrong in play the fix is
+> `ENEMY_COMBOS`' reaches, **not** this number.
+
 Six rows, not the cigarettes' eight — no jump and no knockdown, because a
 cockroach does neither. What they have instead is the charge.
 
@@ -1134,6 +1156,104 @@ row's last frame, the roach on its back.
 | `minX` / `maxX` | the band he will charge from |
 | `exitMarginPx` | how far past the wall counts as gone |
 
+## The flies in the sky
+
+`src/flies.js`, `CONFIG.FLIES`, art borrowed from **Still Life** — the small fly
+its swarm is drawn from, read in place out of `assets-v2/flying-dungeon/` like
+the Mosca's sheets and the explosion. Added 2026-08-23.
+
+**They are scenery.** No health, no hitbox, no hurt window, no death, no `z`, no
+shadow, nothing in the crowd and nothing in `stats`. They cross the band *above*
+the belt — the part of the shot the fight cannot reach — always right to left,
+two at a time.
+
+| knob (`CONFIG.FLIES`) | what it does |
+|---|---|
+| `on` | **`true`. The feature switch** — `false` and the sheet is not even loaded (`manifest.js` gates on it) |
+| `count` | **2**. ⚠️ A *population*, not a rate — see below |
+| `sizePx` / `sizeJitter` | 30 px drawn height, ±28% rolled once per fly. **The only depth cue they have** |
+| `topY` / `bottomY` | 64 / 404 — the band, in *screen* y. ⚠️ Both must stay well above `beltTopY` (520) |
+| `speed` / `vSpeed` | 118 / 165 world px/s. Each leg rolls 0.55–1.55× of `speed`, always leftward |
+| `retargetMin` / `retargetMax` | 0.22 / 0.85 s — how long a heading is held. **This is the erratic dial** |
+| `wobbleAmp` / `wobbleFreq` | 4 px / 13 rad·s⁻¹ — the fast micro-buzz on top of the wander |
+| `maxTilt` / `tiltEase` | 15° / 9 s⁻¹ — how far and how smoothly it banks into a climb or dive |
+| `marginPx` | 140 — how far past each screen edge one lives before it is recycled |
+| `alpha` | 0.92 — a touch back, so they sit *into* the plate |
+
+### Which rooms get them
+
+`flies: true` on the **room**, the same way `music` and `props` are room data:
+
+```js
+{ name: 'street', plate: 'plate', flies: true, ... }
+```
+
+The boss room does not have it, and that was the request — it is indoors, and a
+fly wandering through the last fight is one more thing to read on a screen that
+already has a horse on it. `Flies.enterRoom` is called wherever
+`props.enterRoom` is: `start()`, the DEV room jump, and the room fade at its
+blackest point.
+
+### How the motion works
+
+A fly holds a heading for a fraction of a second and then picks another. The
+horizontal component is **always** leftward, so the wander can never carry one
+backwards; the vertical dart flips sign freely and is what makes the path look
+erratic. It bounces off the top and bottom of the band, banks into whichever way
+it is going, and buzzes on top of all of it.
+
+Reach the left margin and a fly is **recycled** to just past the right one, at a
+fresh height with a fresh heading — everything about it is re-rolled except its
+size, which is what keeps it the same fly. So they read as a procession crossing
+the shot rather than as a couple of fixed paths on a loop.
+
+> ⚠️ **`count` is a POPULATION, not a spawn rate.** The recycle happens on the
+> same frame the fly leaves, so `count` flies are in the band at *all* times and
+> no gap ever opens — it is literally "how many can be seen at once". It was 3
+> and that read as an infestation; **2** since 2026-08-23.
+>
+> **If 2 is still too many, this is the wrong knob to keep turning.** At 1 the
+> sky is empty for most of a crossing and then has a fly in it, which reads as a
+> bug rather than as sparseness. Making them genuinely *infrequent* means a fly
+> waiting off-camera before it re-enters — a gap between crossings, which is a
+> frequency — and nothing here does that yet.
+
+They live in **world x** at parallax 1.0 (the fighters' axis) and **screen y**,
+because the band is defined against the canvas — there is no "up" in world
+coords in this game, only `beltTopY`.
+
+> ⚠️ **The recycle test is against the SCREEN, not against a world number.** The
+> camera travels several thousand px across the street; a fixed world bound
+> would recycle every fly at the same place in the level. There is a second test
+> the other way for a camera that moves *left* out from under one.
+
+> ⚠️ **Still Life's `src/fly.js` is 430 lines and this is 200.** Everything that
+> file carries beyond the steering is there to be *shot* (health, i-frames,
+> knockback, a burst, a corpse that lands on a pile) or to be *rewound* (the leg
+> memory, the death snapshot). A beat 'em up has neither gun nor clock. Do not
+> port the rest of it across looking for parity.
+
+> ⚠️ **Only the sheet's FIRST rect is used.** The other four are the fly coming
+> apart, and nothing here can kill one.
+
+### Where they sit in the stack
+
+A layer, between the plate and the fighters:
+
+```js
+{ name: 'plate',    source: 'plate', parallax: 1.0 },
+{ name: 'flies',    flies: true },
+{ name: 'fighters', entities: true },
+```
+
+In practice they overlap nothing — except a jumping coconut at the back of the
+belt, who should pass in front of something up by the rooftops.
+
+They tick **above the phase machine**, in `play`, `outro` and `fade`, because the
+walk-out and the room fade are both seconds long and both are watched. They stop
+with hitstop and on death, because the world does. They take nothing and change
+nothing, which is the whole licence for ticking them outside it.
+
 ## Barrels and food
 
 `src/prop.js`, `CONFIG.PROPS`, art in `CONFIG.CHARACTERS.barril`. Placed by hand
@@ -1141,7 +1261,7 @@ per ROOM (not per segment) in `CONFIG.ROOMS[n].props`:
 
 ```js
 props: [
-  { kind: 'barrel',  x: 1450, z: 60 },
+  { kind: 'barrel',  x: 620,  z: 55 },
   { kind: 'coxinha', x: 1900, z: 105 },
   { kind: 'chicken', x: 460,  z: 110 },
 ]
@@ -1150,15 +1270,25 @@ props: [
 `x` is world space, the same axis the enemies use; `z` is belt depth (0..210). A
 barrel at an arena's x is IN that fight; one 200px short of it is on the way in.
 
-**Six barrels in the whole game** (four in the street, two in the boss room) and
-two drumsticks, after two thinning passes on the day they were built — eleven
-and five were both "too many" on sight.
+**Two barrels in the whole game, and both are in the boss room.** The street had
+four; they were removed on request on 2026-08-23 (*"remova todos os barris na
+fase principal, mantenha somente na boss room"*), after two earlier thinning
+passes had already taken the level from eleven to six. The four entries are
+**commented out, not deleted** — where they went took two passes to decide, so
+uncommenting is how they come back.
 
-> ⚠️ **Barrels are most of the food you actually see.** At `dropChance` 0.35,
-> six barrels are worth about two more chickens on the floor on top of the two
-> placed drumsticks. "Three things on the ground when the config places two" is
-> not a contradiction — the third came out of a barrel. Count with the DEV
-> readout (`2+1 food` = placed + dropped), not with the config.
+The two drumsticks in the street are untouched: food is its own feature and was
+not part of the request.
+
+> ⚠️ **Where the mechanic is taught moved with them.** The barrel at x 1450 sat
+> in the opening walk on purpose — the lift and the throw were learned somewhere
+> nothing could hit back. The first barrel a player now meets is on the floor of
+> the last fight.
+
+> ⚠️ **Barrels are most of the food you actually see** — or they were. At
+> `dropChance` 0.35, two barrels are worth well under one extra chicken, so the
+> DEV readout's dropped count is now almost always 0 in the street. Count with
+> that readout (`2+1 food` = placed + dropped), not with the config.
 
 ### The barrel
 
@@ -1690,21 +1820,26 @@ real choice with a real answer.
 | `dieTipRad` | the old tip-over. Dead while `DEATH_BOOM.on` is true |
 | `DEATH_BOOM` | the explosions he goes up in; see below |
 
-### He is 30% bigger than he was, and so is his reach
+### He is 37% bigger than he was, and so is his reach
 
-Asked for flat on 2026-08-22: `drawScale` 1.711 → **2.2243**, so a 234 px animal
-is drawn at 304 against a 137 px fighter.
+Two passes, both asked for flat. 2026-08-22: `drawScale` 1.711 → **2.2243**, so a
+234 px animal is drawn at 304 against a 137 px fighter. 2026-08-23: another 5%,
+2.2243 → **2.3355**, which is **319 px**.
 
-Three things went with it, and the reasoning matters more than the numbers:
+Three things go with it every time, and the reasoning matters more than the
+numbers:
 
-* **`sizePx` 234 → 304.** The hurtbox comes off it, so the target grows with the
-  picture — the pairing this file keeps everywhere.
-* **`kickReachX` 260 → 338 and `chargeReachX` 168 → 218.** Both were *measured
-  off the drawing*; when the drawing grew 30% they had to, or the boxes would
-  have stopped where his hooves and chest used to be.
-* **Nothing measured in DEPTH moved** — `hitZ`, `kickReachZ`, `chargeReachZ`.
+* **`sizePx` 234 → 304 → 319.** The hurtbox comes off it, so the target grows
+  with the picture — the pairing this file keeps everywhere.
+* **`kickReachX` 260 → 338 → 355 and `chargeReachX` 168 → 218 → 229.** Both
+  were *measured off the drawing*; when the drawing grows they have to, or the
+  boxes would stop where his hooves and chest used to be.
+* **Nothing measured in DEPTH moves** — `hitZ`, `kickReachZ`, `chargeReachZ`.
   The belt is as deep as it was and a 2-D drawing does not get deeper when it
   gets taller.
+
+**That is the recipe for the next one too:** multiply the four numbers, leave the
+depths and the decision ranges alone.
 
 > ⚠️ **His decision ranges did not move.** `kickRange` (210) and
 > `chargeMinRange` (240) are about the fight's spacing, not about the drawing.
@@ -1712,7 +1847,7 @@ Three things went with it, and the reasoning matters more than the numbers:
 > which is a difficulty change, and it was not separately asked for.
 
 > ⚠️ **The texture is upscaled now.** 1.711 put the atlas on screen at almost
-> exactly 1:1, which is what the master was reduced *for*. At 2.2243 there is no
+> exactly 1:1, which is what the master was reduced *for*. At 2.3355 there is no
 > more detail in it to find, so he may read very slightly softer than the men.
 > The fix would be a bigger master through `shrink-master.py`, not a smaller
 > number here.
