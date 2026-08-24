@@ -144,6 +144,11 @@ function assetManifest() {
      game's folder the way her sprite sheets are. ⚠️ ASSET KEY `musicMosca`,
      spelled again in CONFIG.MUSIC_LOOP and in FlyBoss's `musicKey`. */
   if (CONFIG.MOSCA_TRACK) out.push({ key: 'musicMosca', src: CONFIG.MOSCA_TRACK, how: 'audio' });
+  /* EXTRA VOICES that play WITH a track -- the whistle over the street bed.
+     Walked out of CONFIG.MUSIC_LAYERS so declaring a layer is one entry there
+     and nothing here, the same bargain CONFIG.SFX already has. */
+  for (const list of Object.values(CONFIG.MUSIC_LAYERS || {}))
+    for (const L of list) out.push({ key: L.key, src: L.src, how: 'audio' });
   for (const [name, src] of Object.entries(CONFIG.SFX || {}))
     out.push({ key: 'sfx:' + name, src: src, how: 'audio' });
 

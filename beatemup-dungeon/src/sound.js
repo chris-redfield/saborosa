@@ -70,8 +70,16 @@ class Sound {
        so a track is decoded once however many times it is started. */
     this.buffers = {};
     this.decoding = {};
+    /* Keys whose decode has already FAILED once. Read only by the layer wait in
+       _startIfReady: an optional extra voice must never be able to hold the
+       track it accompanies hostage. */
+    this.failedDecode = {};
     this.track = null;         // which key `source` is playing
     this.source = null;
+    /* EXTRA VOICES STARTED WITH `source` AND STOPPED WITH IT -- the whistle over
+       the street bed. See _startIfReady() for why this is possible here and was
+       not in the flying dungeon. Each entry is { src, gain }. */
+    this.layerVoices = [];
     this.sfxGain = null;
     this.sfx = {};             // name -> decoded AudioBuffer
     /* LONG one-shots that may need stopping, by name -> { src, gain }. See
@@ -162,7 +170,16 @@ class Sound {
       if (buf) this.buffers[key] = buf;
       this._startIfReady();
     };
-    const fail = () => { delete this.decoding[key]; };
+    const fail = () => {
+      delete this.decoding[key];
+      /* ⚠️ REMEMBERED, AND THE TRACK IS POKED. Without both, a music LAYER that
+         cannot be decoded stops the thing it was supposed to accompany from
+         ever playing: _startIfReady waits for the layer, the wait is never
+         satisfied, and the street plays in silence because a whistle is
+         broken. */
+      this.failedDecode[key] = true;
+      this._startIfReady();
+    };
     try {
       const p = ctx.decodeAudioData(copy, done, fail);
       if (p && p.then) p.then(done, fail);
@@ -336,6 +353,23 @@ class Sound {
     const buffer = this.buffers[key];
     if (!buffer) { this._decode(key); return; }
 
+    /* ⚠️ EVERY LAYER MUST BE DECODED BEFORE ANYTHING STARTS. A layer that
+       arrived late would begin at whatever moment its decode happened to
+       finish, which is the one thing this whole arrangement exists to prevent.
+       Held back only while a decode is actually IN FLIGHT: if the asset is not
+       in the build at all, `_decode` is a no-op and `decoding` stays false, so
+       the bed plays on its own rather than never playing. */
+    const layers = (CONFIG.MUSIC_LAYERS && CONFIG.MUSIC_LAYERS[key]) || [];
+    for (const L of layers) {
+      if (this.buffers[L.key] || this.failedDecode[L.key]) continue;
+      this._decode(L.key);
+      if (this.decoding[L.key]) return;
+    }
+    /* ONE SCHEDULED MOMENT FOR ALL OF THEM, a hair in the future. Two
+       `start(0)` calls in the same JS turn are already close, but "close" is
+       not the promise being made here -- an explicit time is. */
+    const at = layers.length ? ctx.currentTime + 0.02 : 0;
+
     const s = ctx.createBufferSource();
     s.buffer = buffer;
     s.loop = true;
@@ -359,9 +393,93 @@ class Sound {
     const vol = (CONFIG.MUSIC_GAIN && CONFIG.MUSIC_GAIN[key]);
     this.musicGain.gain.value = this.volume * (vol == null ? 1 : vol);
     s.connect(this.musicGain);
-    s.start(0);
+    s.start(at);
     this.source = s;
     this.track = key;
+    for (const L of layers) this._startLayer(L, at);
+  }
+
+  /**
+   * A SECOND LOOPING VOICE UNDER THE SAME CLOCK -- the whistle over the street
+   * bed.
+   *
+   * ⚠️ THE "NO MIXER AT RUNTIME" RULE DOES NOT APPLY HERE, AND IT IS WORTH
+   * SAYING WHY BEFORE SOMEONE DELETES THIS. That rule is inherited from the
+   * flying dungeon and it is about `<audio>` ELEMENTS: three of those started
+   * together drift apart within a minute and the browser gives you no way to
+   * bind them, which is why both games resolve their layering offline. This
+   * game plays music through `AudioBufferSourceNode`, which is sample-accurate
+   * BY SPECIFICATION and scheduled against one audio clock. Two of them started
+   * at the same `currentTime` cannot drift -- there is no second clock to drift
+   * against. The constraint was never about layering; it was about the element.
+   *
+   * ⚠️ AND THE LAYER NEED NOT DIVIDE THE TRACK'S LOOP. The music lab flags a
+   * layer that does not, because it RENDERS to one file and the remainder gets
+   * spliced onto the head. Nothing is being rendered here: each voice loops
+   * itself cleanly at its own pinned length, and the two simply phase against
+   * each other -- which on this soundtrack is the feel rather than a fault (its
+   * own takes repeat at 2.09s and 2.22s inside a 6.15s arrangement). The
+   * whistle is 7.5735s over a 5.115s bed and is never in the same place twice.
+   *
+   * Its level is its OWN gain node rather than the music bus, because the bus
+   * carries the main track's trim and is put back to plain volume by
+   * stopMusic().
+   */
+  _startLayer(L, at) {
+    const ctx = this.ctx;
+    const buf = this.buffers[L.key];
+    // Missing is a legal state: see failedDecode. The track plays without it.
+    if (!ctx || !buf) return;
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    s.loop = true;
+    const want = (CONFIG.MUSIC_LOOP && CONFIG.MUSIC_LOOP[L.key]) || 0;
+    s.loopStart = 0;
+    s.loopEnd = want > 0 ? Math.min(want, buf.duration) : buf.duration;
+    const g = ctx.createGain();
+    const vol = (CONFIG.MUSIC_GAIN && CONFIG.MUSIC_GAIN[L.key]);
+    const full = vol == null ? 1 : vol;
+    /* ⚠️ A GATED LAYER STARTS SILENT AND IS RAISED BY THE GAME. It still PLAYS
+       from the first moment -- see setLayerOn for why it is never started and
+       stopped instead. */
+    g.gain.value = L.gated ? 0 : full;
+    g.connect(this.musicGain);
+    s.connect(g);
+    s.start(at);
+    this.layerVoices.push({ src: s, gain: g, key: L.key, full: full, on: !L.gated });
+  }
+
+  /**
+   * Fade a layer in or out WITHOUT stopping it.
+   *
+   * ⚠️ THE VOICE KEEPS RUNNING, AND THAT IS THE WHOLE POINT. Starting and
+   * stopping it would restart the melody from its first note every time, and
+   * would break the one property the layer exists to have: it is locked to the
+   * same audio clock as the bed and phases against it. Riding the gain means it
+   * fades UP wherever it happens to be -- which is what a layer coming out of a
+   * mix sounds like, rather than a cue being triggered.
+   *
+   * ⚠️ RAMPED, NOT SET. A gain jumped from 0 to 0.64 mid-note is a click, and
+   * on a sustained whistle it is a loud one.
+   *
+   * A no-op when it is already where it is being asked to go, so the caller can
+   * ask every frame -- which is what a gate reading the world has to do.
+   */
+  setLayerOn(key, on, fadeSec) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    for (const v of this.layerVoices) {
+      if (v.key !== key || v.on === !!on) continue;
+      v.on = !!on;
+      const t = ctx.currentTime;
+      const f = fadeSec == null ? 0.35 : fadeSec;
+      const g = v.gain.gain;
+      try {
+        g.cancelScheduledValues(t);
+        g.setValueAtTime(g.value, t);
+        g.linearRampToValueAtTime(on ? v.full : 0.0001, t + f);
+      } catch (e) { g.value = on ? v.full : 0; }
+    }
   }
 
   /**
@@ -382,6 +500,14 @@ class Sound {
     this.track = null;
     const t = this.ctx.currentTime;
     const f = fadeSec == null ? 0.25 : fadeSec;
+    /* ⚠️ THE LAYERS GO WITH IT. They ride the same bus, so the ramp below
+       already takes them down -- but nothing would ever STOP them, and the bus
+       comes back up for the next track. A whistle left running under the boss
+       theme is what that looks like. */
+    for (const v of this.layerVoices) {
+      try { v.src.stop(t + f + 0.02); } catch (e) { try { v.src.stop(); } catch (e2) {} }
+    }
+    this.layerVoices = [];
     try {
       const g = this.musicGain.gain;
       g.cancelScheduledValues(t);

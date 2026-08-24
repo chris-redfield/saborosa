@@ -52,6 +52,11 @@ class Title {
     this.walkT = -1;     /* -1 until he sets off, then ms into the crossing. It
                             doubles as the "not walking" flag for the same
                             reason `out` does below: one clock, one meaning. */
+    this.go = false;     /* Has the player asked for the walk? THE PRESS IS THE
+                            START OF THE WALK, not the end of the screen -- see
+                            update(). Separate from `walkT` because a press made
+                            while the name is still falling is REMEMBERED and
+                            spent the moment it lands, rather than ignored. */
     this.out = -1;       /* -1 until dismissed, then the fade-out clock.
                             IT DOUBLES AS THE "already going" FLAG: a second
                             press during the fade must not restart it, and a
@@ -60,21 +65,52 @@ class Title {
     this.done = false;
   }
 
-  /** Every frame it is up. Returns true on the frame the game should begin. */
+  /**
+   * Every frame it is up. Returns true on the frame the game should begin.
+   *
+   * ⚠️ THE PRESS STARTS THE WALK; THE WALK ENDS THE SCREEN. It used to be one
+   * step -- he set off on his own a beat after the name landed, and a press at
+   * any point dismissed the screen out from under him. Asked for 2026-08-24:
+   * the name lands, the screen WAITS, a press sends him across, and the game
+   * begins by itself once he is gone. So there is exactly one press on this
+   * screen and it buys the walk rather than skipping it.
+   *
+   * ⚠️ AN EARLY PRESS IS REMEMBERED, NOT IGNORED. It is still accepted from the
+   * first frame, before the name has arrived -- the hold is there to be looked
+   * at, not sat through, and a title screen that ignores input reads as one that
+   * has hung. It is `go` that is set; `_tickWalk` spends it the moment the name
+   * has landed. A screen that swallows presses and one that acts on them out of
+   * order are both worse than waiting a beat.
+   */
   update(dt, input) {
     this.t += dt * 1000;
     this._tickWalk(dt);
     if (this.out >= 0) {
       this.out += dt * 1000;
       if (this.out >= (CONFIG.titleFadeOutMs || 600)) { this.done = true; return true; }
-    } else if (input && input.takeAnyPress()) {
-      /* ACCEPTED FROM THE FIRST FRAME, before the name has even arrived. The
-         hold is there to be looked at, not to be sat through -- anyone who has
-         seen it once must be able to leave immediately, and a title screen that
-         ignores input for two seconds reads as one that has hung. */
-      this.out = 0;
+      return false;
     }
+    if (input && input.takeAnyPress()) this.go = true;
+    /* HE IS OFF THE EDGE: start the fade. It runs OVER the last of his walk --
+       he keeps going to `titleWalkEndXRel` underneath it, which is what that
+       number has always been for. Measured at `titleWalkExitXRel` instead so
+       the screen does not sit still for the three quarters of a second he
+       spends invisible between the two.
+       ⚠️ WITH NO WALK AT ALL (`titleWalk` false, or no sprite pack) there is
+       nothing to wait for and the press dismisses the screen directly, or the
+       game would be unstartable. */
+    const walking = CONFIG.titleWalk && this.sheets;
+    if (!walking) { if (this.go) this.out = 0; return false; }
+    if (this.walkT >= 0 && this.walkT >= this._walkExitAtMs()) this.out = 0;
     return false;
+  }
+
+  /** ms into the crossing when he has cleared the visible edge. */
+  _walkExitAtMs() {
+    const W = CONFIG.GAME_W;
+    const x0 = W * (CONFIG.titleWalkStartXRel != null ? CONFIG.titleWalkStartXRel : -0.12);
+    const exit = W * (CONFIG.titleWalkExitXRel != null ? CONFIG.titleWalkExitXRel : 1.06);
+    return (exit - x0) / Math.max(1, CONFIG.titleWalkSpeed || 210) * 1000;
   }
 
   /** 0..1 through the name's fade-in. 1 once it is fully up. */
@@ -156,6 +192,12 @@ class Title {
   _tickWalk(dt) {
     if (!CONFIG.titleWalk) return;
     if (this.walkT < 0) {
+      /* ⚠️ HE WAITS TO BE ASKED. This used to fire on the clock alone; `go` is
+         the press. `titleWalkAfterMs` still holds him until the name has
+         landed, so a press made DURING the drop does not send him out from
+         under falling type -- and a press made after it has landed sets him off
+         at once, because the test is already true. */
+      if (!this.go) return;
       const after = CONFIG.titleWalkAfterMs != null ? CONFIG.titleWalkAfterMs : 250;
       if (this.t < this._landedAtMs() + after) return;
       this.walkT = 0;

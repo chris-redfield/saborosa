@@ -315,6 +315,33 @@
     sound.play(K.sfx || 'coin', 1 + (K.rise || 0) * (t / until));
   }
 
+  /**
+   * THE WHISTLE IS THE BARATAS' SOUND: it is silent until one is alive on
+   * screen and fades out again when the last of them is gone.
+   *
+   * ⚠️ IT FADES THE LAYER, IT DOES NOT START AND STOP IT -- see
+   * Sound.setLayerOn(). The voice runs from the moment the bed does and is only
+   * ever turned up and down, so the melody surfaces wherever it happens to be
+   * instead of restarting on every roach.
+   *
+   * ⚠️ ASKED EVERY FRAME ON PURPOSE. A gate reading the world has to; `sound
+   * .setLayerOn` is a no-op when it is already where it is being asked to go,
+   * so there is no edge to detect here and no flag to leave stale. That is the
+   * opposite of `bossMusic()` above, which IS edge-triggered -- because its
+   * other branch calls `roomMusic()` and would fight the boss room every frame.
+   *
+   * ⚠️ IT IS ASKED FROM `update`, NOT FROM `loop`, so only the PLAY phase moves
+   * it. A death or a walk-out freezes it where it was rather than re-deciding
+   * over a screen with no fight on it -- and the layer is stopped with the bed
+   * on any route that leaves the level.
+   */
+  function whistleGate() {
+    const G = CONFIG.WHISTLE_GATE;
+    if (!G || !G.layer) return;
+    const on = crowd.anyOnScreen(G.kinds || [], stage.camX, G.marginPx);
+    sound.setLayerOn(G.layer, on, G.fadeSec);
+  }
+
   function roomMusic() {
     const r = stage.room();
     sound.playMusic((r && r.music) || 'music');
@@ -698,6 +725,9 @@
        after she arrived, which is inaudible, and revert one frame after she
        died, which is not. */
     bossMusic();
+    /* IN `update` AND NOT IN `loop`, so it is asked only while the fight is
+       running -- see whistleGate(). */
+    whistleGate();
 
     /* THE WALK-OUT IS A DOOR, NOT AN ENDING. Running out of segments with
        another room to go ('room') walks him off the right-hand edge and fades

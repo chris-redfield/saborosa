@@ -528,6 +528,29 @@ class Crowd {
   alive() { return this.list.filter(e => !e.dead); }
   cleared() { return this.alive().length === 0; }
 
+  /**
+   * Is anyone of these KINDS alive and within the shot? The whistle layer asks
+   * this -- see `whistleGate()` in game.js.
+   *
+   * ⚠️ ALIVE, NOT MERELY PRESENT. A corpse fading on the floor is not an enemy
+   * on screen; gating a sound on `list` would keep it up for the 0.8s a body
+   * takes to go, which is a sound that outlives its reason.
+   *
+   * ⚠️ AND THE MARGIN IS NOT SLOP. Enemies WALK IN from off the edge, so a test
+   * against the bare screen would snap on somewhere in the middle of an
+   * arrival. One `marginPx` either side means whatever is watching starts when
+   * they do.
+   */
+  anyOnScreen(kinds, camX, marginPx) {
+    const m = marginPx || 0;
+    const lo = camX - m, hi = camX + CONFIG.GAME_W + m;
+    for (const e of this.list) {
+      if (e.dead || kinds.indexOf(e.kind) < 0) continue;
+      if (e.x >= lo && e.x <= hi) return true;
+    }
+    return false;
+  }
+
   update(dt, player, bounds) {
     /* ===== THE ATTACK TOKEN =====================================================
        Count who is currently committed — winding up or mid-swing. If that is

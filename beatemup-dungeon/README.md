@@ -1032,7 +1032,8 @@ Three knobs and three pipelines.
 | `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
 | `TITLE_TRACK` | the title screen's theme — a 60s loop cut out of MIKE. Loaded under the key `musicTitle`. Unset = silent title screen |
 | `MOSCA_TRACK` | **the Mosca's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
-| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107, `musicMosca` 14.452. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
+| `MUSIC_LAYERS` | **extra voices started with a track and stopped with it**, by track key. `music` gets `musicWhistle` (the whistle over the street bed). Each entry is `{ key, src }`; the manifest walks it |
+| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107, `musicMosca` 14.452, `musicWhistle` 7.5735. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
 | `MUSIC_GAIN` | per-track level on the music bus, by asset key. `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
 | `musicVolume` | 0.55. ⚠️ The **bed** is the fixed point — it is balanced against the punches, so bring other tracks to it with `MUSIC_GAIN` rather than moving this |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
@@ -1291,7 +1292,24 @@ frame, before any of that has finished.
 | knob | what it does |
 |---|---|
 | `titleWalk` | `false` and the screen is just the photograph and the name |
-| `titleWalkAfterMs` | 250 — when he sets off, counted **from the name landing**, not from the top of the screen |
+| `titleWalkAfterMs` | 250 — ⚠️ **the earliest he may set off**, not when he does. The walk waits for a press (2026-08-24) |
+| `titleWalkExitXRel` | 1.06 — **where he counts as gone** and the fade begins. He keeps walking to `titleWalkEndXRel` (1.12) underneath it |
+
+> ⚠️ **The press starts the walk; the walk ends the screen** (2026-08-24). The
+> name lands, the screen waits, a press sends him across, and the game begins by
+> itself once he is off the edge. One press, and it *buys* the walk rather than
+> skipping it. A press made during the drop is **remembered**, not ignored —
+> `go` is set and spent the moment the name lands, so he never walks out from
+> under falling type.
+>
+> ⚠️ **The crossing is 7.2 s, and it is now a wait.** 1587 px at
+> `titleWalkSpeed` 210. Nobody sat through it before — the walk was scenery and
+> any press left immediately — but it is now the whole distance between a click
+> and the fight. The 210 is the **ending's** speed so the two walks match, and
+> there he only goes to the centre (~3.5 s); raising it here breaks that
+> pairing. Shorten the crossing instead (`titleWalkStartXRel` / `ExitXRel`) if
+> it needs to come down.
+
 | `titleWalkStartXRel` / `titleWalkEndXRel` | −0.12 / 1.12 — off one edge and clear of the other |
 | `titleWalkSpeed` | 210 px/s, the ending screen's, so the two walks match |
 | `titleWalkGroundYRel` | **derived, not chosen**: `(beltTopY + beltDepth * playerStartZRel) / 720` = 0.8806. His feet land exactly where they are on the frame the fight starts (y 634). Was 0.93 — 36 px too low. ⚠️ Written as the arithmetic so moving the belt or the spawn depth carries this with it |
@@ -1436,6 +1454,72 @@ one left-to-right** (2026-08-24).
 | `maxTilt` / `tiltEase` | 15° / 9 s⁻¹ — how far and how smoothly it banks into a climb or dive |
 | `marginPx` | 140 — how far past each screen edge one lives before it is recycled |
 | `alpha` | 0.92 — a touch back, so they sit *into* the plate |
+
+### Layering a second voice over a track
+
+The whistle plays **over** the street bed as its own looping source — not baked
+into it. Two `AudioBufferSourceNode`s started at the same scheduled
+`currentTime`, each pinned to its own length.
+
+```js
+MUSIC_LAYERS: { music: [{ key: 'musicWhistle', src: 'v2:.../whistle-song.ogg', gated: true }] }
+MUSIC_LOOP:   { music: 5.115, musicWhistle: 7.5735 }
+MUSIC_GAIN:   { musicWhistle: 0.64 }
+```
+
+> ⚠️ **The "no mixer at runtime" rule does not apply, and this is why.** That
+> rule is inherited from the flying dungeon and it is about `<audio>`
+> **elements** — three of those started together drift apart within a minute.
+> Music here plays through `AudioBufferSourceNode`, which is sample-accurate by
+> specification and scheduled against **one** audio clock. Two of them started
+> at the same `currentTime` cannot drift; there is no second clock to drift
+> against. The constraint was never about layering — it was about the element.
+
+> ⚠️ **A layer need not divide the track's loop.** The music lab flags one that
+> doesn't, because it *renders* to a single file and the remainder splices onto
+> the head. Nothing is rendered here: each voice loops itself cleanly and the
+> two phase against each other. 7.5735 s over 5.115 s means the whistle is never
+> in the same place twice — which on this soundtrack is the feel, not a fault.
+
+#### The whistle is the baratas' sound — `WHISTLE_GATE`
+
+`gated: true` means the voice starts **silent**. It comes up while a `barata` or
+`barata2` is alive on screen and fades out again when the last one is gone.
+
+| knob | |
+|---|---|
+| `kinds` | `['barata', 'barata2']` |
+| `marginPx` | 160 — ⚠️ **not slop.** They *walk in* from off the edge; a bare screen test would snap the whistle on mid-arrival |
+| `fadeSec` | 0.45 both ways |
+
+> ⚠️ **The voice is never started and stopped, only faded.** Restarting it would
+> play the melody from its first note every time a roach walked on, and would
+> throw away the one property the layer exists to have — it is locked to the
+> bed's clock and phases against it. Riding the gain means it surfaces *wherever
+> it happens to be*, which is a layer coming out of a mix rather than a cue
+> being triggered.
+
+`whistleGate()` is asked **every frame**, and that is correct: a gate reading the
+world has to be, and `setLayerOn` is a no-op when it is already where it is being
+asked to go. That is the opposite of `bossMusic()`, which *is* edge-triggered —
+because its other branch calls `roomMusic()` and would fight the boss room's
+theme every frame. It is called from `update()` rather than `loop()`, so only
+the play phase moves it.
+
+**Rules the implementation keeps:**
+
+- **Every layer must be decoded before anything starts.** A layer that arrived
+  late would begin at whatever moment its decode finished — the one thing the
+  arrangement exists to prevent.
+- **…but an optional voice can never hold its track hostage.** A failed decode
+  is remembered (`failedDecode`) and the bed plays without it. Otherwise a
+  broken whistle means a silent street.
+- **Layers stop with the track.** They ride the same bus, so the fade takes them
+  down — but nothing would ever *stop* them, and the bus comes back up for the
+  next track. A whistle left running under the boss theme is what that looks
+  like.
+- **Each layer's level is its own gain node**, not the bus — the bus carries the
+  main track's trim and `stopMusic()` resets it.
 
 ### Who owns a track — room, or boss
 

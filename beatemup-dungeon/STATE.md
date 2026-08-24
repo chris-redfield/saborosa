@@ -1070,6 +1070,121 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The whistle plays OVER the bed, and nothing was baked
+
+**A SECOND LOOPING VOICE AT RUNTIME**, asked for 2026-08-24: the whistle plays
+together with the gameplay song, looped together, and NOT combined into one file
+unless there was no other way.
+
+**THERE WAS ANOTHER WAY, AND THE REASON MATTERS MORE THAN THE FEATURE.** The
+"ONE FILE, ONE LOOP, NO MIXER AT RUNTIME" rule at the top of the music section
+is inherited from the flying dungeon and it is about `<audio>` ELEMENTS: three
+of those started together drift apart within a minute and the browser gives you
+no way to bind them. This game plays music through `AudioBufferSourceNode`,
+which is **sample-accurate by specification** and scheduled against ONE audio
+clock. Two started at the same `currentTime` cannot drift -- there is no second
+clock to drift against. **The constraint was never about layering; it was about
+the element**, and it had been carried for months as though it were about
+layering. So the whistle stays whole and uncut and the bed stays the approved
+mix.
+
+⚠️ **AND A LAYER NEED NOT DIVIDE THE TRACK'S LOOP.** The lab flags one that does
+not, because it RENDERS to a single file and the remainder splices onto the
+head. Nothing is rendered here: each voice loops itself cleanly at its own
+pinned length and the two PHASE against each other. 7.5735s over 5.115s means
+the whistle is never in the same place twice -- which on a soundtrack already
+built from takes repeating at 2.09s and 2.22s inside a 6.15s arrangement is the
+feel rather than a fault.
+
+**NOTHING WAS CUT, AND THAT WAS CHECKED RATHER THAN ASSUMED.** The whistle loops
+on itself as delivered -- its last second decays and its first builds, so the
+wrap is a breath: seam step 0.0019 against a near-silent head, longest quiet
+stretch across it 380ms. A crop was considered and rejected on evidence: the
+best 5.115s window inside it scores **0.23** for seam similarity against MIKE's
+0.64, because it is a through-composed melody rather than a repeating phrase.
+There is nowhere good to cut it.
+
+**FOUR RULES THE IMPLEMENTATION KEEPS**, and the second one is the one that
+would have bitten:
+* Every layer is decoded BEFORE anything starts, or it begins at whatever moment
+  its decode happened to finish.
+* ⚠️ **But an optional voice must never hold its track hostage.** A failed
+  decode is remembered (`failedDecode`) and the bed plays without it -- the
+  first version would have left the street SILENT because a whistle was broken.
+* Layers are STOPPED with the track. They ride the same bus so the fade takes
+  them down, but nothing would ever stop them and the bus comes back up for
+  whatever plays next: a whistle under the boss theme is what that looks like.
+* Each layer's level is its own gain node, not the bus -- the bus carries the
+  main track's trim and `stopMusic()` puts it back to plain volume.
+
+**AND IT IS THE BARATAS' SOUND.** Asked for immediately after the layer was
+built: silent by default, up only while a cockroach is on screen. `gated: true`
+on the layer, `WHISTLE_GATE` for the rest.
+
+⚠️ **THE VOICE IS NEVER STARTED AND STOPPED, ONLY FADED, AND THAT IS THE WHOLE
+DESIGN.** Restarting it would play the melody from its first note every time a
+roach walked on -- and would throw away the one property the layer exists to
+have: it is locked to the bed's clock and phases against it. Riding the gain
+means it surfaces WHEREVER IT HAPPENS TO BE, which is a layer coming out of a
+mix rather than a cue being triggered.
+
+⚠️ **THE MARGIN IS NOT SLOP.** Baratas WALK IN from off the edge; a bare screen
+test would snap the whistle on somewhere in the middle of an arrival. 160px
+either side means it starts when they do. And the test is ALIVE, not present --
+gating on `crowd.list` would hold it up for the 0.8s a corpse takes to fade,
+which is a sound outliving its reason.
+
+**ASKED EVERY FRAME, WHICH IS THE OPPOSITE OF `bossMusic()` AND BOTH ARE
+RIGHT.** A gate reading the world has to ask every frame, and `setLayerOn` is a
+no-op when it is already where it is being asked to go -- so there is no edge to
+detect and no flag to leave stale. `bossMusic()` must be edge-triggered because
+its other branch calls `roomMusic()`, which would fight the boss room's theme
+every frame. The difference is whether the "off" branch is inert.
+
+⚠️ It is called from `update()` and not from `loop()`, so only the PLAY phase
+moves it -- it was written into `loop()` first, where it would have re-decided
+over the death screen and the tally.
+
+**LEVEL: 0.64 (0.8 FIRST, TAKEN DOWN 20% ON HEARING IT), AND NOT BECAUSE IT IS
+QUIET.** Measured, the whistle is -16.4 dBFS
+RMS against the bed's -16.9 -- nearly identical. But one is a MELODY and the
+other percussion, and matched by RMS a melody sits in FRONT of a groove rather
+than on it.
+
+### The title screen's press moved from the end to the start
+
+**THE NAME LANDS, THE SCREEN WAITS, A PRESS SENDS HIM ACROSS, AND THE GAME
+BEGINS BY ITSELF ONCE HE IS GONE.** Asked for 2026-08-24. It used to be one
+step: he set off on his own a beat after the name landed, and a press at any
+point dismissed the screen out from under him. There is still exactly one press
+on this screen -- it now BUYS the walk rather than skipping it.
+
+**AN EARLY PRESS IS REMEMBERED, NOT IGNORED.** It is still accepted from the
+first frame, before the name has arrived, because the hold is there to be looked
+at rather than sat through and a title screen that ignores input reads as one
+that has hung. What it sets is `go`; `_tickWalk` spends it the moment the name
+has landed, so he never walks out from under falling type. **A screen that
+swallows presses and one that acts on them out of order are both worse than
+waiting a beat.**
+
+**`titleWalkExitXRel` IS NEW AND IS NOT `titleWalkEndXRel`.** He counts as GONE
+at 1.06 and the fade starts there; he keeps walking to 1.12 underneath it, which
+is what that number has always been for. 1.12 is 154px past the edge -- three
+times his half-width -- which as decoration costs nothing and as a WAIT would be
+366ms of a still title screen with nobody on it.
+
+⚠️ **THE CROSSING IS 7.2 SECONDS AND THAT IS NOW A WAIT RATHER THAN A
+DECORATION.** 1587px at `titleWalkSpeed` 210. Nobody sat through it before,
+because the walk was scenery and any press left immediately; now it is the whole
+distance between a click and the fight. The speed is 210 because it MATCHES THE
+ENDING'S, where he only walks to the centre (~3.5s) -- so raising it here breaks
+that pairing. Flagged rather than changed: this is a feel decision and it is not
+mine to make silently.
+
+⚠️ **`titleWalkRepeatMs` IS DEAD** and kept at 0. It was the gap before he came
+round again; the FIRST crossing now ends the screen, so a second can never be
+reached -- and above 0 it would also wrap the clock the exit test reads.
+
 ### The title walk lines up with the fight
 
 `titleWalkGroundYRel` was 0.93 of the canvas -- y 670 -- and in the fight his

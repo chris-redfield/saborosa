@@ -68,7 +68,7 @@ const CONFIG = {
        submission build. Everything below is dead while it is false,
        and so is the number-key ROOM JUMP, which is refused in input.js as well
        as here (see the note there). */
-    on: true,
+    on: false,
     /* vs the real string's 4 / 5 / 6 / 4 / 9.
 
        ⚠️ THIS IS THE ONE THING THAT MAKES A DEV SESSION UNABLE TO JUDGE THE
@@ -3419,9 +3419,24 @@ const CONFIG = {
   /* When he sets off, in ms AFTER THE NAME HAS FINISHED FALLING -- not after
      the screen opened. Retiming the drop therefore moves him with it, and the
      beat between the two stays the beat it was tuned to. */
+  /* ⚠️ THE WALK NOW WAITS FOR A PRESS, so this is no longer "when he sets off"
+     -- it is the EARLIEST he may. Changed 2026-08-24: the name lands, the
+     screen waits, a press sends him across, and the game begins by itself once
+     he is gone. A press made DURING the drop is remembered and spent here, so
+     he never walks out from under falling type; a press after the name has
+     landed sets him off at once, because this test is already true. */
   titleWalkAfterMs: 250,
   titleWalkStartXRel: -0.12,   // off the left edge, so he walks ON
   titleWalkEndXRel: 1.12,      // and keeps going until he is clear of the right
+  /* WHERE HE COUNTS AS GONE, and the fade to the fight begins. He keeps walking
+     to `titleWalkEndXRel` UNDERNEATH it, which is what that number has always
+     been for.
+
+     ⚠️ IT IS NOT THE SAME NUMBER, AND THE GAP IS THE POINT. 1.12 is 154px past
+     the edge on a 1280 canvas -- three times more than his half-width needs --
+     which as a WAIT would be three quarters of a second of a still title
+     screen with nobody on it. As over-travel under a fade it costs nothing. */
+  titleWalkExitXRel: 1.06,
   titleWalkSpeed: 210,         // px/s -- the ending's, so the two walks match
   /* HIS FEET, down the canvas -- and it is DERIVED, not chosen. Asked for
      2026-08-24: "na intro o coco passa um pouquinho mais pra cima no y (ou z):
@@ -3445,6 +3460,12 @@ const CONFIG = {
      still after that, which is what was asked for. Set it to a couple of
      seconds if a title left sitting for minutes ever wants to keep moving --
      the crossing itself takes about seven seconds at these numbers. */
+  /* ⚠️ DEAD SINCE 2026-08-24 AND KEPT AT 0. It was the gap before he came round
+     again on a screen that waited for a press; now the FIRST crossing ends the
+     screen, so a second one can never be reached. Above 0 it would also make
+     `_walker` wrap the clock the exit test reads. Left in place because the
+     drawing side still honours it and it is one line to revive if the title
+     ever stops being a walk-and-go. */
   titleWalkRepeatMs: 0,
 
   /* --- THE VERMIN, and BOTH screens that crawl on them ----------------------
@@ -3724,9 +3745,78 @@ const CONFIG = {
      both scripts print the value to paste:
        music      tools/crop-beat-trilha.py
        musicTitle tools/cut-song-loop.py                                     */
+  /* --- THE WHISTLE OVER THE STREET BED --------------------------------------
+     A SECOND LOOPING VOICE, STARTED WITH A TRACK AND STOPPED WITH IT. Asked for
+     2026-08-24: the whistle plays together with the gameplay song, looped
+     together, and NOT baked into one file unless there was no other way.
+
+     There was another way, and the reason is worth keeping: the "ONE FILE, ONE
+     LOOP, NO MIXER AT RUNTIME" rule at the top of this section is inherited
+     from the flying dungeon and it is about `<audio>` ELEMENTS -- three of
+     those started together drift apart within a minute. This game plays music
+     through `AudioBufferSourceNode`, which is sample-accurate by specification
+     and scheduled against ONE audio clock. Two of them started at the same
+     `currentTime` cannot drift; there is no second clock to drift against. So
+     the whistle stays a whole, uncut file and the bed stays the approved mix.
+
+     ⚠️ IT DOES NOT DIVIDE THE BED'S LOOP AND DOES NOT NEED TO. 7.5735s over
+     5.115s: the two phase against each other and the whistle is never in the
+     same place twice. The music lab flags a layer that does not divide because
+     it RENDERS to one file and the remainder splices onto the head -- nothing
+     is rendered here, each voice loops itself cleanly, and this soundtrack is
+     already built out of layers that do not divide (its own takes repeat at
+     2.09s and 2.22s inside a 6.15s arrangement).
+
+     ⚠️ IT IS ON `music` ONLY, which is the request: the street bed. The horse's
+     song and the title theme are finished pieces and are not accompanied.
+
+     Keyed by TRACK, listing { key, src } -- the manifest walks this for the
+     build, and `MUSIC_LOOP` / `MUSIC_GAIN` below carry the layer's own wrap and
+     level under the same asset key everything else uses. */
+  MUSIC_LAYERS: {
+    music: [
+      { key: 'musicWhistle', src: 'v2:beatemup-dungeon/audio/whistle-song.ogg',
+        gated: true },
+    ],
+  },
+
+  /* --- WHAT THE WHISTLE IS FOR ----------------------------------------------
+     ⚠️ IT IS THE BARATAS' SOUND. Asked for 2026-08-24, immediately after the
+     layer was built: "leave it mute, and make it appear only when the cockroach
+     enemies are on screen." So `gated: true` above -- the voice starts SILENT
+     and game.js raises it while one of these kinds is alive in the shot.
+
+     ⚠️ THE VOICE IS NEVER STARTED AND STOPPED, ONLY FADED. Restarting it would
+     play the melody from its first note every time a roach walked on, and would
+     throw away the one property the layer exists to have: it is locked to the
+     bed's clock and phases against it. Riding the gain means it comes UP
+     wherever it happens to be -- a layer surfacing out of a mix rather than a
+     cue being triggered. See Sound.setLayerOn().
+
+     `WHISTLE_GATE.marginPx` IS NOT SLOP. Baratas WALK IN from off the edge, so
+     a bare screen test would snap the whistle on somewhere in the middle of an
+     arrival. One screen-width margin either side means it starts when they do.
+
+     `fadeSec` is the ramp both ways. Long enough not to click on a sustained
+     whistle, short enough that it is clearly THEIR sound. */
+  WHISTLE_GATE: {
+    layer: 'musicWhistle',
+    kinds: ['barata', 'barata2'],
+    marginPx: 160,
+    fadeSec: 0.45,
+  },
+
   MUSIC_LOOP: {
     music: 5.115,
     musicTitle: 60.107,
+    /* THE WHOLE FILE, uncut. It loops on itself acceptably as delivered: the
+       last second decays and the first builds, so the wrap is a breath rather
+       than a splice -- measured, the seam step is 0.0019 against a head that is
+       near-silent anyway, and the longest quiet stretch across it is 380ms. No
+       crop tool was run on it and none is wanted; a cut through a
+       through-composed melody has nowhere good to land (the best 5.115s window
+       in it scores 0.23 for seam similarity, against 0.64 for MIKE). */
+    musicWhistle: 7.5735,
     /* ⚠️ NOT OURS TO RE-DERIVE: this is `loopMs` out of tools/music-lab.html,
        which is the flying dungeon's arrangement, in seconds. That mix is
        14.452s and the Opus container says 14.4585 -- 6.5ms of padding, which
@@ -3810,6 +3900,17 @@ const CONFIG = {
   MUSIC_GAIN: {
     musicBoss: 0.85,
     musicTitle: 2.6,
+    /* ⚠️ UNDER THE BED ON PURPOSE, AND NOT BECAUSE IT IS QUIET. Measured, the
+       whistle is -16.4 dBFS RMS against the bed's -16.9 -- they arrive at
+       almost exactly the same level. But one is a MELODY and the other is
+       percussion, and matched by RMS a melody sits in front of a groove rather
+       than on it. 0.8 was the first guess and it was 20% too present in play --
+       0.64 is that, heard and taken down. The bed's own level is still the fixed
+       point and does not move; this is the knob that does.
+
+       ⚠️ IT IS ITS OWN GAIN NODE, not the music bus. The bus carries the main
+       track's trim and stopMusic() puts it back to plain volume. */
+    musicWhistle: 0.64,
   },
 
   /* --- Sound effects -------------------------------------------------------
