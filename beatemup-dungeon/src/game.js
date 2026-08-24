@@ -157,15 +157,42 @@
     if (CONFIG.LOGO && CONFIG.LOGO.on) {
       phase = 'logo';
       logo.reset();
+      frontMusic();
       last = performance.now();
       requestAnimationFrame(loop);
     } else if (CONFIG.title) {
       phase = 'title';
+      frontMusic();
       last = performance.now();
       requestAnimationFrame(loop);
     } else {
+      /* Straight into the fight: no front screen, so no front theme. start()
+         asks for the room's own music a moment later. */
       start();
     }
+  }
+
+  /**
+   * The theme the FRONT OF THE GAME plays -- the logo screen and the title
+   * behind it. One call covers both because they are one moment: the music
+   * carries across the fade rather than starting again on the second screen.
+   *
+   * ⚠️ IT IS ASKED FOR ON THE LOGO, ONE SCREEN EARLY, AND THAT IS THE POINT.
+   * No browser will play audio before the visitor has interacted with the page,
+   * and on a cold boot the first interaction is the press that LEAVES the title
+   * -- so a theme asked for on the title itself would never be heard on a first
+   * run. Asked for here, a press that skips the logo (armMs 250) unlocks the
+   * context with the title still to come, and `wanted` in sound.js does the
+   * rest. A player who sits through the logo still hears nothing until they
+   * have played once; that is the browser's rule and the only way around it
+   * costs the player a press.
+   *
+   * ⚠️ SAFE TO CALL TWICE. playMusic() is a no-op when asked for the track
+   * already playing, so this cannot restart the theme mid-screen.
+   */
+  function frontMusic() {
+    if (CONFIG.TITLE_TRACK) sound.playMusic('musicTitle');
+    else sound.stopMusic(0.4);
   }
 
   /**
@@ -201,12 +228,17 @@
     if (viaLogo) logo.reset();
     /* The bed belongs to the level, not to the front screen -- it is started by
        start() and has to stop here or it would play under the title and then be
-       started a second time on the next run.
+       started a second time on the next run. Switching tracks IS the stop:
+       Sound only ever holds one music source.
 
-       ⚠️ THE TITLE SCREEN IS SILENT ON PURPOSE. The main game's theme (MIKE)
-       was put here on 2026-08-22 and taken out the same day -- it did not suit
-       the screen. Do not re-propose it. */
-    sound.stopMusic(0.4);
+       ⚠️ THE TITLE SCREEN WAS SILENT ON PURPOSE UNTIL 2026-08-24. MIKE was put
+       here on 2026-08-22, taken out the same day for not suiting the screen,
+       and the note that stood here said not to re-propose it. The user asked
+       for it back, and what is there now is not what was tried: a 60s loop cut
+       out of the fullest part of the song rather than the whole 4m10s track
+       from its quiet opening. See CONFIG.TITLE_TRACK. `TITLE_TRACK` unset takes
+       the silent screen back, and frontMusic() is the one place to look. */
+    frontMusic();
     phase = viaLogo ? 'logo' : 'title';
     phaseT = 0;
     input.flush();

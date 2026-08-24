@@ -103,9 +103,21 @@ class Combat {
   /**
    * Resolve the player's live punch against the crowd.
    *
-   * Only the FIRST target in a swing is struck (`hasHit` closes the box), which
-   * is the genre default: a punch hits a person, not a row of them. A sweeping
-   * attack that hits everyone would be a different move with a different name.
+   * ONE SWING, ONE BODY -- unless the def says `sweep`. The nearest valid
+   * target is struck and `hasHit` closes the box, which is the genre default: a
+   * punch hits a person, not a row of them.
+   *
+   * ⚠️ `sweep` IS THE DIFFERENT MOVE THAT NOTE USED TO SAY WOULD BE NEEDED.
+   * Added 2026-08-24, on both finishers only: the last hit of a string catches
+   * EVERYTHING in its box. That is the whole point of a finisher in this genre
+   * -- the string is what you do to one enemy, the ending is what buys you room
+   * when three of them have walked up. The plain links are untouched, so mashing
+   * still cannot clear a crowd.
+   *
+   * ⚠️ IT IS STILL ONE HIT PER SWING, NOT ONE PER FRAME. `hasHit` closes the
+   * box after the sweep exactly as it does after a single connect, so an active
+   * window sweeps once and then goes inert. Without that the finisher would
+   * re-hit everyone every frame for the whole 100ms window.
    */
   playerHits(player, crowd, boss, props) {
     const box = player.hitbox();
@@ -131,20 +143,33 @@ class Combat {
        ⚠️ A BARREL CAN THEREFORE STEAL A PUNCH from an enemy standing behind it,
        because only the NEAREST target is hit. That is the genre's behaviour and
        it is why a barrel breaks in one blow: the punch is not wasted, it is
-       spent on the thing that was in the way. */
+       spent on the thing that was in the way.
+
+       ⚠️ EXCEPT ON A `sweep`, WHICH TAKES THE BARREL AND THE ENEMY BOTH. That
+       follows from the move rather than being a rule about barrels, and it is
+       the right way round: a finisher big enough to catch three people is big
+       enough to go through the crate they were standing behind. */
     let targets = boss ? crowd.list.concat([boss]) : crowd.list;
     if (props) targets = targets.concat(props.targets());
+    /* THE TEST IS THE SAME EITHER WAY, and that is deliberate: sweeping does not
+       reach further or ignore height, it only stops discarding everything but
+       the closest. A sweep that used a different box would be a second geometry
+       to keep in step with the debug overlay. */
+    const sweep = !!box.def.sweep;
+    const struck = [];
     let best = null, bestD = Infinity;
     for (const e of targets) {
       if (!e.vulnerable()) continue;
       // Airborne fighters are out of reach of a ground punch. Cheap, and it is
       // what makes the jump worth having.
-      if (Math.abs(e.jumpY - player.jumpY) > CONFIG.verticalReach) continue;
+      if (Math.abs(e.jumpY - player.jumpY) > box.reachY) continue;
       if (!e.overlaps(box)) continue;
+      if (sweep) { struck.push(e); continue; }
       const d = Math.abs(e.x - player.x);
       if (d < bestD) { bestD = d; best = e; }
     }
-    if (!best) return;
+    if (best) struck.push(best);
+    if (!struck.length) return;
     player.atk.hasHit = true;
     /* DEV MODE overrides the damage and nothing else -- the reach, the timing,
        the knockdown and the combo all behave normally, so what is being tested
@@ -156,8 +181,32 @@ class Combat {
     const dmg = (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.punchDamage != null)
       ? CONFIG.DEV.punchDamage
       : box.def.damage;
-    const wasDead = best.dead;
-    best.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+    /* EVERY STRUCK BODY TAKES THE FULL BLOW. A sweep is not a blast that falls
+       off with distance -- it is one swing that happened to catch three people,
+       and each of them was hit by it. Splitting the damage would make the
+       finisher WORSE the more it connected with, which is backwards. */
+    for (const t of struck) {
+      const wasDead = t.dead;
+      t.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+      if (this.stats) {
+        /* ⚠️ THE ATTACK OBJECT IS PASSED so a sweep counts as ONE connected
+           swing however many it caught -- accuracy is hits/swings and would
+           otherwise read 300%. The damage still accumulates per body. */
+        this.stats.hit(dmg, player.atk);
+        // The kill is read AFTER the blow, and only on the transition: `dead`
+        // stays true while the body falls and fades, so testing it alone would
+        // score one death every frame of the fall.
+        // ⚠️ `scores` KEEPS BARRELS OFF THE BOARD. Everything else this can hit
+        // is a fighter; a smashed barrel would otherwise count as an enemy
+        // downed.
+        if (!wasDead && t.dead && t.scores !== false) this.stats.killed(t.kind);
+      }
+      /* ONE MARK PER BODY, which is the point of the move being visible. The
+         freeze does NOT stack -- _impact takes the longest pending one rather
+         than summing, so catching three people is one held moment and not three
+         in a row. */
+      this._impact(player, t, box.def.pose, true);
+    }
     /* THE SOUND OF IT, fired here rather than in _impact() because _impact is
        shared with the blows the ENEMIES land on the player, and this one is the
        player connecting.
@@ -180,7 +229,11 @@ class Combat {
          THE FINISHER IS NOT DETUNED. The rising pitch exists to keep four
          copies of one sample from reading as a stuck record; the finisher is
          heard once, against three that were not it, so there is nothing for it
-         to be told apart from. */
+         to be told apart from.
+
+       ⚠️ ONCE, NOT ONCE PER BODY. A sweep that caught three enemies is one
+       punch connecting; three copies of the same sample in the same frame is
+       not three punches, it is a flanged one. */
       if (player.atk.last) {
         this.sound.play('comboFinish');
       } else {
@@ -188,16 +241,6 @@ class Combat {
         this.sound.play('hit', 1 + step * (player.comboIndex || 0));
       }
     }
-    if (this.stats) {
-      this.stats.hit(dmg);
-      // The kill is read AFTER the blow, and only on the transition: `dead`
-      // stays true while the body falls and fades, so testing it alone would
-      // score one death every frame of the fall.
-      // ⚠️ `scores` KEEPS BARRELS OFF THE BOARD. Everything else this can hit is
-      // a fighter; a smashed barrel would otherwise count as an enemy downed.
-      if (!wasDead && best.dead && best.scores !== false) this.stats.killed(best.kind);
-    }
-    this._impact(player, best, box.def.pose, true);
   }
 
   /**
@@ -238,7 +281,7 @@ class Combat {
       const box = e.hitbox();
       if (!box) continue;
       if (!player.vulnerable()) continue;
-      if (Math.abs(player.jumpY - e.jumpY) > CONFIG.verticalReach) continue;
+      if (Math.abs(player.jumpY - e.jumpY) > box.reachY) continue;
       if (!player.overlaps(box)) continue;
       e.atk.hasHit = true;
       /* LIFT AND KNOCKDOWN COME FROM THE DEF NOW, and used to be hardcoded 0

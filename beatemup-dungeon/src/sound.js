@@ -23,9 +23,11 @@
  * container says 5.1215s for a mix that is 5.1150s of music. Left alone that is
  * six milliseconds of silence inserted every five seconds: an audible tick, and
  * one you would go looking for in the music rather than in the decoder. So
- * loopStart/loopEnd are set from CONFIG.musicLoopSec, which is the `--length`
- * tools/crop-beat-trilha.py was last run with. If the mix is re-cropped, that
- * number moves with it.
+ * loopStart/loopEnd are set from CONFIG.MUSIC_LOOP[key], which is the
+ * `--length` that track's cutter was last run with. If a mix is re-cropped,
+ * that number moves with it. A track with no entry is not pinned and loops at
+ * the end of its own buffer -- which is right for a finished song and wrong for
+ * anything cropped to a downbeat.
  *
  * ⚠️ IT STARTS WITH THE GAME, NOT WITH THE PAGE. boot() sits on a progress bar
  * while several MB of art decodes; music under a bar that might stall reads as
@@ -273,13 +275,15 @@ class Sound {
        Clamped so a wrong CONFIG number cannot ask for a loop past the end of
        the buffer, which throws in some engines and silently plays nothing in
        others. */
-    /* ⚠️ THE PIN IS THE LEVEL BED'S, NOT EVERY TRACK'S. `musicLoopSec` exists
-       because that bed is six seconds long and a few ms of codec padding at the
-       wrap is an audible tick every six seconds. The boss theme is four and a
-       half MINUTES and was never cropped to a downbeat, so pinning it to some
-       other track's loop length would cut it off after six seconds -- which is
-       exactly what happens if this is written as one rule for both. */
-    const want = (key === 'music') ? (CONFIG.musicLoopSec || 0) : 0;
+    /* ⚠️ THE PIN BELONGS TO THE TRACK, WHICH IS WHY THIS IS A LOOKUP AND NOT A
+       TEST. It was `key === 'music'` until 2026-08-24, because the only pinned
+       track was the bed and the horse's 4m39s song would have been cut off
+       after six seconds by the bed's crop. That guard was right about the
+       symptom and wrong as a rule: the title theme is ALSO a cropped loop, and
+       under the old test it would have gone unpinned and ticked once a minute.
+       Absent from the map means "loops at its own end", which is what a
+       finished song wants and what a cropped one never does. */
+    const want = (CONFIG.MUSIC_LOOP && CONFIG.MUSIC_LOOP[key]) || 0;
     s.loopStart = 0;
     s.loopEnd = want > 0 ? Math.min(want, buffer.duration) : buffer.duration;
     /* Per-track level, so a song mixed hotter than the bed does not have to be

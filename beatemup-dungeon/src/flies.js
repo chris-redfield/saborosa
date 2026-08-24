@@ -15,22 +15,37 @@
  * well clear of that line so one is never seen grazing the back wall.
  *
  * THE MOTION, in one paragraph: a fly holds a heading for a fraction of a
- * second and then picks another. The horizontal component is ALWAYS leftward
- * (re-rolled between 0.55x and 1.45x of `speed`), so it can never double back
- * -- the erratic part is the vertical dart, which flips sign freely. On top of
- * that sits a fast micro-buzz in y, and the sprite banks into whichever way it
- * is climbing or diving. It bounces off the top and bottom of its band.
+ * second and then picks another. The horizontal component ALWAYS runs the way
+ * that fly is going (re-rolled between 0.55x and 1.45x of `speed`), so it can
+ * never double back -- the erratic part is the vertical dart, which flips sign
+ * freely. On top of that sits a fast micro-buzz in y, and the sprite banks into
+ * whichever way it is climbing or diving. It bounces off the top and bottom of
+ * its band.
+ *
+ * ⚠️ `dir` IS ROLLED ONCE AND KEPT, LIKE `size`. A fly is a leftward fly or a
+ * rightward one for its whole life, including across a recycle -- that is what
+ * makes the two counts mean anything. Nothing ever flips it: a fly that turned
+ * round mid-shot would read as one that had noticed the camera.
  *
  * WORLD X, SCREEN Y. x is the same axis the fighters and the plate use, at
  * parallax 1.0, so a fly stays where it is in the street while the camera
  * travels past it. y is screen space, because the band is defined against the
  * canvas -- there is no "up" in world coords in this game, only `beltTopY`.
  *
- * RECYCLING RATHER THAN WRAPPING. Reach the left margin and a fly is moved to
- * just past the right one at a fresh height -- so they read as a procession
- * crossing the shot, always in the same direction, rather than as a few fixed
- * paths on a loop. The margins are wide enough that the swap is always
- * off-camera.
+ * RECYCLING RATHER THAN WRAPPING. Reach the margin it is heading for and a fly
+ * is moved to just past the opposite one at a fresh height -- so they read as a
+ * procession crossing the shot rather than as a few fixed paths on a loop. The
+ * margins are wide enough that the swap is always off-camera.
+ *
+ * BOTH WAYS ACROSS, since 2026-08-24. `count` flies cross leftward and
+ * `countRight` cross rightward, and the rightward ones are the same fly with
+ * every x term negated -- same steering, same band, same recycle, mirrored.
+ * They are drawn h-flipped, because the art has a nose and it points left.
+ *
+ * ⚠️ A CROSSING SKY IS NOT A MILLING ONE. Two directions read as traffic
+ * because each fly still commits to its own; the moment `dir` becomes something
+ * a fly re-rolls, the band turns into a swarm hovering over the fight, which is
+ * a different (and much busier) effect than the one that was asked for.
  *
  * ⚠️ `CONFIG.FLIES.count` IS A POPULATION, NOT A RATE. The recycle happens on
  * the same frame the fly leaves, so that many are in the band at ALL times and
@@ -63,33 +78,47 @@ class Flies {
     this.on = !!(c.on && room && room.flies);
     if (!this.on) return;
     const x0 = camX || 0;
-    for (let i = 0; i < (c.count || 0); i++) {
-      /* Spread across the view plus one right margin, so one of them is
-         typically just off-camera and due in. Evenly spaced with a jitter --
-         flies at an exact fraction of the screen apart is a pattern the eye
-         finds immediately. */
-      const span = CONFIG.GAME_W + (c.marginPx || 0);
-      const x = x0 - (c.marginPx || 0) + span * ((i + Math.random() * 0.8) / (c.count || 1));
-      this.list.push(this._make(x));
-    }
+    const margin = c.marginPx || 0;
+    /* Both directions are laid out by the same loop, because the spread is the
+       same problem twice -- only the margin the extra span is added to differs,
+       and that is the one thing `dir` decides. */
+    const lay = (n, dir) => {
+      for (let i = 0; i < n; i++) {
+        /* Spread across the view plus one margin on the side they come IN from,
+           so one of them is typically just off-camera and due in. Evenly spaced
+           with a jitter -- flies at an exact fraction of the screen apart is a
+           pattern the eye finds immediately. */
+        const span = CONFIG.GAME_W + margin;
+        const t = (i + Math.random() * 0.8) / n;
+        const x = dir < 0 ? x0 - margin + span * t
+                          : x0 + CONFIG.GAME_W + margin - span * t;
+        this.list.push(this._make(x, dir));
+      }
+    };
+    lay(c.count || 0, -1);
+    lay(c.countRight || 0, +1);
   }
 
   clear() { this.list = []; this.on = false; }
 
-  /** One fly, at world x, with everything about it rolled fresh. */
-  _make(x) {
+  /** One fly, at world x, crossing in `dir` (-1 leftward, +1 rightward), with
+      everything else about it rolled fresh. */
+  _make(x, dir) {
     const c = this.cfg();
     const f = {
       x: x,
       y: this._rollY(),
+      dir: dir < 0 ? -1 : 1,
       vx: 0, vy: 0,
       retarget: 0,
       angle: 0,
       // Desync the buzz per fly, or they all flutter in step.
       phase: Math.random() * Math.PI * 2,
-      /* Size is rolled ONCE and kept. It is the only depth cue they have --
-         there is no z up there and no parallax to separate them from the plate
-         -- so without it they read as one sprite drawn twice. */
+      /* Size is rolled ONCE and kept, so a given fly stays the same fly across
+         a recycle. ⚠️ THE ROLL IS SYMMETRICAL AND THE BAND IS SET IN CONFIG BY
+         MOVING ITS CENTRE -- there is no separate floor here. `sizePx` 39 with
+         `sizeJitter` 0.12 is 34..44px: see the note in CONFIG.FLIES for why the
+         small ones went and why the whole band then moved up. */
       size: (c.sizePx || 30) * (1 + (Math.random() * 2 - 1) * (c.sizeJitter || 0)),
     };
     this._retarget(f);
@@ -102,12 +131,12 @@ class Flies {
     return top + Math.random() * Math.max(0, bot - top);
   }
 
-  /** Pick the next heading. x is always leftward; y is a free dart. */
+  /** Pick the next heading. x always runs the fly's own way; y is a free dart. */
   _retarget(f) {
     const c = this.cfg();
     const lo = c.retargetMin || 0.25, hi = c.retargetMax || 0.9;
     f.retarget = lo + Math.random() * Math.max(0, hi - lo);
-    f.vx = -(c.speed || 120) * (0.55 + Math.random());       // -0.55x .. -1.55x
+    f.vx = f.dir * (c.speed || 120) * (0.55 + Math.random());  // 0.55x .. 1.55x
     f.vy = (Math.random() < 0.5 ? -1 : 1) * (c.vSpeed || 160) * (0.55 + 0.45 * Math.random());
   }
 
@@ -132,26 +161,40 @@ class Flies {
       if (f.y < top)      { f.y = top; f.vy = Math.abs(f.vy); }
       else if (f.y > bot) { f.y = bot; f.vy = -Math.abs(f.vy); }
 
-      /* Off the left edge: put it back at the right one, at a new height, with
-         a new heading and a new buzz. Everything about it is re-rolled EXCEPT
-         its size, which is what makes a given fly stay the same fly.
+      /* Out past the margin it was heading for: put it back at the opposite
+         one, at a new height, with a new heading and a new buzz. Everything
+         about it is re-rolled EXCEPT its size and its `dir`, which are what
+         make a given fly stay the same fly.
 
          ⚠️ THE TEST IS AGAINST THE SCREEN, NOT AGAINST A WORLD NUMBER. The
          camera travels several thousand px across the street, so a fixed world
-         bound would recycle every fly at the same place in the level. */
+         bound would recycle every fly at the same place in the level.
+
+         BOTH EDGES ARE LIVE NOW, so which one means "gone" and which means
+         "left behind" is decided by `dir` rather than being a constant. Read
+         `exit` as the edge it is crossing towards and `entry` as where it comes
+         back in; leftward flies get exactly the numbers they had before. */
       const sx = f.x - camX;
-      if (sx < -margin) {
-        f.x = camX + CONFIG.GAME_W + margin;
+      const exit  = f.dir < 0 ? -margin : CONFIG.GAME_W + margin;
+      const entry = f.dir < 0 ? camX + CONFIG.GAME_W + margin : camX - margin;
+      const gone  = f.dir < 0 ? sx < exit : sx > exit;
+      /* THE OTHER WAY ROUND CAN HAPPEN TOO, and it is not a fly flying
+         backwards -- it is the CAMERA moving out from under one (the boss room
+         pans both ways, and a future room might). Left alone the fly would sit
+         off-camera for the rest of the level. Pulled back to its entry margin,
+         it simply crosses again.
+
+         ⚠️ THE STRANDED TEST SITS ONE MARGIN BEYOND THE ENTRY POINT, not at
+         it, or a fly would be yanked back on the frame after every recycle and
+         never actually cross. */
+      const stranded = f.dir < 0 ? sx > CONFIG.GAME_W + margin * 2 : sx < -margin * 2;
+      if (gone) {
+        f.x = entry;
         f.y = this._rollY();
         f.phase = Math.random() * Math.PI * 2;
         this._retarget(f);
-      } else if (sx > CONFIG.GAME_W + margin * 2) {
-        /* THE OTHER WAY ROUND CAN HAPPEN TOO, and it is not a fly flying
-           backwards -- it is the CAMERA moving left out from under one (the
-           boss room pans both ways, and a future room might). Left alone the
-           fly would sit off-camera for the rest of the level. Pulled back to
-           the right margin, it simply crosses again. */
-        f.x = camX + CONFIG.GAME_W + margin;
+      } else if (stranded) {
+        f.x = entry;
       }
 
       // Bank into the climb or the dive. Eased, so it rolls rather than snaps.
@@ -180,6 +223,13 @@ class Flies {
       const y = f.y + Math.sin(f.phase * (c.wobbleFreq || 13)) * (c.wobbleAmp || 0);
       ctx.save();
       ctx.translate(f.x - camX, y);
+      /* THE MIRROR GOES BEFORE THE ROTATE, and that is not a style choice. The
+         art has a nose and it points left, so a rightward fly has to be
+         h-flipped -- and flipping the axes also flips the SENSE of the bank, so
+         the same `angle` that lifts a left-facing nose lifts a right-facing one
+         once it is under the scale. Rotate first and the rightward flies would
+         bank into their dives. */
+      if (f.dir > 0) ctx.scale(-1, 1);
       if (f.angle) ctx.rotate(f.angle);
       ctx.drawImage(img, r[0], r[1], r[2], r[3], -w / 2, -h / 2, w, h);
       ctx.restore();

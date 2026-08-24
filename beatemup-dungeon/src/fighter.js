@@ -158,8 +158,14 @@ class Fighter {
        this is the finisher would have to go and find the string again -- and
        get it wrong on the chain that flips to the alternate ending. One
        comparison, made where both halves are known. */
+    /* `lunge` is HOW MUCH OF THE STEP HAS ALREADY BEEN APPLIED, signed, and
+       `lungeDir` is the way it goes. Both are captured here rather than read
+       per frame: `facing` cannot change mid-attack today (canAct() gates the
+       walk), and the day something makes it change, a punch whose step turns
+       round halfway is a worse bug than one that commits. */
     this.atk = { def, phase: 'startup', t: 0, hasHit: false,
-                 last: i === defs.length - 1 };
+                 last: i === defs.length - 1,
+                 lunge: 0, lungeDir: facingSign(this.facing) };
     this.state = 'attack';
     this.step = 0;
     this.animT = 0;
@@ -312,7 +318,7 @@ class Fighter {
     if (this.hurtT > 0) this.hurtT -= dt;
 
     if (this.jumping) this._updateJump(dt);
-    if (this.atk) this._updateAttack(dt);
+    if (this.atk) this._updateAttack(dt, bounds);
 
     if (this.state === 'hurt' && this.hurtT <= 0) {
       this.state = 'idle';
@@ -343,13 +349,15 @@ class Fighter {
     this.jumpY = Math.sin(Math.PI * p) * CONFIG.jumpHeight;
   }
 
-  _updateAttack(dt) {
+  _updateAttack(dt, bounds) {
     const a = this.atk;
     a.t += dt;
     const d = a.def;
     const startup = d.startupMs / 1000;
     const active = d.activeMs / 1000;
     const recover = d.recoverMs / 1000;
+
+    this._updateLunge(bounds);
 
     /* Only the PHASE is written here. Which sprite frame that corresponds to is
        derived in frameStep() from the phase and the pose's length, so a pose
@@ -373,6 +381,57 @@ class Fighter {
       // starts a fresh chain rather than continuing a stale one.
       if (this.comboWindow <= 0) this.comboIndex = 0;
     }
+  }
+
+  /**
+   * THE STEP INTO A PUNCH. `def.lungePx` moves the body forward across the
+   * blow, so a finisher reads as thrown from the legs rather than mimed from
+   * the shoulders. Added 2026-08-24 for the player's two finishers; any def can
+   * carry the field, which is why it lives on Fighter and not on Player.
+   *
+   * ⚠️ IT IS A DISPLACEMENT, NOT A VELOCITY, and deliberately not `vx`. `vx` is
+   * the KNOCKBACK channel: it decays at `knockbackDecay` and it is what a blow
+   * landing on this fighter writes to. A step pushed through it would be eaten
+   * by the decay curve, would fight any knockback arriving mid-swing, and would
+   * have no idea when it was finished. Here the attack owns its own step and
+   * ends it, which is this file's rule for anything with its own clock.
+   *
+   * ⚠️ IT STARTS ON THE STRIKE FRAME, NOT ON THE WIND-UP, and that is a combat
+   * decision as much as a visual one. `hitbox()` is rebuilt from `this.x` every
+   * frame, so any distance covered before the active window opens is reach the
+   * move did not have before. Starting at `startupMs` means the FIRST active
+   * frame tests from exactly where it always did; the extra ground is covered
+   * while the window is already open, so the finisher gains a little reach as
+   * the body arrives -- which is what stepping into a punch is.
+   *
+   * THE SPAN IS DERIVED, NOT CONFIGURED: the active frames plus half the
+   * recovery. The step lands with the fist and settles through the first half
+   * of the follow-through, and retuning a pose's timings carries it along
+   * instead of leaving a second number behind to go stale.
+   *
+   * ⚠️ HITSTOP GETS THIS RIGHT FOR FREE. A connect freezes the simulation, so
+   * the step holds at the moment of impact and completes afterwards -- exactly
+   * the weight the freeze is there to sell. Nothing here has to know about it.
+   */
+  _updateLunge(bounds) {
+    const a = this.atk;
+    const px = a.def.lungePx || 0;
+    if (!px) return;
+    const d = a.def;
+    const from = d.startupMs / 1000;
+    const span = (d.activeMs + d.recoverMs * 0.5) / 1000;
+    if (span <= 0) return;
+    const p = Math.max(0, Math.min(1, (a.t - from) / span));
+    // Ease-out cubic: most of the ground in the first third, then a settle. A
+    // linear step reads as a slide, which is the one thing it must not be.
+    const eased = 1 - Math.pow(1 - p, 3);
+    const want = px * eased * a.lungeDir;
+    /* Applied as the DELTA against what this attack has already moved, so the
+       total is exactly `lungePx` however the frames fell -- and so a wall does
+       not accumulate a debt that snaps the body forward once it is cleared. */
+    this.x += want - a.lunge;
+    a.lunge = want;
+    this.clamp(bounds);
   }
 
   _updateDown(dt) {
@@ -681,6 +740,19 @@ class Fighter {
       x1: s > 0 ? this.x + d.reachX : this.x,
       z0: this.z - d.reachZ,
       z1: this.z + d.reachZ,
+      /* HOW FAR THE BLOW REACHES IN HEIGHT, carried WITH the box rather than
+         looked up beside it. The floor plane is only two of the three tests --
+         `verticalReach` is the third, and it lived as a bare CONFIG read in the
+         resolver AND in two places in the debug overlay, which is three copies
+         of one rule and exactly what this method exists to prevent.
+
+         ⚠️ A DEF MAY OVERRIDE IT, and the player's air attack does. 70 against
+         a jump apex of 85 means a fighter at the top of his own arc cannot
+         reach the floor -- which is the design for the ENEMY jump-in (it opens
+         its window as it drops back through the band, see CONFIG.ENEMY_LEAP)
+         and is wrong for a move the player throws at a moment of their own
+         choosing. Unset, nothing changes anywhere. */
+      reachY: d.reachY || CONFIG.verticalReach,
       def: d,
       dir: s,
     };

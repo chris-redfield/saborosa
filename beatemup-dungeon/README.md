@@ -592,6 +592,118 @@ which is what stops it settling back into one drawing when a fight goes badly.
 rotation to track — if one ending hit harder the string would become worth
 counting, and mashing would be optimal on every other chain.
 
+#### The step into the finisher — `lungePx`
+
+Since 2026-08-24 both finishers move the body **forward** across the blow, so
+the punch reads as thrown from the legs rather than mimed from the shoulders.
+
+| pose | `lungePx` | drawn |
+|---|---|---|
+| `combo5` (uppercut) | `30 * BODY_SCALE` | 22 px — it plants and rises |
+| `comboLow5` (low lunge) | `50 * BODY_SCALE` | 36 px — it is a lunging punch |
+
+Raised from 18/30 on sight. Over the 220 ms the step spans, 50 averages
+164 px/s and **peaks near 490** as the ease-out opens, against a walk of 300 —
+the low ending briefly outruns a run, which is what a lunge is. That peak is the
+number to watch if it goes further: past roughly double, the step stops reading
+as weight and starts reading as a dash.
+
+- **It is a field on any attack def**, not something the Player owns, so an
+  enemy string can have one by adding it. None do yet, deliberately — an enemy
+  that steps in reaches further than the player has learned it reaches.
+- **The timing is derived, not configured.** The step runs from `startupMs` for
+  `activeMs + recoverMs / 2`, eased out: it lands with the fist and settles
+  through the first half of the follow-through. Retune a pose and the step
+  follows. `Fighter._updateLunge()`.
+- **It is a displacement, not `vx`.** `vx` is the knockback channel — a step
+  pushed through it would be eaten by `knockbackDecay` and would fight a
+  knockback arriving mid-swing.
+- **Hitstop handles itself.** A connect freezes the simulation, so the step
+  holds at the moment of impact and completes afterwards.
+
+#### The air attack — `CONFIG.AIR_ATTACK`
+
+**Punching while jumping is its own move.** It sweeps, it knocks down and it
+launches — the finisher's crowd-clear off one press. Until 2026-08-24 a
+jump-punch just played the next link of the ground combo in mid-air: one target,
+no knockdown, drawn with a standing punch.
+
+It wires **art that had been cut and unused since 2026-08-17** — the coconut's
+row 4, a 7-frame air punch drawn as a whole jump. `frameStep` already marries an
+`airPunch` pose to `jumpT` rather than to the attack phases, so the drawing
+follows the arc. Nothing in the animation machine changed.
+
+| knob | value | note |
+|---|---|---|
+| `damage` | 8 | ⚠️ deliberately under the finisher's 12 — see below |
+| `reachY` | **120** | ⚠️ the whole reason it connects — see below |
+| `lift` / `knockdown` | `190 * BODY_SCALE` / true | the launch |
+| `sweep` | true | everyone in the box |
+| timings | 80 / 420 / 190 | the **hitbox**, not the drawing |
+
+> ⚠️ **`reachY` is not generosity.** `verticalReach` is 70 and the jump apex is
+> 85, so a fighter at the top of his own arc **cannot reach the floor**. That is
+> deliberate for the enemy jump-in, which is scripted and opens its window as it
+> drops back through the band. The player presses whenever they like, so the
+> same rule would make the move pass cleanly through a standing enemy about half
+> the time — which reads as broken hit detection, not as a miss.
+
+> ⚠️ **It is a positioning move, not a damage race.** It buys the room; it does
+> not win the fight. If it becomes the only thing worth doing, `damage` is the
+> reason and it should come down before the launch does. The cost is
+> commitment: 620 ms of jump with only the direction latched at take-off, the
+> ground string broken, and 190 ms of recovery after landing. One per jump falls
+> out of the timings (690 ms total > 620 ms of jump) rather than being enforced.
+
+> ⚠️ **A launched enemy can be caught again.** At the apex, 120 reaches a body
+> up to 205 off the floor, above the 137 this launches to. Juggling costs a
+> landing and a fresh jump (~800 ms), so it is not an infinite — if it turns out
+> to be one, lower `reachY` rather than removing the launch.
+
+**Vertical reach now rides on the hitbox**, not on a `CONFIG` read: `reachY` is
+returned by `Fighter._attackGeom()` alongside `x0/x1/z0/z1`, so the resolver and
+both debug sites read one number. A def with no `reachY` gets
+`CONFIG.verticalReach` and nothing changes. Hold **C** and the condition readout
+prints the live blow's own `reachY` and `SWEEP`.
+
+#### The finisher sweeps the box — `sweep`
+
+`sweep: true` on an attack def hits **every** valid target in the hitbox instead
+of only the nearest. Both finishers have it; nothing else does.
+
+Every other link hits one person — the genre's default, and what stops mashing
+from clearing a room. The ending is the move that buys space back when three of
+them have walked up; it already knocks down and launches for exactly that
+reason, and hitting one of the three was the half that never worked.
+
+- **Each body takes the full damage**, not a share. Splitting would make the
+  finisher *worse* the better it connected.
+- **Still one sweep per swing** — `hasHit` closes the box afterwards, or the
+  finisher would re-hit everyone every frame of its 100 ms window.
+- **The freeze does not stack.** `_impact` takes the longest pending hitstop
+  rather than summing, so three bodies is one held moment.
+- **The sound fires once.** Three copies of one sample in a frame is a flanged
+  punch, not three punches.
+- **One impact mark per body**, which is the point of the move being visible.
+- **A sweep takes barrels and enemies together**, where a normal punch spends
+  itself on whichever was in the way.
+- **Accuracy counts swings, not bodies.** `Stats.hit()` takes the attack object
+  and dedupes on it, or one punch catching three would score 300%.
+
+> ⚠️ **A finisher into a crowd of three is 36 damage instead of 12, and the HP
+> table was not moved for it.** The fight gets easier when the player is
+> surrounded — that is the point — but it is a real change to the economy and
+> the first thing to look at if crowds stop being frightening.
+
+> ⚠️ **It adds a little reach to the finisher, and that is not free.**
+> `hitbox()` is rebuilt from the body's x every frame, so ground covered while
+> the active window is open is ground the punch can now connect from. The step
+> starts on the **strike** frame precisely so the first active frame tests from
+> exactly where it always did — the gain is at the *end* of the window. **The HP
+> table was not moved for this.** If the fight starts feeling easier, that is
+> what did it; to make it exactly neutral, subtract `lungePx` from that pose's
+> `reachX` rather than removing the step.
+
 ---
 
 ## Rooms
@@ -866,11 +978,12 @@ Three knobs and three pipelines.
 
 | knob | what it does |
 |---|---|
-| `MUSIC_TRACK` | the looping bed, one file |
+| `MUSIC_TRACK` | the looping bed, one file. Loaded under the key `music` |
 | `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
-| `MUSIC_GAIN` | per-track trim on the music bus, by asset key. `musicBoss` 0.85 |
-| `musicLoopSec` | **5.115** — where the loop wraps. NOT decoration; see below |
-| `musicVolume` | 0.55 |
+| `TITLE_TRACK` | the title screen's theme — a 60s loop cut out of MIKE. Loaded under the key `musicTitle`. Unset = silent title screen |
+| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
+| `MUSIC_GAIN` | per-track level on the music bus, by asset key. `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
+| `musicVolume` | 0.55. ⚠️ The **bed** is the fixed point — it is balanced against the punches, so bring other tracks to it with `MUSIC_GAIN` rather than moving this |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
 | `sfxVolume` | 0.9 — effects sit above the music on purpose |
 | `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume` |
@@ -916,11 +1029,21 @@ one place both damage paths (the crowd's swings, a boss's contact) meet. Do not
 go far under ~0.7 — a 300 ms crack slowed that far becomes a thud, which reads
 as something falling over.
 
-**⚠️ `musicLoopSec` must match the mix.** `AudioBufferSourceNode.loop` with no
+**⚠️ `MUSIC_LOOP` must match the cuts.** `AudioBufferSourceNode.loop` with no
 bounds wraps at whatever the decoded buffer turned out to be, and decoders
 disagree about an Opus file's length by a few ms of padding. Left alone that is
-a few ms of silence every 5.1 seconds — an audible tick. If you re-crop the
-mix, this number moves with it — `crop-beat-trilha.py` prints the value.
+a few ms of silence at every wrap — an audible tick. Re-cut a track and its
+number moves with it; both cutters print the value to paste:
+
+| key | file | cutter |
+|---|---|---|
+| `music` | `trilha-mix.ogg` | `tools/crop-beat-trilha.py` |
+| `musicTitle` | `mike-title.ogg` | `tools/cut-song-loop.py` |
+
+A track with **no entry** is not pinned and loops at the end of its own buffer.
+That is right for a finished song (`musicBoss`) and wrong for anything cropped
+to a downbeat — the map is keyed by asset key precisely so there is no rule to
+get backwards.
 
 **⚠️ You cannot make an effect louder by re-cutting it.** The clips are
 normalised to −1 dBFS; a hotter render is a flatter one. Use `SFX_GAIN`. Past
@@ -971,6 +1094,35 @@ read both before shipping. The level is deliberately untouched.
 
 **⚠️ Do not shorten the lab's `loopMs` to match.** The crop needs the material
 outside the loop window to still be in the render it reads.
+
+### Cutting a loop out of a song
+
+For a finished track that is longer than the screen it plays behind — MIKE on
+the title screen is 4m10s of song for a ten-second screen:
+
+    python3 tools/cut-song-loop.py --dry-run
+    python3 tools/cut-song-loop.py                          # MIKE, 28 bars
+    python3 tools/cut-song-loop.py --start 113.737 --length 51.521
+    python3 tools/cut-song-loop.py --src assets/beats.mp3 --out-name beats-loop
+
+| knob | what it is |
+| --- | --- |
+| `--src` | the song. **Never overwritten** — MIKE is the main game's intro theme and `src/main.js` still plays it whole |
+| `--start` / `--length` | seconds. Both should land on downbeats and `--length` should be a whole number of bars. **`--length` IS the `MUSIC_LOOP` entry** |
+| `--overhang` | equal-power crossfade at the wrap, ms. 120. ⚠️ Keep it well under a beat or the downbeat smears |
+| `--bitrate` | 96k stereo opus. MIKE: 7.4 MB → 812 KB |
+
+**How the cut points were found** (the script's header has the detail): onset
+flux → autocorrelation for the tempo, comb the flux for the downbeat *phase*,
+then score every (downbeat, whole-bar-length) pair by how alike the music is at
+`S` and at `S+L` on a 24-band log spectrogram. A loop's seam works when the
+music arriving at the end sounds like the music about to begin.
+
+**⚠️ The seam is crossfaded here, unlike the bed.** `crop-beat-trilha.py` sums
+the tail onto the head, which works because that bed's head is a downbeat with
+near-silence in front of it. A song has no silence anywhere, so summing leaves
+the step exactly where it was — measured, an 18× jump against the neighbouring
+samples, which is a click.
 
 ### Cutting a new sound effect
 
@@ -1104,9 +1256,21 @@ first — at linear decay the two are close enough in size to read as a wobble.
 > to fill more of the frame, that is a crop of the photograph — same argument
 > `ENDING.scale` makes, where it cost a 1.55 that was wrong on sight.
 
-**The title screen is silent**, and that is a decision: the main game's theme
-(`assets/MIKE.mp3`) was wired to it on 2026-08-22 and removed the same day for
-not suiting the screen. Don't re-propose it.
+**The title screen plays MIKE** — the main game's intro theme — since
+2026-08-24. ⚠️ This reverses a decision, at the user's request: the *whole*
+4m10s song was wired here on 2026-08-22 and removed the same day for not suiting
+the screen. What plays now is a **60s loop cut out of the fullest part of it**
+(105.1–165.3s of the original), which is a different thing on a screen the
+player sees for ten seconds. `CONFIG.TITLE_TRACK`; unset it and the screen is
+silent again. See *Cutting a loop out of a song*.
+
+> ⚠️ **A cold first boot may be silent, and that is the browser.** No page can
+> play audio before the visitor has interacted with it, and on a fresh load the
+> first interaction is the press that *leaves* the title. The theme is therefore
+> asked for one screen early, on the **logo**, so a press that skips the logo
+> (`LOGO.armMs` 250) lands the music on the title. A player who sits through the
+> logo hears nothing until they have played once and come back. Any real fix
+> costs the player a press and is a design change, not a wiring one.
 
 **It used to hold the bare photograph for two seconds** before fading the name
 up, on the argument that a picture given time reads as a place while type cut in
@@ -1189,16 +1353,17 @@ the Mosca's sheets and the explosion. Added 2026-08-23.
 
 **They are scenery.** No health, no hitbox, no hurt window, no death, no `z`, no
 shadow, nothing in the crowd and nothing in `stats`. They cross the band *above*
-the belt — the part of the shot the fight cannot reach — always right to left,
-two at a time.
+the belt — the part of the shot the fight cannot reach — **two right-to-left and
+one left-to-right** (2026-08-24).
 
 | knob (`CONFIG.FLIES`) | what it does |
 |---|---|
 | `on` | **`true`. The feature switch** — `false` and the sheet is not even loaded (`manifest.js` gates on it) |
-| `count` | **2**. ⚠️ A *population*, not a rate — see below |
-| `sizePx` / `sizeJitter` | 30 px drawn height, ±28% rolled once per fly. **The only depth cue they have** |
+| `count` | **2**. How many cross **right to left**. ⚠️ A *population*, not a rate — see below |
+| `countRight` | **1**. How many cross **left to right**. Same rule. Drop this to 0 before touching `count` — the two-leftward baseline is the approved one |
+| `sizePx` / `sizeJitter` | **39 px ±12% → a 34–44 px band** (2026-08-24). ⚠️ Read as a *range*, not a size. Was 30 ±28% (22–38 = small/medium/big); the small end was cut (→ 34 ±12%), then the whole band moved up ~15%. ⚠️ Know which axis you are tuning: the **floor** needs both numbers solved as a min/max, the **centre** is `sizePx` alone |
 | `topY` / `bottomY` | 64 / 404 — the band, in *screen* y. ⚠️ Both must stay well above `beltTopY` (520) |
-| `speed` / `vSpeed` | 118 / 165 world px/s. Each leg rolls 0.55–1.55× of `speed`, always leftward |
+| `speed` / `vSpeed` | 118 / 165 world px/s. Each leg rolls 0.55–1.55× of `speed`, always in that fly's own direction |
 | `retargetMin` / `retargetMax` | 0.22 / 0.85 s — how long a heading is held. **This is the erratic dial** |
 | `wobbleAmp` / `wobbleFreq` | 4 px / 13 rad·s⁻¹ — the fast micro-buzz on top of the wander |
 | `maxTilt` / `tiltEase` | 15° / 9 s⁻¹ — how far and how smoothly it banks into a climb or dive |
@@ -1221,8 +1386,15 @@ blackest point.
 
 ### How the motion works
 
+A fly is a leftward fly or a rightward one for its whole life — `dir` is rolled
+once at layout and kept, across recycles, exactly like `size`. Rightward flies
+are the same fly with every x term negated, drawn h-flipped (the art has a nose
+and it points left). ⚠️ The mirror is applied *before* the rotate in `draw`,
+because flipping the axes also flips the sense of the bank; rotate first and the
+rightward flies bank into their dives.
+
 A fly holds a heading for a fraction of a second and then picks another. The
-horizontal component is **always** leftward, so the wander can never carry one
+horizontal component is **always** its own way, so the wander can never carry one
 backwards; the vertical dart flips sign freely and is what makes the path look
 erratic. It bounces off the top and bottom of the band, banks into whichever way
 it is going, and buzzes on top of all of it.

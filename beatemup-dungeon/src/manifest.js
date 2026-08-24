@@ -134,6 +134,12 @@ function assetManifest() {
   /* The horse's theme, under its own key. Loaded exactly like the bed -- raw
      bytes now, decoded by sound.js when there is a context to decode into. */
   if (CONFIG.BOSS_TRACK) out.push({ key: 'musicBoss', src: CONFIG.BOSS_TRACK, how: 'audio' });
+  /* The title screen's theme, same again. ⚠️ ITS ASSET KEY IS `musicTitle` AND
+     TWO OTHER PLACES SPELL IT: CONFIG.MUSIC_LOOP (where it wraps) and
+     CONFIG.MUSIC_GAIN (how loud). Both are keyed by asset key, so renaming this
+     silently unpins the loop and drops it back to `musicVolume` flat -- neither
+     of which errors, and both of which are audible. */
+  if (CONFIG.TITLE_TRACK) out.push({ key: 'musicTitle', src: CONFIG.TITLE_TRACK, how: 'audio' });
   for (const [name, src] of Object.entries(CONFIG.SFX || {}))
     out.push({ key: 'sfx:' + name, src: src, how: 'audio' });
 

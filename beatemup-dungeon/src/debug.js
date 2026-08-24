@@ -398,7 +398,7 @@ class Debug {
   /** The resolver's own test, in one place, so the plan and the readout agree. */
   _connects(attacker, target, g) {
     if (!target.vulnerable()) return false;
-    if (Math.abs((target.jumpY || 0) - (attacker.jumpY || 0)) > CONFIG.verticalReach) return false;
+    if (Math.abs((target.jumpY || 0) - (attacker.jumpY || 0)) > g.reachY) return false;
     return target.overlaps(g);
   }
 
@@ -431,11 +431,20 @@ class Debug {
     ctx.fillStyle = DBG.text;
     ctx.fillText(
       `${attacker.kind} ${g.def ? g.def.pose : g.phase} — ${g.phase}` +
-      (g.spent ? '  (SPENT: already hit)' : g.live ? '  (LIVE)' : '  (no hitbox this phase)'),
+      (g.spent ? '  (SPENT: already hit)' : g.live ? '  (LIVE)' : '  (no hitbox this phase)') +
+      // The two things about THIS blow that the boxes cannot show.
+      `   reachY ${Math.round(g.reachY)}` + (g.def && g.def.sweep ? '  SWEEP' : ''),
       X, y);
 
-    // Closest connecting target wins — the last condition, and the only one
-    // that depends on the others' results.
+    /* Closest connecting target wins — the last condition, and the only one
+       that depends on the others' results.
+
+       ⚠️ UNLESS THE DEF SWEEPS, in which case there is no "closest" and every
+       connecting target is struck. Read straight off `g.def`, the same field
+       the resolver branches on, so this cannot drift from it. Without this the
+       overlay would report two of three enemies as "overlaps, but not closest"
+       on the very move whose whole point is that it hits all three. */
+    const sweep = !!(g.def && g.def.sweep);
     let best = null, bestD = Infinity;
     for (const t of all) {
       if (t === attacker || !this._connects(attacker, t, g)) continue;
@@ -452,7 +461,10 @@ class Debug {
       const dy = (t.jumpY || 0) - (attacker.jumpY || 0);
       const okX = g.x1 >= t.x - t.halfW() && g.x0 <= t.x + t.halfW();
       const okZ = g.z1 >= t.z - t.halfZ() && g.z0 <= t.z + t.halfZ();
-      const okY = Math.abs(dy) <= CONFIG.verticalReach;
+      // ⚠️ OFF THE BOX, NOT OFF CONFIG. A def may raise its own vertical reach
+      // (the air attack does), and an overlay reading the global would call a
+      // hit a miss on exactly the move whose reach is unusual.
+      const okY = Math.abs(dy) <= g.reachY;
       const okV = t.vulnerable();
 
       let verdict, col;
@@ -462,8 +474,8 @@ class Debug {
       else if (!okV) { verdict = 'miss: i-frames'; col = DBG.fail; }
       else if (g.spent) { verdict = 'blocked: swing spent'; col = DBG.spent; }
       else if (!g.live) { verdict = 'no hitbox yet'; col = DBG.wind; }
-      else if (t !== best) { verdict = 'overlaps, but not closest'; col = DBG.spent; }
-      else { verdict = 'CONNECTS'; col = DBG.pass; }
+      else if (!sweep && t !== best) { verdict = 'overlaps, but not closest'; col = DBG.spent; }
+      else { verdict = sweep ? 'CONNECTS (sweep)' : 'CONNECTS'; col = DBG.pass; }
 
       ctx.fillStyle = DBG.dim;
       ctx.fillText(`${t.kind.padEnd(9)} dx${dx.toFixed(0).padStart(5)} ` +
@@ -498,7 +510,9 @@ class Debug {
     const seg = stage.segment();
     ctx.fillStyle = DBG.text;
     ctx.fillText(`segment ${stage.index} ${seg ? seg.kind : 'end'}   camX ${Math.round(stage.camX)}`, x + 8, y + 7);
-    ctx.fillText(`belt z 0..${CONFIG.beltDepth}   vertical reach ${CONFIG.verticalReach}`, x + 8, y + 22);
+    // The DEFAULT band. A live attack whose def overrides it shows its own
+    // number in the condition readout, which is where a specific blow is judged.
+    ctx.fillText(`belt z 0..${CONFIG.beltDepth}   vertical reach ${CONFIG.verticalReach} (default)`, x + 8, y + 22);
     /* The plate's status as TEXT rather than an outline — it fills the whole
        frame and encloses the walkable band, so a rectangle round it says nothing
        (see _plateInfo). Green when it covers, red plus a filled band on screen

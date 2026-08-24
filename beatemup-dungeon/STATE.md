@@ -363,10 +363,15 @@ seconds of branding after every death is a different decision.
 
 **THE TITLE SCREEN STAYS SILENT.** The main game's theme (`assets/MIKE.mp3`)
 was wired to it late on 2026-08-22 -- read in place, like the character packs --
-and taken out the same day: it did not suit the screen. ⚠️ Do not re-propose it.
-Nothing is left behind; the front screen stops the music and plays none, exactly
-as before. The multi-track machinery in `Sound` stays, because the boss room
-needs it.
+and taken out the same day: it did not suit the screen. Nothing is left behind;
+the front screen stops the music and plays none, exactly as before. The
+multi-track machinery in `Sound` stays, because the boss room needs it.
+
+> ⚠️ **REVERSED ON 2026-08-24, at the user's request, and not by re-doing it.**
+> What was wired here in August was the WHOLE 4m10s song from its quiet opening;
+> what is here now is a 60s loop cut out of the fullest part of it. See *And
+> then on 2026-08-24*. The 08-22 finding was not wrong -- that song, on that
+> screen, from that point, did not suit it.
 
 **THE BOSS ROOM HAS ITS OWN SONG.** 4m39s of finished track, playing from the
 moment the player walks through the door -- ⚠️ **not from when the horse
@@ -1056,6 +1061,241 @@ a 20ms RMS dump, and the whole diagnosis is one picture. Note the FLOOR matters
 as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
+
+### The air attack, and what `sweep` cost the geometry
+
+**PUNCHING IN THE AIR IS ITS OWN MOVE** as of 2026-08-24, asked for straight
+after the finisher sweep: it should launch everyone the same way. Until then a
+jump-punch played the next link of the ground combo in mid-air -- one target, no
+knockdown, drawn with a standing punch. `CONFIG.AIR_ATTACK` sweeps, knocks down
+and launches.
+
+**IT WIRES ART CUT ON 2026-08-17 AND UNUSED EVER SINCE.** The coconut's row 4 is
+a SEVEN-FRAME air punch drawn as a whole jump -- take-off, rise, punch, fall --
+and `POSE_RAGGED.airPunch` has mapped it all along with nothing selecting it.
+`frameStep` already married an `airPunch` pose to `jumpT` rather than to the
+attack phases, for the enemy jump-in. Nothing in the animation machine changed;
+the move is a config entry and one branch in `Player.update`.
+
+⚠️ **`reachY` IS THE WHOLE REASON IT CONNECTS, AND IT IS A NEW IDEA.**
+`verticalReach` is 70 and the jump apex is 85, so **a fighter at the top of his
+own arc cannot reach the floor.** That is deliberate and load-bearing for the
+ENEMY jump-in, which is scripted: it opens its window at `startupMs` 420 as it
+drops back through the band. The player presses at a moment of their own
+choosing, so under the same rule the move would pass cleanly through a standing
+enemy about half the time -- which reads as broken hit detection, not as a miss.
+So a def may now override the vertical reach, and the air attack does (120).
+
+⚠️ **AND THE OVERRIDE HAD TO GO ON THE HITBOX, NOT IN THE RESOLVER.**
+`verticalReach` was read as a bare CONFIG lookup in `Combat.playerHits`, in
+`Combat.crowdHits`, and in TWO places in the debug overlay -- four copies of one
+rule. Adding a per-def override to the resolver alone would have left the
+overlay calling a hit a miss on exactly the move whose reach is unusual, which
+is the [[verifiable_debug_views]] failure in its purest form. `reachY` is now
+returned by `Fighter._attackGeom()` next to `x0/x1/z0/z1`, which is the method
+whose header already said *"ONE SOURCE OF GEOMETRY, read by both the resolver
+and the debug view. They must not each compute it."* The third axis had simply
+never been in the box.
+
+**THE DEBUG READOUT LEARNED BOTH.** It prints the live blow's own `reachY` and
+`SWEEP` in the header, and it no longer reports two of three enemies as
+"overlaps, but not closest" on the very move whose point is that it hits all
+three -- it reads `g.def.sweep`, the same field the resolver branches on.
+
+⚠️ **THE DAMAGE IS DELIBERATELY LOW (8, against the finisher's 12).** This is
+the finisher's crowd-clear available from ONE press instead of five. It is a
+POSITIONING move: it buys the room, it does not win the fight. If it becomes the
+only thing worth doing, that number is the reason and it comes down before the
+launch does. The cost is commitment -- 620ms of jump with only the direction
+latched at take-off, the ground string broken, and 190ms of recovery after
+landing. ONE PER JUMP falls out of the timings (690ms total against a 620ms
+jump) rather than being enforced by a flag, which is the better kind of limit.
+
+⚠️ **`_comboDefs()` IS NOT CALLED ON THE AIR BRANCH.** It has a side effect --
+it flips which finisher the next chain ends on whenever the cancel window has
+lapsed -- so a jump-punch would have quietly consumed the alternation and a
+player who jumped between chains would get the same ending twice. The air attack
+still BREAKS the chain, as any attack does, so the next ground press starts
+fresh and alternates: the same courtesy a chain broken by a hit already gets.
+
+### The finisher: a step into it, and it sweeps the box
+
+Two changes to the same move, asked for one after the other, and together they
+are what a finisher in this genre is supposed to be.
+
+**IT SWEEPS.** `sweep: true` on an attack def hits EVERY valid target in the
+hitbox instead of only the nearest. Both finishers have it and nothing else
+does. The note in combat.js used to say "a sweeping attack that hits everyone
+would be a different move with a different name" -- this is that move. Every
+other link still hits one person, which is the genre's default and what stops
+mashing from clearing a room; the ENDING is the one that buys space back when
+three of them have walked up. It already knocked down and launched for exactly
+that reason, and hitting one of the three was the half that never worked.
+
+⚠️ **EACH BODY TAKES THE FULL DAMAGE, NOT A SHARE.** Splitting would make the
+finisher WORSE the better it connected, which is backwards. So a finisher into a
+crowd of three is 36 damage rather than 12, and **the HP table was not moved for
+it**. The fight gets easier when the player is surrounded -- that is the point --
+but it is a real change to the economy and the first thing to look at if crowds
+stop being frightening.
+
+⚠️ **FOUR THINGS HAD TO BE MADE ONCE-PER-SWING RATHER THAN ONCE-PER-BODY**, and
+three of them were already right by accident:
+* `hasHit` still closes the box after the sweep, or the finisher would re-hit
+  everyone every frame of its 100ms window. (Had to be written.)
+* The hitstop does not stack -- `_impact` already took the LONGEST pending
+  freeze rather than summing, for exactly this case one enemy at a time.
+* The impact MARK is per body, which is right and is the point of the move
+  being visible.
+* The SOUND had to be lifted out of the per-target path. Three copies of one
+  300ms sample in the same frame is a flanged punch, not three punches.
+
+⚠️ **AND ACCURACY WOULD HAVE READ 300%.** `Stats.hits` is documented as "swings
+that connected" and `accuracy()` is hits/swings, so a punch that caught three
+bodies calling `hit()` three times breaks the board. `Stats.hit()` now takes the
+attack OBJECT and dedupes on it -- the same trick `countSwing` was already
+doing one line above. Damage still accumulates per body. ⚠️ Omitting the
+argument counts every call, which is what the thrown barrel wants: it is not a
+swing and has no attack object.
+
+**AND HE STEPS INTO IT.** `lungePx` on an attack def moves the body forward
+across the blow -- asked for as "as if he was actually physically punching". 30
+for the uppercut (22px drawn, it plants and rises), 50 for the low ending (36px,
+it is literally a lunging punch). The drawing decides, the same way it decides
+everything else about that pair. ⚠️ Raised from 18/30 on sight: over the 220ms
+the step spans, 50 averages 164 px/s and PEAKS NEAR 490 as the ease-out opens,
+against a walk of 300 -- the low ending briefly outruns a run, which is what a
+lunge is. That peak is the number to watch if it is pushed again; past roughly
+double it stops reading as weight and starts reading as a dash.
+
+⚠️ **ONLY THE FINISHERS HAVE IT.** A five-hit string where every link stepped
+would walk the player across the room and turn a combo into a charge.
+
+⚠️ **IT IS A DISPLACEMENT AND DELIBERATELY NOT `vx`.** `vx` is the KNOCKBACK
+channel -- it decays at `knockbackDecay` and it is what a blow landing on this
+fighter writes into. A step pushed through it would be eaten by the decay curve,
+would fight a knockback arriving mid-swing, and would have no idea when it was
+finished. The attack owns its step and ends it, which is this codebase's rule
+for anything with its own clock -- the same rule the corpse reaper and the
+segment scroll were rewritten to follow.
+
+⚠️ **IT STARTS ON THE STRIKE FRAME, AND THAT IS A COMBAT DECISION.** `hitbox()`
+is rebuilt from the body's x every frame, so any distance covered before the
+active window opens is reach the move did not have before. Starting at
+`startupMs` means the FIRST active frame tests from exactly where it always did;
+the extra ground is covered while the window is already open. The finisher does
+therefore gain a little reach as the body arrives -- which is what stepping into
+a punch is -- but at the END of the window rather than the start. **The HP table
+was NOT moved for this.** If the fight starts reading easier, that is the cause,
+and the exactly-neutral version is `reachX -= lungePx` on that pose, not
+deleting the step.
+
+**HITSTOP GETS IT RIGHT FOR FREE**, and that is worth noticing rather than
+engineering. A connect freezes the simulation, so the step holds at the instant
+of impact and completes afterwards -- precisely the weight the freeze exists to
+sell. Nothing in the lunge knows hitstop exists.
+
+**THE TIMING IS DERIVED, NOT CONFIGURED:** from `startupMs`, for
+`activeMs + recoverMs / 2`, eased out cubic. One number per pose instead of
+three, and retuning a pose's windows carries the step along instead of leaving a
+stale second copy. A LINEAR ramp was not used -- it reads as a slide, which is
+the one thing a step must not be.
+
+### MIKE on the title screen, and the flies both ways
+
+Three more things landed the same day, all of them asked for while the loop fix
+was still warm.
+
+**MIKE IS ON THE TITLE SCREEN, WHICH REVERSES 2026-08-22.** That entry (above)
+still stands as written -- the whole 4m10s song, from its quiet opening, on a
+screen the player sees for ten seconds, did not suit it. What is there now is a
+**60s loop cut out of the fullest part of the track**, 105.151s..165.258s of the
+original, 28 bars at 111.8 BPM. A title screen wants the part of a song that
+sounds like the MIDDLE of one.
+
+⚠️ **IT IS A SEPARATE FILE AND assets/MIKE.mp3 IS UNTOUCHED.** That file is the
+MAIN game's intro theme and `src/main.js` still plays it whole and looping;
+shortening it would have silently re-cut another game. `tools/cut-song-loop.py`
+(new) writes `mike-title.ogg` into this game's own audio folder. 7.4MB -> 812KB,
+which is 89% and the reason the cut was asked for at all.
+
+**HOW THE CUT POINTS WERE FOUND**, because it is reusable and it is not by ear:
+onset flux -> autocorrelation gives the tempo (111.8 BPM, so a 4/4 bar is
+2.1467s); combing the flux with a bar-long pulse train gives the PHASE, without
+which every candidate lands mid-bar; then every (downbeat, whole-bar-length)
+pair is scored by how alike the music is at S and at S+L on a 24-band log
+spectrogram over a 4s window. A loop's seam works when the music arriving at the
+end sounds like the music about to begin. The 28-bar winner scored 0.637.
+
+⚠️ **AND THE BED'S SEAM TRICK DID NOT TRANSFER.** `crop-beat-trilha.py` sums the
+material past the cut onto the head, and that was tried first here. It works on
+the bed because the bed's head is a downbeat with near-silence in front of it --
+adding a ring to nothing is still the ring. A SONG has no silence anywhere, so
+the head's own first sample is full level and the summing leaves the step
+exactly where it was: |first - last| measured 0.0584 against a median
+neighbouring step of 0.0032, an eighteen-fold jump, which is a click. The fix is
+a real equal-power crossfade -- head faded IN while the continuation is faded
+OUT -- which is continuous at t=0 by construction rather than by being quiet.
+**Two loops, two different right answers, and the difference is whether the head
+is quiet.**
+
+⚠️ **THE FIRST BOOT MAY BE SILENT AND THAT IS THE BROWSER, NOT THE WIRING.** No
+page plays audio before the visitor has interacted with it, and on a cold load
+the first interaction is the press that LEAVES the title. So the theme is asked
+for one screen EARLY, on the logo, by `frontMusic()` -- a press that skips the
+logo unlocks the context with the title still to come. A player who sits through
+all three seconds of the logo hears nothing until they have played once and come
+back. Every real fix costs the player a press and is a design change.
+
+**`musicLoopSec` BECAME `MUSIC_LOOP`, KEYED BY ASSET KEY.** The pin was one
+number and `sound.js` applied it `if (key === 'music')` -- a guard that existed
+because the horse's 4m39s song would have been cut off after six seconds by the
+bed's crop. A second CROPPED track made that guard wrong in the other direction:
+the title loop would have gone unpinned and ticked once a minute. Keyed by asset
+key -- the same shape `MUSIC_GAIN` already had -- absent means "loops at its own
+end", which is what a finished song wants and what a cropped one never does.
+**A special case that was right about one track was a rule that was wrong about
+the next one.**
+
+**MIKE ALSO NEEDED LIFTING, NOT TRIMMING.** `MUSIC_GAIN` had only ever pulled a
+track down. Measured RMS: the bed -16.9 dBFS, the horse's song -13.7, MIKE
+-26.5. It is mastered quiet, so `musicTitle` is **2.6** -- above 1, which the
+bus always allowed and nothing had needed. It sits deliberately a little UNDER
+the bed: matched by RMS, a dense full mix reads louder than a sparse percussion
+loop. ⚠️ The bed's own level is the fixed point and does not move, because it is
+balanced against the punches.
+
+**THE FLIES CROSS BOTH WAYS NOW.** `countRight: 1` on top of `count: 2`. A
+rightward fly is the same fly with every x term negated -- same steering, same
+band, same recycle -- drawn h-flipped, and `dir` is rolled once and kept for its
+whole life exactly like `size`. Two going one way is a procession the eye learns
+in about four seconds; one going against them is what stops it reading as a
+conveyor. ⚠️ The mirror is applied BEFORE the rotate in `draw`, because flipping
+the axes also flips the sense of the bank -- rotate first and the rightward
+flies bank into their dives.
+
+⚠️ **IT TAKES THE TOTAL TO THREE, WHICH 08-23 CUT BACK FROM.** That finding was
+about three flies going the SAME way, all crossing the same line at the same
+angle. This is a different picture and was asked for after it. If it reads busy
+in play, `countRight` goes to 0 before `count` is touched.
+
+**AND THE SIZE BAND MOVED UP, IN TWO STEPS, IN ONE SESSION.** It was `sizePx`
+30 with `sizeJitter` 0.28 -- a 22..38px roll, which reads in play as three
+sizes: a small, a medium and a big. First ask: every fly the size of the SMALL
+one (22 flat, jitter 0). Watched again, second ask: **medium and big, and no fly
+small.** So it is 34 +/- 12% -- 30..38px, the TOP HALF of the original roll,
+with the bottom 8px gone.
+
+⚠️ **THE TWO NUMBERS ARE A RANGE WRITTEN AS A CENTRE**, and the request was made
+in terms of the range, not the centre. The axis being tuned here is the FLOOR --
+how small the smallest fly may be -- and `sizePx` alone moves both ends
+together, which is the wrong knob for that ask. Worth remembering the next time
+one of these comes in as "no X should be Y".
+
+The roll had been justified as the only depth cue they have (no z up there, no
+parallax off the plate). ⚠️ **It is not a reliable one:** at the old floor the
+big ones read as flies that had come CLOSER rather than as flies further away --
+the cue landing backwards. A narrower band high up is what survived that.
 
 ---
 

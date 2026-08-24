@@ -35,7 +35,8 @@ class Stats {
     this.damageIn = 0;
     this.kills = {};        // kind -> how many went down
     this.time = 0;          // seconds of PLAY, not of end screens
-    this._swing = null;     // the attack object last counted
+    this._swing = null;     // the attack object last counted as a swing
+    this._connected = null; // ...and the last one counted as having connected
   }
 
   /** Called every frame with the player's live hitbox (or null). */
@@ -46,7 +47,29 @@ class Stats {
     }
   }
 
-  hit(dmg) { this.hits++; this.damageOut += dmg; }
+  /**
+   * A blow the player landed. `swing` is the ATTACK OBJECT it came from, and
+   * passing it is what keeps accuracy honest.
+   *
+   * ⚠️ `hits` IS SWINGS THAT CONNECTED, NOT BODIES STRUCK, and the two stopped
+   * being the same thing on 2026-08-24 when the finisher started hitting
+   * everything in its box. `accuracy()` is hits/swings, so counting each body
+   * would let one punch that caught three enemies score 300%. Damage always
+   * accumulates; the hit is counted once per attack object, the same dedupe
+   * `countSwing` does one line above and for the same reason.
+   *
+   * ⚠️ OMITTING `swing` COUNTS EVERY CALL, which is what a thrown barrel wants:
+   * it is not a swing, nothing called `countSwing` for it, and it has no attack
+   * object to be deduped by.
+   */
+  hit(dmg, swing) {
+    this.damageOut += dmg;
+    if (swing !== undefined) {
+      if (swing === this._connected) return;
+      this._connected = swing;
+    }
+    this.hits++;
+  }
   tookHit(dmg) { this.taken++; this.damageIn += dmg; }
   killed(kind) { this.kills[kind] = (this.kills[kind] || 0) + 1; }
   tick(dt) { this.time += dt; }

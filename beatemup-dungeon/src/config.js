@@ -1696,8 +1696,132 @@ const CONFIG = {
        cut but unwired; see POSE_RAGGED. */
     { pose: 'combo5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
       damage: 12, reachX: 118 * BODY_SCALE, reachZ: 52 * BODY_SCALE, knockback: 320,
-      lift: 190 * BODY_SCALE, knockdown: true },
+      lift: 190 * BODY_SCALE, knockdown: true, lungePx: 30 * BODY_SCALE,
+      sweep: true },
   ],
+
+  /* =========================================================================
+     THE PLAYER'S AIR ATTACK
+     =========================================================================
+     PUNCHING WHILE JUMPING IS ITS OWN MOVE NOW, asked for 2026-08-24: it should
+     launch everyone the way the finisher does. Until then a jump-punch simply
+     played the next link of the ground combo in mid-air -- one target, no
+     knockdown, and drawn with a standing punch.
+
+     ⚠️ IT WIRES ART THAT HAS BEEN CUT AND UNUSED SINCE 2026-08-17. The
+     coconut's row 4 is a SEVEN-FRAME air punch drawn as a whole jump --
+     take-off, rise, the punch, the fall -- and `POSE_RAGGED.airPunch` has
+     mapped it all along with nothing selecting it. fighter.js already knew what
+     to do with it: `frameStep` marries an `airPunch` pose to `jumpT` rather
+     than to the attack phases, so the drawing follows the ARC and the punch is
+     never shown at a height it was not drawn for. Nothing in the animation
+     machine had to change.
+
+     ⚠️ `reachY` IS THE WHOLE REASON THIS CONNECTS AT ALL, and it is not a
+     generosity. `verticalReach` is 70 and the jump apex is 118 * BODY_SCALE =
+     85, so a fighter at the top of his own arc CANNOT REACH THE FLOOR. That is
+     deliberate for the enemy jump-in, which is a scripted leap and opens its
+     window as it drops back through the band (see THE JUMP-IN below). The
+     player presses at a moment of their own choosing, so the same rule would
+     make the move pass cleanly through a standing enemy about half the time --
+     which reads as broken hit detection, not as a miss. 120 clears the apex
+     with margin.
+
+     ⚠️ AND IT MEANS A LAUNCHED ENEMY CAN BE CAUGHT AGAIN. At the apex, 120
+     reaches a body up to 205 off the floor, which is above the 137 this move
+     launches to. Juggling is a genre staple and it is not free here -- it costs
+     a landing and a fresh jump, some 800ms, so it is not an infinite. If it
+     turns out to be one, lower this rather than removing the launch.
+
+     ⚠️ IT SWEEPS AND IT KNOCKS DOWN, which is the request: everyone in the box
+     goes up. That makes it the finisher's crowd-clear available from one press
+     instead of five -- so the DAMAGE is deliberately low (8 against the
+     finisher's 12). It is a POSITIONING move, not a damage race: it buys the
+     room, it does not win the fight. If it starts being the only thing worth
+     doing, this number is the reason and it should come down before the launch
+     does.
+
+     THE COST IS THE COMMITMENT. A jump is 620ms with no steering but the
+     direction latched at take-off, the string is broken by it (`attack()`
+     clears the combo window), and 190ms of the recovery lands after he does.
+
+     ⚠️ ITS TIMINGS ARE THE HITBOX, NOT THE DRAWING. The drawing is on `jumpT`
+     as described above; these three numbers only say when the box is live.
+     `activeMs` is long because the player may press at any point in the arc and
+     a window that closed early would eat the press. */
+  AIR_ATTACK: {
+    pose: 'airPunch', startupMs: 80, activeMs: 420, recoverMs: 190, cancelMs: 0,
+    damage: 8, reachX: 100 * BODY_SCALE, reachZ: 56 * BODY_SCALE, reachY: 120,
+    knockback: 300, lift: 190 * BODY_SCALE, knockdown: true, sweep: true,
+  },
+
+  /* --- THE FINISHER SWEEPS THE BOX ----------------------------------------
+     `sweep: true` on an attack def makes it hit EVERY valid target in its
+     hitbox instead of only the nearest. Asked for 2026-08-24; only the two
+     finishers have it.
+
+     WHY ONLY THE FINISHER. Every other link hits one person, which is the
+     genre's default and what stops mashing from clearing a room. The ending is
+     the move that buys space back when three of them have walked up -- it
+     already knocks down and launches for exactly that reason, and hitting one
+     of the three was the half of it that never worked.
+
+     ⚠️ EACH BODY TAKES THE FULL DAMAGE, not a share of it. Splitting would make
+     the finisher WORSE the better it connected, which is backwards. So a
+     finisher into a crowd of three is 36 damage dealt rather than 12, and THE
+     HP TABLE HAS NOT BEEN MOVED FOR IT -- the fight gets easier when the player
+     is surrounded, which is the point, but it is a real change to the economy
+     and it is the first thing to look at if crowds stop being frightening.
+
+     ⚠️ IT IS STILL ONE SWEEP PER SWING. `hasHit` closes the box afterwards
+     exactly as it does after a single connect; without that the finisher would
+     re-hit everyone every frame for the whole 100ms window. See
+     Combat.playerHits().
+
+     ⚠️ ACCURACY COUNTS SWINGS, NOT BODIES. `Stats.hit()` takes the attack
+     object and dedupes on it, or one punch that caught three would score 300%.
+
+     ⚠️ AND A SWEEP TAKES BARRELS AND ENEMIES TOGETHER, where a normal punch
+     spends itself on whichever was in the way. That follows from the move, not
+     from a rule about barrels.                                               */
+
+  /* --- THE STEP INTO THE FINISHER -----------------------------------------
+     `lungePx` on an attack def moves the body FORWARD across the blow. Asked
+     for 2026-08-24: "as if he was actually physically punching". Only the two
+     finishers carry it -- a five-hit string where every link stepped would walk
+     the player across the room and turn a combo into a charge.
+
+     THE TWO ENDINGS STEP DIFFERENTLY BECAUSE THEY ARE DIFFERENT PUNCHES. The
+     uppercut plants and rises, so it gets 30 (22px drawn); the low ending is
+     literally a lunging punch, so it gets 50 (36px). Same rule as everything
+     else about that pair: the drawing decides.
+
+     ⚠️ RAISED FROM 18/30 ON SIGHT, 2026-08-24 -- "give me a bit more lunge,
+     make him move more". Over the 220ms the step spans, 50 averages 164 px/s
+     and peaks near 490 as the ease-out opens, against a walk of 300: the low
+     ending briefly outruns a run, which is what a lunge is. That peak is the
+     number to watch if it is pushed further -- past roughly double this the
+     step stops reading as weight and starts reading as a dash.
+
+     ⚠️ IT IS ON THE DEF, NOT ON THE PLAYER, so an enemy string can have it by
+     adding the field. Nothing in ENEMY_COMBOS does yet, and that is a choice
+     rather than an oversight -- an enemy that steps in reaches further than the
+     player has learned it reaches.
+
+     ⚠️ IT ADDS A LITTLE REACH TO THE FINISHER, ON PURPOSE, AND IT IS NOT FREE.
+     `hitbox()` is rebuilt from the body's x every frame, so ground covered
+     while the active window is open is ground the punch can now connect from.
+     fighter.js starts the step on the STRIKE frame precisely so the first
+     active frame tests from exactly where it always did -- the gain is at the
+     end of the window, not at the start, which is what stepping into a punch
+     is. If it ever needs to be exactly neutral, take `lungePx` off the pose's
+     `reachX` rather than removing the step. THE HP TABLE HAS NOT BEEN MOVED
+     FOR THIS; if the fight starts feeling easier, that is the knob that did it.
+
+     TIMING IS NOT CONFIGURED HERE. The step runs from `startupMs` for
+     `activeMs + recoverMs / 2`, eased out -- it lands with the fist and settles
+     through the first half of the follow-through. Retune a pose's timings and
+     the step follows; see Fighter._updateLunge().                            */
 
   /* THE ALTERNATE FINISHER. Row 6 is the same five-hit string as row 5 through
      hit four -- literally the same drawings -- and then ends in a LOW LUNGING
@@ -1743,7 +1867,7 @@ const CONFIG = {
   COMBO_ALT_FINISH: {
     pose: 'comboLow5', startupMs: 110, activeMs: 100, recoverMs: 240, cancelMs: 0,
     damage: 12, reachX: 124 * BODY_SCALE, reachZ: 46 * BODY_SCALE, knockback: 420,
-    lift: 150, knockdown: true,
+    lift: 150, knockdown: true, lungePx: 50 * BODY_SCALE, sweep: true,
   },
 
   /* HITSTOP — both fighters freeze for a moment on a connect. It is the single
@@ -2342,14 +2466,58 @@ const CONFIG = {
        spawn, flies already in the air looks like a place that has flies in
        it. */
     count: 2,
+    /* AND HOW MANY CROSS THE OTHER WAY, left to right. Asked for on 2026-08-24:
+       one, on top of the two. Same population rule, same band, same steering --
+       flies.js negates every x term and draws them h-flipped, nothing else.
+
+       ⚠️ THIS IS THE KNOB THAT MAKES THE SKY READ AS TRAFFIC RATHER THAN AS A
+       CONVEYOR. Two flies going one way is a procession and the eye learns it
+       in about four seconds; one going against them is what stops it being a
+       loop. That is also why it is 1 and not 2 -- an equal split reads as a
+       pattern again, just a symmetrical one.
+
+       ⚠️ IT TAKES THE TOTAL TO THREE, which is the number that was tried on
+       2026-08-23 and cut back to two for being an infestation. That finding was
+       about three flies going the SAME WAY, all crossing the same line at the
+       same angle; this is a different picture and was asked for after it. If it
+       does read as too busy in play, drop THIS to 0 before touching `count` --
+       the two-leftward baseline is the one that has been approved. */
+    countRight: 1,
     /* Drawn height in canvas px, before the per-fly jitter. The source frame is
-       181px tall, so 30 is about 1:6 -- small enough to read as something up
-       near the rooftops rather than as an enemy that has not arrived yet.
-       ⚠️ SIZE IS THE ONLY DEPTH CUE THEY HAVE (there is no z up there and no
-       parallax to separate them from the plate), so this number and the jitter
-       below are what stop the three reading as one flat sprite repeated. */
-    sizePx: 30,
-    sizeJitter: 0.28,        // +/- this fraction, rolled once per fly
+       181px tall, so this band is about 1:5.5 down to 1:4.7 -- small enough to
+       read as something up near the rooftops rather than as an enemy that has
+       not arrived yet.
+
+       ⚠️ THESE TWO NUMBERS ARE A RANGE WRITTEN AS A CENTRE, and the range is
+       what was asked for: 39 +/- 12% is 34px to 44px. Read them together or
+       neither makes sense on its own.
+
+       ⚠️ THE HISTORY IS THE SPEC, because the request was made in terms of it.
+       It was 30 +/- 28% -- 22px to 38px -- which the user read in play as three
+       sizes: a small, a medium and a big. Twice on 2026-08-24:
+
+         1. "all the same size as the small one" -> 22 flat, jitter 0.
+         2. "actually medium, keep medium and big, no fly small" -> 34 +/- 12%,
+            which is the TOP HALF of the original roll: its midpoint (30) to its
+            maximum (38), with the bottom 8px gone.
+         3. "the flies can be slightly larger" -> the whole band up ~15% to
+            34..44px, keeping the width. This one WAS `sizePx` alone, because
+            the ask was about the average and not the floor.
+
+       So the variety is back and the small one is not. The two asks tuned
+       different axes: (2) was the FLOOR -- how small the smallest may be, which
+       needs both numbers solved as a min/max -- and (3) was the CENTRE, which
+       `sizePx` moves on its own. Work out which one is being asked for before
+       reaching for a knob.
+
+       Size is the only depth cue they have (there is no z up there and no
+       parallax to separate them from the plate), which is the argument the
+       jitter was originally there to serve. ⚠️ It is not a reliable one: at the
+       old floor the big ones read as flies that had come CLOSER rather than as
+       flies further away, which is the cue landing backwards. A narrower band
+       high up is what survived that. */
+    sizePx: 39,
+    sizeJitter: 0.12,        // +/- this fraction, rolled once per fly -> 34..44px
     /* THE BAND, in SCREEN y. Both are above `beltTopY` (520) -- see the warning
        above -- and `topY` is off the top edge by enough that a fly at the
        ceiling is still whole. */
@@ -3282,14 +3450,8 @@ const CONFIG = {
      resolved offline or not attempted -- the flying dungeon's finding,
      inherited whole.
 
-     ⚠️ musicLoopSec IS NOT DECORATION AND MUST MATCH THE MIX. Opus stores its
-     length in a container field that decoders disagree about by a few
-     milliseconds, and `AudioBufferSourceNode.loop` with no bounds wraps at
-     whatever the DECODED buffer happens to be. A few ms of codec padding at
-     the end is a few ms of silence inserted every 5.1 seconds -- a tick you
-     will hear and will look for in the music. sound.js pins loopEnd to this
-     number instead, so the wrap is where the mix says it is whatever decoded
-     the file.
+     WHERE IT WRAPS IS `MUSIC_LOOP.music`, BELOW, and the reasons a pin is
+     needed at all live there. What belongs here is where the NUMBER comes from:
 
      ⚠️ IT IS THE CROP SCRIPT'S `--length`, NOT THE LAB'S `loopMs`. It used to
      be both, and on 2026-08-24 they parted company. The lab opened on 6146ms
@@ -3305,17 +3467,74 @@ const CONFIG = {
      the ARRANGEMENT, and the crop needs the material outside the loop window to
      still be in the render it reads. */
   MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
-  musicLoopSec: 5.115,
   musicVolume: 0.55,
+
+  /* --- The title screen's theme --------------------------------------------
+     MIKE, the main game's intro theme, on the BATIDÃO DE CÔCO screen. Asked for
+     2026-08-24.
+
+     ⚠️ THIS REVERSES A DECISION, AND DELIBERATELY. MIKE was put on this screen
+     on 2026-08-22 and taken off the same day for not suiting it, and the note
+     in game.js said not to re-propose it. The user asked for it back, so it is
+     back -- but not the same way: what went on last time was the whole 4m10s
+     song from its quiet opening, and what is here is a 60s loop cut out of the
+     fullest part of it (105.1s..165.3s of the original, 28 bars at 111.8 BPM).
+     A title screen is a ten-second screen; it wants the part of a song that
+     sounds like the middle of one.
+
+     ⚠️ IT IS A SEPARATE FILE, NOT assets/MIKE.mp3. That file is the MAIN game's
+     intro theme and src/main.js still plays it whole. tools/cut-song-loop.py
+     writes this one; re-run it to move the cut, and move MUSIC_LOOP.musicTitle
+     with it. 7.4MB became 812KB, which is why the cut was asked for.
+
+     ⚠️ AND THE FIRST BOOT MAY BE SILENT, which is a browser rule and not a bug
+     here. No page can play audio before the visitor has interacted with it, and
+     on a cold load the first interaction IS the press that leaves this screen.
+     It is asked for at the front door (the logo, one screen earlier) so that a
+     press SKIPPING the logo lands the music on the title; a player who sits
+     through the logo hears nothing until they play once and come back. Any real
+     fix costs the player a press and would be a design change, not a wiring
+     one. */
+  TITLE_TRACK: 'v2:beatemup-dungeon/audio/mike-title.ogg',
+
+  /* WHERE EACH TRACK WRAPS, by ASSET KEY, in seconds. A track with no entry
+     loops at the end of its own decoded buffer.
+
+     ⚠️ THIS IS NOT DECORATION, AND IT USED TO BE A SPECIAL CASE. Opus stores
+     its length in a container field that decoders disagree about by a few
+     milliseconds, and `AudioBufferSourceNode.loop` with no bounds wraps at
+     whatever the DECODED buffer happens to be. A few ms of codec padding at the
+     end is a few ms of silence inserted at every wrap -- a tick you will hear
+     and will look for in the music. sound.js pins loopEnd from this instead, so
+     the wrap is where the CUT says it is whatever decoded the file.
+
+     ⚠️ IT IS A MAP BECAUSE A PIN BELONGS TO A TRACK. Until 2026-08-24 this was
+     one number, `musicLoopSec`, and sound.js applied it `if (key === 'music')`
+     -- a guard that existed only because the horse's 4m39s song would have been
+     cut off after six seconds by the bed's crop. A second cropped track (the
+     title theme) made that guard wrong in the other direction: it would have
+     left the title loop unpinned and ticking once a minute. Keyed by asset key,
+     the same shape as MUSIC_GAIN below, there is no guard to get wrong --
+     `musicBoss` is simply absent, which is exactly what "loops at its own end"
+     should look like.
+
+     Both numbers here are the `--length` their cutter was last run with, and
+     both scripts print the value to paste:
+       music      tools/crop-beat-trilha.py
+       musicTitle tools/cut-song-loop.py                                     */
+  MUSIC_LOOP: {
+    music: 5.115,
+    musicTitle: 60.107,
+  },
 
   /* --- The horse's theme ---------------------------------------------------
      A SONG, NOT A BED, and the difference is the whole entry. The level's music
      is a six-second loop built to disappear under a fight; this is 4m39s of
      finished track handed over on 2026-08-22 to play over the last fight.
 
-     ⚠️ IT IS NOT PINNED TO `musicLoopSec`. That number is the BED's crop, and
-     applying it here would cut the song off after six seconds -- see the guard
-     in Sound._startIfReady(). It loops at its own end instead, which it will
+     ⚠️ IT HAS NO `MUSIC_LOOP` ENTRY, AND THAT IS THE POINT OF THE MAP. Pinning
+     it to a cropped track's length would cut the song off after a few seconds.
+     Absent means it loops at its own end instead, which it will
      almost certainly never reach: the fight is a couple of minutes at most.
 
      ⚠️ AND IT PLAYS ALONE. Sound only ever holds one music source, so asking
@@ -3333,12 +3552,26 @@ const CONFIG = {
      that is how it was delivered; re-encoding to ogg at the same quality would
      save about a third if the build ever needs it. */
   BOSS_TRACK: 'v2:beatemup-dungeon/audio/song-enmakun2011.mp3',
-  /* Per-track trim on the music bus, by ASSET KEY. Anything unlisted plays at
-     `musicVolume` flat. The song is a finished mix and comes in hotter than the
-     bed, so it is pulled down rather than the bed being pushed up -- the bed's
-     level is balanced against the punches and must not move. */
+  /* Per-track level on the music bus, by ASSET KEY. Anything unlisted plays at
+     `musicVolume` flat. It trims AND it lifts -- above 1 is allowed and the
+     title theme needs it.
+
+     ⚠️ THE BED'S LEVEL IS THE FIXED POINT AND MUST NOT MOVE. It is balanced
+     against the punch effects, so every other track is brought to it rather
+     than the other way round. Measured RMS, which is what these numbers came
+     from:
+
+       music      -16.9 dBFS   the bed, at 1.0 -- the reference
+       musicBoss  -13.7 dBFS   a finished mix, hotter -> 0.85 puts it at -15.1
+       musicTitle -26.5 dBFS   MIKE is mastered quiet -> 2.6 puts it at -18.2
+
+     musicTitle sits a little UNDER the bed on purpose: it is a dense full mix
+     against a sparse percussion loop, and matched by RMS the dense one reads as
+     the louder of the two. Its buffer peaks at 0.31, so 2.6 is nowhere near
+     clipping the bus. */
   MUSIC_GAIN: {
     musicBoss: 0.85,
+    musicTitle: 2.6,
   },
 
   /* --- Sound effects -------------------------------------------------------

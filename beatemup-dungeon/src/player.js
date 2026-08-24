@@ -24,6 +24,14 @@ class Player extends Fighter {
     ];
     this.comboVariant = 1;   // flipped before the first chain, so chain 1 is 0
 
+    /* THE AIR ATTACK, as a one-entry string so it goes through the same
+       `Fighter.attack()` as everything else -- index 0 of a length-1 array is
+       also the LAST entry, so `atk.last` comes out true and it gets the
+       finisher's sound without a special case. Built once here for the same
+       reason the combo strings are. Null with no def, and then a jump-punch
+       falls back to the ground combo exactly as it did before. */
+    this.airString = CONFIG.AIR_ATTACK ? [CONFIG.AIR_ATTACK] : null;
+
     /* THE LAST DIRECTION ASKED FOR, kept so a jump does not lose its momentum
        the instant it throws a punch. There is no horizontal velocity in a jump
        -- `vx`/`vz` are knockback and nothing else -- so every bit of airborne
@@ -96,7 +104,22 @@ class Player extends Fighter {
         this.throwHeld((CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.throw) || 420);
         this.threw = false;
       }
-      else if (input.takeAttack()) this.attack(this._comboDefs());
+      /* PUNCHING IN THE AIR IS A DIFFERENT MOVE, not the next link of the
+         ground string thrown while airborne -- which is what it used to be.
+         It sweeps and it launches; see CONFIG.AIR_ATTACK.
+
+         ⚠️ `_comboDefs()` IS NOT CALLED ON THIS BRANCH, AND THAT MATTERS.
+         That method has a side effect: it flips which finisher the next chain
+         ends on, whenever the cancel window has lapsed. Calling it here would
+         let a jump-punch quietly consume the alternation, so a player who
+         jumped between chains would get the same ending twice. The air attack
+         still BREAKS the chain -- `attack()` clears the combo window, as any
+         attack does -- so the next ground press starts fresh and alternates,
+         which is the same courtesy a chain broken by a hit already gets. */
+      else if (input.takeAttack()) {
+        this.attack(this.jumping && this.airString ? this.airString
+                                                   : this._comboDefs());
+      }
       else if (input.takeJump()) this.jump();
       /* PICK UP -- or PUT DOWN, if his hands are already full.
          Which animation comes out is the OBJECT's business, not the button's:
