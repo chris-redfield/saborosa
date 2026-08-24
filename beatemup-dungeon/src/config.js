@@ -3286,12 +3286,26 @@ const CONFIG = {
      length in a container field that decoders disagree about by a few
      milliseconds, and `AudioBufferSourceNode.loop` with no bounds wraps at
      whatever the DECODED buffer happens to be. A few ms of codec padding at
-     the end is a few ms of silence inserted every 6.1 seconds -- a tick you
+     the end is a few ms of silence inserted every 5.1 seconds -- a tick you
      will hear and will look for in the music. sound.js pins loopEnd to this
      number instead, so the wrap is where the mix says it is whatever decoded
-     the file. It is the `loopMs` of DEFAULT_MASTER in the lab, in seconds. */
+     the file.
+
+     ⚠️ IT IS THE CROP SCRIPT'S `--length`, NOT THE LAB'S `loopMs`. It used to
+     be both, and on 2026-08-24 they parted company. The lab opened on 6146ms
+     because that is the bed take's whole file length, and 1.2s of that is the
+     take's own dead lead-in and dead tail -- which the loop put back to back at
+     the wrap, so every 6 seconds the music fell into about nine tenths of a
+     second of nothing but two stray ticks. The user heard it as a vacuum and it
+     was one. tools/crop-beat-trilha.py re-cuts the lab's approved export to
+     start on the bed's downbeat (745ms in) and run three bars, and the longest
+     silence anywhere in the loop is now 320ms -- a rest the groove already
+     plays. Change the crop, change this number with it; the script prints the
+     value to paste. The lab's own loopMs stays at 6146 on purpose: it describes
+     the ARRANGEMENT, and the crop needs the material outside the loop window to
+     still be in the render it reads. */
   MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
-  musicLoopSec: 6.146,
+  musicLoopSec: 5.115,
   musicVolume: 0.55,
 
   /* --- The horse's theme ---------------------------------------------------

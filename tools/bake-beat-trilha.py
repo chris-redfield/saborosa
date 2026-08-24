@@ -31,6 +31,13 @@ browser disagree about where an Opus stream starts as well as how long it is.
 Until that is chased down, treat this script as the reproducible path in
 progress and the lab's export as the source of the shipped file.
 
+⚠️ AND THE EXPORT IS NO LONGER THE LAST STAGE. Since 2026-08-24 the shipped
+trilha-mix.ogg is that export put through tools/crop-beat-trilha.py, which moves
+the loop points off the bed take's file length and onto its downbeat -- the old
+crop wrapped straight into 1.2s of the take's own dead lead-in and tail. If this
+script ever does reproduce the export, it reproduces the UNCROPPED render and
+still has to be followed by the crop; do not point it at the game's filename.
+
 ⚠️ THE MIX IS READ OUT OF tools/beat-music-lab.html, not typed in here.
 DEFAULT_MIX and DEFAULT_MASTER in that file are the single source of truth for
 the arrangement — the tool is where it was dialled in and where it can be heard,

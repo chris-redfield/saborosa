@@ -449,7 +449,7 @@ were put to the user and this is the one chosen.
 Three pieces, and they were built in this order because each needs the one
 before it.
 
-**The music is ONE FILE, ONE LOOP, NO MIXER.** `trilha-mix.ogg`, 6.146s,
+**The music is ONE FILE, ONE LOOP, NO MIXER.** `trilha-mix.ogg`, 5.115s,
 seamless. It is three of five recorded takes layered and aligned in
 `tools/beat-music-lab.html`. The game does none of that layering: three
 `<audio>` elements started together drift apart within a minute and the browser
@@ -460,10 +460,14 @@ can drop a few ms at the wrap — inaudible on a song, fatal on a six-second bed
 ⚠️ **`musicLoopSec` IS LOAD-BEARING.** `loop = true` with no bounds wraps at
 whatever the decoded buffer turned out to be, and decoders disagree about an
 Opus file's length by a few ms of codec padding — this file's container claims
-6.1525s for 6.1460s of music. Left alone that is six milliseconds of silence
-inserted every six seconds: an audible tick you would go looking for in the
+5.1215s for 5.1150s of music. Left alone that is six milliseconds of silence
+inserted every five seconds: an audible tick you would go looking for in the
 music rather than in the decoder. `loopStart`/`loopEnd` are pinned to the
 config number instead.
+
+⚠️ **AND SINCE 2026-08-24 IT IS THE CROP SCRIPT'S `--length`, NOT THE LAB'S
+`loopMs`.** Those were the same number until the loop turned out to be wrapping
+into 0.9s of the bed take's own dead air. See *And then on 2026-08-24*.
 
 **The shipped track came from the tool's `export wav`, NOT from the bake
 script**, and that is an open sore. `tools/bake-beat-trilha.py` exists, reads
@@ -989,6 +993,69 @@ is the part that makes a fly look like a fly. **"Bring X from the other game"
 means read X and decide what of it this game can even express** — the same
 lesson the title screen and the music lab taught on 2026-08-21, arrived at from
 the other direction.
+
+---
+
+## And then on 2026-08-24: the loop had a hole in it
+
+One thing, and it was a crop rather than a mix. The street bed wrapped into
+about nine tenths of a second of near-nothing every pass — the user called it a
+vacuum, which is what it was.
+
+**The cause was in the loop LENGTH, not in the arrangement.** `loopMs` in the
+lab opened at 6146ms because that is tchum 1's whole file length, and that was
+the honest starting point: one pass of the bed with nothing cut is the only crop
+that is certainly not wrong before anyone has listened. But the take is a phone
+recording of somebody playing, so it has 727ms of dead lead-in before the first
+hit and 472ms of dead tail after the last one. Looping the file puts those two
+next to each other. Read off a 20ms envelope the wrap was 580ms below −32dB in
+one unbroken run, and the ~900ms around it held exactly two isolated ticks from
+the other two takes. Every other rest in the piece is 300ms or under. The hole
+was twice the longest thing the music actually plays.
+
+**The fix re-cuts the approved render rather than re-rendering it.**
+`tools/crop-beat-trilha.py` (new) treats `beat-trilha-mix.wav` as a CYCLE and
+takes `render[(start + t) mod 6146]`: start 745ms, length 5115ms. That is the
+attack of the bed's loudest hit, and three bars of it. `musicLoopSec` moved to
+**5.115** with it. Longest silence anywhere in the loop is now 320ms, and it is
+an internal rest the groove already plays — nothing straddles the wrap.
+
+⚠️ **It re-cuts rather than re-renders BECAUSE THE BAKE STILL DOES NOT
+REPRODUCE THE EXPORT** (below, and unchanged). The lab's `export wav` is the
+only render known to sound like the mix that was approved and played, so every
+balance decision in it is preserved bit for bit and only the loop points move.
+
+⚠️ **AND IT COULD NOT HAVE BEEN DONE IN THE LAB.** The obvious move — trim the
+bed by 745ms and set `loopMs` to 5115 — does not express the same thing. There a
+layer `repeat`s to fill the loop and its overhang WRAPS onto the head; a bed
+trimmed to its downbeat is 5388ms against a 5115ms loop, so its last 273ms would
+double back over its own first beat. Discarding a tail is not a setting on that
+model. So the pipeline is now two stages with a clean split: **the lab owns the
+arrangement, the crop script owns the loop points.** The lab's `loopMs` stays at
+6146 and must, because the crop reads the whole render and needs the material
+outside the loop window to still be there.
+
+**HOW THE SEAM IS KEPT CLICK-FREE.** A cut chosen for musical reasons lands
+where it lands, and 5860ms is in the middle of a decaying hit. Cutting flat
+would put a click on every wrap. Instead the material that CONTINUES past the
+cut — the rest of that ring, 100ms of it, faded — is summed onto the head, which
+is where it was going to be heard anyway. Same rule the lab already uses for its
+own render overhang. `--dry-run` prints `|first − last|` against the median
+neighbouring sample step (0.0165 vs 0.0114) so the seam can be checked as a
+waveform rather than trusted.
+
+**The level is deliberately untouched.** The export has 120 samples pinned at
+full scale with a 22-sample flat top, which is the browser clamping into 16-bit
+and cannot be fixed by re-exporting. Pulling the mix under a ceiling would be
+right in a bake and wrong here: the bed has been played and balanced against the
+punch effects, and a dB off it is a change nobody asked for.
+
+**The measurement that made this quick, and it is the same one as last time:**
+print the ENVELOPE and read it. The hole is invisible in a waveform, obvious in
+a 20ms RMS dump, and the whole diagnosis is one picture. Note the FLOOR matters
+as much as the source — at a 1ms hop a single stray sample splits one 580ms
+silence into two short ones and the number stops describing anything anybody
+hears.
 
 ---
 

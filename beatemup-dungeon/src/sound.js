@@ -20,11 +20,12 @@
  * ⚠️ THE LOOP END IS PINNED, NOT INFERRED. `loop = true` with no bounds wraps
  * at whatever the decoded buffer turned out to be, and decoders disagree about
  * an Opus file's length by a few milliseconds of codec padding -- this one's
- * container says 6.1525s for a mix that is 6.1460s of music. Left alone that is
- * six milliseconds of silence inserted every six seconds: an audible tick, and
+ * container says 5.1215s for a mix that is 5.1150s of music. Left alone that is
+ * six milliseconds of silence inserted every five seconds: an audible tick, and
  * one you would go looking for in the music rather than in the decoder. So
- * loopStart/loopEnd are set from CONFIG.musicLoopSec, which is the lab's own
- * loop length. If the mix is re-cropped, that number moves with it.
+ * loopStart/loopEnd are set from CONFIG.musicLoopSec, which is the `--length`
+ * tools/crop-beat-trilha.py was last run with. If the mix is re-cropped, that
+ * number moves with it.
  *
  * ⚠️ IT STARTS WITH THE GAME, NOT WITH THE PAGE. boot() sits on a progress bar
  * while several MB of art decodes; music under a bar that might stall reads as

@@ -869,7 +869,7 @@ Three knobs and three pipelines.
 | `MUSIC_TRACK` | the looping bed, one file |
 | `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
 | `MUSIC_GAIN` | per-track trim on the music bus, by asset key. `musicBoss` 0.85 |
-| `musicLoopSec` | **6.146** — where the loop wraps. NOT decoration; see below |
+| `musicLoopSec` | **5.115** — where the loop wraps. NOT decoration; see below |
 | `musicVolume` | 0.55 |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
 | `sfxVolume` | 0.9 — effects sit above the music on purpose |
@@ -919,8 +919,8 @@ as something falling over.
 **⚠️ `musicLoopSec` must match the mix.** `AudioBufferSourceNode.loop` with no
 bounds wraps at whatever the decoded buffer turned out to be, and decoders
 disagree about an Opus file's length by a few ms of padding. Left alone that is
-a few ms of silence every 6.1 seconds — an audible tick. If you re-crop the
-mix, this number moves with it.
+a few ms of silence every 5.1 seconds — an audible tick. If you re-crop the
+mix, this number moves with it — `crop-beat-trilha.py` prints the value.
 
 **⚠️ You cannot make an effect louder by re-cutting it.** The clips are
 normalised to −1 dBFS; a hotter render is a flatter one. Use `SFX_GAIN`. Past
@@ -946,6 +946,31 @@ does not.
 `tools/bake-beat-trilha.py`.** That script does not currently reproduce the
 browser's render and writes `trilha-mix-baked.ogg` so it cannot overwrite an
 approved mix. See STATE.md for what is known about the discrepancy.
+
+### Moving the loop points
+
+The lab exports the ARRANGEMENT. Where the loop begins and ends is a second
+stage, because the lab's `loopMs` opened at the bed take's whole file length and
+1.2 s of that is the take's own dead lead-in and dead tail — put back to back at
+the wrap, that was ~0.9 s of near-silence every pass:
+
+    python3 tools/crop-beat-trilha.py --dry-run          # measure, write nothing
+    python3 tools/crop-beat-trilha.py                    # 745 ms in, 3 bars
+    python3 tools/crop-beat-trilha.py --start 745 --length 5195
+
+| knob | what it is |
+| --- | --- |
+| `--start` | ms into the render where the loop begins. **745** = the attack of the bed's loudest hit |
+| `--length` | loop length in ms. **5115** = three bars. This IS `CONFIG.musicLoopSec` |
+| `--overhang` | ms of the cut event's ring faded back onto the head so the wrap does not click. 100 |
+
+It reads `beat-trilha-mix.wav` (the full 6146 ms export, never overwritten) and
+writes `trilha-mix.ogg`. `--dry-run` prints the longest quiet stretch in the
+loop before and after, and the size of the seam step against its neighbours —
+read both before shipping. The level is deliberately untouched.
+
+**⚠️ Do not shorten the lab's `loopMs` to match.** The crop needs the material
+outside the loop window to still be in the render it reads.
 
 ### Cutting a new sound effect
 

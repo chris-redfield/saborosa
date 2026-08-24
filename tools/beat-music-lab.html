@@ -220,7 +220,25 @@ const DEFAULT_MASTER = {
      nothing cut -- the only loop length that is certainly not wrong before
      anyone has listened. It is a starting point, not a finding: if the take
      runs a moment past its own last beat, the loop wants CROPPING to where the
-     next one would fall, and that is done by ear with the number below. */
+     next one would fall.
+
+     ⚠️ AND IT DID, ON 2026-08-24 -- BUT NOT HERE, AND THIS NUMBER MUST NOT
+     MOVE. 1.2s of that 6146 is the bed take's dead lead-in (727ms) and dead
+     tail (472ms), which the wrap put back to back: about nine tenths of a
+     second of near-nothing every pass, which the user heard immediately. The
+     fix is a second stage, tools/crop-beat-trilha.py, which re-cuts THIS FILE'S
+     `export wav` to start on the bed's downbeat and run three bars (745ms /
+     5115ms) and writes the game's trilha-mix.ogg. It has to be a second stage
+     for two reasons: bake-beat-trilha.py still does not reproduce this tool's
+     export, so the export is the only render known to sound like the approved
+     mix; and the crop DISCARDS the bed's tail, which is not something this
+     model can express -- here a layer `repeat`s and its overhang wraps onto the
+     head, so a bed trimmed to its downbeat would double back over itself.
+
+     So: this tool owns the ARRANGEMENT and exports the full 6146ms of it. The
+     crop script owns the LOOP POINTS and needs that whole render to cut from.
+     Shorten this and you take away the material the crop reads. The game's
+     CONFIG.musicLoopSec is the crop's --length, not this. */
   loopMs: 6146,
   db: 0,
   wrapFadeMs: 0,
