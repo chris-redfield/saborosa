@@ -397,7 +397,7 @@ the pose lands, the tally comes up over it.
 | `fadeInMs` | the plate coming up out of the outro's black |
 | `startXRel` / `stopXRel` | he enters off-screen left and stops at **0.5**, dead centre |
 | `walkSpeed` | px/s |
-| `groundYRel` | 0.93 — his feet, on the near dirt **in front of** the rock |
+| `groundYRel` | 0.93 — his feet, on the near dirt **in front of** the rock. ⚠️ Deliberately *not* derived from the belt the way the title's is: this is a different photograph with its own ground in it, so the number answers to the picture |
 | `scale` | **1.0 — exactly his size in the fight.** It was 1.55 and read as a different character. To fill more of the frame, crop the plate, not the actor |
 | `poseHoldMs` | 1500, counted **from the pose landing**, not from the start of the screen |
 
@@ -1294,7 +1294,7 @@ frame, before any of that has finished.
 | `titleWalkAfterMs` | 250 — when he sets off, counted **from the name landing**, not from the top of the screen |
 | `titleWalkStartXRel` / `titleWalkEndXRel` | −0.12 / 1.12 — off one edge and clear of the other |
 | `titleWalkSpeed` | 210 px/s, the ending screen's, so the two walks match |
-| `titleWalkGroundYRel` | 0.93 — his feet down the canvas: the near dirt |
+| `titleWalkGroundYRel` | **derived, not chosen**: `(beltTopY + beltDepth * playerStartZRel) / 720` = 0.8806. His feet land exactly where they are on the frame the fight starts (y 634). Was 0.93 — 36 px too low. ⚠️ Written as the arithmetic so moving the belt or the spawn depth carries this with it |
 | `titleWalkScale` | 1.0 — **exactly his size in the fight** |
 | `titleWalkRepeatMs` | 0 — he crosses once. Set it to a gap in ms and he comes round again; a crossing takes about 7 s |
 

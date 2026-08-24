@@ -30,6 +30,19 @@
  */
 const BODY_SCALE = 0.72;
 
+/* THE BELT, AND WHERE THE PLAYER STANDS ON IT, hoisted out of CONFIG so more
+   than one entry can be DERIVED from them. A JS object literal cannot refer to
+   its own siblings, and these three are the answer to "how high up the screen
+   is the coconut" -- which the title screen now has to give the same answer to
+   as the fight does. See `titleWalkGroundYRel`.
+
+   They are the only reason these consts exist; `beltTopY`, `beltDepth` and
+   `playerStartZRel` below are still the names everything reads. */
+const BELT_TOP_Y = 520;
+const BELT_DEPTH = 190;
+const PLAYER_START_ZREL = 0.6;
+const CANVAS_H = 720;
+
 const CONFIG = {
   /* DEV MODE. Off is the shipping state; on is for getting through the level
      quickly while building it.
@@ -226,8 +239,14 @@ const CONFIG = {
      genre — `reachZ` gives about 49px of slack on this 190px belt — and moving
      the band down onto the sand is a placement question, not a difficulty one.
      Change one at a time or neither change can be judged. */
-  beltTopY: 520,         // screen y of z = 0 — the FAR edge of the walkable band
-  beltDepth: 190,        // its height in px; z runs 0..this
+  beltTopY: BELT_TOP_Y,  // screen y of z = 0 — the FAR edge of the walkable band
+  beltDepth: BELT_DEPTH, // its height in px; z runs 0..this
+  /* WHERE HE STARTS, up the belt, as a fraction of its depth. It was a bare
+     0.6 written twice in game.js -- at the start of a run and at the DEV room
+     jump -- and it is a knob now because the TITLE SCREEN has to put him at the
+     same height (see `titleWalkGroundYRel`). Three copies of a number that has
+     to agree with itself is two too many. */
+  playerStartZRel: PLAYER_START_ZREL,
   /* Optional perspective: how much smaller a fighter is drawn at the FAR edge
      than at the near one. 1.0 = off, which is the classic arcade look (Final
      Fight and Streets of Rage both scale nothing). Kept as a knob because the
@@ -1237,9 +1256,25 @@ const CONFIG = {
      at all, and `crowd.clear()` was the only cleanup -- so the moment a segment
      handed over, every corpse still fading was deleted mid-fade. Split across
      two places these would drift and bodies would either vanish early or linger
-     invisible forever. */
-  corpseFadeDelayS: 0.6,
-  corpseFadeS: 1.2,
+     invisible forever.
+
+     ⚠️ HALVED ON 2026-08-24: "os inimigos precisam desaparecer um pouco mais
+     rápido depois que eles morrem". 0.6 + 1.2 was 1.8s of lying and fading, and
+     the ask put it at under a second. 0.25 + 0.55 is 0.8.
+
+     ⚠️ AND THE CLOCK DOES NOT START AT THE DEATH. `stateT` resets when the body
+     reaches the floor, so the full time from the killing blow to an empty patch
+     of street is `downLandMs` + these two -- 520ms + 800ms = 1.32s, not 0.8.
+     Anyone reading "how long does a corpse last" off this pair alone gets the
+     wrong answer by half a second.
+
+     ⚠️ `downLandMs` IS DELIBERATELY NOT TOUCHED. It is the knockdown ARC, and
+     it belongs to every fighter who is knocked over and gets back UP as much as
+     to the ones who do not -- shortening it to get the total under a second
+     would speed up every knockdown in the game, including the player's. If the
+     total has to come down further, that is the conversation to have first. */
+  corpseFadeDelayS: 0.25,
+  corpseFadeS: 0.55,
 
   deathHoldMs: 1000,
 
@@ -3388,7 +3423,23 @@ const CONFIG = {
   titleWalkStartXRel: -0.12,   // off the left edge, so he walks ON
   titleWalkEndXRel: 1.12,      // and keeps going until he is clear of the right
   titleWalkSpeed: 210,         // px/s -- the ending's, so the two walks match
-  titleWalkGroundYRel: 0.93,   // his feet, down the canvas: the near dirt
+  /* HIS FEET, down the canvas -- and it is DERIVED, not chosen. Asked for
+     2026-08-24: "na intro o coco passa um pouquinho mais pra cima no y (ou z):
+     ele deve estar alinhado com a posição y que o coco está quando começa o
+     jogo de fato". In the fight his feet are at `beltTopY + beltDepth *
+     playerStartZRel` = 520 + 114 = 634, and this screen had him at 0.93 of the
+     canvas = 670: thirty-six pixels too low.
+
+     ⚠️ WRITTEN AS THE ARITHMETIC RATHER THAN AS 0.8806, so moving the belt or
+     the spawn depth carries the title screen with it. A literal here would be
+     correct today and silently wrong the first time `beltTopY` moved -- and the
+     whole point of the request is that these two agree.
+
+     ⚠️ THE SCALE ALREADY MATCHED AND WAS LEFT ALONE. `beltFarScale` is 1.0, so
+     a fighter is drawn the same size at every depth and `titleWalkScale` 1.0 is
+     already his in-game size. If perspective is ever turned on, that number
+     stops being right and has to be derived too. */
+  titleWalkGroundYRel: (BELT_TOP_Y + BELT_DEPTH * PLAYER_START_ZREL) / CANVAS_H,
   titleWalkScale: 1.0,
   /* Gap before he crosses AGAIN, in ms. 0 = he crosses once and the screen is
      still after that, which is what was asked for. Set it to a couple of
@@ -3529,6 +3580,14 @@ const CONFIG = {
     walkSpeed: 210,       // px/s
     /* His feet, down the canvas. The near dirt in front of the rock -- not the
        rock, which is a photographed object he is standing in FRONT of. */
+    /* ⚠️ STILL 0.93, WHERE THE TITLE'S IS NOW DERIVED FROM THE BELT, and the
+       divergence is deliberate rather than a missed edit. The title screen was
+       aligned to where the coconut stands when the FIGHT starts, because that
+       was the request. This screen is a different photograph with its own
+       ground in it -- a rock rather than a wall -- so its number answers to the
+       picture, not to the belt. If it ever looks wrong beside the title, that
+       is a question about this photograph and not about consistency between the
+       two. */
     groundYRel: 0.93,
     /* ⚠️ 1.0 = EXACTLY HIS SIZE IN THE FIGHT, and that is the point. It was
        1.55 on the reasoning that he is alone in the shot and the rock behind

@@ -373,7 +373,7 @@
        moment the branch it guards grows a side effect. */
     bossTheme = false;
     outroTo = 'fade';
-    player = new Player(220, CONFIG.beltDepth * 0.6);
+    player = new Player(220, CONFIG.beltDepth * CONFIG.playerStartZRel);
     /* DEV: start somewhere other than the beginning. Applied after the player
        exists, because entering a room places them at its own origin. */
     if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
@@ -472,7 +472,7 @@
          that into the new room is how a shortcut starts producing bugs that
          only a shortcut can produce. */
       crowd.clear();
-      player = new Player(220, CONFIG.beltDepth * 0.6);
+      player = new Player(220, CONFIG.beltDepth * CONFIG.playerStartZRel);
       player.props = props;
       stage.enterRoom(jump, player);
       props.enterRoom(stage.room(), player);

@@ -1070,6 +1070,55 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The title walk lines up with the fight
+
+`titleWalkGroundYRel` was 0.93 of the canvas -- y 670 -- and in the fight his
+feet are at `beltTopY + beltDepth * 0.6` = **634**. Thirty-six pixels too low.
+Asked for 2026-08-24: "ele deve estar alinhado com a posição y que o coco está
+quando começa o jogo de fato".
+
+**IT IS WRITTEN AS THE ARITHMETIC, NOT AS 0.8806.** A literal would be correct
+today and silently wrong the first time `beltTopY` moved -- and the whole point
+of the request is that these two AGREE. A JS object literal cannot refer to its
+own siblings, so `BELT_TOP_Y` / `BELT_DEPTH` / `PLAYER_START_ZREL` / `CANVAS_H`
+are hoisted above CONFIG the way `BODY_SCALE` already was, and the entries below
+read the consts. The names everything uses are unchanged.
+
+**AND THE SPAWN DEPTH BECAME A KNOB ON THE WAY.** `CONFIG.beltDepth * 0.6` was
+written twice in game.js -- the start of a run and the DEV room jump -- and the
+title screen needed to be a third. `playerStartZRel` is the one name now.
+
+⚠️ **THE SCALE ALREADY MATCHED.** `beltFarScale` is 1.0, so a fighter is drawn
+the same size at every depth and `titleWalkScale` 1.0 was already his in-game
+size. Nothing to do -- but if perspective is ever turned on, that number stops
+being right and has to be derived too.
+
+⚠️ **THE ENDING SCREEN WAS LEFT AT 0.93, ON PURPOSE.** It is the same walk on a
+sibling screen and it would have been easy to "fix" both -- but it is a
+DIFFERENT PHOTOGRAPH, a rock rather than a wall, and its ground line answers to
+the picture rather than to the belt. Only the title was asked about, and only
+the title has a reason to agree with the fight.
+
+### Corpses clear in a third of the time
+
+`corpseFadeDelayS` 0.6 -> **0.25**, `corpseFadeS` 1.2 -> **0.55**: "os inimigos
+precisam desaparecer um pouco mais rápido depois que eles morrem, tipo hoje
+parece 1 segundo, talvez menos de 1 segundo". 1.8s of lying and fading became
+0.8.
+
+⚠️ **THE CLOCK DOES NOT START AT THE DEATH, AND THE ESTIMATE IN THE REQUEST WAS
+LOW BY MORE THAN HALF.** `stateT` resets when the body reaches the FLOOR, so the
+real span from the killing blow was `downLandMs` + 1.8 = **2.32s**, not the ~1s
+it was remembered as. It is 1.32s now. Anyone reading "how long does a corpse
+last" off that pair alone is out by half a second -- worth saying out loud
+rather than silently tuning to the number in the request.
+
+⚠️ **`downLandMs` WAS DELIBERATELY LEFT ALONE.** It is the knockdown ARC and
+belongs to every fighter who is floored and gets back UP as much as to the ones
+who do not. Shortening it to force the total under a second would have sped up
+every knockdown in the game, the player's included -- a much larger change than
+the one asked for, made silently.
+
 ### The win got a fanfare, and the horse's song got an ending
 
 Two changes to the last minute of the game, 2026-08-24.
@@ -2627,7 +2676,8 @@ returns a 'room' event, and the boss room now gets none at all.
 the instant HIPÓLITO spawned, cutting their fade off mid-way.
 
 Two facts met: **`crowd.cleared()` means nobody is ALIVE, not that the bodies
-have gone** — a corpse lies where it fell and fades over 1.8s — and **nothing
+have gone** — a corpse lies where it fell and fades over 0.8s (1.8s until
+2026-08-24) — and **nothing
 ever removed a corpse from the crowd**, so `crowd.clear()` at a segment boundary
 was the only cleanup there was. The arena hands over the moment the last enemy
 dies, the boss branch cleared on spawn, and every body still fading went with it.
@@ -2663,7 +2713,8 @@ run beginning or ending), hidden behind the room-change black, or already
 guarded by an owner-decides test (`this.boss = null` waits on `boss.finished()`)
 — **except one**, which the audit caught before it was ever seen: `_spawn` still
 cleared the crowd at arena start, and with the new minimum walk that is ~0.87s
-after the last body landed against a 1.8s fade. It is `clearLiving()` now.
+after the last body landed against the fade (1.8s at the time, 0.8s now). It
+is `clearLiving()` now.
 `clear()` survives only for hard resets and is labelled as such.
 
 ### Stuck on the ending screen

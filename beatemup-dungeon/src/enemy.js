@@ -508,7 +508,7 @@ class Crowd {
    * Take the LIVING out and leave the dead to finish fading.
    *
    * ⚠️ THIS EXISTS BECAUSE `clear()` MID-LEVEL IS THE SAME BUG SIX TIMES OVER.
-   * A body fades for `corpseFadeDelayS + corpseFadeS` (1.8s) after it lands,
+   * A body fades for `corpseFadeDelayS + corpseFadeS` (0.8s) after it lands,
    * and the gap between one arena clearing and the next spawning can be as
    * little as `scrollMinWalkPx / walkSpeedX` -- 0.87s. So a straight clear at
    * spawn time deletes a body the player is still watching, and the camera is
