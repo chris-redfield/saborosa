@@ -861,7 +861,7 @@ const CONFIG = {
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
                 drawScale: 0.9, name: 'LEBRON',
                 /* 8% more air than the global arc, asked for on 2026-08-26 --
-                   his jump only, IPANEMA stays on the plain `jumpHeight`.
+                   his jump only, IPANEIMA stays on the plain `jumpHeight`.
                    ⚠️ IT IS HEIGHT AND NOT AIRTIME. `jumpMs` is untouched, so
                    his air punch still lands on the same frames at the same
                    times and the AIR_ATTACK windows still line up with the arc.
@@ -916,7 +916,7 @@ const CONFIG = {
        larger would have moved the body height the pack scale was measured
        against and quietly retuned nothing-in-particular. */
     coconutStrong: { sheet: 'v2:beatemup-dungeon/coconut-strong-beat',
-                     pack: 'ragged', drawScale: 0.9 * 1.04, name: 'IPANEMA',
+                     pack: 'ragged', drawScale: 0.9 * 1.04, name: 'IPANEIMA',
                      /* His strike frame held for two frames' worth of the arc
                         instead of one -- see Fighter.frameStep. Slot 4 is the
                         punch in both packs; only his needs the room. */

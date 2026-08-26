@@ -194,7 +194,7 @@ class Combat {
       /* ⚠️ THE ATTACKER'S OWN `knockbackScale`, AND ONLY HERE. This is the
          site where the PLAYER's blows land; the two sites below, where he is
          the one being hit, read the attacker's number the same way and so are
-         left alone -- scaling there would have made IPANEMA hit harder AND get
+         left alone -- scaling there would have made IPANEIMA hit harder AND get
          hit harder, which is not what a heavier character is.
          ⚠️ IT SCALES THE PUSH, NEVER THE DAMAGE. `dmg` is untouched above, so
          every enemy's time-to-kill stays exactly where CONFIG.COMBO says it is;

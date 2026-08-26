@@ -713,7 +713,7 @@ class Fighter {
          plain `floor(t * n)` this used to be, to the frame.
 
          It is here because the strike drawing can be worth looking at for
-         longer than its neighbours WITHOUT the row changing length. IPANEMA's
+         longer than its neighbours WITHOUT the row changing length. IPANEIMA's
          punch reads as a tuck rather than a hit -- both fists out in a short
          blob where LEBRON throws one long arm -- so at the 83ms every frame
          gets it flicks past before it registers. Measured: both packs are seven
