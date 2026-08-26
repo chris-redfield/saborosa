@@ -40,6 +40,8 @@ class Stage {
     this.camX = 0;
     this.camTarget = 0;
     this.lockX = null;      // resolved on entering an arena; see update()
+    this.reverseFloorX = 0;   // the last cleared fight; see _checkpoint()
+    this.backT = 0;          // how long they have been pushing back; tryingBack()
     this.boss = null;       // the Mosca Boss, during a 'boss' segment only
     this.spawned = false;
     this.done = false;
@@ -83,6 +85,8 @@ class Stage {
     this.camX = 0;
     this.camTarget = 0;
     this.lockX = null;
+    this.reverseFloorX = 0;   // the last cleared fight; see _checkpoint()
+    this.backT = 0;          // how long they have been pushing back; tryingBack()
     this.boss = null;
     this.spawned = false;
     this.banner = 0;
@@ -243,6 +247,7 @@ class Stage {
          unlocking is the message that the way forward has opened. */
       if (this.boss && this.boss.finished()) {
         this.boss = null;
+        this._checkpoint();
         this.index++;
         this.spawned = false;
         this.lockX = null;
@@ -285,6 +290,7 @@ class Stage {
         this._spawn(s, crowd);
       }
       if (crowd.cleared()) {
+        this._checkpoint();
         this.index++;
         this.spawned = false;
         const r = this._enter(player, crowd);
@@ -316,6 +322,7 @@ class Stage {
       this._spawn(s, crowd);
     }
     if (crowd.cleared()) {
+      this._checkpoint();
       this.index++;
       this.spawned = false;
       this.lockX = null;
@@ -445,6 +452,70 @@ class Stage {
    * the camera reverse is a real feature and not a free one: the plate is
    * video, and no browser can play a video backwards.
    */
+  /**
+   * A CLEARED FIGHT IS A CHECKPOINT: the camera may never go back past it.
+   *
+   * ⚠️ IT IS A FLOOR ON THE CAMERA AND NOT A WALL ON THE PLAYER, because the
+   * player's wall is already derived from the camera -- `bounds()` gives a
+   * scroll `camX + gateMarginX`. Stopping the camera stops the wall with it,
+   * one number, and the two can never disagree about where the level's past
+   * ends. A second wall kept in step with this would be the copied-value bug
+   * this file has hit repeatedly.
+   *
+   * ⚠️ ONLY FIGHTS CALL IT, NOT SEGMENTS. A scroll finishing is not a
+   * checkpoint -- the whole point of the reverse camera is that the walk
+   * between fights can be walked both ways. It is the three places a fight
+   * ENDS: an arena cleared, a follow-camera arena cleared, and a boss done.
+   *
+   * The camera is at the fight's own framing when this is called, so the
+   * player can still walk back across the arena they just won, and no further.
+   */
+  /**
+   * THE PLAYER IS ASKING TO GO BACK AND CANNOT. Counts how long they have held
+   * it, and raises the GO arrow once that reads as being lost rather than as
+   * stepping back for a barrel.
+   *
+   * ⚠️ IT TAKES THE BUTTON, NOT THE MOVEMENT, AND IT HAS TO. A player pinned
+   * against a wall is not moving, so a check on "did their x go down" measures
+   * exactly nothing at the only moment that matters -- they walk back, stop,
+   * and from then on look identical to a player standing still. The held key is
+   * the only evidence that they are still trying.
+   *
+   * ⚠️ IT REUSES `_goPrompt`, WHICH SELF-GATES. That only raises the banner
+   * when the CURRENT segment is a scroll, so pushing left against an arena's
+   * wall mid-fight cannot summon an arrow pointing at an exit that is not open
+   * yet -- the prompt still means "the way forward is that way" and nothing
+   * else. Nothing here needs to know it is in a fight.
+   */
+  tryingBack(dt, held, player) {
+    const b = this.bounds();
+    const blocked = !!player && !!b && player.x <= b.minX + 1.5;
+    if (!held || !blocked) { this.backT = 0; return; }
+    this.backT = (this.backT || 0) + dt;
+    if (this.backT >= (CONFIG.goBackNudgeS || 1.2)) {
+      this.backT = 0;
+      this._goPrompt();
+    }
+  }
+
+  _checkpoint() {
+    /* ⚠️ A FIGHT THE CAMERA FOLLOWS DOES NOT LEAVE ONE, and the horse's room is
+       why. `lock: false` exists to say "this fight is a place, not a screen" --
+       the room is small, the camera trails the player both ways, and that is
+       the whole character of it. The boss room is TWO such segments, an arena
+       and then the horse, so checkpointing the first one pinned the camera for
+       the entire boss fight and took the back half of the room away.
+
+       Read off the segment rather than the room, so a follow-camera fight keeps
+       its own rules wherever one is placed -- and a LOCKED arena in the same
+       room would still leave a checkpoint, because a locked arena already
+       penned the player to that screen and there is nothing behind it to give
+       back. */
+    const s = this.segment();
+    if (s && s.lock === false) return;
+    this.reverseFloorX = Math.max(this.reverseFloorX || 0, this.camX);
+  }
+
   _followCamera(dt, player) {
     const focus = CONFIG.GAME_W * CONFIG.camFocusX;
     const px = player.x;
@@ -484,7 +555,8 @@ class Stage {
     const budget = walked * (CONFIG.camFollowGain || 1);
     const step = (err > 0) ? Math.min(err, budget) : Math.max(err, -budget);
     const maxX = this.endX() - CONFIG.GAME_W;
-    this.camX = Math.max(0, Math.min(maxX, this.camX + step));
+    const minCam = this.reverseFloorX || 0;
+    this.camX = Math.max(minCam, Math.min(maxX, this.camX + step));
     this.camTarget = this.camX;           // kept in step for _lockCamera's hand-over
   }
 

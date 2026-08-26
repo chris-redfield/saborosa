@@ -830,6 +830,11 @@
     combat.crowdHits(crowd, player);
     combat.bossHits(stage.boss, player);
 
+    /* ⚠️ BEFORE stage.update, SO IT IS ASKED ABOUT THE WALLS THE PLAYER JUST
+       WALKED INTO rather than the ones a segment change is about to install.
+       Called every frame including during fights; `tryingBack` decides when it
+       means anything. */
+    stage.tryingBack(dt, !!(input && input.left), player);
     const ev = stage.update(dt, player, crowd);
 
     /* AFTER the stage, so a boss that spawned or died THIS frame is already

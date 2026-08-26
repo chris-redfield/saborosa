@@ -367,7 +367,24 @@ const CONFIG = {
        moving footage; that is the point of it. */
     plate: {
       kind: 'video',
-      src: 'v2:beatemup-dungeon/batidao-de-coco-background-original.mp4',
+      /* ⚠️ THE RE-ENCODE, NOT THE MASTER, AND THE ONLY DIFFERENCE IS KEYFRAMES.
+         Same 887 frames at the same rate -- tools/build-street-plate.py asserts
+         the count, because `worldPxPerSecond` below is measured against it and
+         a re-timed clip desyncs the background from the world standing in front
+         of it. What changed is the spacing: one keyframe every 12 frames rather
+         than three in the whole shot, which is what makes a backward SEEK cost
+         a dozen frames of decode instead of nearly three hundred. 8.1MB -> 11MB
+         buys exactly that. */
+      src: 'v2:beatemup-dungeon/street-plate.mp4',
+
+      /* ⚠️ EXPERIMENTAL, 2026-08-26 -- the camera may now run this shot
+         BACKWARDS. It is half of the switch and the useless half on its own:
+         this one lets the PLATE be scrubbed back, `ROOMS.street.reverse` lets
+         the CAMERA ask. Turning off either one restores the old behaviour, and
+         turning off this one while leaving the other is the bad state -- the
+         camera would follow the player left over a shot that cannot go with
+         it. If the experiment is dropped, drop both. */
+      allowReverse: true,
 
       /* THE SYNC, AND IT IS A MEASUREMENT. How many px of CAMERA travel one
          second of the shot's own pan is worth, so the background moves 1:1
@@ -588,7 +605,18 @@ const CONFIG = {
          at `worldPxPerSecond` 116. `camX` is clamped to `endX - GAME_W`, so
          this is a hard ceiling on how much of the shot can ever be seen. */
       endX: 4704,
-      reverse: false,
+      /* ⚠️ EXPERIMENTAL, 2026-08-26. FALSE UNTIL THE PLATE COULD TAKE IT: the
+         camera follows the player back the way they came, which on filmed
+         footage means scrubbing the shot in reverse. The master's eleven-second
+         keyframe spacing could never do it; `street-plate.mp4` can. Paired with
+         `allowReverse` on the plate -- see the note there, both go together.
+
+         ⚠️ IT ONLY APPLIES WHERE THE CAMERA FOLLOWS AT ALL. Arenas lock and
+         still pen the player to one screen, which is what an arena is; this
+         changes the SCROLLS between them, where the left edge of the view used
+         to be a wall. `bounds()` derives that wall from `camX`, so it comes
+         back with the camera on its own. */
+      reverse: true,
       segments: [
     /* THE OPENING IS A PASSAGE, NOT A FIGHT. It used to be 680px of walking
        into an arena that locked the camera again almost immediately — an inch
@@ -4810,8 +4838,13 @@ const CONFIG = {
      this one on the blow, that one when the death has finished being watched. */
   PLAYER_DEATH_VOICE: { on: true, sfx: 'playerDeath' },
   goY: 150,
-  goH: 74 * 1.3,          // on-screen height of the GO! art; width follows aspect
-  goHandH: 54 * 1.3,      // on-screen height of the hand; width follows its aspect
+  /* ⚠️ THE 1.1 IS A SECOND PASS, asked for on 2026-08-26 -- "make the hand with
+     the go and the arrow, 10% larger". Kept as a factor rather than folded into
+     the number so the two stay obviously the SAME size relative to each other:
+     the hand and the word are one prompt, and a single edit that multiplied
+     only one of them is how they would drift apart. */
+  goH: 74 * 1.3 * 1.1,    // on-screen height of the GO! art; width follows aspect
+  goHandH: 54 * 1.3 * 1.1,  // on-screen height of the hand; width follows its aspect
   goGap: 22,              // px between the word and the hand
   goMarginRight: 60,
   goBobFreq: 9,           // rad/sec
@@ -4827,6 +4860,17 @@ const CONFIG = {
      prompt -- its place, its size, its bob, its fade -- was already a knob
      here, so the one number anyone actually wants to change was the one that
      took a code edit. */
+  /* HOW LONG THE PLAYER MAY PUSH BACKWARDS AGAINST NOTHING before the arrow
+     comes up to say which way the level is. Asked for on 2026-08-26, once
+     cleared fights became checkpoints and walking back stopped being possible
+     everywhere -- a wall the player cannot see is a wall that reads as the
+     controls having stopped working.
+
+     ⚠️ IT IS A HOLD, NOT A TAP. Short enough to answer a player who is lost,
+     long enough that stepping back to pick up a barrel or line up a punch never
+     summons it -- that is 1.2s of CONTINUOUS left against a wall, and the timer
+     resets the moment they let go. */
+  goBackNudgeS: 1.2,
   goMs: 2600,
   goFadeMs: 400,          // the fade as it leaves; part of goMs, not extra
 

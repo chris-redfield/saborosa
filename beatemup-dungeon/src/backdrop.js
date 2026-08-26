@@ -223,7 +223,26 @@ class Backdrop {
    */
   _drawVideo(ctx, key, s, scrollX, w, h, dt) {
     const v = this.assets.getDrawable(key);
-    if (!v || !v.videoWidth) return;
+    if (!v) return;
+    /* ⚠️ NO FRAME TO MEASURE IS NOT A REASON TO DRAW NOTHING, and this line used
+       to be `if (!v || !v.videoWidth) return`. Returning here jumps the whole
+       function INCLUDING the kept-frame fallback at the bottom, so the plate
+       contributes no pixels and the canvas keeps the colour it was wiped with:
+       black.
+
+       ⚠️ THAT IS THE BLACK BLIP ON THE FIRST REVERSE, and the reason it only
+       happened once. Going back means seeking, and the first backward step is
+       the only one that seeks an element which was PLAYING a moment earlier --
+       every later one is already paused. Browsers can report `videoWidth` 0 for
+       a frame or two across that play/pause/seek transition, and one or two
+       frames of nothing is exactly a blip.
+
+       Holding the last good frame instead is what the copy is FOR; it was
+       simply unreachable from here. */
+    if (!v.videoWidth) {
+      if (s.hasFrozen) ctx.drawImage(s.frozen, 0, 0, w, h);
+      return;
+    }
     const cfg = s.cfg;
     const dur = v.duration;
 
@@ -234,7 +253,10 @@ class Backdrop {
        frame instead, which looked like the shot freezing. Same cause.
        Keeping a copy means the worst a stall can ever do is hold a frame. */
     const keepFrame = () => {
-      if (v.readyState < 2 || v.seeking) return;
+      /* `videoWidth` is checked as well as `readyState` because a zero-sized
+         canvas cannot be drawn later -- it would swap a black frame for an
+         invisible one, which is the same bug wearing a different hat. */
+      if (v.readyState < 2 || v.seeking || !v.videoWidth) return;
       if (!s.frozen) {
         s.frozen = document.createElement('canvas');
         s.frozen.width = v.videoWidth;
@@ -282,9 +304,16 @@ class Backdrop {
            cancels it, and nothing ever decodes. Same storm that blacked out the
            main level's plate. */
         if (!v.paused) v.pause();
+        /* ⚠️ NOT UNTIL THERE IS SOMETHING TO SHOW WHILE IT SEEKS. A seek blanks
+           the element for as long as it takes to decode, so issuing one before
+           a frame has been kept is choosing to draw nothing. Waiting a frame for
+           the copy costs a frame of camera lag; not waiting costs a black
+           screen, and this is the path that produced one. */
         if (!v.seeking) {
           keepFrame();
-          try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
+          if (s.hasFrozen) {
+            try { v.currentTime = target; } catch (e) { /* not seekable yet */ }
+          }
         }
       } else if (camSpeed > 1) {
         /* Rate = what the camera's own speed asks for, plus a term that closes
@@ -321,11 +350,33 @@ class Backdrop {
       }
     }
 
-    /* Draw the shot if it has a frame, and the kept copy if it does not.
-       `seeking` is checked as well as `readyState` because a browser may report
-       data while the frame it holds belongs to the position we just left. */
-    if (!v.seeking && v.readyState >= 2) ctx.drawImage(v, 0, 0, w, h);
-    else if (s.hasFrozen) ctx.drawImage(s.frozen, 0, 0, w, h);
+    /* ⚠️ THE PLATE IS PAINTED FROM THE COPY, ALWAYS, NEVER FROM THE ELEMENT.
+       The screen never touches the <video> at all: the element is blitted into
+       `s.frozen` and `s.frozen` is blitted to the screen.
+
+       WHY IT IS BUILT THIS WAY RATHER THAN GUARDED. `drawImage` on a video with
+       no frame ready is a SILENT no-op -- it does not throw, does not report,
+       and no property predicts it. Two attempts at this bug tried to name the
+       states where that happens (`videoWidth === 0`, then "during and just
+       after a seek") and both missed, because the failing frame is by
+       definition the one whose state looked fine. There is no condition to get
+       right, so this stops asking: an update that quietly does nothing leaves
+       the copy holding the previous frame, and the previous frame is drawn.
+       A black plate is not a case that is handled -- it is a case that can no
+       longer be constructed.
+
+       ⚠️ `keepFrame` MUST NOT CLEAR THE CANVAS, and it does not. That is the
+       whole mechanism: the copy is only ever overwritten by a real frame, so
+       "nothing new to draw" and "keep what is there" are the same code path.
+
+       ⚠️ THE COST IS ONE EXTRA 848x478 BLIT PER FRAME (the copy), against the
+       1280x720 one that was always there. Measured against the alternative --
+       a background that blinks black -- that is the right side of the trade;
+       see PERFORMANCE.md before adding anything else per-frame here. */
+    keepFrame();
+    if (s.hasFrozen) ctx.drawImage(s.frozen, 0, 0, w, h);
+    // Only before the very first frame has ever been decoded.
+    else if (!v.seeking && v.readyState >= 2) ctx.drawImage(v, 0, 0, w, h);
   }
 
   _drawImage(ctx, key, cfg, scrollX, w, h) {
