@@ -1610,7 +1610,13 @@ const CONFIG = {
          not on the barrel's.
 
          It is also where a throw leaves from -- see Prop.throwFrom(). */
-      carryYRel: 0.70,
+      /* ⚠️ 0.70 UNTIL 2026-08-24, LOWERED 10px BY EYE. 0.70 x fighterSizePx
+         (136.8) was 95.8 above the belt line; 0.627 is 85.8. It is the barrel's
+         GROUND POINT while held, so the whole barrel comes down with it -- and
+         `throwFrom` starts the throw from `_carryY()`, so the throw now leaves
+         from the lower place too, which is what keeps the two looking like one
+         motion. */
+      carryYRel: 0.627,
       /* --- THE HOIST -------------------------------------------------------
          HOW THE BARREL GETS FROM THE FLOOR TO OVER HIS HEAD. It used to not:
          it sat still for the whole 640ms reach and then appeared above him on a
@@ -1634,13 +1640,52 @@ const CONFIG = {
            IS the upright row rotated a quarter turn, so the hoist ends exactly
            on the frame the carry uses and there is nothing to blend. */
         spinDeg: 90,
+        /* ⚠️ THE HOIST BLINKS BETWEEN FOUR POSITIONS INSTEAD OF GLIDING.
+           Asked for 2026-08-24: "when you are picking the barrel up, make 4
+           frames and blink between them."
+
+           4 IS THE LIFT ROW'S FRAME COUNT, and that is the whole point rather
+           than a coincidence -- the coconut's `lift` is exactly four drawings.
+           A barrel gliding continuously past an arm that moves in four steps is
+           two motions at two rates; snapped to the same four, they are one. It
+           is the same complaint as the throw one entry down, answered the other
+           way round: there by speeding the barrel up, here by taking the
+           smoothness out.
+
+           ⚠️ IT MUST MATCH THE ROW. Re-cut the sheet with more `lift` frames
+           and this has to move with it, or the barrel steps on boundaries the
+           drawing does not. 0 or 1 turns it off and the arc glides as before --
+           the smoothstep is still underneath, this only samples it. */
+        steps: 4,
       },
 
       /* THE THROW. Fast and flat: 520px/s with a small upward kick, so it
          crosses about two thirds of the screen before it lands rather than
          lobbing. `throwGravity` is what brings it down; raise the lift and the
          gravity together to keep the same distance with a higher arc. */
-      throwSpeed: 520,
+      /* ⚠️ +20% ON 2026-08-24: 520 -> 624. "the throwing animation is
+         dissincronyzed with the barrel actually moving."
+
+         ⚠️ AND THE LIKELY CAUSE IS THAT THE BARREL GOT 43% BIGGER AN HOUR
+         EARLIER. Speed reads relative to the size of the thing moving. The
+         throw was tuned against a 110px barrel: in the 231ms of follow-through
+         after the release, 520px/s carries it 120px, which was 1.09 of its own
+         width. At 156px that same 120px is only 0.77 of a width -- the barrel
+         is doing less than cross its own body while the arm completes a full
+         throw, and that is what reads as lagging behind the animation.
+
+         To restore the ORIGINAL feel against the bigger barrel the number is
+         520 x 156/110 = 737. 624 is the 20% that was asked for and is the
+         conservative half of the distance; if it still trails the arm, 737 is
+         where the arithmetic points and there is nothing else wrong.
+
+         ⚠️ IF SPEED ALONE DOES NOT FIX IT, look at `throwLift` next, NOT at
+         `throwReleaseRel`. The release is at 0.45 of a 5-frame row = frame 2 of
+         5, which is the middle of the swing and is right. But the barrel leaves
+         travelling UP at 120px/s and does not reach its apex for another 133ms
+         -- so for the first half of the follow-through it is rising while the
+         arm is coming down, which is its own kind of disagreement. */
+      throwSpeed: 624,
       throwLift: 120,
       throwGravity: 900,
       /* What it does to whoever it hits. It is the hardest single blow in the

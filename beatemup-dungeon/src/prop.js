@@ -178,7 +178,20 @@ class Prop {
     const p = Math.min(1, this.t * 1000 / Math.max(1, this.liftMs));
     const raw = p <= startRel ? 0 : (p - startRel) / (1 - startRel);
     // Smoothstep: it leaves the floor gently and settles gently into the hands.
-    const q = raw * raw * (3 - 2 * raw);
+    let q = raw * raw * (3 - 2 * raw);
+    /* ⚠️ AND THEN SAMPLED, NOT GLIDED. `steps` is the lift row's FRAME COUNT,
+       so the barrel changes height exactly as often as the arm changes drawing
+       -- four positions, blinking between them. A barrel moving continuously
+       past an arm moving in four steps is two motions at two rates, and that is
+       what it looked like.
+
+       ⚠️ THE SMOOTHSTEP IS STILL UNDERNEATH ON PURPOSE. Sampling an eased
+       curve spaces the four positions the way the ease did -- close together at
+       both ends, further apart through the middle -- which is a hoist. Stepping
+       a LINEAR ramp would give four evenly spaced positions, which is a lift
+       shaft. `steps` 0 or 1 leaves it gliding. */
+    const steps = L.steps || 0;
+    if (steps > 1) q = Math.min(1, Math.floor(q * steps) / (steps - 1));
     this.liftQ = q;
 
     const toY = this._carryY();

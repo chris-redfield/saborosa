@@ -1070,6 +1070,73 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The hoist blinks between four positions
+
+**THE BARREL NOW STEPS INSTEAD OF GLIDING** while it is being picked up --
+`LIFT_ARC.steps: 4`. Asked for 2026-08-24: "when you are picking the barrel up,
+make 4 frames and blink between them".
+
+**4 IS THE LIFT ROW'S FRAME COUNT AND THAT IS THE POINT, not a coincidence.**
+The coconut's `lift` is exactly four drawings. A barrel gliding continuously
+past an arm that moves in four steps is two motions at two rates -- which is the
+same complaint as the throw one entry down, answered the other way round: there
+by speeding the barrel up, here by taking the smoothness out. ⚠️ Re-cut the
+sheet with more `lift` frames and this number has to move with it.
+
+⚠️ **THE SMOOTHSTEP IS STILL UNDERNEATH, AND THE SAMPLING SITS ON TOP OF IT.**
+That is the difference between a hoist and a lift shaft: sampling an EASED curve
+spaces the four positions the way the ease did -- close together at both ends,
+further apart through the middle. Stepping a linear ramp would put them evenly
+apart, which is machinery rather than an arm.
+
+**WHERE THE FOUR LAND**, against the arc's own 0..1: raw 0.00 / 0.33 / 0.50 /
+0.68. So the barrel is in his hands at 78% of the whole reach (`startRel` 0.3
+holds it on the floor for the first 30%), while the arm's fourth and final
+drawing starts at 75% -- they arrive together, which is what makes the last step
+read as the catch rather than as an early finish. ⚠️ `state` still becomes
+`held` on the CLOCK, at 100%, so the pose is `lift` frame 3 for that last 140ms
+and then `carryWalk` frame 0 -- and those two are the same drawing by design
+(see `spinDeg`), so there is nothing to blend and no new flicker.
+
+### The throw started lagging because the barrel got bigger
+
+**+20% ON `throwSpeed` (520 -> 624)** and the carried barrel down 10px
+(`carryYRel` 0.70 -> 0.627). Reported 2026-08-24: "the throwing animation is
+dissincronyzed with the barrel actually moving".
+
+⚠️ **THE THROW WAS NOT RETUNED. THE BARREL GREW 43% AN HOUR EARLIER AND THAT IS
+ALMOST CERTAINLY THE CAUSE.** Speed reads RELATIVE TO THE SIZE of the thing
+moving, and the numbers say it plainly: in the 231ms of follow-through after the
+release, 520px/s carries the barrel 120px. Against the old 110px barrel that was
+1.09 of its own width -- it cleared itself while the arm finished. Against 156px
+it is **0.77 of a width**: less than crossing its own body, which is what reads
+as trailing the animation.
+
+    520 px/s   120 px   0.77 widths   (what was reported)
+    624 px/s   144 px   0.92 widths   (the 20% asked for)
+    737 px/s   170 px   1.09 widths   (the ORIGINAL feel, size-matched)
+
+20% was what was asked for and is the conservative half of the distance. **737 is
+where the arithmetic points** if it still trails.
+
+**THE GENERAL LESSON, AND IT WILL RECUR:** rescaling a sprite silently retunes
+every SPEED it interacts with, because motion is judged in body-widths and not
+in pixels. Nothing about the throw changed; the yardstick did. ⚠️ After any
+`drawScale` change, look at what MOVES that thing before assuming the movement
+was always wrong.
+
+**WHAT WAS RULED OUT.** `throwReleaseRel` 0.45 of a 5-frame row is frame 2 of 5
+-- the middle of the swing, which is right, so the release MOMENT is not the
+problem. ⚠️ If speed alone does not fix it, `throwLift` is the next suspect and
+not the release: the barrel leaves travelling UP at 120px/s and does not reach
+its apex for another 133ms, so for the first half of the follow-through it is
+rising while the arm is coming down.
+
+**AND THE 10px DROP IS ONE NUMBER FOR BOTH HALVES.** `carryYRel` is the barrel's
+ground point while held, and `throwFrom` starts the throw from `_carryY()` --
+so the throw leaves from the lower place too, which is what keeps carrying and
+throwing looking like one motion.
+
 ### The pick-up flickered on its last frame, and the cause was frame ORDER
 
 **ONE FRAME OF HIM STANDING WITH HIS ARMS DOWN, under a barrel that was already
