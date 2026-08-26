@@ -1070,6 +1070,96 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The pause screen, and most of it already existed
+
+**ENTER OR START.** `CONFIG.PAUSE`. Almost none of this was new plumbing:
+`input.takePause()` and `_pauseQueued` have been in the file since early on,
+wired to P and Escape, and `game.js` had the line
+
+    if (input.takePause() && (phase === 'play')) { /* reserved */ }
+
+sitting exactly where the check needed to go. The pad profile has ALSO named the
+button all along -- `pause: 9`, Start -- and nothing had ever read it. **Look for
+the stub before building the mechanism**: this is the third time today (the
+`enter` state, `stopOnce`'s absence, and now this).
+
+⚠️ **ENTER PAUSES *AND* STILL COUNTS AS AN ANY-PRESS**, which P, Escape and M
+beside it deliberately do not. It can afford to: pause is read only in PLAY and
+`_anyPress` only on the front and end screens, so one press can never do both --
+and every end screen flushes the queue on entry anyway. Enter is the key a
+player reaches for to dismiss a card and taking that away would be the worse
+trade.
+
+**IT IS A FLAG, NOT A PHASE, AND THAT IS THE DESIGN DECISION.** The play phase
+holds a segment, a crowd, a camera and a boss mid-anything, and a phase change
+is the one thing in this file that has repeatedly torn state like that in half.
+Held as a flag, `play` is still `play` and a pause is simply a frame that does
+not advance it.
+
+⚠️ **READ ABOVE EVERYTHING, INCLUDING THE HITSTOP RETURN.** That branch leaves
+`loop()` early for a few dozen ms after every connect; below it, a pause pressed
+on a hit would be eaten.
+
+⚠️ **`phase === 'play' || paused` IS NOT BELT AND BRACES.** Without the second
+half a pause could never be LIFTED: the branch returns before anything can
+change the phase, so the test would keep asking about a phase nobody is in.
+
+⚠️ **AND IT SCHEDULES A FRAME.** Leaving `loop()` without one is this game's
+recurring bug and it presents as input being dead on a screen that looks
+completely normal -- which, on a pause screen, would look exactly like a pause
+screen and might never have been noticed.
+
+**THE CONTROLS LIVE ON IT.** The key list was removed from the bottom of the
+canvas the same day for cluttering the shot; a pause screen is where a player
+who needs it goes to look. Portuguese, with the way out as the last line so it
+reads as an instruction rather than as one more item.
+
+**THE SOUND STOPS WITH IT**, asked for immediately after. ⚠️ **By suspending the
+AudioContext, NOT by stopping the music.** `stopMusic()` releases the source, so
+coming back means `playMusic()`, which starts a track from ZERO -- harmless on a
+five-second bed and wrong on the horse's four-and-a-half-minute song, which
+every pause would rewind to the top. A suspended context freezes its own clock:
+every voice resumes on the sample it stopped on, and the whistle layer keeps the
+phase against the bed that a scheduled start was needed to establish in the first
+place. Effects go with it, which is what a pause means.
+
+⚠️ **AND `Sound._resume()` HAD TO LEARN ABOUT IT.** It is bound to keydown and
+pointerdown on the window for the autoplay unlock -- so the very press that opens
+the pause screen would have resumed the context a moment after this suspended
+it. One flag, checked first.
+
+**AND THE SCREEN IS ONE WORD.** A control list was put on it -- reasonable, on
+the day the key list came off the bottom of the canvas -- and taken back out
+within the hour. ⚠️ So the game now tells the player nothing about its controls
+anywhere. That is a decision made twice, in two places, in one day; the itch page
+is what is left.
+
+### A thrown barrel gives up what was in it
+
+**ITEMS ONLY COME OUT OF A BARREL BROKEN BY PUNCHING IT.** Asked for
+2026-08-24. `Prop.smash` clears `drops` when the break is `sideways`.
+
+**`sideways` ALREADY CARRIED THE ANSWER AND NOTHING NEW HAD TO BE TRACKED.** It
+picks the rotated splinter scatter, and it is true in exactly the three cases
+that mean THROWN -- landing, hitting a wall, hitting an enemy -- and false only
+for `hp <= 0`, which is a barrel punched apart where it stood. Nothing else
+calls `smash()`. The flag now has two jobs and the header says so.
+
+**IT READS AS A CHOICE RATHER THAN A NERF.** A barrel is either a WEAPON or a
+container, and throwing it spends it as the weapon. Before this the throw was
+strictly better than the punch: same break, same drop, plus damage to whoever it
+landed on.
+
+⚠️ **CLEARED IN `smash()`, NOT TESTED IN `Props.update`**, so there is one place
+that knows a barrel's contents are gone and `drops` never lies about what is
+still inside. It stays a BIRTH roll -- what is in the barrel does not change,
+only whether it survives the way the barrel was opened.
+
+⚠️ **`dropChance` 0.35 MAY NOW BE TOO LOW.** It was tuned when every barrel was
+a potential chicken however it broke; it is now the chance per barrel the player
+chooses to PUNCH. If food feels scarce, that is the knob -- not the placed
+drumsticks.
+
 ### One flinch drawing per blow, alternating
 
 **THE HURT ROW NO LONGER CYCLES.** Each blow that stuns picks ONE of its two

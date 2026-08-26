@@ -351,10 +351,19 @@ class Hud {
     return this._resultsTimes(stats).stampAt - CONFIG.RESULTS.rankDelayMs / 1000;
   }
 
-  drawCard(ctx, lines, alpha, color) {
+  /**
+   * A wash over the world with a word on it. The PAUSE screen is its only
+   * caller.
+   *
+   * `dim` is how black the wash is, 0..1. It defaults to the 0.72 this was
+   * written with, so the number is a parameter rather than a new meaning for
+   * `alpha` -- `alpha` fades the WHOLE card in and out and the two are not the
+   * same knob.
+   */
+  drawCard(ctx, lines, alpha, color, dim) {
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillStyle = 'rgba(0,0,0,' + (dim != null ? dim : 0.72) + ')';
     ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
     ctx.fillStyle = color || CONFIG.hudColor;
     ctx.textAlign = 'center';

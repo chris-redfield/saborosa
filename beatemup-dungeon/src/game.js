@@ -80,6 +80,12 @@
   let phaseT = 0;
   let faded = false;           // has the room swap inside a fade happened yet
   let boardSkip = 0;           // >0 = the CLEAR tally was skipped to its end
+  /* THE PAUSE, and it is a FLAG rather than a phase on purpose: the play phase
+     has a segment, a crowd, a camera and a boss mid-anything, and a phase
+     change is the one thing in this file that has repeatedly torn state like
+     that in half. Held here, `play` is still `play` and the pause is a frame
+     that does not advance it. */
+  let paused = false;
   let last = 0;
 
   const bar = document.getElementById('bar');
@@ -284,6 +290,8 @@
        out of the fullest part of the song rather than the whole 4m10s track
        from its quiet opening. See CONFIG.TITLE_TRACK. `TITLE_TRACK` unset takes
        the silent screen back, and titleMusic() is the one place to look. */
+    paused = false;          // see start(); the same insurance on the other route
+    sound.setPaused(false);
     frontEnter();
     phase = viaLogo ? 'logo' : 'title';
     // Straight to the title: this IS the moment it begins. Via the logo, the
@@ -434,6 +442,13 @@
        the shape of bug this file keeps finding, and it stops being harmless the
        moment the branch it guards grows a side effect. */
     bossTheme = false;
+    /* RUN-SCOPED, like the flag above. Nothing can currently leave the play
+       phase while paused -- the branch in loop() returns before the phase
+       machine -- so this cannot fire today. It is here because "cannot happen"
+       is a property of the code around it rather than of this line, and a pause
+       card left over a brand-new run would be a very confusing bug to read. */
+    paused = false;
+    sound.setPaused(false);   // whatever route got here, the audio is running
     outroTo = 'fade';
     player = new Player(220, CONFIG.beltDepth * CONFIG.playerStartZRel);
     /* DEV: start somewhere other than the beginning. Applied after the player
@@ -486,7 +501,47 @@
        frame still weaves and still shows grain. */
     if (CONFIG.film) film.update(dt);
 
-    if (input.takePause() && (phase === 'play')) { /* reserved */ }
+    /* THE PAUSE SCREEN. Read here, above everything, because a pause has to
+       beat every other reason a frame might be skipped -- including the hitstop
+       return further down, which would otherwise swallow the press for a few
+       dozen milliseconds after every punch.
+
+       ⚠️ ONLY FROM `play`, AND OUT FROM ANYWHERE. `phase === 'play' || paused`
+       is not belt and braces: without the second half a pause could never be
+       lifted, because the branch below returns before anything can change the
+       phase and the test would keep asking about a phase nobody is in.
+
+       ⚠️ AND THE PRESS IS FLUSHED BOTH WAYS. Pausing eats whatever was queued,
+       which is right -- a punch buffered before a pause is not a punch the
+       player still wants three minutes later -- and un-pausing stops the same
+       press from also being read as an action on the frame the game resumes. */
+    if (input.takePause() && CONFIG.PAUSE && CONFIG.PAUSE.on !== false
+        && (phase === 'play' || paused)) {
+      paused = !paused;
+      /* ⚠️ AND THE SOUND STOPS WITH IT -- the CONTEXT is suspended, not the
+         track stopped, so everything resumes on the sample it left off. See
+         Sound.setPaused(): stopping the music would restart the horse's 4m39s
+         song from the top on every pause. */
+      sound.setPaused(paused);
+      input.flush();
+    }
+    if (paused) {
+      /* THE WORLD IS DRAWN, NOT ADVANCED: `render` is the same call the play
+         phase makes, so the frame under the card is the frame the player
+         stopped on rather than a black screen. Nothing is ticked -- not the
+         flies, not the projector's own clock beyond what ran above, not a
+         corpse mid-fade.
+
+         ⚠️ AND IT SCHEDULES A FRAME. Leaving `loop()` without one is this
+         game's recurring bug and it presents as input being dead on a screen
+         that looks completely normal -- which, on a pause screen, would look
+         exactly like a pause screen. */
+      renderFilmed(render);
+      hud.drawCard(ctx, CONFIG.PAUSE.LINES || ['PAUSA'], 1, CONFIG.hudColor,
+                   CONFIG.PAUSE.dimAlpha);
+      requestAnimationFrame(loop);
+      return;
+    }
     /* Mute is read in EVERY phase, not only in play: a player who wants the
        sound off wants it off now, not once they have got past the title. */
     if (input.takeMute()) sound.toggleMute();

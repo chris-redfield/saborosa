@@ -96,6 +96,10 @@ class Sound {
        start. Without it, the one gesture that unlocks audio would unlock
        silence. */
     this.wanted = false;
+    /* ⚠️ THE GAME IS PAUSED. Read by `_resume()`, which is bound to every
+       gesture on the window -- without this, the next key press would undo the
+       suspend a frame after it was asked for. See setPaused(). */
+    this.paused = false;
     /* WHICH track was asked for. Paired with `wanted` rather than replacing it:
        `wanted` is "the game wants music at all", which is what the autoplay
        retry reads, and this is which one. */
@@ -130,6 +134,7 @@ class Sound {
   }
 
   _resume() {
+    if (this.paused) return;      // see setPaused()
     const ctx = this._ensure();
     if (!ctx) return;
     if (ctx.state === 'suspended') {
@@ -520,6 +525,39 @@ class Sound {
       g.setValueAtTime(this.volume, t + f + 0.03);
     } catch (e) {
       try { s.stop(); } catch (e2) {}
+    }
+  }
+
+  /**
+   * Everything stops, and comes back WHERE IT WAS.
+   *
+   * ⚠️ IT SUSPENDS THE CONTEXT RATHER THAN STOPPING THE MUSIC, and the
+   * difference is the whole reason it is written this way. `stopMusic()`
+   * releases the source, so resuming means `playMusic()`, which starts the
+   * track from ZERO -- fine for a five-second bed, and wrong for the horse's
+   * four-and-a-half-minute song, which a pause would rewind to the top every
+   * single time. A suspended context freezes its own clock: every voice picks
+   * up on the sample it stopped on, and the whistle layer keeps the phase
+   * against the bed that it took a scheduled start to establish.
+   *
+   * ⚠️ IT TAKES THE EFFECTS WITH IT, which is what a pause means -- a punch
+   * ringing on over a stopped game is the game not being stopped.
+   *
+   * ⚠️ AND `_resume()` HAS TO KNOW. It is bound to keydown/pointerdown on the
+   * window for the autoplay unlock, so the very press that opens the pause
+   * screen would otherwise resume the context a moment after this suspends it.
+   */
+  setPaused(on) {
+    this.paused = !!on;
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (this.paused) {
+      if (ctx.state === 'running' && ctx.suspend) {
+        const p = ctx.suspend();
+        if (p && p.catch) p.catch(() => {});
+      }
+    } else {
+      this._resume();
     }
   }
 

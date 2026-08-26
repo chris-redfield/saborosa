@@ -88,6 +88,14 @@ class Input {
         if (n >= 1 && CONFIG.DEV && CONFIG.DEV.on) this._roomJump = n - 1;
         this._anyPress = true;
       }
+      /* ⚠️ ENTER PAUSES *AND* STILL COUNTS AS AN ANY-PRESS, which P and Escape
+         beside it deliberately do not. It can afford to: pause is only read in
+         the PLAY phase and `_anyPress` is only read on the front and end
+         screens, so the two can never both act on one press -- and every end
+         screen flushes the queue on entry anyway. Enter is the key a player
+         reaches for to dismiss a card, and taking that away to give it a second
+         job would be a worse trade than the one M makes. */
+      else if (e.code === 'Enter') { this._pauseQueued = true; this._anyPress = true; }
       else if (e.code === 'KeyP' || e.code === 'Escape') { this._pauseQueued = true; }
       /* MUTE, AND DELIBERATELY NOT AN "ANY PRESS". Every end screen in this
          game is dismissed by pressing anything, so a mute that fell through to
@@ -200,6 +208,9 @@ class Input {
           if (act === 'lift') this._attackQueued = true;
           else if (act === 'jump') this._jumpQueued = true;
           else if (act === 'pickup') this._pickupQueued = true;
+          /* START. The mapping has named this button since the pad profile was
+             written (`pause: 9`) and nothing had ever read it. */
+          else if (act === 'pause') this._pauseQueued = true;
         }
         this._padPrev[i] = down;
         if (!down) continue;

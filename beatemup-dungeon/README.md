@@ -1034,8 +1034,8 @@ Three knobs and three pipelines.
 | `MOSCA_TRACK` | **the Mosca's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
 | `MUSIC_LAYERS` | **extra voices started with a track and stopped with it**, by track key. `music` gets `musicWhistle` (the whistle over the street bed). Each entry is `{ key, src }`; the manifest walks it |
 | `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107, `musicMosca` 14.452, `musicWhistle` 7.5735. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
-| `MUSIC_GAIN` | per-track level on the music bus, by asset key. `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
-| `musicVolume` | 0.55. ⚠️ The **bed** is the fixed point — it is balanced against the punches, so bring other tracks to it with `MUSIC_GAIN` rather than moving this |
+| `MUSIC_GAIN` | per-track level on the music bus, by asset key. **`music` 0.68** (the bed — 20% then a further 15%, 2026-08-24), **`musicMosca` 0.68** (tracks the bed), `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
+| `musicVolume` | 0.55 — the whole music bus. ⚠️ The bed **was** the fixed point everything else was derived against, until it came down 20% itself. `musicBoss` / `musicTitle` were levelled in absolute dBFS so they are unaffected; `musicMosca` **0.68**, the same trim as the bed — it measures level with it, so it tracks it. ⚠️ Move one, move the other |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
 | `sfxVolume` | 0.9 — effects sit above the music on purpose |
 | `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume` |
@@ -1720,7 +1720,7 @@ not part of the request.
 | `throwReachY` | 130 — ⚠️ how high off the floor it still connects; without it a barrel sails over a head and knocks him down from above it |
 | `throwPierce` | `false` — it breaks on the first enemy. `true` carries it through the crowd, a much stronger move |
 | `spinMs` / `smashMs` | 90 per tumble frame; 480 for the three break frames |
-| `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ Barrels are most of the food on the floor; thin the food by thinning this as well as the placed drumsticks |
+| `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ **Only reached by PUNCHING one apart** — a thrown barrel gives up its contents (2026-08-24), so this is the chance per barrel the player chooses to break, not per barrel in the level. May want raising if food feels scarce |
 
 > **`CONFIG.pickupButton` is `true`.** It was switched off on 2026-08-24 and
 > back on the same day. The off pass cost nothing to reverse because the
@@ -1731,6 +1731,39 @@ not part of the request.
 > ⚠️ **It does not clash with food**, which moved to the *punch* button in
 > between: punch stoops for food (and throws a held barrel), pickup lifts and
 > puts down. The two verbs never wanted the same button.
+
+### The pause screen
+
+**ENTER**, or **START** on the pad. `CONFIG.PAUSE` — `on: false` removes it.
+
+- **Only reachable from the `play` phase.** Pausing a title, a walk-out or the
+  results board is meaningless or unhelpful, and every one of those already
+  reads "press anything", which Enter is.
+- **It is a flag, not a phase.** The play phase has a segment, a crowd, a camera
+  and a boss mid-anything; a phase change is the one thing in `game.js` that has
+  repeatedly torn state like that in half. `play` stays `play`.
+- **Read above everything, including the hitstop return** — otherwise the press
+  gets swallowed for a few dozen ms after every punch.
+- **The world is drawn, not advanced.** `render()` under a `drawCard` wash, so
+  you see the frame you stopped on. ⚠️ And it schedules a frame — leaving
+  `loop()` without one is this game's recurring bug, and on a pause screen it
+  would look exactly like a pause screen.
+- **The press is flushed both ways**, so a punch buffered before the pause does
+  not fire on resume.
+- **The sound stops with it** — `Sound.setPaused()` suspends the whole
+  **AudioContext**, effects included. ⚠️ Not `stopMusic()`: that releases the
+  source, so resuming means `playMusic()` from **zero**, which would rewind the
+  horse's 4m39s song to the top on every pause. A suspended context freezes its
+  own clock, so every voice picks up on the sample it stopped on and the whistle
+  keeps its phase against the bed. ⚠️ `_resume()` had to learn about it — it is
+  bound to keydown for the autoplay unlock, so the very press that opens the
+  pause screen would otherwise un-suspend it a moment later.
+
+`PAUSE.LINES` is the text — line 0 is drawn big, the rest evenly. It is **just
+`['PAUSA']`**: a control list was put here and taken back out the same day.
+⚠️ Which means the game now tells the player nothing about its controls
+anywhere — a decision made twice, in two places, in one day. The itch page is
+what is left.
 
 **Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
 the one he is holding. *punch* (J / Z / Space) **throws** it.

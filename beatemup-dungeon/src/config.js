@@ -1750,7 +1750,18 @@ const CONFIG = {
          floor as well. Cutting the placed food alone would have missed most of
          it. At 0.35 against the eight barrels in the level that is under three
          chickens a run, on top of two placed drumsticks and the boss room's
-         chicken -- against about ten items before. */
+         chicken -- against about ten items before.
+
+         ⚠️ AND SINCE 2026-08-24 IT IS ONLY REACHED BY PUNCHING ONE APART. A
+         THROWN barrel gives up whatever was in it (`Prop.smash` clears `drops`
+         when the break is `sideways`), so this is now the chance per barrel
+         the player chooses to BREAK rather than per barrel in the level. The
+         real number of chickens a run therefore depends on how the player
+         plays, and the ceiling above is a ceiling rather than an estimate.
+
+         ⚠️ WHICH MEANS THIS MAY WANT TO GO BACK UP. 0.35 was tuned when every
+         barrel was a potential chicken however it broke; if food now feels
+         scarce, this is the knob and not the placed drumsticks. */
       dropChance: 0.35,
     },
     food: {
@@ -2267,6 +2278,39 @@ const CONFIG = {
      hitting would be two visual languages in one fight. If it turns out to be
      wanted on the player alone, that is a `kind` test in `_drift` -- but ask
      first. */
+  /* --- THE PAUSE SCREEN -----------------------------------------------------
+     ENTER, or START on the pad. Added 2026-08-24. `on: false` takes it away and
+     the key goes back to doing nothing.
+
+     ⚠️ IT IS ONLY REACHABLE FROM THE PLAY PHASE. Pausing a title screen, a
+     walk-out or a results board is either meaningless or actively unhelpful --
+     the board is already a screen you read at your own pace -- and every one of
+     those reads "press anything", which Enter is.
+
+     ⚠️ ONE WORD, AND THE CONTROL LIST WAS TAKEN BACK OUT. It was put here on
+     the reasoning that a pause screen is where a player who needs the keys goes
+     to look -- the same day the key list was removed from the bottom of the
+     canvas for cluttering the shot. Overruled within the hour: "remove
+     everything that appears after PAUSA, leave only PAUSA". The screen is the
+     word and the frame behind it.
+
+     ⚠️ SO THE GAME NOW TELLS THE PLAYER NOTHING ABOUT ITS CONTROLS, anywhere.
+     That is a decision and not an oversight -- it was made twice, in two
+     places, in one day. The itch page is the remaining place for them.
+
+     LINE 0 IS DRAWN BIG by `Hud.drawCard`; anything after it would be drawn
+     small and evenly spaced, which is why the list fitted here in the first
+     place. */
+  PAUSE: {
+    on: true,
+    LINES: ['PAUSA'],
+    /* HOW BLACK THE WASH OVER THE FROZEN FRAME IS, 0..1. 0.72 was what
+       `Hud.drawCard` was written with; 0.50 is that 30% more transparent, asked
+       for 2026-08-24 -- the shot behind the word is worth seeing, which is the
+       whole reason the pause draws the world rather than a black screen. */
+    dimAlpha: 0.5,
+  },
+
   hurtStepPx: 10,
   hurtMs: 260,            // stun + i-frames. One number, so the invulnerability
                           // is always exactly as long as the flinch showing it.
@@ -4054,12 +4098,28 @@ const CONFIG = {
      `musicVolume` flat. It trims AND it lifts -- above 1 is allowed and the
      title theme needs it.
 
-     ⚠️ THE BED'S LEVEL IS THE FIXED POINT AND MUST NOT MOVE. It is balanced
-     against the punch effects, so every other track is brought to it rather
-     than the other way round. Measured RMS, which is what these numbers came
-     from:
+     ⚠️ THE BED WAS THE FIXED POINT UNTIL 2026-08-24, AND THEN IT MOVED. Every
+     other number here was derived against it sitting at 1.0 -- and then it was
+     simply too loud in play and came down 20%. What that does NOT invalidate is
+     the two absolute derivations: `musicBoss` and `musicTitle` were each brought
+     to a level of their own in dBFS, not to the bed, so they are untouched.
 
-       music      -16.9 dBFS   the bed, at 1.0 -- the reference
+     ⚠️ AND `musicMosca` MOVED WITH IT, which is the whole reason that entry now
+     exists. It had none for a while, precisely BECAUSE it measured within 0.3dB
+     of the bed and 1.0 was therefore already the right answer -- a level
+     expressed as an ABSENCE. The moment the bed moved, the absence stopped
+     meaning "level with the bed" and started meaning "3dB above it". It is 0.68
+     now: the same trim, so the pair are level again wherever the bed goes next.
+     ⚠️ Move one, move the other.
+
+     ⚠️ AND THE WHISTLE FOLLOWS THE BED FOR FREE. It is a LAYER on `music`, and
+     a layer's own gain node feeds the music bus that the main track's trim sets
+     -- so 0.8 takes the whistle down with it and their balance is unchanged.
+     That is worth knowing before anyone "fixes" the whistle to match.
+
+     Measured RMS, which is what these numbers came from:
+
+       music      -16.9 dBFS   the bed -- at 0.68 it arrives at -20.3
        musicBoss  -13.7 dBFS   a finished mix, hotter -> 0.85 puts it at -15.1
        musicTitle -26.5 dBFS   MIKE is mastered quiet -> 2.6 puts it at -18.2
 
@@ -4068,6 +4128,12 @@ const CONFIG = {
      the louder of the two. Its buffer peaks at 0.31, so 2.6 is nowhere near
      clipping the bus. */
   MUSIC_GAIN: {
+    /* THE STREET BED. It had no entry at all before 2026-08-24, because it WAS
+       the 1.0 everything else was measured against. Down 20% that day for being
+       too loud in play, and then another 15% on top: 1.0 -> 0.8 -> 0.68, which
+       is 3.3dB and takes it from -16.9 to -20.3 dBFS. See the warnings above --
+       this number moving is not free, and it has now moved twice. */
+    music: 0.68,
     musicBoss: 0.85,
     musicTitle: 2.6,
     /* ⚠️ UNDER THE BED ON PURPOSE, AND NOT BECAUSE IT IS QUIET. Measured, the
@@ -4080,6 +4146,13 @@ const CONFIG = {
 
        ⚠️ IT IS ITS OWN GAIN NODE, not the music bus. The bus carries the main
        track's trim and stopMusic() puts it back to plain volume. */
+    /* STILL LIFE'S, ON THE MOSCA. ⚠️ IT IS THE BED'S TRIM AND NOT A LEVEL OF ITS
+       OWN -- her track measures -17.2 dBFS against the bed's -16.9, so the two
+       were already level and the job of this number is only to keep them that
+       way while the bed moves. It had no entry at all until the bed came down;
+       an absence meant "level with the bed" right up to the moment that stopped
+       being true. Move the bed, move this. */
+    musicMosca: 0.68,
     musicWhistle: 0.64,
   },
 

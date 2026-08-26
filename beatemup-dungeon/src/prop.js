@@ -326,6 +326,11 @@ class Prop {
    * Break. `sideways` picks the rotated scatter, which is what a barrel that
    * was in the air when it broke has to use -- the upright burst drops its
    * splinters straight down out of a barrel that is not standing up.
+   *
+   * ⚠️ AND IT IS ALSO HOW THE BARREL WAS BROKEN, which is the one other thing
+   * that turns on it: `sideways` is true exactly when the barrel was THROWN --
+   * landing, hitting a wall, or hitting an enemy -- and false when it was
+   * PUNCHED APART where it stood (`hp <= 0`). Nothing else calls this.
    */
   smash(sideways) {
     if (this.state === 'smash' || this.state === 'gone') return;
@@ -333,6 +338,20 @@ class Prop {
     this.t = 0;
     this.dead = true;
     this.sideways = !!sideways;
+    /* ⚠️ A THROWN BARREL GIVES UP WHAT WAS IN IT. Asked for 2026-08-24: items
+       come out only when a barrel is broken by PUNCHING it.
+
+       It reads as a choice rather than a nerf: a barrel is either a WEAPON or a
+       container, and throwing it spends it as the weapon. Without this the
+       throw was strictly better than the punch -- same break, same drop, plus
+       damage to whoever it landed on.
+
+       ⚠️ IT IS CLEARED HERE RATHER THAN TESTED IN Props.update, so there is one
+       place that knows a barrel's contents are gone and `drops` never lies
+       about what is still inside. It stays a birth roll (see the constructor):
+       what was in the barrel does not change, only whether it survives the way
+       it was opened. */
+    if (this.sideways) this.drops = false;
     this.holder = null;
   }
 
