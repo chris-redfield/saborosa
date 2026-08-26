@@ -1070,6 +1070,101 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### One flinch drawing per blow, alternating
+
+**THE HURT ROW NO LONGER CYCLES.** Each blow that stuns picks ONE of its two
+drawings and HOLDS it for the whole stun; the next blow gets the other.
+`hurtVariant`, bumped where the hurt state is entered and taken modulo the row's
+length in `frameStep`. Asked for 2026-08-24: "for every hit we use one of these
+frames, they should alternate for each hit."
+
+⚠️ **THIS OVERRULES A NOTE THAT ARGUED THE OPPOSITE, AND THE ARGUMENT WAS NOT
+WRONG.** `frameStep` carried "HURT CYCLES, IT DOES NOT HOLD -- a flinch drawn as
+two poses is a shudder, and a shudder that freezes on its second frame reads as
+a fighter that got stuck." Coherent, and not what the game wanted: cycling meant
+EVERY hit played the same 0-1-0 shudder, so the two drawings read as one
+animation instead of as two different flinches. Held and alternated, the sheet's
+two poses are two ways of being hit.
+
+**`stateT` IS NOT READ FOR THIS POSE AT ALL NOW** -- the drawing is chosen by
+the BLOW rather than by time, which is why it holds: there is nothing to
+advance. `POSE_MS.hurt` is dead for it as a result, left in the shared table
+because nothing else reads it wrongly.
+
+⚠️ **THE COUNTER IS BUMPED ON STUNS ONLY, not on every blow.** A knockdown never
+draws the flinch, so counting it would spend a drawing nobody saw and let the
+next two stuns show the same one. Same reasoning as `_comboDefs()` flipping only
+when a chain begins.
+
+**IT IS THE SAME TRICK AS THE TWO FINISHERS**, and taken modulo the row rather
+than hardcoded to two -- re-cut the sheet with three flinches and it cycles
+three without this line changing.
+
+### Being hit moves in steps too
+
+**THE KNOCKBACK NOW JUMPS INSTEAD OF SLIDING** -- `hurtStepPx: 10`. Asked for
+2026-08-24 as "the same thing you did to the barrel pickup, like choppy".
+
+⚠️ **WHAT WAS FLUID ABOUT BEING HIT WAS NEVER THE DRAWING, AND THAT IS WORTH
+CHECKING BEFORE TOUCHING AN ANIMATION.** The `hurt` row is TWO frames cycling at
+100ms -- it cannot flow. The continuous thing is the SHOVE: the knockback
+sliding the body along under a drawing that was already stepped, which is
+exactly the two-motions-at-two-rates the barrel's hoist had. The fix is in
+`_drift`, not in `frameStep`.
+
+⚠️ **THE SIMULATION IS STEPPED, NOT THE DRAWING.** Rounding one entity's drawn
+position while the world scrolls sub-pixel is a flicker this project has already
+been bitten by, and it would put the body somewhere its hitbox is not.
+
+**AND THE REMAINDER IS BANKED, NOT DROPPED** (`_driftAcc`), so the total
+distance a blow moves someone is exactly the `knockback / knockbackDecay` it
+always was -- it simply arrives in jumps. An enemy jab (110) lands in 2 jumps, a
+string's last hit (300) in 5. ⚠️ Cleared on a fresh `hurt()`, or a banked
+remainder from the last blow would land on the first frame of the next one and
+read as a hit connecting early.
+
+**DEPTH IS LEFT SMOOTH** -- a shove is along x, and stepping z would make anyone
+nudged sideways twitch across the belt. **And the death fall is untouched**,
+because it is `state: 'down'` rather than `hurt`.
+
+⚠️ **IT APPLIES TO EVERY FIGHTER.** The `hurt` state is shared, and a choppy
+shove on the player against a smooth one on the enemies he is hitting would be
+two visual languages in one fight.
+
+### A barrel is put DOWN in front of him, not through him
+
+**`drop()` USED TO LAND IT ON `by.x` EXACTLY** -- the barrel stood in the same
+place he did and drew over him. Reported 2026-08-24. It now goes down on the
+side he is FACING (`facingSign(by.facing)`), so putting one down reads as
+setting it down.
+
+⚠️ **THE OFFSET IS CAPPED BY `liftRangeX`, AND THAT NEARLY MADE THIS A HALF
+FIX.** Clearing the two hitboxes needs 89 -- his half-width 26.6 plus the
+barrel's 62.4 -- but the reach to pick a barrel up was 74, so anything that
+actually cleared him was a barrel he could no longer pick back up. The choice
+looked like "still overlapping" or "a silent softlock on his own barrel".
+
+⚠️ **WHICH TURNED UP THE SAME BUG AS THE THROW SPEED, THE SECOND TIME IN A
+DAY.** `liftRangeX` is measured CENTRE TO CENTRE, so the margin a player feels
+is it minus the barrel's half-width: 74 - 44 = **30px** against the old 110px
+barrel, and 74 - 62.4 = **11.6px** once it grew to 156. The barrel got 43%
+bigger and the reach never followed -- grabbing one had quietly become four
+times fussier and nobody had reported it yet. **Rescaling a sprite silently
+retunes every distance AND every speed measured against it; after a `drawScale`
+change, walk the numbers that touch that object.**
+
+**SO BOTH MOVED, AS ONE DECISION:** `liftRangeX` 74 -> 105 (the range scaled by
+156/110) and `dropAheadPx` 89 (derived, exactly where the boxes stop
+overlapping), leaving 16px of slack. ⚠️ Scaling the RANGE is not the same as
+restoring the MARGIN -- 105 gives 42.6px where the original was 30, and an exact
+restore (92) would have left only 3px over the drop, which one frame of movement
+would eat. The more generous of the two was taken deliberately.
+
+**NOT TOUCHED:** the holder DYING while carrying still leaves the barrel at his
+position (`Prop.update`'s held branch releases and zeroes `jumpY` rather than
+calling `drop`). A barrel on a corpse is not the thing that was reported, and
+the two paths do different jobs.
+
 ### The hoist blinks between four positions
 
 **THE BARREL NOW STEPS INSTEAD OF GLIDING** while it is being picked up --

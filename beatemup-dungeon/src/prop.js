@@ -265,7 +265,24 @@ class Prop {
     const by = f || this.holder;
     this._release();
     this.jumpY = 0;
-    if (by) { this.x = by.x; this.z = by.z; }
+    if (by) {
+      /* ⚠️ IN FRONT OF HIM, NOT ON HIM. It used to land on `by.x` exactly --
+         the barrel stood in the same place he did and drew over him, which is
+         what was reported on 2026-08-24. It goes down on the side he is FACING,
+         so putting it down reads as setting it down rather than as dropping it
+         through himself.
+
+         ⚠️ AND THE OFFSET HAS A CEILING IT MUST NOT CROSS: `liftRangeX`, the
+         reach to pick one up. Drop it further away than he can reach and he
+         cannot pick his own barrel back up without stepping -- a worse bug than
+         the one this fixes, and a silent one. `dropAheadPx` 89 is exactly where
+         the two hitboxes stop overlapping and only fits under a reach of 105;
+         the two numbers are one decision. */
+      const C = this.cfg;
+      const ahead = C.dropAheadPx != null ? C.dropAheadPx : 89;
+      this.x = by.x + facingSign(by.facing) * ahead;
+      this.z = by.z;
+    }
     this.t = 0;
   }
 

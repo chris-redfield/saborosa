@@ -1596,8 +1596,42 @@ const CONFIG = {
       /* How close he has to be to pick it up. Generous in x and tight in z, the
          same shape every reach in this game has: the belt is 210px deep and a
          barrel two lanes away should not jump into his hands. */
-      liftRangeX: 74,
+      /* ⚠️ 74 UNTIL 2026-08-24, AND IT HAD SILENTLY TIGHTENED. This is measured
+         CENTRE TO CENTRE, so the margin a player actually feels is this minus
+         the barrel's half-width -- 74 - 44 = 30px against the old 110px barrel,
+         and 74 - 62.4 = **11.6px** once it grew to 156. The barrel got 43%
+         bigger and the reach did not follow, so grabbing one quietly became
+         four times fussier. 105 is 74 x 156/110 -- the RANGE scaled by the size
+         ratio, which gives 42.6px of margin rather than the original 30. ⚠️
+         Scaling the range is NOT the same as restoring the margin: an exact
+         restore would be 62.4 + 30 = 92, and 92 leaves only 3px of slack over
+         `dropAheadPx` 89, which one frame of movement would eat. 105 is
+         deliberately the more generous of the two.
+
+         ⚠️ SAME SHAPE AS THE THROW SPEED one entry down, and the second time in
+         a day: **rescaling a sprite silently retunes every distance and speed
+         measured against it.** After a `drawScale` change, walk the numbers that
+         touch that object.
+
+         ⚠️ AND IT IS THE CEILING ON `dropAheadPx` BELOW. Put a barrel down
+         further away than he can reach and he cannot pick it back up. Move one
+         and look at the other. */
+      liftRangeX: 105,
       liftRangeZ: 46,
+      /* HOW FAR IN FRONT OF HIM A BARREL IS PUT DOWN, in px, on the side he is
+         FACING. Added 2026-08-24: it used to land on his exact position and
+         draw over him.
+
+         ⚠️ 89 IS DERIVED, NOT BY EYE: his half-width 26.6 plus the barrel's
+         62.4, which is exactly where the two hitboxes stop overlapping. Any
+         less and it still stands partly on him, which is the complaint this
+         answers.
+
+         ⚠️ IT ONLY FITS BECAUSE `liftRangeX` WENT TO 105 IN THE SAME PASS. At
+         the old 74 the choice was "still overlapping" or "cannot pick his own
+         barrel back up" -- 89 was unreachable. The two numbers are one
+         decision: to push the drop further out, the reach goes with it. */
+      dropAheadPx: 89,
       /* Height above his feet the BASE of the barrel is drawn at while carried,
          as a fraction of a body (`fighterSizePx`, 137) -- so 0.7 is 96px up.
 
@@ -2217,6 +2251,23 @@ const CONFIG = {
      tests or it draws a lie, so it lives here now and both read it. */
   verticalReach: 70,
 
+  /* ⚠️ HOW FAR THE KNOCKBACK MOVES A BODY BETWEEN JUMPS, in px. 0 is the old
+     smooth glide. Asked for 2026-08-24: the same "choppy" treatment the
+     barrel's hoist got, because the thing that was fluid about being hit was
+     never the DRAWING -- the `hurt` row is two frames cycling at 100ms -- it
+     was the shove sliding the body along underneath it.
+
+     10 against a total travel of `knockback / knockbackDecay` means an enemy
+     jab (110) arrives in 2 jumps and a string's last hit (300) in 5. Raise it
+     for a harder stutter; the total distance does not change either way,
+     because `_drift` BANKS the remainder rather than dropping it.
+
+     ⚠️ IT APPLIES TO EVERY FIGHTER, NOT JUST THE PLAYER. The `hurt` state is
+     shared and a choppy shove on him against a smooth one on the enemies he is
+     hitting would be two visual languages in one fight. If it turns out to be
+     wanted on the player alone, that is a `kind` test in `_drift` -- but ask
+     first. */
+  hurtStepPx: 10,
   hurtMs: 260,            // stun + i-frames. One number, so the invulnerability
                           // is always exactly as long as the flinch showing it.
   hurtBlinkMs: 60,        // flicker period while stunned

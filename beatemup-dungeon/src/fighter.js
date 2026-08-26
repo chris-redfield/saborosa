@@ -37,6 +37,13 @@ class Fighter {
     this.x = x;
     this.z = z;
     this.jumpY = 0;
+    /* Banked remainder of a STEPPED knockback -- see _drift(). Zero except
+       while `state === 'hurt'` with `hurtStepPx` on. */
+    this._driftAcc = 0;
+    /* WHICH FLINCH DRAWING THIS FIGHTER IS ON. Bumped once per blow that
+       actually stuns; `frameStep` takes it modulo the row's length, so one
+       drawing is HELD for a whole hurt and the next blow gets the other. */
+    this.hurtVariant = 0;
 
     this.facing = o.facing || 'left';
     this.state = 'idle';
@@ -239,6 +246,9 @@ class Fighter {
     this.atk = null;            // interrupted — see the class header
     this.comboWindow = 0;
     this.vx = dir * (knockback || 0);
+    // A new blow starts a new step: a banked remainder from the last one would
+    // land on the first frame of this one and read as a hit landing early.
+    this._driftAcc = 0;
 
     if (this.hp <= 0) {
       this.hp = 0;
@@ -272,6 +282,10 @@ class Fighter {
       this.state = 'hurt';
       this.stateT = 0;
       this.hurtT = CONFIG.hurtMs / 1000;
+      /* ⚠️ BUMPED HERE AND NOWHERE ELSE -- on the blows that actually STUN. A
+         knockdown never draws the flinch, so counting it would spend a drawing
+         nobody saw and let the next two stuns show the same one. */
+      this.hurtVariant++;
     }
     return true;
   }
@@ -311,8 +325,34 @@ class Fighter {
    * tickDeath().
    */
   _drift(dt, bounds) {
-    if (!this.vx && !this.vz) return;
-    this.x += this.vx * dt;
+    if (!this.vx && !this.vz) { this._driftAcc = 0; return; }
+    /* ⚠️ THE SHOVE MOVES IN STEPS WHILE HE IS BEING HIT. Asked for 2026-08-24:
+       the same treatment the barrel's hoist got -- "choppy", not fluid.
+
+       WHAT IS SMOOTH ABOUT A HIT IS NOT THE DRAWING. The `hurt` row is TWO
+       frames cycling at 100ms; it cannot flow. The continuous thing is this --
+       the knockback sliding the body along under an animation that is already
+       stepped, which is the same two-motions-at-two-rates the barrel had.
+
+       ⚠️ THE SIMULATION IS STEPPED, NOT THE DRAWING, and that is deliberate.
+       Rounding the drawn position of one entity while the world scrolls
+       sub-pixel is a known flicker in this project, and it would also put the
+       body somewhere the hitbox is not. The remainder is BANKED in `_driftAcc`
+       rather than thrown away, so the total distance a blow moves someone is
+       exactly what `knockback / knockbackDecay` always was -- it arrives in
+       jumps instead of a glide.
+
+       ⚠️ DEPTH IS LEFT SMOOTH. A shove is along x; stepping z as well would
+       make a fighter nudged sideways twitch across the belt for no reason. */
+    const step = (this.state === 'hurt') ? (CONFIG.hurtStepPx || 0) : 0;
+    if (step > 0) {
+      this._driftAcc += this.vx * dt;
+      const n = (this._driftAcc / step) | 0;      // truncates toward zero
+      if (n) { this.x += n * step; this._driftAcc -= n * step; }
+    } else {
+      this._driftAcc = 0;
+      this.x += this.vx * dt;
+    }
     this.z += this.vz * dt;
     const k = Math.exp(-CONFIG.knockbackDecay * dt);
     this.vx *= k;
@@ -715,13 +755,28 @@ class Fighter {
     if (p === 'death') {
       return Math.min(n - 1, Math.floor(this.deathT / (ms / 1000)));
     }
-    /* HURT CYCLES, IT DOES NOT HOLD. A flinch drawn as two poses is a shudder,
-       and a shudder that plays once and freezes on its second frame reads as a
-       fighter that got stuck rather than one being hit. Every other one-shot
-       here ends in a state worth holding — dead, or on the floor — and this one
-       ends by standing back up, so there is nothing to hold. */
+    /* ⚠️ ONE DRAWING PER BLOW, HELD -- AND A DIFFERENT ONE NEXT TIME. Asked for
+       2026-08-24: "for every hit we use one of these frames, they should
+       alternate for each hit."
+
+       ⚠️ THIS OVERRULES THE NOTE THAT USED TO BE HERE, which argued the
+       opposite: that hurt should CYCLE its two drawings through a single stun,
+       because "a flinch drawn as two poses is a shudder" and freezing on the
+       second would read as a fighter that got stuck. That is a coherent
+       argument and it is not what the game wanted. Cycling meant every hit
+       played the same 0-1-0 shudder, so the two drawings read as ONE animation
+       rather than as two different flinches.
+
+       `stateT` IS NOT READ AT ALL NOW. The drawing is chosen by the BLOW rather
+       than by time, which is why it holds -- there is nothing to advance.
+       `POSE_MS.hurt` is dead for this pose as a result; it is left in the
+       shared table because nothing else reads it wrongly.
+
+       Same trick as the combo's two finishers: a counter bumped when the state
+       is entered, taken modulo the row -- so a re-cut sheet with three flinches
+       cycles three without this line changing. */
     if (p === 'hurt') {
-      return Math.floor(this.stateT / (ms / 1000)) % n;
+      return this.hurtVariant % n;
     }
     if (p === 'down') {
       return Math.min(n - 1, Math.floor(this.stateT / (ms / 1000)));
