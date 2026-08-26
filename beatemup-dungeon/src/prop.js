@@ -532,7 +532,8 @@ class Prop {
        in a different perspective from the thing it came out of. */
     sheets.draw(ctx, 'barril', this.facing, f.pose, f.step,
                 this.groundX(camX), drawY,
-                { scale: this.depthScale(), rotate: rot, pivotY: pivotY });
+                { scale: this.depthScale(), rotate: rot, pivotY: pivotY,
+                  tint: this.tint, tintAlpha: this.tintAlpha });
   }
 }
 
@@ -793,6 +794,16 @@ class Bomb extends Prop {
        from the thrower when it leaves. This is the line that makes it turn with
        the player. */
     this._syncRow();
+    /* ⚠️ THE RED IS DECIDED HERE, IN THE SIMULATION, NOT IN draw(). draw() is
+       handed the sheets and could ask them how long the row is, which is how
+       the first version timed the blink -- and that put a value read off a
+       moving clock inside the render pass, where this game has been bitten
+       before. Both bomb rows are three frames, so the blink is one frame lit in
+       three straight off the fuse, with no sheet lookup at all. */
+    const ms = this._animMs();
+    this.tint = (this.cfg.panicTint && this._panic() &&
+                 (this.fuseT * 1000) % (ms * 3) < ms) ? this.cfg.panicTint : null;
+    this.tintAlpha = this.cfg.panicTintAlpha;
   }
 
   /**
@@ -885,9 +896,6 @@ class Bomb extends Prop {
     this.facing = 'right';                       // the barril pack's `native`
     try { super.draw(ctx, sheets, camX); }
     finally { this.facing = was; }
-    /* AFTER the sprite: it paints OVER the bomb. Before it, the bomb would be
-       drawn on top of its own red and nothing would show. */
-    this._paintRed(ctx, sheets, camX);
   }
 
   /**
@@ -916,41 +924,6 @@ class Bomb extends Prop {
    * second place where it could drift, the red simply does not paint during
    * `lifting`. The wick is still flickering, so the bomb is not silent.
    */
-  _paintRed(ctx, sheets, camX) {
-    if (this.state === 'smash' || this.state === 'gone') return;
-    if (this.state === 'lifting') return;          // see the note above
-    const C = this.cfg;
-    if (C.panicRed === false || !this._panic()) return;
-    const n = Math.max(1, sheets.poseLength('barril', this.row));
-    if (Math.floor(this.fuseT * 1000 / this._animMs()) % n !== 0) return;
-    if (typeof document === 'undefined') return;
-
-    const f = this._frame(sheets);
-    const ds = this.depthScale();
-    const size = (C.sizePx || 82) * ds;
-    const W = Math.max(8, Math.ceil(size * 3));
-    const H = Math.max(8, Math.ceil(size * 3));
-    let cv = Bomb._tint;
-    if (!cv) cv = Bomb._tint = document.createElement('canvas');
-    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
-    const c2 = cv.getContext('2d');
-    if (!c2) return;
-    c2.clearRect(0, 0, W, H);
-    /* The local ground point. Anywhere with room above and to both sides will
-       do -- the blit below lines it up with the real one. */
-    const lx = W / 2, ly = H * 0.82;
-    sheets.draw(c2, 'barril', 'right', f.pose, f.step, lx, ly, { scale: ds });
-    c2.save();
-    c2.globalCompositeOperation = 'source-in';
-    c2.fillStyle = C.panicRedColour || '#ff2a1a';
-    c2.fillRect(0, 0, W, H);
-    c2.restore();
-
-    ctx.save();
-    ctx.globalAlpha = (C.panicRedAlpha != null ? C.panicRedAlpha : 0.8);
-    ctx.drawImage(cv, this.groundX(camX) - lx, this.groundY() - ly);
-    ctx.restore();
-  }
 
 }
 

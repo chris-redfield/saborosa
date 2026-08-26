@@ -1898,21 +1898,36 @@ const CONFIG = {
          pass cannot do colour -- it is `lighter` with the sprite as its own
          source, and adding a black bomb to itself adds nothing. Cheap was not
          the requirement: "the bomb itself should be painted red, not around
-         it". It is a masked fill now, an offscreen canvas and `source-in`, so
-         what blinks is a red SILHOUETTE of the actual frame -- fuse, spark and
-         all. See Bomb._paintRed.
+         it". So the sprite is now REPAINTED, as a third pass through the same
+         blit that drew it -- see the `tint` block in Sheets.draw.
+
+         ⚠️ THE MASKED-FILL VERSION IN BETWEEN WAS WORSE THAN WRONG, IT WAS
+         RIGHT-LOOKING. It built the silhouette on an offscreen canvas with
+         `source-in` and blitted it back, which meant re-deriving Sheets.draw's
+         transform -- anchor, depth scale, flip, rotation, pivot -- by hand at
+         the call site. Every headless check of it passed. It could not survive
+         the bomb being thrown, because a thrown bomb rotates and the copy did
+         not. Drawing through the same closure is both simpler and unable to
+         drift.
+
+         ⚠️ AND THE FILTER HAS TO OPEN WITH brightness(0). The bomb art measures
+         median luma 0 -- it is black -- and hue-rotate/saturate are no-ops on
+         black, so a "tint" built the obvious way comes out invisible. Crushing
+         to black and rebuilding the colour out of invert+sepia+saturate lands
+         on rgb(255,42,27), which is the red that was asked for, and works the
+         same on any sprite rather than only on pale ones.
 
          ⚠️ "TOGETHER WITH THE NEW SPRITE FREQUENCY" IS MET BY DERIVATION, not
-         by matching two numbers. The red is painted on step 0 of the
-         three-frame cycle, so it pulses at exactly a third of whatever rate the
-         fuse is flickering at -- 8.6 a second while panicking -- and it follows
-         `animPanicMs` if that ever moves. Given a timer of its own the two
-         would drift in and out of phase and read as two effects rather than one
-         alarm.
+         by matching two numbers. The red is lit for one frame in three, so it
+         pulses at exactly a third of whatever rate the fuse is flickering at --
+         8.6 a second while panicking -- and it follows `animPanicMs` if that
+         ever moves. Given a timer of its own the two would drift in and out of
+         phase and read as two effects rather than one alarm.
 
-         `panicRed: false` turns it off. */
-      panicRedAlpha: 0.8,
-      panicRedColour: '#ff2a1a',
+         Clearing `panicTint` turns it off. */
+      panicTintAlpha: 0.85,
+      panicTint: 'brightness(0) invert(24%) sepia(100%) saturate(4000%) ' +
+                 'hue-rotate(-8deg) brightness(110%)',
       /* Reach and carry, the barrel's numbers scaled to a smaller object. */
       liftRangeX: 88,
       liftRangeZ: 46,

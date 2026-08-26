@@ -231,6 +231,28 @@ class Sheets {
       blit();
       ctx.restore();
     }
+
+    /* A solid colour repaint of the sprite, for the bomb's panic red.
+       ⚠️ IT IS A THIRD PASS OVER `blit()` AND THAT IS THE WHOLE POINT. The
+       first version masked the sprite into an offscreen canvas and blitted the
+       result back, which meant reproducing this function's transform -- anchor,
+       depth scale, flip, rotation, pivot -- by hand at the call site. It lined
+       up while the bomb sat still and nowhere near it once the bomb was thrown.
+       Drawing again through the same closure cannot drift, because it is the
+       same transform.
+       ⚠️ AND THE FILTER STARTS WITH brightness(0). The bomb art is black (median
+       luma 0), and every hue/saturate filter is a no-op on black -- crushing to
+       black first and building the colour back up out of invert+sepia is what
+       makes the recipe work on ANY sprite instead of only on pale ones.
+       Unsupported `filter` -> this pass is a plain redraw of the sprite, which
+       is invisible rather than broken. */
+    if (o.tint) {
+      ctx.save();
+      ctx.filter = o.tint;
+      if (o.tintAlpha != null) ctx.globalAlpha = o.tintAlpha;
+      blit();
+      ctx.restore();
+    }
   }
 
   /**
