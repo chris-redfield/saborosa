@@ -200,19 +200,21 @@ class Player extends Fighter {
           if (this.liftTarget) this.liftTarget.lift(this, this.pickupMs);
         }
       }
-      /* THE CATCH, AND IT ASKS THE BARREL RATHER THAN THE CLOCK. The barrel is
-         travelling up its own arc; his hands close when it ARRIVES (`held`),
-         which is the same moment either way but says so in terms of the thing
-         being caught.
+      /* LETTING GO OF THE REACH. ⚠️ THIS NO LONGER CATCHES THE BARREL -- the
+         barrel puts itself in his hands on the frame it arrives (see
+         `Prop._liftArc`), because polled from here it was ONE FRAME LATE and
+         that frame was drawn with his arms down under a barrel already
+         overhead. `player.update` runs before `props.update`, so the hoist can
+         never have finished by the time this looks.
 
-         IT CAN FAIL, three ways, and all three end with him empty-handed rather
-         than holding a ghost: the barrel was smashed by a stray punch mid-hoist
-         (`smash`), the hoist was aborted because he was hit (`idle` again), or
-         it is simply still on its way (neither -- keep waiting). */
-      if (this.liftTarget) {
-        const st = this.liftTarget.state;
-        if (st === 'held') { this.carrying = this.liftTarget; this.liftTarget = null; }
-        else if (st !== 'lifting') { this.liftTarget = null; }
+         What is left is the REFERENCE, and the three ways a hoist can fail --
+         all of which end with him empty-handed rather than holding a ghost: the
+         barrel was smashed by a stray punch mid-hoist (`smash`), the hoist was
+         aborted because he was hit (`idle` again), or it is simply still on its
+         way (`lifting` -- keep waiting). Anything that is no longer `lifting`
+         has finished with him one way or the other. */
+      if (this.liftTarget && this.liftTarget.state !== 'lifting') {
+        this.liftTarget = null;
       }
       /* THE SAME QUESTION FOR FOOD, and it is only a reference to drop: the
          food heals him itself when the stoop completes, and puts itself back on
@@ -254,11 +256,18 @@ class Player extends Fighter {
           this.carrying.drop(this);
           this.carrying = null;
         }
-        /* ⚠️ AND THE ONE HE IS STILL LIFTING, which is NOT the same object and
-           is the one-frame race `letGo` exists for -- a barrel that arrived in
-           his hands this very frame is `held` while `carrying` is still null,
-           and clearing the reference without letting go of it strands the
-           barrel on him forever. */
+        /* ⚠️ AND THE ONE HE IS STILL LIFTING. It used to be guaranteed NOT to
+           be the same object, and that was the one-frame race this exists for:
+           a barrel that arrived this very frame was `held` while `carrying` was
+           still null, so clearing the reference without letting go of it
+           stranded the barrel on him forever.
+
+           ⚠️ SINCE 2026-08-24 IT CAN BE THE SAME OBJECT, because the barrel now
+           sets `carrying` on the frame it arrives -- the race is gone by
+           construction rather than by being caught here. Both calls are still
+           made and the order is still `drop` then `letGo`, which is safe on one
+           object: `drop` puts it on the floor as `idle`, and `letGo` returns
+           immediately for anything that is neither `held` nor `lifting`. */
         if (this.liftTarget) {
           this.liftTarget.letGo(this);
           this.liftTarget = null;

@@ -541,6 +541,26 @@ const CONFIG = {
          depth (0..beltDepth, 210). A barrel at the same x as an arena's enemies
          is IN that fight; one 200px short of it is on the way in. */
       props: [
+        /* ⚠️ TWO BARRELS IN THE FIRST FEW STEPS, added 2026-08-24 so the pickup
+           can be tried the moment a run starts -- "add 2 barrels right at the
+           beginning of the map, so I can test it out immediately". He walks on
+           to x 220 and the opening segment is a PASSAGE rather than a fight, so
+           these are the safest place in the game to learn a verb: nothing can
+           hit back while he is holding one.
+
+           ⚠️ THE FIRST ONE IS IN HIS OWN LANE ON PURPOSE. `liftRangeZ` is 46
+           and he walks on at z 114, so a barrel at z 55 would be 59 away and
+           would NOT lift until he stepped up -- which is the first way this
+           mechanic looks broken when it is working exactly as specified. z 110
+           is instant. The second sits at 165, a step down the belt, so the
+           depth reach gets exercised deliberately rather than by accident.
+
+           ⚠️ THESE ARE NEW PLACEMENTS, NOT THE OLD ONES BROUGHT BACK. The four
+           commented out below were thinned deliberately in the jam pass and are
+           left exactly as they were -- whether the street wants barrels again
+           is a level decision, and this is a test rig. */
+        { kind: 'barrel',  x: 430, z: 110 },
+        { kind: 'barrel',  x: 620, z: 165 },
         // The opening walk: a barrel, and nothing that can hit back.
         // { kind: 'barrel',  x: 1450, z: 60 },
         { kind: 'coxinha', x: 1900, z: 105 },
@@ -1101,7 +1121,13 @@ const CONFIG = {
        move the other, or the hit box stops matching the picture. */
     barril:  { sheet: 'v2:beatemup-dungeon/barril-beat', pack: 'ragged',
                name: 'BARRIL',
-               drawScale: 0.8,
+               /* ⚠️ 0.8 UNTIL 2026-08-24, THEN +30% BY REQUEST. `PROPS.barrel
+                  .sizePx` is 0.8 -> 1.04 of `fighterSizePx` and MOVED WITH IT
+                  -- see the warning above this entry: the picture comes from
+                  here and the hit box comes from there, and a barrel that is
+                  drawn bigger than it can be hit is the version of this bug
+                  that is invisible until someone swings at one. */
+               drawScale: 1.144,
                poses: {
                  idle:      { anim: 'idle' },       // 4: two drawings + mirrors
                  smash:     { anim: 'brk' },
@@ -1478,10 +1504,22 @@ const CONFIG = {
   PICKUP_MS: { ground: 420, heavy: 640, throw: 420, throwReleaseRel: 0.45 },
 
   /* --- IS THE PICKUP BUTTON WIRED AT ALL -----------------------------------
-     ⚠️ FALSE SINCE 2026-08-24, BY REQUEST: L / E / pad B does NOTHING. It went
-     inert in the same session that moved FOOD onto the punch button, and the
-     user named the consequence before asking for it -- "I understand that now
-     the player won't be able to pick up the barrels, ok?".
+     ⚠️ TRUE AGAIN. It was turned OFF earlier on 2026-08-24 -- "L does nothing
+     anymore, and I understand that now the player won't be able to pick up the
+     barrels" -- and turned back ON the same day: "bring the pickup mechanic for
+     the player to pick up barrels, we removed that".
+
+     ⚠️ THE OFF PASS COST NOTHING BECAUSE THE MACHINERY WAS LEFT BEHIND THE
+     FLAG RATHER THAN DELETED, which is exactly the argument that was made for
+     keeping it. `Prop.lift`/`_liftArc`/`throwFrom`, `Props.liftTarget`,
+     `Player.carrying`/`liftTarget`/`throwHeld`, `combat.propHits` and the
+     `lift`/`liftThrow`/`carryWalk` poses were all still here and still correct;
+     restoring the whole verb was this one boolean.
+
+     ⚠️ AND IT DOES NOT CLASH WITH FOOD, which moved to the PUNCH button in
+     between. That was the reasoning at the time and it holds: punch stoops for
+     food (and throws a held barrel), pickup lifts and puts down. The two verbs
+     never wanted the same button.
 
      WHAT GOES WITH IT: lifting a barrel, carrying one, throwing one, and
      putting one down. That is the whole verb, and it is the only thing that
@@ -1501,7 +1539,7 @@ const CONFIG = {
      ⚠️ THE PRESS IS STILL CONSUMED while this is false (`player.js` calls
      `takePickup()` and then ignores it) so a press cannot sit in the queue and
      fire later if it is ever flipped back mid-run. */
-  pickupButton: false,
+  pickupButton: true,
 
   /* =========================================================================
      PROPS -- BARRELS AND FOOD
@@ -1544,8 +1582,15 @@ const CONFIG = {
       hp: 5,
       /* Drawn height in canvas px, and what the hit box is derived from.
          ⚠️ IT MUST AGREE WITH CHARACTERS.barril.drawScale -- the picture comes
-         from there and this is what can be hit. 0.8 x fighterSizePx is 110. */
-      sizePx: 110,
+         from there and this is what can be hit. 1.144 x fighterSizePx (136.8)
+         is 156.
+
+         ⚠️ GREW TWICE ON 2026-08-24, AND IT IS TWO NUMBERS EACH TIME. 110
+         (drawScale 0.8) -> +30% -> 142 (1.04) -> +10% -> 156 (1.144). `hitWRel` is a FRACTION of this so the width
+         follows on its own; `hitZ` below is absolute px and deliberately did
+         NOT grow -- it is how much BELT the barrel occupies, and a taller
+         barrel does not stand in more of the lane. */
+      sizePx: 156,
       hitWRel: 0.8,      // hurtbox width, as a fraction of sizePx
       hitZ: 46,          // and its depth on the belt, in px
       /* How close he has to be to pick it up. Generous in x and tight in z, the

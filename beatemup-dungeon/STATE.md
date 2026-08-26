@@ -1070,6 +1070,85 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The pick-up flickered on its last frame, and the cause was frame ORDER
+
+**ONE FRAME OF HIM STANDING WITH HIS ARMS DOWN, under a barrel that was already
+over his head.** Reported 2026-08-24: "quando o personagem pega o barril, nos
+últimos frames da animação, ele dá um grande flicker".
+
+**IT WAS NOT THE ANIMATION.** `lift` is spread across the ACTION (`stateT /
+pickupMs` in `frameStep`), not run at a fixed rate and not looped, so the
+drawing cannot cycle or finish early. That was the first thing checked and it
+ruled out the obvious suspect.
+
+⚠️ **IT WAS THE ORDER INSIDE ONE FRAME.** `player.update` runs BEFORE
+`props.update`. On the frame the reach ends:
+
+    player.update   his own clock runs out -> state 'pickup' -> 'idle'
+                    ...and `carrying` is still null
+    props.update    the barrel's arc finishes -> state 'held'
+    DRAW            pose(): not 'pickup', nothing carried -> plain 'idle'
+
+The catch that set `carrying` ran on the NEXT frame, so he snapped back up into
+`carryWalk`. Exactly one frame, and very visible, because the barrel was at full
+carry height while his arms were at his sides.
+
+**THE FIX IS WHO ANNOUNCES THE ARRIVAL.** The barrel now sets
+`holder.carrying = this` on the frame it reaches `held`, and `Player.update`'s
+block is reduced to dropping its `liftTarget` reference and handling the three
+ways a hoist can fail. ⚠️ **That is not a new owner -- it is the symmetric
+half of one it already had.** `_release()` has always cleared BOTH ends of the
+hold, and `Prop.update`'s header already said "every path that ends a hold goes
+through here or drop(); both clear both ends". The prop wrote `carrying` on the
+way out and merely failed to write it on the way in.
+
+**AND IT KILLED A DOCUMENTED RACE RATHER THAN CATCHING IT.** The hurt branch
+carried a warning that a barrel arriving "this very frame" was `held` while
+`carrying` was still null, so clearing the reference without letting go stranded
+it on him forever. Those two are now set together, so the race cannot occur.
+Both calls are still made -- `drop` then `letGo` -- and that is safe on a single
+object, because `letGo` returns immediately for anything neither `held` nor
+`lifting`. **Prefer removing the possibility to catching the instance**, which
+is this file's own rule and was written about a different bug.
+
+**THE BARREL ALSO GREW 43%**, in two asks: drawScale 0.8 -> 1.04 (+30%) ->
+1.144 (+10%), 110px -> 156px. ⚠️ Two numbers each time -- `CHARACTERS.barril
+.drawScale` is the picture and `PROPS.barrel.sizePx` is what can be hit, and a
+barrel drawn bigger than it can be punched is invisible until someone swings.
+`hitWRel` is a fraction so the width followed on its own; `hitZ` deliberately
+did not, because a taller barrel does not stand in more of the lane.
+
+### The barrels came back, and the flag paid for itself
+
+**`pickupButton` IS TRUE AGAIN**, the same day it went false. That is the whole
+story of the decision to leave the machinery behind a flag rather than delete
+it: `Prop.lift`/`_liftArc`/`throwFrom`, `Props.liftTarget`, `Player.carrying`/
+`liftTarget`/`throwHeld`, `combat.propHits` and three poses were all still here
+and still correct, so restoring the verb was ONE BOOLEAN. ⚠️ Worth remembering
+the next time a feature is switched off on this project: it gets switched back
+on.
+
+**AND IT DID NOT CLASH WITH FOOD**, which moved to the PUNCH button in between.
+That was the argument at the time and it held: punch stoops for food and throws
+a held barrel, pickup lifts and puts down. The two verbs never wanted the same
+button, and turning one back on needed no thought about the other.
+
+**TWO TEST BARRELS IN THE OPENING WALK**, x 430 and x 620. The opening segment
+is a PASSAGE rather than a fight, so it is the safest place in the game to learn
+a verb -- nothing can hit back while he is holding one.
+
+⚠️ **THE FIRST IS IN HIS OWN LANE AND THAT IS NOT DECORATION.** `liftRangeZ` is
+46 and he walks on at z 114, so the first placement (z 55) was 59 away and would
+NOT have lifted until he stepped up -- the mechanic looking broken while working
+exactly as specified, on the very barrel put there to prove it works. z 110 is
+instant; the second at 165 is a step away, so the depth reach is exercised
+deliberately rather than discovered as a bug. **Check a reach against the spawn
+position before placing a test rig.**
+
+⚠️ **THESE ARE NEW PLACEMENTS, NOT THE JAM PASS'S FOUR BROUGHT BACK.** Those are
+left commented out exactly as they were -- whether the street wants barrels
+again is a level decision and this is a test rig.
+
 ### He walks on at the start of a run
 
 **INSTEAD OF BEING THERE ALREADY**, asked for 2026-08-24: "make him come from

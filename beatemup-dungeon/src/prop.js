@@ -189,6 +189,25 @@ class Prop {
     if (p >= 1) {
       this.state = 'held';
       this.liftQ = 1;
+      /* ⚠️ AND IT PUTS ITSELF IN HIS HANDS, ON THE FRAME IT ARRIVES. This used
+         to be the PLAYER's job, polled from `Player.update`, and it was one
+         frame late -- which is the "grande flicker" reported 2026-08-24 at the
+         end of the pick-up.
+
+         The order inside a frame is the whole of it: `player.update` runs
+         BEFORE `props.update`, so on the frame the reach ends the player has
+         already left the `pickup` state (his own clock ran out) while
+         `carrying` is still null, and the barrel only reaches `held` later that
+         same frame. `pose()` then had nothing to draw but plain `idle` -- arms
+         down, for exactly one frame, under a barrel that was already overhead.
+         The catch set `carrying` on the NEXT frame and he snapped back up.
+
+         `_release()` already clears BOTH ends of the hold, so the barrel was
+         always the one writing `holder.carrying` on the way out; writing it on
+         the way in is the symmetric half, and it is the arriving thing that
+         knows it has arrived. Player.update still drops its `liftTarget`
+         reference and still handles the three ways a hoist can fail. */
+      if (h) h.carrying = this;
     }
   }
 

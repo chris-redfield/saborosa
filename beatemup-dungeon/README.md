@@ -1722,16 +1722,17 @@ not part of the request.
 | `spinMs` / `smashMs` | 90 per tumble frame; 480 for the three break frames |
 | `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ Barrels are most of the food on the floor; thin the food by thinning this as well as the placed drumsticks |
 
-> ⚠️ **THE PICKUP BUTTON IS OFF SINCE 2026-08-24** — `CONFIG.pickupButton` is
-> `false`, so L / E / pad B does nothing and **barrels cannot be lifted, carried
-> or thrown**. Requested in play, with the consequence named up front. Barrels
-> are still punched apart and still drop a chicken, and the stoop animation is
-> not orphaned because taking food plays it. Everything below still works and is
-> one flag away: the lift arc, the carry, the throw, `propHits`, and the
-> `lift` / `liftThrow` / `carryWalk` poses are all intact. Set `pickupButton`
-> true to restore the whole verb.
+> **`CONFIG.pickupButton` is `true`.** It was switched off on 2026-08-24 and
+> back on the same day. The off pass cost nothing to reverse because the
+> machinery was left behind the flag rather than deleted — the lift arc, the
+> carry, the throw, `propHits` and the `lift` / `liftThrow` / `carryWalk` poses
+> were all still correct, and restoring the whole verb was one boolean.
+>
+> ⚠️ **It does not clash with food**, which moved to the *punch* button in
+> between: punch stoops for food (and throws a held barrel), pickup lifts and
+> puts down. The two verbs never wanted the same button.
 
-**Controls (while `pickupButton` is true):** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
+**Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
 the one he is holding. *punch* (J / Z / Space) **throws** it.
 
 > ⚠️ **The throw plays `carryThrow`, not `liftThrow`.** The illustrator's row is
