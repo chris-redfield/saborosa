@@ -191,7 +191,18 @@ class Combat {
     let killed = false;
     for (const t of struck) {
       const wasDead = t.dead;
-      t.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+      /* ⚠️ THE ATTACKER'S OWN `knockbackScale`, AND ONLY HERE. This is the
+         site where the PLAYER's blows land; the two sites below, where he is
+         the one being hit, read the attacker's number the same way and so are
+         left alone -- scaling there would have made IPANEMA hit harder AND get
+         hit harder, which is not what a heavier character is.
+         ⚠️ IT SCALES THE PUSH, NEVER THE DAMAGE. `dmg` is untouched above, so
+         every enemy's time-to-kill stays exactly where CONFIG.COMBO says it is;
+         what changes is how far the body travels, which is spacing and feel.
+         Worth knowing before raising it far: a body pushed further can fall out
+         of range of the next hit in the string. */
+      t.hurt(dmg, box.dir, box.def.knockback * (player.feel().knockbackScale || 1),
+             box.def.lift, box.def.knockdown);
       /* ⚠️ TWO GATES, AND THEY ASK DIFFERENT THINGS. `scores !== false` is the
          "is this a fighter" test the kill counter uses -- a barrel answers the
          whole target interface and is struck by exactly this code, so without

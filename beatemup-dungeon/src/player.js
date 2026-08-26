@@ -120,7 +120,12 @@ class Player extends Fighter {
     if (this.canAct()) {
       const ix = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       const iz = (input.down ? 1 : 0) - (input.up ? 1 : 0);
-      this.walk(dt, ix, iz, bounds);
+      /* ⚠️ THE ONLY PLACE `walkScale` IS SPENT, and that is what "only the
+         walk" means: a jump still carries him as far, a lunge still steps as
+         far, and nothing he throws travels differently. Slowing him anywhere
+         more central -- walkSpeedX, or a scale inside walk() -- would have
+         reached all of those through the one field. */
+      this.walk(dt, ix, iz, bounds, this.feel().walkScale || 1);
 
       /* LATCHED EVERY FRAME HE CAN ACT, which is the only place it can be. On
          the ground this is just bookkeeping; on the frame a jump or an air

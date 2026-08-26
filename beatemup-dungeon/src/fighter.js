@@ -310,6 +310,18 @@ class Fighter {
    * Move under the player's or the AI's intent. `ix`/`iz` are -1..1. Returns
    * nothing; it writes x/z directly, clamped to the belt and the level.
    */
+  /**
+   * The per-character FEEL overrides, or an empty object.
+   *
+   * ⚠️ FEEL ONLY -- `drawScale`, `walkScale`, `jumpScale`, `airDwell`. Nothing
+   * that decides whether a punch CONNECTS goes in here: the hurtboxes, the
+   * reaches and the damage stay global, so the two heroes can differ in how
+   * they read without either of them being the easier one to play. The moment
+   * something in this block changes a hitbox, the cast stops being skins and
+   * every enemy's time-to-kill has to be re-tuned twice.
+   */
+  feel() { return (CONFIG.CHARACTERS && CONFIG.CHARACTERS[this.kind]) || {}; }
+
   walk(dt, ix, iz, bounds, speedScale) {
     const sc = speedScale || 1;
     const moving = Math.abs(ix) > 0.01 || Math.abs(iz) > 0.01;
@@ -422,7 +434,14 @@ class Fighter {
     }
     // A sine arc rather than real gravity: the shape is what matters and a sine
     // gives the float at the apex that a parabola does not.
-    this.jumpY = Math.sin(Math.PI * p) * CONFIG.jumpHeight;
+    /* ⚠️ HEIGHT IS SCALED PER CHARACTER, AIRTIME IS NOT, and they are separate
+       knobs here for the reason the CONFIG note gives: floatiness is the RATIO
+       between them. Scaling `jumpMs` instead would have been the same jump
+       drawn slower -- and worse, it would have moved the air punch, whose
+       frames are spread over `jumpMs`, and the enemies' jump-in, whose 420ms
+       startup is the moment their arc drops back inside `verticalReach`.
+       Enemies have no `jumpScale`, so that number stays true for them. */
+    this.jumpY = Math.sin(Math.PI * p) * CONFIG.jumpHeight * (this.feel().jumpScale || 1);
   }
 
   _updateAttack(dt, bounds) {
@@ -707,7 +726,7 @@ class Fighter {
          and the attack's own windows are measured against it, so stretching the
          row to suit a drawing would desync the punch from the window that can
          actually hit. */
-      const d = (CONFIG.CHARACTERS[this.kind] || {}).airDwell;
+      const d = this.feel().airDwell;
       if (!d) return Math.min(n - 1, Math.floor(t * n));
       const extra = Math.max(1, d.share || 1) - 1;
       const total = n + extra;

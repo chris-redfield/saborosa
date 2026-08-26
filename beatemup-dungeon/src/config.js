@@ -860,6 +860,16 @@ const CONFIG = {
        a visible gap. */
     coconut:  { sheet: 'v2:beatemup-dungeon/coconut-beat', pack: 'ragged',
                 drawScale: 0.9, name: 'LEBRON',
+                /* 8% more air than the global arc, asked for on 2026-08-26 --
+                   his jump only, IPANEMA stays on the plain `jumpHeight`.
+                   ⚠️ IT IS HEIGHT AND NOT AIRTIME. `jumpMs` is untouched, so
+                   his air punch still lands on the same frames at the same
+                   times and the AIR_ATTACK windows still line up with the arc.
+                   ⚠️ AND IT STAYS UNDER `AIR_ATTACK.reachY` (120): the apex
+                   goes from 85 to 92, so he can still reach the floor from the
+                   top of it. Push this much past 1.4 and he starts sailing over
+                   enemies he is punching at. */
+                jumpScale: 1.08,
                 /* THE VICTORY POSE, for the ending screen only. Atlas frame 10
                    -- row 1, column 3 of `coconut-beat-game.png` counting from
                    zero -- reached as slot 2 of the `jump` row, which is the row
@@ -911,6 +921,17 @@ const CONFIG = {
                         instead of one -- see Fighter.frameStep. Slot 4 is the
                         punch in both packs; only his needs the room. */
                      airDwell: { slot: 4, share: 2 },
+                     /* 10% off the walk, and the WALK alone -- see
+                        Player.update. Was 6% on 2026-08-26 and did not read as
+                        heavy enough. The big one moves a shade heavier than
+                        LEBRON without being worse to play: his reach, damage
+                        and airtime are untouched, so nothing he can DO gets
+                        harder, it just reads as weight. */
+                     walkScale: 0.90,
+                     /* His blows shove 15% further than LEBRON's. Damage is
+                        untouched -- see the note at the hit site in combat.js
+                        -- so this is weight, not power. */
+                     knockbackScale: 1.15,
                      poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
 
     /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
