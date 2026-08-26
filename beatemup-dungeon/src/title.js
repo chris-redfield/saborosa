@@ -227,7 +227,7 @@ class Title {
     const gap = CONFIG.titleWalkRepeatMs || 0;
     if (gap > 0) t = t % (span + gap);
     if (t > span) return null;                  // gone, or waiting to come back
-    const n = Math.max(1, this.sheets.poseLength('coconut', 'walk'));
+    const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(), 'walk'));
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.walk) || 124;
     return {
       x: x0 + speed * t / 1000,
@@ -273,7 +273,7 @@ class Title {
     if (!w) return;
     const gy = H * (CONFIG.titleWalkGroundYRel != null ? CONFIG.titleWalkGroundYRel : 0.93);
     const scale = CONFIG.titleWalkScale || 1;
-    this.sheets.draw(ctx, 'coconut', 'right', 'walk', w.step, w.x, gy, { scale });
+    this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'walk', w.step, w.x, gy, { scale });
   }
 
   /**

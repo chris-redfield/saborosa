@@ -689,7 +689,34 @@ class Fighter {
        and holds the last frame. */
     if (this.jumping && p === 'airPunch') {
       const t = Math.min(1, this.jumpT / (CONFIG.jumpMs / 1000));
-      return Math.min(n - 1, Math.floor(t * n));
+      /* ⚠️ THE ROW IS SPREAD OVER THE ARC BY SHARES, NOT BY EQUAL SLICES, and
+         with no `airDwell` every drawing is worth one share -- which is the
+         plain `floor(t * n)` this used to be, to the frame.
+
+         It is here because the strike drawing can be worth looking at for
+         longer than its neighbours WITHOUT the row changing length. IPANEMA's
+         punch reads as a tuck rather than a hit -- both fists out in a short
+         blob where LEBRON throws one long arm -- so at the 83ms every frame
+         gets it flicks past before it registers. Measured: both packs are seven
+         frames and both put the strike at slot 4, so this was never a timing
+         difference between them; it is one drawing needing more room than the
+         other.
+
+         ⚠️ THE ARC DOES NOT GET LONGER, so the shares come out of the other
+         frames. That is deliberate: `jumpMs` is how long he is off the floor
+         and the attack's own windows are measured against it, so stretching the
+         row to suit a drawing would desync the punch from the window that can
+         actually hit. */
+      const d = (CONFIG.CHARACTERS[this.kind] || {}).airDwell;
+      if (!d) return Math.min(n - 1, Math.floor(t * n));
+      const extra = Math.max(1, d.share || 1) - 1;
+      const total = n + extra;
+      let acc = 0;
+      for (let i = 0; i < n; i++) {
+        acc += (i === d.slot) ? 1 + extra : 1;
+        if (t * total < acc) return i;
+      }
+      return n - 1;
     }
 
     /* THE ROLLING BALL SPINS ON A CLOCK, and it is the only ATTACK pose that

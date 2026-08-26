@@ -821,6 +821,20 @@ class Bomb extends Prop {
     this.booms.arm(this.cfg.BOOM, this.cfg.sizePx || 82);
   }
 
+  /**
+   * ⚠️ A PUNCH DOES NOT SET IT OFF, AND THAT IS THE POINT OF THE OVERRIDE.
+   * `Prop.hurt` is what breaks a barrel open, and the bomb inherited it -- so
+   * the same jab that cracked the barrel a frame earlier detonated the thing
+   * that fell out of it, in the player's face, before he could reach for it.
+   * The bomb is something to PICK UP and THROW: the only two ways it goes off
+   * are the fuse running out and the throw landing.
+   *
+   * ⚠️ IT ANSWERS `false`, NOT `true`. Answering true would count as a
+   * connection and let a prop that was never a target eat a punch meant for
+   * whatever is standing behind it. False means the resolver walks past it.
+   */
+  hurt() { return false; }
+
   /** True on the ONE frame the blast should be resolved. See Props._blast. */
   takeBlast() {
     if (this.blown || !this.booms.armed) return false;

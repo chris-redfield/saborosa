@@ -839,6 +839,16 @@ const CONFIG = {
 
      When villain sheets are drawn, they get `pack: 'ragged'` and the grid path
      in sheets.js can go. */
+  /* THE HERO'S PACKS, IN TAB ORDER. The list is data; which one is currently
+     being played is state and lives in PlayerPick (src/player.js).
+
+     Every entry must be a CHARACTERS key with the coconut's thirteen rows --
+     the pose table, the hitboxes, the reaches and the walk speed are shared, so
+     a pack here is a SKIN and not a character with stats of its own. Adding one
+     is: cut it with tools/build-beat-coconut-defs.py, give it a CHARACTERS
+     entry, name it here. Nothing else in the game asks who is being played. */
+  PLAYER_PACKS: ['coconut', 'coconutStrong'],
+
   CHARACTERS: {
     /* `drawScale` is a DRAWN size only, applied on top of `fighterSizePx`, and
        the coconut is 10% down on everyone else. It does NOT touch the hurtbox,
@@ -862,6 +872,46 @@ const CONFIG = {
                    moves. If the ending suddenly shows the wrong drawing, this
                    line is why. Verify against the atlas, not against the name. */
                 poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
+
+    /* THE STRONG COCONUT — the same thirteen rows, drawn again as a different
+       character, from `coconut-strong-sprites-fim.png` (2026-08-26). Same pose
+       table, same `drawScale`, so he steps into the coconut's hitboxes, reaches
+       and walk speed without moving one of them.
+
+       ⚠️ HIS PACK IS CUT AT A DIFFERENT SCALE AND THAT IS NOT A STYLE CHOICE.
+       The master is drawn 1.967x the size of the first coconut's (median body
+       299px against 152px), so tools/build-beat-coconut-defs.py cuts him at
+       0.8/1.967 to land him on screen at the SAME height. Every number that
+       hits or gets hit in this game was tuned against a 152px body; shipping
+       the art at its drawn size would have retuned all of them silently.
+
+       ⚠️ AND ROW 8 HAS SIX DRAWINGS WHERE THE COCONUT'S HAS FIVE -- an extra
+       arms-overhead tween. That is why POSE_RAGGED.carryThrow no longer pins
+       `to: 5`; see the note there. Nothing else about him is a special case.
+
+       ⚠️ THE `victory` SLOT WAS CHECKED AGAINST HIS ATLAS, NOT COPIED. The
+       coconut's is addressed by atlas POSITION rather than by meaning, and the
+       packer deduped the two sheets differently -- the coconut's jump row opens
+       by reusing its idle drawing (atlas 10 at slot 2) and his does not (atlas
+       11). The slot happens to hold the same arm-raised pose in both, which is
+       why the same two numbers are written here; the two frames were put side
+       by side and looked at before that was believed. If the ending ever shows
+       him doing something other than raising a fist, this is the line, and the
+       fix is to look at the atlas again. */
+    /* ⚠️ 0.936 IS LEBRON'S 0.9 PLUS THE 4% ASKED FOR ON 2026-08-26, and it is
+       a DRAWN size only -- `drawScale` never touches the hurtbox, the punch
+       reaches or the jump, which stay global and stay exactly as tuned. So he
+       is 4% bigger to look at and identical to fight with, which is the whole
+       reason the number is here and not in the cutter: re-cutting the pack 4%
+       larger would have moved the body height the pack scale was measured
+       against and quietly retuned nothing-in-particular. */
+    coconutStrong: { sheet: 'v2:beatemup-dungeon/coconut-strong-beat',
+                     pack: 'ragged', drawScale: 0.9 * 1.04, name: 'IPANEMA',
+                     /* His strike frame held for two frames' worth of the arc
+                        instead of one -- see Fighter.frameStep. Slot 4 is the
+                        punch in both packs; only his needs the room. */
+                     airDwell: { slot: 4, share: 2 },
+                     poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
 
     /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
        wave for wave rather than joining the cast: the orange was the main
@@ -1279,7 +1329,15 @@ const CONFIG = {
        dedupe kept them apart, so they are two hands-up drawings and not one).
        Close enough that the chain reads straight through: carry -> heave ->
        follow-through, with nothing repeated. */
-    carryThrow: { anim: 'liftThrow', from: 2, to: 5 },
+    /* ⚠️ NO `to`, AND THAT IS DELIBERATE AFTER 2026-08-26. It used to say
+       `to: 5`, which was not a choice of ending -- it was the length of the
+       row, written out. Sheets.draw reads a missing `to` as "to the end", so
+       the two mean the same thing for the coconut and only one of them still
+       means it for the strong coconut, whose row 8 has SIX drawings: the
+       artist added a second arms-overhead tween. Pinned at 5 the new pack
+       would throw and then stop one drawing early, dropping its
+       follow-through, which reads as the arm sticking. */
+    carryThrow: { anim: 'liftThrow', from: 2 },
     pickGround: { anim: 'pickGround' },
     carryWalk:  { anim: 'carryWalk' },
   },

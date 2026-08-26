@@ -546,6 +546,23 @@
        sound off wants it off now, not once they have got past the title. */
     if (input.takeMute()) sound.toggleMute();
 
+    /* TAB SWAPS THE HERO, in every phase for the same reason mute is: the
+       point of it is to LOOK at the two of them, and the title screen is where
+       you would most want to.
+
+       ⚠️ IT RETARGETS THE LIVE PLAYER TOO, not just the next one built. The
+       pick is read in Player's constructor, so on its own a swap mid-fight
+       would do nothing until the next run and read as the key being broken.
+       Assigning `kind` is enough and is not a rebuild: the packs share a pose
+       table and every hitbox, reach and speed in this game is global, so what
+       changes is which atlas the same fighter is drawn from -- see
+       CONFIG.PLAYER_PACKS. Health, position, combo state and lives all carry
+       across untouched, which is what makes this safe to do mid-punch. */
+    if (input.takeSwap()) {
+      const k = PlayerPick.next();
+      if (player) player.kind = k;
+    }
+
     /* THE TITLE SCREEN. It sits above everything else in the loop because it is
        not the game: no simulation, no hitstop, no room jumps, nothing to draw
        but itself.

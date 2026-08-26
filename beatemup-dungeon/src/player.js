@@ -6,9 +6,43 @@
  * behaves lives in Fighter, so this file is only the translation from "what was
  * pressed" to "what was asked for".
  */
+/**
+ * WHICH COCONUT IS BEING PLAYED. One value, read by everything that draws the
+ * hero: the Player itself, the title screen's walk-across and the ending.
+ *
+ * ⚠️ IT IS NOT IN CONFIG, AND THAT IS THE POINT. CONFIG is pure data, read the
+ * same way by the game and by tools/build-manifest.js in Node -- a value that
+ * CHANGES while the game runs does not belong in a file the packager also
+ * evaluates. CONFIG.PLAYER_PACKS holds the list, which is data; this holds the
+ * finger pointing at one of them, which is state.
+ *
+ * ⚠️ AND EVERY SCREEN ASKS IT RATHER THAN REMEMBERING THE ANSWER. Three files
+ * used to say `'coconut'` in five places; a swap that updated four of them
+ * would have left one screen showing the other character, which is precisely
+ * the bug this game keeps re-finding under other names -- a value copied out of
+ * the thing that moves.
+ */
+const PlayerPick = {
+  i: 0,
+  list() {
+    const l = CONFIG.PLAYER_PACKS;
+    return (l && l.length) ? l : ['coconut'];
+  },
+  /** The pack key to draw the hero with. Always a real one. */
+  kind() {
+    const l = this.list();
+    return l[this.i % l.length];
+  },
+  /** Next character, wrapping. Returns the new kind. */
+  next() {
+    this.i = (this.i + 1) % this.list().length;
+    return this.kind();
+  },
+};
+
 class Player extends Fighter {
   constructor(x, z) {
-    super('coconut', x, z, { hp: CONFIG.playerHealth, facing: 'right' });
+    super(PlayerPick.kind(), x, z, { hp: CONFIG.playerHealth, facing: 'right' });
     this.lives = CONFIG.playerLives != null ? CONFIG.playerLives : 3;
 
     /* THE TWO COMBO STRINGS, built once. Both share the first four hits -- the

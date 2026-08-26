@@ -47,18 +47,11 @@ Outputs (assets-v2/beatemup-dungeon/):
                               anims:{name:[..]} }
 """
 import json
+from collections import deque
 import numpy as np
 from PIL import Image
 
-SRC   = 'assets-v2/beatemup-dungeon/coconut-sprites-flat.png'
 OUT   = 'assets-v2/beatemup-dungeon/'
-BASE  = 'coconut-beat'
-
-# Shipped smaller than the master: the fighter draws at ~152px tall and the art
-# is authored near 200px, so 0.8 keeps it above the drawn size (crisp) while
-# cutting the decoded texture to about two thirds. See PERFORMANCE.md for what
-# happens when sheet textures get away from us.
-SCALE = 0.8
 PAD   = 2          # transparent gutter between packed frames
 ALPHA = 8          # alpha above this counts as content
 # Both gaps are deliberately TIGHT. Two rows of this sheet sit only 6px apart,
@@ -68,21 +61,23 @@ BAND_GAP = 2       # empty rows tolerated inside one row band
 GAP      = 0       # empty columns tolerated inside one frame
 SAME     = 2.5     # mean abs channel difference below which two frames are one
 SIZE_TOL = 2       # px of width/height difference tolerated when matching
+# A border-touching blob smaller than this fraction of the frame's main blob is
+# the neighbour's, not this frame's. See strip_seam(). The gap it sits in is
+# wide: the sliver measures 0.003 of the body and the smallest real part of a
+# drawing measures far more, so this is not a fine judgement.
+SEAM_FRAC = 0.05
 
-# Which way the art is DRAWN. This sheet faces right; the main game's character
+# Which way the art is DRAWN. Both sheets face right; the main game's character
 # packs face left. It is recorded in the defs rather than assumed in the game,
 # because getting it wrong does not fail loudly -- the character simply walks
 # backwards, facing away from the way it is going.
 NATIVE = 'right'
 
-# The coconut body, for the anchor. Quantised palette from the master:
-# body (192,168,144) tan, arms (240,216,48) yellow, skirt white, neck red.
-BODY_RGB   = (192, 168, 144)
-BODY_TOL   = 40
 # How many body-coloured pixels a row needs before it counts as the body.
 # NOT a tuning constant -- it is the difference between a stoop and a handstand.
 # See anchor().
 BODY_MIN_RUN = 6
+BODY_TOL     = 40
 
 # (name, human row number, expected frame count). The illustrator's list.
 ROWS = [
@@ -100,6 +95,45 @@ ROWS = [
     ('knockdown', 12,  6),   # apanhando e caindo no chao
     ('death',     13,  8),   # caindo no chao e morrendo
 ]
+
+# The strong coconut is the SAME thirteen rows in the SAME order -- and one row
+# is not the same length. Row 8 has SIX drawings where the first sheet had five:
+# the artist added a second arms-overhead tween between the reach and the swing.
+# Confirmed against both sheets before it was written down, because "the exact
+# same sprites" was the brief and a miscounted row is the one error this cutter
+# cannot see -- it would simply pack the sheet a frame out of step from row 8
+# onward and every pose after it would be someone else's drawing.
+ROWS_STRONG = [(n, h, 6 if n == 'liftThrow' else c) for (n, h, c) in ROWS]
+
+VARIANTS = {
+    # ⚠️ SCALE IS NOT A TASTE SETTING, IT IS A MEASUREMENT. The strong master is
+    # drawn 1.967x the size of the first one (median body height 299px against
+    # 152px, over the idle/walk/jump frames), so 0.8 / 1.967 is what puts the
+    # new character on screen at exactly the height of the old one. It has to
+    # be, because he inherits the old one's hitboxes, reach and walk speed --
+    # every one of those numbers was tuned against a 152px body, and shipping
+    # him 2x bigger would silently retune all of them at once.
+    'coconut': dict(
+        src='assets-v2/beatemup-dungeon/coconut-sprites-flat.png',
+        base='coconut-beat', scale=0.8, rows=ROWS,
+        # Quantised palette from the master: body tan, arms (240,216,48)
+        # yellow, skirt white, neck red.
+        body=(192, 168, 144)),
+    'strong': dict(
+        src='assets-v2/beatemup-dungeon/coconut-strong-sprites-fim.png',
+        base='coconut-strong-beat', scale=0.8 / 1.9671, rows=ROWS_STRONG,
+        # ⚠️ AND THE BODY IS A DIFFERENT COLOUR, which is why this is a variant
+        # field and not a constant. The strong coconut is a darker, greener
+        # (156,156,111) against the first one's tan. The anchor is read off body
+        # pixels only, so pointing it at the old tan finds the wrong mask and
+        # the character wobbles on every punch -- the exact failure the header
+        # describes. Measured off the master, not guessed from the picture.
+        body=(156, 156, 111)),
+}
+
+SRC = OUT_BASE = BASE = None
+SCALE = 1.0
+BODY_RGB = (0, 0, 0)
 
 
 def runs(flags, gap):
@@ -120,6 +154,105 @@ def runs(flags, gap):
         else:
             merged.append(r)
     return merged
+
+
+def split_welds(cols, want, ink):
+    """Cut apart frames that TOUCH, until a row has the count it should.
+
+    THE SECOND SHEET IS DRAWN TIGHTER THAN THE FIRST AND SOME FRAMES OVERLAP.
+    On the strong master the idle coconut's fists run into the next drawing's
+    fists, so three poses come back as two runs of ink, and the jump and
+    air-punch rows do the same. There is no empty column to find between them:
+    widening GAP cannot help, because the gap is not small, it is ABSENT.
+
+    So the split is made on WIDTH. A row's frames are all about one width, a
+    welded pair is about two, and the seam is where the fists graze -- the
+    thinnest column of ink inside the run. Repeatedly halving the widest run at
+    its own minimum, until the count matches, needs no per-row threshold: the
+    expected count in ROWS is the stopping condition, and it is the
+    illustrator's own number.
+
+    ⚠️ THE SEAM IS SEARCHED IN THE MIDDLE 60% OF THE RUN, not across all of it.
+    The thinnest column of a single drawing is usually at its very edge, where
+    the outline tapers to nothing, so an unrestricted minimum splits one frame
+    into a frame and a sliver rather than splitting a welded pair.
+    """
+    cols = [list(c) for c in cols]
+    while len(cols) < want:
+        i = max(range(len(cols)), key=lambda k: cols[k][1] - cols[k][0])
+        x0, x1 = cols[i]
+        w = x1 - x0 + 1
+        lo, hi = x0 + int(w * 0.2), x0 + int(w * 0.8)
+        if hi - lo < 2:
+            raise SystemExit('cannot split a run of %d px into more frames' % w)
+        cut = lo + int(np.argmin(ink[lo:hi + 1]))
+        cols[i:i + 1] = [[x0, cut - 1], [cut, x1]]
+    return [tuple(c) for c in cols]
+
+
+def strip_seam(tile):
+    """Erase the neighbour's fingertips left behind by a weld cut.
+
+    A SPLIT IS A STRAIGHT VERTICAL LINE THROUGH TWO OVERLAPPING DRAWINGS, so
+    whichever fist crossed the seam arrives in the wrong frame as a small blob
+    stuck to the border. On the strong master exactly one frame has it -- the
+    third idle drawing carries 51px of the second one's knuckle down its left
+    edge -- and one visible speck beside a character is worth removing.
+
+    THE RULE IS "SMALL AND TOUCHING A SIDE BORDER", both halves needed:
+      - touching, because a stray in the MIDDLE of a frame is the artist's
+        (a fleck of outline, a dot of shading) and must survive;
+      - small, because the body itself touches both borders in every frame --
+        the frames are cropped tight, so an untested "touching" rule would
+        erase the character.
+
+    ⚠️ IT IS RUN OVER THE FIRST SHEET TOO AND CHANGES NOTHING THERE, which is
+    the check that the rule is narrow enough: that pack's five strays are all
+    interior (1-4px, at x43..x127 of frames 150-181 wide), so it rebuilds
+    byte-identical. A rule that quietly repacked the shipped coconut would be
+    the wrong rule no matter how good this sheet looked.
+    """
+    a = np.array(tile)
+    t = a[:, :, 3] > ALPHA
+    h, w = t.shape
+    if not t.any():
+        return tile
+
+    # Label every blob once. Tiles are small and this runs only on split rows.
+    seen = np.zeros_like(t)
+    blobs = []
+    for y0 in range(h):
+        for x0 in range(w):
+            if not t[y0, x0] or seen[y0, x0]:
+                continue
+            q = deque([(y0, x0)])
+            seen[y0, x0] = True
+            cells = []
+            edge = False
+            while q:
+                cy, cx = q.popleft()
+                cells.append((cy, cx))
+                if cx == 0 or cx == w - 1:
+                    edge = True
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = cy + dy, cx + dx
+                        if 0 <= ny < h and 0 <= nx < w and t[ny, nx] and not seen[ny, nx]:
+                            seen[ny, nx] = True
+                            q.append((ny, nx))
+            blobs.append((cells, edge))
+
+    biggest = max(len(c) for c, _ in blobs)
+    killed = 0
+    for cells, edge in blobs:
+        if not edge or len(cells) >= biggest * SEAM_FRAC:
+            continue
+        for cy, cx in cells:
+            a[cy, cx] = 0
+        killed += len(cells)
+    if not killed:
+        return tile
+    return Image.fromarray(a)
 
 
 def anchor(tile):
@@ -161,13 +294,21 @@ def anchor(tile):
     return float(xs.mean()), float(bottom)
 
 
-def main():
+def main(which='coconut'):
+    global SRC, BASE, SCALE, BODY_RGB
+    if which not in VARIANTS:
+        raise SystemExit('unknown variant %r; have %s'
+                         % (which, ', '.join(VARIANTS)))
+    v = VARIANTS[which]
+    SRC, BASE, SCALE, BODY_RGB = v['src'], v['base'], v['scale'], v['body']
+    rows = v['rows']
+
     im = Image.open(SRC).convert('RGBA')
     a = np.array(im)[:, :, 3] > ALPHA
 
     bands = runs(a.any(axis=1), BAND_GAP)
-    if len(bands) != len(ROWS):
-        raise SystemExit(f'expected {len(ROWS)} rows, found {len(bands)}')
+    if len(bands) != len(rows):
+        raise SystemExit(f'expected {len(rows)} rows, found {len(bands)}')
 
     tiles, anims = [], {}
     arrays = []                                 # np view of each packed tile
@@ -187,18 +328,32 @@ def main():
         tiles.append(tile)
         return len(tiles) - 1
 
-    for (name, human, want), (y0, y1) in zip(ROWS, bands):
-        cols = runs(a[y0:y1 + 1].any(axis=0), GAP)
-        if len(cols) != want:
+    for (name, human, want), (y0, y1) in zip(rows, bands):
+        band = a[y0:y1 + 1]
+        cols = runs(band.any(axis=0), GAP)
+        if len(cols) > want:
             raise SystemExit(
-                f'row {human} ({name}): expected {want} frames, found {len(cols)}')
+                f'row {human} ({name}): expected {want} frames, found {len(cols)}'
+                ' -- too MANY, which is a miscounted row, not a weld')
+        welded = len(cols) < want
+        if welded:
+            cols = split_welds(cols, want, band.sum(axis=0))
+            print(f'  row {human} ({name}): split {want - len(runs(band.any(axis=0), GAP))}'
+                  f' welded frame(s) apart')
         seq = []
         for (x0, x1) in cols:
             tile = im.crop((x0, y0, x1 + 1, y1 + 1))
-            # Tighten vertically too: the band is as tall as its tallest pose.
+            # ⚠️ ONLY ON A ROW THAT WAS SPLIT. A seam is the only thing that can
+            # put a neighbour's ink in this frame, so a row cut on its own empty
+            # columns is left exactly as the artist drew it.
+            if welded:
+                tile = strip_seam(tile)
+            # Tighten to content: the band is as tall as its tallest pose, and a
+            # stripped seam leaves dead columns at the edge it was stripped from.
             t = np.array(tile)[:, :, 3] > ALPHA
             ys = np.nonzero(t.any(axis=1))[0]
-            tile = tile.crop((0, int(ys[0]), tile.width, int(ys[-1]) + 1))
+            xs = np.nonzero(t.any(axis=0))[0]
+            tile = tile.crop((int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1))
             seq.append(intern(tile))
         anims[name] = seq
 
@@ -245,10 +400,11 @@ def main():
     slots = sum(len(v) for v in anims.values())
     print(f'{BASE}-game.png  {atlas.size[0]}x{atlas.size[1]}  '
           f'{len(tiles)} unique frames for {slots} slots')
-    for name, human, _ in ROWS:
+    for name, human, _ in rows:
         print(f'  row {human:2d}  {name:11s} {len(anims[name]):2d} slots  '
               f'-> {sorted(set(anims[name]))}')
 
 
 if __name__ == '__main__':
-    main()
+    import sys
+    main(sys.argv[1] if len(sys.argv) > 1 else 'coconut')

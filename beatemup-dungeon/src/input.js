@@ -28,6 +28,7 @@ class Input {
     this._jumpQueued = false;
     this._pauseQueued = false;
     this._muteQueued = false;
+    this._swapQueued = false;
     this._pickupQueued = false;
     this._roomJump = -1;       // dev: room index requested by a number key
     this._anyPress = false;
@@ -101,6 +102,14 @@ class Input {
          game is dismissed by pressing anything, so a mute that fell through to
          the branch below would skip the board you muted the music to read. */
       else if (e.code === 'KeyM') { this._muteQueued = true; }
+      /* TAB SWAPS THE HERO'S SPRITE PACK. A stand-in for the character select
+         that is coming: one key, any time, so both coconuts can be looked at
+         without a screen being built for them first.
+         ⚠️ preventDefault IS NOT OPTIONAL HERE. Tab's default action moves
+         focus OFF the canvas, and the very next keypress would go to whatever
+         the browser focused instead -- the game would appear to freeze, having
+         simply stopped being the thing receiving keys. */
+      else if (e.code === 'Tab') { this._swapQueued = true; e.preventDefault(); }
       else { this._anyPress = true; }
     });
     t.addEventListener('keyup', e => {
@@ -240,6 +249,7 @@ class Input {
   takeRoomJump() { const r = this._roomJump; this._roomJump = -1; return r; }
   takePause() { const p = this._pauseQueued; this._pauseQueued = false; return p; }
   takeMute() { const m = this._muteQueued; this._muteQueued = false; return m; }
+  takeSwap() { const w = this._swapQueued; this._swapQueued = false; return w; }
   takeAnyPress() { const a = this._anyPress; this._anyPress = false; return a; }
 
   /** Drop anything queued — used when a screen changes, so a key pressed on the

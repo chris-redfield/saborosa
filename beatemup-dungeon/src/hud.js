@@ -43,8 +43,14 @@ class Hud {
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
     /* READ FROM THE CAST TABLE rather than written here, so the player's name
-       cannot drift from the one the results board prints. He is LEBRON. */
-    const me = (CONFIG.CHARACTERS && CONFIG.CHARACTERS.coconut) || {};
+       cannot drift from the one the results board prints.
+
+       ⚠️ KEYED ON THE FIGHTER IN FRONT OF IT, NOT ON 'coconut'. This said
+       `CHARACTERS.coconut` until Tab could swap the hero (2026-08-26), which
+       was correct only while there was one of him: the HUD would have gone on
+       naming the character who was not being played. Asking the player his own
+       kind is the version that cannot be left behind by a second pack. */
+    const me = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[player.kind]) || {};
     ctx.fillText(me.name || '', box.x, box.y + box.h + 4);
     ctx.textAlign = 'right';
     ctx.fillText('x' + Math.max(0, player.lives - 1), box.x + box.w, box.y + box.h + 4);

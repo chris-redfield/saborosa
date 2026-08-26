@@ -118,11 +118,11 @@ class Ending {
        an assumption about which way the art faces. */
     if (this.phase === 'walk') {
       const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.walk) || 124;
-      const n = Math.max(1, this.sheets.poseLength('coconut', 'walk'));
+      const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(), 'walk'));
       const step = Math.floor(this.t * 1000 / ms) % n;
-      this.sheets.draw(ctx, 'coconut', 'right', 'walk', step, this.x, gy, { scale });
+      this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'walk', step, this.x, gy, { scale });
     } else {
-      this.sheets.draw(ctx, 'coconut', 'right', 'victory', 0, this.x, gy, { scale });
+      this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'victory', 0, this.x, gy, { scale });
     }
   }
 }
