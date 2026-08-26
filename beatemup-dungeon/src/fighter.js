@@ -242,7 +242,21 @@ class Fighter {
   hurt(dmg, dir, knockback, lift, knockdown) {
     if (!this.vulnerable()) return false;
     this.hp -= dmg;
-    this.flash = 1;
+    /* ⚠️ THE WHITE FLASH IS OFF FOR EVERY FIGHTER, BOSSES ASIDE. Asked for
+       2026-08-24: "remove the white visual cue from when everybody gets hit,
+       leave only the bosses with that."
+
+       IT BECOMES THE BOSSES' TELL BY BEING NOBODY ELSE'S. A mook already
+       announces a hit with its flinch pose, its knockback and now a grunt; the
+       bosses have no hurt art at all (see the header of horse-boss.js -- "there
+       is no hurt, knockdown or death art, confirmed rather than assumed"), so
+       for them the flash is the ONLY thing that says a punch landed.
+
+       ⚠️ THE BOSSES ARE NOT AFFECTED BY THIS LINE. FlyBoss and HorseBoss keep
+       their own `flash` field, set in their own `hurt()` and decayed in their
+       own `update()`; they do not inherit Fighter. Turning `hitFlash` back on
+       here does not double theirs, and turning it off does not silence them. */
+    this.flash = (CONFIG.hitFlash === false) ? 0 : 1;
     this.atk = null;            // interrupted — see the class header
     this.comboWindow = 0;
     this.vx = dir * (knockback || 0);

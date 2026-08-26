@@ -1179,6 +1179,100 @@ near-silence in front of it. A song has no silence anywhere, so summing leaves
 the step exactly where it was — measured, an 18× jump against the neighbouring
 samples, which is a click.
 
+#### The enemy's reaction — `enemyHit`
+
+Layered **under** the punch on the two blows that knock down (the finisher and
+the air attack). `enemy-hit-1.ogg`, cut.
+
+- **Triggered by `box.def.knockdown`, not by the move's name**, so a third
+  knockdown attack gets it for free.
+- ⚠️ **Two gates, asking different things.** `t.scores !== false` is "is this a
+  fighter" — the same test the kill counter uses, and without it a finisher that
+  caught only a crate would grunt for a crate. `t.voiced !== false` is "does
+  this one make noises about it", and it is how **both bosses stay silent**:
+  they take the punch sound and nothing else, because a boss is announced by its
+  own art, its own bar and its own death. Properties on the target rather than
+  `kind` tests, so a third boss is silent by declaring it.
+- ⚠️ **Once per swing**, not once per body — three grunts in one frame from a
+  sweep is one flanged grunt. Same rule as the punch sound.
+- `SFX_GAIN` **0.7**, about 3 dB under the blow that caused it: the punch is the
+  event, this is the answer.
+- **`CONFIG.ENEMY_HIT_SFX` is a pool**, rolled per knockdown. One entry today:
+  `enemy-hit-3` was the second grunt for an hour before becoming the hero's
+  voice. Left as a list because a second is one entry there and one in `SFX`,
+  with nothing in `combat.js` to touch. ⚠️ The roll happens **on the event**,
+  never per frame — the same rule the impact art follows.
+
+#### The hero's voice — `PLAYER_HIT_VOICE`
+
+`enemy-hit-3`, under the pitched-down punch, on the hits that **knock him
+down** — `box.def.knockdown`. The same rule the enemies' grunt follows.
+
+The pitched punch (every hit) is the same recording he hears when *he* connects
+— deliberate, so the fight has one vocabulary — but pitch alone is a thin way to
+tell the two directions apart in a crowd. The voice is what says *who* was hit,
+and being bowled over is the moment worth one.
+
+**Four attacks knock the player down — but only one reaches the voice:**
+
+| | | |
+|---|---|---|
+| `BARATA_CHARGE.knockdown` | the rolling ball, through the roach waves | **voice** |
+| `HORSE_BOSS.chargeKnockdown` | his charge | strike only |
+| `HORSE_BOSS.kickKnockdown` | his kick | strike only |
+| `FlyBoss`, `knockdown: ambush` | the Mosca's ambush pass | strike only |
+
+> ⚠️ **`bossHits` passes `false`** — both bosses come through one function and
+> both were grunting. A boss's blows already announce themselves: the Mosca's
+> ambush drops you for no damage at all as its entire point, and the horse's
+> charge has a wind-up you are meant to read. A voice under either is one cue
+> too many on the loudest moments in the game. Putting them back is one
+> argument.
+
+#### The white hit flash — `hitFlash`
+
+**`false`.** Fighters (mooks *and* the player) no longer whiten when hit. The
+two **bosses still do** — their `flash` lives in `FlyBoss` / `HorseBoss`, which
+do not extend `Fighter`, so this knob cannot reach them.
+
+> **The asymmetry is the point.** A fighter announces a hit three other ways —
+> the flinch pose, the knockback, and a grunt if it was floored. The bosses have
+> **no hurt art at all** (`horse-boss.js` says so at the top, "confirmed rather
+> than assumed"), so the flash is the only thing that tells you a punch landed
+> on one. Taking it off everybody else is what turns it from decoration into
+> their tell.
+
+The machinery stays — `flash` is still a field, still decays, still reaches
+`sheets.draw`. One boolean brings it back.
+
+#### The hero's death cry — `PLAYER_DEATH_VOICE`
+
+`enemy-hit-2`, cut. On the blow that kills him, **in place of** the knockdown
+voice — the killing blow also floors him, so both would fire on one frame. The
+strike still plays; he was still hit.
+
+> ⚠️ **Not the same thing as `GAME_OVER_STING`.** That is *music*, it stops the
+> bed, and it only happens on the **last** life. This is a voice, it plays on
+> **every** death, and when they do coincide they are a beat apart — this one on
+> the blow, that one once the death has finished being watched.
+
+`SFX_GAIN` **0.47**, which is the *same* level as the other three voices, not a
+quieter one: this cut measures −10.8 dBFS where they land at −14.2 to −14.6, so
+it is 3.4 dB hotter as a file.
+
+**And `enemyDeath` on the blow that kills** — `enemy-hit-4-oof`, cut.
+
+- ⚠️ **It replaces the knockdown grunt, it does not stack with it.** The blow
+  that kills also knocks down, so both tests pass on the same frame, and two
+  vocal samples from one body at once is a mess.
+- ⚠️ **Read on the transition** (`!wasDead && t.dead`), not on `dead` alone — a
+  body stays dead for its whole fade, and a sweep clipping one would announce a
+  death that happened seconds ago.
+- **A thrown barrel gets it too** — a death should sound like one however it
+  arrived. `hitIds` already guarantees one visit per enemy per throw.
+- ⚠️ **Bosses are silent** (`voiced: false` on `FlyBoss` and `HorseBoss`) — the
+  punch lands, the cry does not.
+
 ### Cutting a new sound effect
 
     python3 tools/build-beat-sfx.py enemy-hit-1              # the loudest event
@@ -1584,6 +1678,134 @@ wave and, since 2026-08-24, the horse).
 > room's alone). Her backdrop does still freeze during her fight; that is the
 > same cause and needs a different answer.
 
+### The crowd — three rings
+
+| ring | who | where |
+|---|---|---|
+| attacking | up to `maxAttackers` (**3**) | closing in / swinging |
+| **understudy** | the nearest without a turn | `enemyReadyRadius` **180**, half orbit speed |
+| the rest | everybody else | `enemyCircleRadius` **210**, and they **wander** — `ENEMY_STROLL` |
+
+Every 4–9 s an enemy in the outer ring walks to the far end of the arena from
+the player and comes back, so the back of the crowd is not a carousel. ⚠️ The
+destination is fixed when it sets off; a stroller can still be handed a turn
+(`stroll` is not in the token's skip list), which is the "coming back to check
+the fight" half of it.
+
+The middle ring is what stops a freed slot costing a walk across the arena — at
+one radius, "nearest" was still 210 px away and the fight breathed in and out.
+130 is close enough to step in and still outside `enemyStandoffX` (63), so the
+understudy reads as *waiting* rather than crowding.
+
+> ⚠️ **The understudy is sticky** — held until that enemy takes a turn, is hit,
+> goes down or dies. Rechosen every frame it ping-pongs between the two nearest
+> candidates, and since the flag moves your target radius by 80 px, *both* of
+> them lurch between 130 and 210 on alternate frames. That is the jiggle bug
+> again, one function away from the fix for it.
+
+> ⚠️ **`maxAttackers: 3` is a difficulty change and the HP table has not moved.**
+> This file's own note calls 3 "a beating". It lands on a player whose finisher
+> sweeps and whose air attack launches, so judge them together.
+
+**The jiggle had THREE causes** (all fixed 2026-08-24), and each fix made the
+next visible:
+
+1. **The orbit direction** — see below.
+2. **The understudy flag**, rechosen every frame: it ping-ponged between two
+   equally-distant candidates, and the flag moves your target radius by 80 px.
+   Sticky now.
+3. **The ring radius**, read fresh from the `ready` flag: a promotion
+   teleported the target 30 px inward, so any flag change lurched the enemy
+   between two circles. `ringR` is eased state now (`enemyRingEase`).
+4. **`_seek`'s 1 px arrive threshold** — a deadzone by another name. The orbit
+   is an *ellipse*, so the target's speed varies: 1.35 px/frame at the sides,
+   **0.47 at the ends** — under the threshold. The understudy stopped dead at
+   the two ends, the target crept past 1 px, he stepped onto it and stopped
+   again. 0.05 px now.
+5. **`walk()` can only move at one speed.** A deadzone does not smooth a follow,
+   it *quantises* it — the understudy's target moves at 81 px/s against a walk of
+   192, so he sat in the 10 px band for seven frames, jerked 3.2 px, and stopped.
+   That is why it was the *fourth* guy: his target is the slowest. `_seek()`
+   scales the step down to close the gap exactly instead. ⚠️ It passes the **raw
+   delta** to `walk`, not its sign — `walk` normalises, so `(±1, ±1)` makes a
+   fighter one pixel out in depth walk a full diagonal and flip back.
+
+**Cause 1** — the orbit direction was
+`this.z > player.z`, a direction derived from a position the orbit itself moves
+— crossing the player's depth line flipped the sign, which walked the enemy back
+across it. `orbitDir` is fixed now, dealt out **alternating by `Crowd.add`**.
+⚠️ Seeding it from the spawn position was tried and clumped: all five of the
+first arena's cigarettes came out the same way round.
+
+### The bomb
+
+The other half of a barrel's contents, and **it is a `Prop`** — `Bomb extends
+Prop`, so it is lifted, carried, thrown, tumbled and reaped by exactly the code
+a barrel is. Three overrides: the fuse, the smash, and the frame.
+
+**It goes off four ways, and only the last is its own code:**
+
+| | |
+|---|---|
+| thrown into an enemy | `combat.propHits` → `smash(true)` |
+| thrown, lands on nothing | `Prop.update`, `jumpY <= 0` → `smash(true)` |
+| punched where it lies | `Prop.hurt`, `hp <= 0` → `smash(false)` |
+| **the fuse runs out** | 8 s, wherever it is |
+
+| knob (`PROPS.bomb`) | |
+|---|---|
+| `sizePx` | **82** (15% down from 96) — `Prop` derives the hit box from it, so there is no second number |
+| `fuseMs` | **8000** |
+| `throwSpeed` / `throwDamage` | 700 / 8 — faster and flatter than a barrel; the *blast* is the damage |
+| `blastR` | 150 px on the floor plane, **depth weighted ×2** |
+| `damage` / `knockback` / `lift` / `knockdown` | 18 / 380 / 150 / true |
+| `smashMs` | **1200** — must be ≥ the burst (1121 ms) or the explosion is reaped mid-draw |
+
+> ⚠️ **The fuse runs while it is held.** Picking one up starts a countdown you
+> are now carrying, and the throw is how you spend it. Pausing it in his hands
+> would make holding a lit bomb the safest thing in the game.
+
+> ⚠️ **It hurts the player too** — that is what makes the 50/50 a gamble and the
+> throw a decision rather than a free attack. `Props._blast` is the one place to
+> change it. Bosses are not in the *blast* (not in `crowd`) but they **are** hit
+> by the throw: `propHits` already concats the boss.
+
+> ⚠️ **`throwDamage` cannot be 0.** `combat.js` reads it as `C.throwDamage || 22`
+> — the falsy trap this codebase documents in four other places.
+
+- **`smash()` releases the holder first.** `Prop.smash` nulls its own `holder`
+  and stops, which is fine for a barrel because nothing smashes one in your
+  hands. A bomb does, every time the fuse wins.
+- ⚠️ **`bomb` and `bomb2` are the two FACINGS, not two variants** — fuse to the
+  right and fuse to the left. They are hand-drawn views, **not mirrors** (the
+  coil and the highlight differ, and the anchors sit at 41% / 59% of the frame),
+  so `_frame` picks the *row* from the facing and `draw` passes the pack's
+  native side. Letting `sheets.draw` flip one would leave the other unused.
+  A resting bomb rolls a facing at birth; carrying or throwing it overwrites it
+  with the thrower's.
+- **The fuse animation is spread across `fuseMs`**, so the spark reaching the
+  casing *is* the detonation.
+- **The last 3 seconds panic**: the fuse goes 75 ms → **40 ms** a frame
+  (`animPanicS` / `animPanicMs`) and a **red glow blinks** with it. ⚠️ A *step*,
+  not a ramp — a threshold is something you can notice; a gradual acceleration
+  is only visible in hindsight, by which time it has gone off.
+- ⚠️ **The red blinks on the sprite's own frame counter**, not a clock of its
+  own — painted on step 0 of the three-frame cycle, so it pulses at exactly a
+  third of whatever the fuse is flickering at (**8.6 blinks/s**, 34% of the
+  time) and follows `animPanicMs` if that moves. Given its own timer the two
+  would drift in and out of phase and read as two effects rather than one alarm.
+- ⚠️ **The bomb itself is painted red — not a glow around it.** A halo went in
+  first and was wrong. `sheets.draw`'s `flash` pass can't do colour (it is
+  `lighter` with the sprite as its own source, and adding a black bomb to itself
+  adds nothing), so this is a **masked fill**: the frame is drawn into a shared
+  scratch canvas, `source-in` replaces every opaque pixel with flat red, and the
+  silhouette is blitted over the bomb. Fuse and spark included.
+- ⚠️ **Skipped during the hoist.** `Prop.draw` shifts `drawY` while a prop is
+  being lifted, and this pass draws at the plain ground point — rather than copy
+  that arithmetic somewhere it could drift, the red just doesn't paint for those
+  640 ms. The wick is still flickering.
+- ⚠️ **No explosion sound yet** — there is no boom in `CONFIG.SFX`.
+
 ### Which rooms get them
 
 `flies: true` on the **room**, the same way `music` and `props` are room data:
@@ -1720,7 +1942,20 @@ not part of the request.
 | `throwReachY` | 130 — ⚠️ how high off the floor it still connects; without it a barrel sails over a head and knocks him down from above it |
 | `throwPierce` | `false` — it breaks on the first enemy. `true` carries it through the crowd, a much stronger move |
 | `spinMs` / `smashMs` | 90 per tumble frame; 480 for the three break frames |
-| `dropChance` | 0.35 — how many barrels have a chicken in them. ⚠️ **Only reached by PUNCHING one apart** — a thrown barrel gives up its contents (2026-08-24), so this is the chance per barrel the player chooses to break, not per barrel in the level. May want raising if food feels scarce |
+| `dropChance` | 0.35 — how many barrels have **something** in them. ⚠️ Only reached by PUNCHING one apart; a thrown barrel gives up its contents |
+| `bombChance` | 0.5 — and of those, how many are a **bomb** rather than a chicken. So a barrel is 17.5% chicken, 17.5% bomb, 65% empty. ⚠️ Both rolls happen **at birth**, not at the break |
+
+**A placement can overrule both rolls.** On a `ROOMS[].props` barrel entry:
+
+```js
+{ kind: 'barrel', x: 430, z: 110, drops: true }               // always something
+{ kind: 'barrel', x: 430, z: 110, drops: true, dropKind: 'bomb' }  // always a bomb
+{ kind: 'barrel', x: 620, z: 165, drops: false }              // always empty
+```
+
+The first test barrel at the top of the street has `drops: true` — at the real
+35% you would break four barrels to see one chicken, and that barrel exists to
+be broken the moment a run starts. The *kind* is still the honest 50/50.
 
 > **`CONFIG.pickupButton` is `true`.** It was switched off on 2026-08-24 and
 > back on the same day. The off pass cost nothing to reverse because the

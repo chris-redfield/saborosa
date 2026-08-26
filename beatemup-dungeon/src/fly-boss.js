@@ -62,6 +62,15 @@ class FlyBoss {
        ⚠️ NULL WITHOUT THE CONFIG ENTRY, or game.js would ask Sound for a key
        the manifest never loaded -- `manifest.js` gates on the same field. */
     this.musicKey = CONFIG.MOSCA_TRACK ? 'musicMosca' : null;
+    /* ⚠️ NO VOICE. The crowd's grunt and death cry are for MOOKS: a boss taking
+       a hit is announced by its own art, its own health bar and, here, by an
+       explosion when it goes. Asked for 2026-08-24 -- "I want just the punch
+       hit noise, not the cry".
+
+       A PROPERTY RATHER THAN A `kind` TEST IN combat.js, which is the bargain
+       every other thing about a boss makes: the resolver talks to an interface
+       and never asks which one this is. A third boss is silent by declaring it. */
+    this.voiced = false;
     /* The death explosions. Shared with the horse -- see boom.js. Empty until
        it dies, and it never fills if `flyBossDeathBoom.on` is false, in which
        case the old tumble out of the sky plays instead. */

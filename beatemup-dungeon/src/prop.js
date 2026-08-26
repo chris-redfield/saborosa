@@ -49,7 +49,10 @@ function propDepthScale(o) {
 }
 
 class Prop {
-  constructor(kind, x, z) {
+  /* `place` is the ROOMS[].props ENTRY this came from, or undefined for one
+     spawned at runtime. See `drops` below: a placement can overrule what is
+     inside a barrel. */
+  constructor(kind, x, z, place) {
     const C = (CONFIG.PROPS && CONFIG.PROPS[kind]) || {};
     this.kind = kind;
     this.cfg = C;
@@ -76,8 +79,26 @@ class Prop {
        same barrel gets a different answer each time, and -- worse -- so does
        the SAME barrel if anything ever breaks it twice. Decided here, a barrel
        either has a chicken in it or does not, which is what "os barris podem
-       conter um frango" describes: it is in the barrel, not in the breaking. */
-    this.drops = Math.random() < (C.dropChance != null ? C.dropChance : 0.5);
+       conter um frango" describes: it is in the barrel, not in the breaking.
+
+       ⚠️ A PLACEMENT MAY OVERRULE THE ROLL. `drops: true` on a `ROOMS[].props`
+       entry means that barrel always has something in it, `false` that it never
+       does; anything else -- the normal case, and every barrel spawned at
+       runtime -- rolls `dropChance`. It exists for the test barrel at the top
+       of the street: a 17.5% chicken is not something you can go and look at. */
+    this.drops = (place && place.drops != null)
+      ? !!place.drops
+      : Math.random() < (C.dropChance != null ? C.dropChance : 0.5);
+    /* ⚠️ AND WHICH THING, ALSO AT BIRTH, for exactly the same reason. `dropKind`
+       is the whole of the 50/50 between a chicken and a bomb -- the break site
+       only reads it. It is rolled even when `drops` is false, because a roll
+       that only sometimes happens is a roll somebody will later move.
+       `dropKind` on a placement forces it, which is how a test barrel can be
+       made to hand over a bomb every time. */
+    this.dropKind = (place && place.dropKind)
+      ? place.dropKind
+      : (Math.random() < (C.bombChance != null ? C.bombChance : 0.5))
+        ? 'bomb' : 'chicken';
     /* The shell reads these two off everything it draws. A barrel is never
        knocked down and never dies as a fighter does; `dead` goes true when it
        is smashed so the hit resolver stops finding it. */
@@ -675,6 +696,265 @@ class Pickup {
 }
 
 /**
+ * A lit bomb, out of the other half of a barrel.
+ *
+ * ⚠️ IT IS A `Prop`, AND THAT IS THE WHOLE DESIGN. It began as a class of its
+ * own -- land, burn, explode -- and the moment it had to be PICKED UP AND
+ * THROWN it became a barrel that ends differently: the lift arc, the carry, the
+ * throw, the tumble, `combat.propHits` and the reaper are all already written
+ * and already tuned. Only three things differ, and each is one override:
+ *
+ *   the FUSE     a clock nothing else here has
+ *   the SMASH    a burst of `Booms` instead of a scatter of staves
+ *   the FRAME    a fuse burning down instead of an idle barrel
+ *
+ * Everything else -- being lifted, being carried, being thrown, hitting an
+ * enemy, hitting the floor, being punched -- is Prop's, unchanged.
+ *
+ * ⚠️ SO IT GOES OFF FOUR WAYS AND THREE OF THEM ARE INHERITED. Thrown into an
+ * enemy (`propHits` -> `smash(true)`), thrown and landing on nothing
+ * (`update`'s `jumpY <= 0`), punched where it stands (`hurt` -> `smash(false)`),
+ * or the fuse running out wherever it happens to be. The last is the only one
+ * this class adds.
+ *
+ * ⚠️ THE FUSE RUNS WHILE IT IS HELD. That is the tension and it is deliberate:
+ * picking one up starts a countdown you are now carrying, and the throw is how
+ * you spend it. The alternative -- pausing it in his hands -- makes holding a
+ * lit bomb the safest thing in the game.
+ *
+ * ⚠️ THE VARIANT IS PICKED AT BIRTH AND KEPT. `bomb` and `bomb2` are two
+ * drawings of one object -- a straight fuse and a coiled one -- not two stages
+ * of anything, so cycling them would be one bomb visibly turning into another.
+ */
+class Bomb extends Prop {
+  constructor(x, z) {
+    super('bomb', x, z);
+    /* ⚠️ WHICH WAY IT IS TURNED, ROLLED ONCE AND KEPT -- and it is a FACING,
+       not a variant. `bomb` and `bomb2` are the same bomb drawn from the two
+       sides: fuse to the right, fuse to the left, each with its own coil and
+       its own highlight. They are not mirrors of each other, which is why the
+       row is picked rather than the drawing being flipped -- see _frame. A
+       resting bomb rolls one so a floor full of them is not all facing the same
+       way; being carried or thrown overwrites it with the thrower's. */
+    this.facing = (Math.random() < 0.5) ? 'right' : 'left';
+    /* ⚠️ THE ROW IS DECIDED BY THE SIMULATION, NOT BY THE DRAW, and that is a
+       BUG FIX rather than a preference. `draw` below has to overwrite
+       `this.facing` for one call (see the note there) -- and `Prop.draw` asks
+       `_frame()` INSIDE that call, so reading the facing there read the
+       overwritten one and answered `bomb` every single time. The left drawing
+       was never shown and the bomb never turned with the player. Kept as its
+       own field, updated where the facing actually changes, nothing in the
+       draw path can reach it. */
+    this.row = 'bomb';
+    this._syncRow();
+    this.fuseT = 0;
+    this.booms = new Booms();
+    this.blown = false;
+    /* ⚠️ A BOMB IS NOT A CONTAINER. `Prop`'s constructor rolls `drops` for
+       everything, and `Props.update` spawns a drop for ANY prop that smashes
+       with it set -- so without this a bomb would explode and leave a chicken
+       in the crater. */
+    this.drops = false;
+  }
+
+  fuseS() { return (this.cfg.fuseMs || 8000) / 1000; }
+
+  /** Which of the two drawn facings to use. See `row` in the constructor. */
+  _syncRow() { this.row = (this.facing === 'left') ? 'bomb2' : 'bomb'; }
+
+  /**
+   * THE LAST FEW SECONDS, answered in ONE place because two things read it: the
+   * frame rate and the red glow. Asked as "together with the new sprite
+   * frequency", and the only way to be sure of that is for both to come from
+   * here rather than from two copies of the same comparison.
+   */
+  _panic() {
+    const C = this.cfg;
+    return (this.fuseS() - this.fuseT) <= (C.animPanicS != null ? C.animPanicS : 3);
+  }
+
+  /** ms per drawn frame right now -- normal, or panicking. */
+  _animMs() {
+    const C = this.cfg;
+    return this._panic() ? (C.animPanicMs || 40) : (C.animMs || 75);
+  }
+
+  update(dt, bounds) {
+    /* THE FUSE, and it runs in every state that is not already over. Checked
+       BEFORE the inherited update so a bomb whose time runs out on the same
+       frame it lands goes off once, here, rather than twice. */
+    if (this.state !== 'smash' && this.state !== 'gone') {
+      this.fuseT += dt;
+      if (this.fuseT >= this.fuseS()) { this.smash(false); return; }
+    }
+    super.update(dt, bounds);
+    /* AFTER the inherited update, because that is what turns a held or a thrown
+       bomb: `Prop` sets `facing` from the holder every frame it is carried and
+       from the thrower when it leaves. This is the line that makes it turn with
+       the player. */
+    this._syncRow();
+  }
+
+  /**
+   * ⚠️ IT LETS GO OF WHOEVER IS HOLDING IT FIRST. `Prop.smash` nulls its own
+   * `holder` and stops there, which is fine for a barrel -- nothing smashes one
+   * in a player's hands. A bomb does, every time the fuse wins, and half a
+   * released reference is the two-references bug this file has hit five times:
+   * the player keeps `carrying` pointed at a thing that has exploded, stays in
+   * the carry pose, and the punch button goes on trying to throw it.
+   */
+  smash(sideways) {
+    if (this.state === 'smash' || this.state === 'gone') return;
+    this._release();
+    super.smash(sideways);
+    this.booms.arm(this.cfg.BOOM, this.cfg.sizePx || 82);
+  }
+
+  /** True on the ONE frame the blast should be resolved. See Props._blast. */
+  takeBlast() {
+    if (this.blown || !this.booms.armed) return false;
+    this.blown = true;
+    return true;
+  }
+
+  /**
+   * ⚠️ THE THREE FRAMES ARE A SPUTTER, NOT A COUNTDOWN, AND IT TOOK A LOOK AT
+   * THE ART TO SEE IT. They were first spread across the whole 8s fuse -- one
+   * drawing every 2.7 seconds, which is what "extremely slow" meant -- on the
+   * reasoning that a burning fuse should be a readable clock. It is not one:
+   * the three frames differ by EIGHT PIXELS of fuse. Eight pixels is a spark
+   * jumping, not a fuse burning down, so it LOOPS on its own clock at `animMs`
+   * and the countdown is carried by the game rather than the drawing.
+   *
+   * ⚠️ AND THE TARGET IS A LOOK, NOT A RATE: "it should appear that the wick is
+   * flashing". At 60ms the eye stops following the individual drawings and sees
+   * a spark flicker, which is what makes a bomb read as LIVE from across the
+   * room -- the one thing the player has to notice about it.
+   *
+   * It keeps sputtering while carried and while in flight: those are Prop
+   * states that would otherwise draw the barrel's `side` row, which this pack
+   * has no bomb equivalent of. One row does for all of them.
+   */
+  _frame(sheets) {
+    /* ⚠️ THE ROW IS THE FACING, AND THAT IS WHY IT IS PICKED RATHER THAN
+       MIRRORED. `bomb` is drawn with the fuse to the right and `bomb2` with the
+       fuse to the left, and they are HAND-DRAWN VIEWS rather than a flip: the
+       coil of the fuse and the highlight on the casing differ. Letting
+       `sheets.draw` mirror one of them would throw the other away -- which is
+       what was happening, and is what "it also has front and back" meant.
+       `draw` below passes the pack's native side so nothing is flipped on top
+       of this. */
+    const pose = this.row;
+    if (this.state === 'smash' || this.state === 'gone') return { pose, step: 0 };
+    const n = Math.max(1, sheets.poseLength('barril', pose));
+    /* ⚠️ IT PANICS FOR THE LAST FEW SECONDS. A steady flicker says "this is a
+       bomb"; a flicker that suddenly doubles says "this one is about to go
+       off", which is the only piece of information the player actually needs
+       out of an eight-second fuse. It is a STEP and not a ramp on purpose --
+       a threshold is something you can notice, and a gradual acceleration is
+       something you only see in hindsight. */
+    return { pose, step: Math.floor(this.fuseT * 1000 / this._animMs()) % n };
+  }
+
+  draw(ctx, sheets, camX) {
+    if (this.state === 'gone') return;
+    if (this.booms.armed) {
+      /* ⚠️ THE BOOM SHEET COMES OFF `sheets`, WHICH HOLDS THE LOADER. The shell
+         draws everything in the sorted pass with `(ctx, sheets, camX)` and only
+         a BOSS gets handed raw `assets`, by declaring `usesSheets` false. A
+         bomb needs BOTH -- the pack for its fuse, the loader for the burst --
+         so it takes the one it is given and reads the other through it rather
+         than growing a second exception in render(). */
+      const assets = sheets && sheets.assets;
+      this.booms.draw(ctx, assets && assets.getDrawable('boom'),
+                      this.groundX(camX), this.groundY(), this.t);
+      return;
+    }
+    /* ⚠️ DRAWN AT THE PACK'S NATIVE SIDE, NOT AT `this.facing`. The facing has
+       already been spent -- it chose `this.row` in the simulation -- and letting
+       `sheets.draw` flip on top of that would mirror the left drawing back to
+       the right and leave `bomb2` unused all over again. `Prop.draw` passes
+       `this.facing` because a barrel has one row and wants the flip; this has
+       two rows and does not.
+
+       ⚠️ AND THIS IS EXACTLY WHY THE ROW IS NOT READ HERE. `Prop.draw` calls
+       `_frame()` from inside this overwrite, so a row chosen from `this.facing`
+       would be chosen from the 'right' set one line above -- always `bomb`,
+       never turning. That shipped once. */
+    const was = this.facing;
+    this.facing = 'right';                       // the barril pack's `native`
+    try { super.draw(ctx, sheets, camX); }
+    finally { this.facing = was; }
+    /* AFTER the sprite: it paints OVER the bomb. Before it, the bomb would be
+       drawn on top of its own red and nothing would show. */
+    this._paintRed(ctx, sheets, camX);
+  }
+
+  /**
+   * THE RED CUE: the BOMB ITSELF painted red, for the last few seconds.
+   *
+   * ⚠️ IT WAS A GLOW AROUND IT FIRST AND THAT WAS WRONG -- "the bomb itself
+   * should be painted red, not around it". A halo was reached for because it is
+   * cheap and because `sheets.draw`'s `flash` pass cannot do colour: that pass
+   * is `lighter` with the SPRITE as its own source, and adding a black bomb to
+   * itself adds nothing. Cheap was not the requirement.
+   *
+   * ⚠️ SO IT IS A MASKED FILL, WHICH NEEDS AN OFFSCREEN CANVAS. The sprite is
+   * drawn into a scratch canvas, `source-in` replaces every opaque pixel with
+   * flat red while keeping the alpha, and the result is blitted over the bomb.
+   * That is a red SILHOUETTE of exactly this frame -- fuse, spark and all --
+   * rather than a wash near it.
+   *
+   * ⚠️ THE SCRATCH CANVAS IS SHARED AND SIZED ONCE. One per bomb per frame
+   * would be a new allocation 25 times a second; it is a static on the class,
+   * cleared each use and resized only when the drawn size changes.
+   *
+   * ⚠️ AND IT IS SKIPPED DURING THE HOIST. `Prop.draw` shifts `drawY` while a
+   * prop is being lifted -- the arithmetic that keeps a turning barrel's centre
+   * still -- and this pass draws at the plain ground point, so the two would
+   * disagree for the 640ms of a pickup. Rather than copy that arithmetic into a
+   * second place where it could drift, the red simply does not paint during
+   * `lifting`. The wick is still flickering, so the bomb is not silent.
+   */
+  _paintRed(ctx, sheets, camX) {
+    if (this.state === 'smash' || this.state === 'gone') return;
+    if (this.state === 'lifting') return;          // see the note above
+    const C = this.cfg;
+    if (C.panicRed === false || !this._panic()) return;
+    const n = Math.max(1, sheets.poseLength('barril', this.row));
+    if (Math.floor(this.fuseT * 1000 / this._animMs()) % n !== 0) return;
+    if (typeof document === 'undefined') return;
+
+    const f = this._frame(sheets);
+    const ds = this.depthScale();
+    const size = (C.sizePx || 82) * ds;
+    const W = Math.max(8, Math.ceil(size * 3));
+    const H = Math.max(8, Math.ceil(size * 3));
+    let cv = Bomb._tint;
+    if (!cv) cv = Bomb._tint = document.createElement('canvas');
+    if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+    const c2 = cv.getContext('2d');
+    if (!c2) return;
+    c2.clearRect(0, 0, W, H);
+    /* The local ground point. Anywhere with room above and to both sides will
+       do -- the blit below lines it up with the real one. */
+    const lx = W / 2, ly = H * 0.82;
+    sheets.draw(c2, 'barril', 'right', f.pose, f.step, lx, ly, { scale: ds });
+    c2.save();
+    c2.globalCompositeOperation = 'source-in';
+    c2.fillStyle = C.panicRedColour || '#ff2a1a';
+    c2.fillRect(0, 0, W, H);
+    c2.restore();
+
+    ctx.save();
+    ctx.globalAlpha = (C.panicRedAlpha != null ? C.panicRedAlpha : 0.8);
+    ctx.drawImage(cv, this.groundX(camX) - lx, this.groundY() - ly);
+    ctx.restore();
+  }
+
+}
+
+/**
  * Everything in the room that is not a fighter.
  *
  * ONE LIST, TWO KINDS, and the shell asks it for `all()` to fold into the same
@@ -702,7 +982,9 @@ class Props {
   enterRoom(room, player) {
     this.clear(player);
     for (const p of (room && room.props) || []) {
-      this.add(p.kind, p.x, p.z);
+      /* THE WHOLE PLACEMENT IS PASSED, not just its position: a barrel entry may
+         carry `drops` / `dropKind` to overrule what is inside it. */
+      this.add(p.kind, p.x, p.z, p);
     }
   }
 
@@ -731,15 +1013,65 @@ class Props {
    * and the barrels are one sheet, so `CHARACTERS.barril` stays loaded either
    * way.
    */
-  add(kind, x, z) {
+  /**
+   * `place` is the ROOMS[].props ENTRY this came from, when it came from one --
+   * a barrel may carry `drops` / `dropKind` to overrule what is inside it. It
+   * is null for anything spawned at runtime (the drop out of a barrel), which
+   * is exactly the case that should be left to the roll.
+   */
+  add(kind, x, z, place) {
+    if (kind === 'bomb') {
+      const b = new Bomb(x, z);
+      this.list.push(b);
+      return b;
+    }
     const food = (kind === 'chicken' || kind === 'coxinha');
     if (!food) {
       const C = (CONFIG.PROPS && CONFIG.PROPS[kind]) || {};
       if (C.on === false) return null;
     }
-    const o = food ? new Pickup(kind, x, z) : new Prop(kind, x, z);
-    this.list.push(o);
-    return o;
+    const made = food ? new Pickup(kind, x, z) : new Prop(kind, x, z, place);
+    this.list.push(made);
+    return made;
+  }
+
+  /**
+   * The one frame a bomb goes off: hurt everything standing in it.
+   *
+   * ⚠️ IT HURTS THE PLAYER TOO, and that is the decision that makes the 50/50
+   * with the chicken a GAMBLE rather than a reward -- break a barrel and you
+   * might get a heal or you might get a problem. See CONFIG.PROPS.bomb; if it
+   * should spare one side, this is the one place to test for it.
+   *
+   * ⚠️ THE RADIUS IS ON THE FLOOR PLANE, with depth weighted DOUBLE -- the same
+   * weighting the crowd's token uses to pick its nearest. A belt is 190 deep
+   * against a screen 1280 wide, so an unweighted circle would reach almost the
+   * whole lane and read as a blast that ignores depth.
+   *
+   * ⚠️ AND IT GOES THROUGH `hurt()` LIKE EVERY OTHER BLOW, so the knockdown,
+   * the i-frames, the flinch and the stats all behave exactly as they do for a
+   * punch. Nothing here knows what a bomb is except the numbers.
+   */
+  _blast(bomb, player, crowd, combat) {
+    /* ⚠️ `cfg` IS A FIELD, NOT A METHOD. It was a method while Bomb was its own
+       class; inheriting Prop brought Prop's `this.cfg = C` with it, and calling
+       it would throw on the one frame a bomb goes off -- a crash reachable only
+       by an explosion. */
+    const C = bomb.cfg || {};
+    const r = C.blastR || 150;
+    const hit = (f) => {
+      if (!f || !f.vulnerable || !f.vulnerable()) return;
+      const dx = f.x - bomb.x, dz = (f.z - bomb.z) * 2;
+      if (Math.hypot(dx, dz) > r) return;
+      f.hurt(C.damage || 18, dx >= 0 ? 1 : -1, C.knockback || 380,
+             C.lift || 150, C.knockdown !== false);
+    };
+    hit(player);
+    if (crowd) for (const e of crowd.list) hit(e);
+    /* One freeze for the blast, however many it caught -- the same rule the
+       sweep follows, and `combat` already takes the longest pending one. */
+    if (combat) combat.stop = Math.max(combat.stop,
+      ((CONFIG.hitstopMs && CONFIG.hitstopMs.finisher) || 90) / 1000);
   }
 
   /** Everything still worth drawing. */
@@ -797,6 +1129,13 @@ class Props {
          blow gets the same impact burst, the same sound and the same stats as
          any other -- the resolver stays the one place a blow is decided. */
       if (o.state === 'thrown' && combat) combat.propHits(o, crowd, player, boss);
+      /* ⚠️ DUCK-TYPED, NOT `instanceof Bomb`, AND THE ORDER MATTERS. A Bomb IS
+         a Prop now, so it has already been through `update` and `propHits`
+         above -- which is the point: it is thrown, it tumbles and it hits an
+         enemy with the same code a barrel does. This is the one thing only a
+         bomb answers, and it fires on the single frame the burst is armed
+         however the smash was reached. */
+      if (o.takeBlast && o.takeBlast()) this._blast(o, player, crowd, combat);
       /* WHAT WAS INSIDE IT. Spawned on the frame it BREAKS rather than when the
          debris clears, so the chicken is revealed by the burst instead of
          appearing in a settled pile a beat later. */
@@ -807,14 +1146,22 @@ class Props {
            one thing is worth it: "there are three drumsticks on the floor and
            the config only places two" is not a contradiction, it is a chicken
            out of a barrel, and there was no way to see that from the outside. */
-        const drop = this.add('chicken', o.x, o.z);
+        /* WHICHEVER IT HAD IN IT -- rolled at birth, see Prop's constructor.
+           `dropKind` is the whole of the 50/50; nothing is decided here. */
+        const drop = this.add(o.dropKind || 'chicken', o.x, o.z);
         if (drop) drop.fromBarrel = true;
       }
     }
     // Reap. Held barrels are never reaped -- `gone` is only ever set by smash().
     for (let i = this.list.length - 1; i >= 0; i--) {
       const o = this.list[i];
-      if ((o instanceof Prop && o.state === 'gone') || (o instanceof Pickup && o.taken)) {
+      /* ⚠️ A BOMB NEEDS NO CASE OF ITS OWN ANY MORE. It is a Prop, so it is
+         reaped on `gone` like every other one -- and `gone` arrives `smashMs`
+         after the smash, which for a bomb is set to the length of its burst.
+         The version before this had its own `dead` test, from when it was a
+         separate class. */
+      if ((o instanceof Prop && o.state === 'gone')
+          || (o instanceof Pickup && o.taken)) {
         this.list.splice(i, 1);
       }
     }

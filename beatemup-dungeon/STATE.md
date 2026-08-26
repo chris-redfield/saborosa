@@ -1070,6 +1070,481 @@ as much as the source — at a 1ms hop a single stray sample splits one 580ms
 silence into two short ones and the number stops describing anything anybody
 hears.
 
+### The jiggle, and the crowd grew a middle ring
+
+**THE SHIVER WAS A DIRECTION DERIVED FROM A POSITION THAT THE MOVEMENT
+CHANGES.** Reported 2026-08-24: cigarettes "get jiggly at a distance from the
+player". The orbit read
+
+    this.orbit += CONFIG.enemyCircleSpeed * dt * (this.z > player.z ? 1 : -1);
+
+-- so an enemy circling across the player's DEPTH line flipped its own
+direction, walked back over the line, and flipped again. Parked on the crossing
+it shivered there for the rest of the fight. **A feedback loop, not a jitter:
+the sign came from the thing the sign was moving.** `orbitDir` is decided once
+and kept.
+
+⚠️ **AND SEEDING IT FROM THE SPAWN POSITION CLUMPED**, which was the first fix
+and was wrong in a way only the real placements showed: `floor(x*0.013 +
+z*0.019) % 2` put ALL FIVE of the first arena's cigarettes the same way round,
+because the x coefficient times the gap between two placements is smaller than
+one parity step. The whole wave circled as one -- the queue the orbit exists to
+avoid. `Crowd.add` deals the direction out ALTERNATING instead: it is a property
+of the GROUP, like the attack token, because what matters is that a wave splits
+both ways and no enemy can know that on its own. ⚠️ **Test a "spread" hash
+against the actual data, not against the idea of it.**
+
+**AND THE CROWD IS THREE RINGS NOW, NOT TWO.** Asked for in the same message:
+`maxAttackers` 2 -> **3**, plus ONE understudy holding at `enemyReadyRadius`
+130 while everybody else stays out at 210.
+
+**THE MIDDLE RING IS THE POINT OF THE CHANGE.** With one radius, a freed slot
+was filled by whoever was nearest -- and nearest was still 210px away, so every
+hand-over cost a walk and the fight visibly breathed in and out. 130 is close
+enough to step straight in and still outside `enemyStandoffX` (63), so the
+understudy reads as WAITING rather than crowding. It circles at half speed for
+the same reason: someone about to move in should look settled.
+
+⚠️ **AND THE FIRST VERSION OF THE UNDERSTUDY PUT THE JIGGLE STRAIGHT BACK.** It
+was rechosen every frame by distance, "deliberately not sticky" -- so the flag
+ping-ponged between the two nearest candidates whenever they were about equally
+far, and since being the understudy moves your target radius by 80px, the pair
+lurched between 130 and 210 on alternate frames. Reported within the hour as
+"the 4th and the 5th are very very wiggly, its the same bug we had before", and
+it was: **the same shape as the bug it was written to fix -- a decision derived
+from a live quantity that the decision itself moves -- reintroduced one function
+away, in the fix for it.**
+
+**IT IS STICKY NOW:** held until that enemy takes a turn, is hit, goes down or
+dies. ⚠️ And the reason "not sticky" was written -- that a remembered understudy
+would keep its close radius after drifting to the back -- **cannot happen**,
+because being the understudy pulls an enemy IN. It can only get nearer while it
+holds the flag. The argument for the broken version was about a failure mode
+that the mechanism itself rules out.
+
+Set BEFORE `update` so the flag is read on the frame it is decided.
+
+⚠️ **AND WHAT RULED THE OTHER SUSPECT OUT WAS ARITHMETIC, NOT LOOKING.** Before
+touching anything, the per-frame step was measured against the deadzone: 2 to
+3px of movement against a 10px band, so `ix`/`iz` cannot flip from overshoot.
+That left exactly one candidate.
+
+⚠️ **`maxAttackers` 3 IS A DIFFICULTY CHANGE AND THE HP TABLE HAS NOT MOVED.**
+The file's own note calls 3 "a beating". It lands on a player whose finisher now
+sweeps and whose air attack launches -- both of which exist to answer exactly
+this -- so the two are meant to be judged together.
+
+### The last of the wiggle: a fighter can only walk at one speed
+
+**THE UNDERSTUDY WAS STILL TWITCHING** after the orbit direction was fixed and
+after the flag was made sticky -- "mainly in the fourth guy". Third cause, and
+nothing to do with the first two.
+
+⚠️ **A DEADZONE DOES NOT SMOOTH A FOLLOW; IT QUANTISES IT.** `walk()` takes a
+direction of -1/0/1, so an enemy tracking a moving point can move at FULL speed
+or not at all. The orbit target's speed is `enemyCircleSpeed x radius`:
+
+    outer ring   189 px/s   against a walk of 192 -- near enough matched, so it
+                            walks continuously and looks smooth
+    understudy    81 px/s   against the same 192 -- it sat inside the 10px
+                            deadzone for SEVEN frames, jerked 3.2px, and stopped
+
+**That is why it was the fourth guy specifically: his target is the SLOWEST, so
+he spent the most time unable to move at all.** The fifth looked fine for the
+same reason the fourth did not.
+
+**`_seek()` REPLACES THE DEADZONE WITH A SCALE.** The step is scaled down to
+exactly close the gap when the gap is smaller than a full step -- which removes
+the overshoot the deadzone existed to prevent AND lets him move at 81px/s. In
+the steady state he now covers exactly the 1.35px his target opened.
+
+⚠️ **AND THE FIRST CUT OF IT INTRODUCED A WIGGLE AT RIGHT ANGLES.** Passing
+`(±1, ±1)` to `walk` makes a fighter one pixel out in DEPTH walk a full
+diagonal, sail past in z and flip back next frame. `walk()` normalises whatever
+it is handed, so the RAW DELTA is a proportional direction -- the difference
+between "walk northeast" and "walk mostly east". Caught by arithmetic before it
+was ever seen.
+
+**THREE CAUSES, ONE SYMPTOM, AND THEY HAD TO BE FIXED IN ORDER:** a direction
+derived from a position it moved (the orbit), a flag derived from a distance it
+moved (the understudy), and a controller that could not move slowly (this). Each
+fix made the next one visible. ⚠️ **"It is better but not gone" is a report to
+take literally** -- it meant a different bug, not an insufficient fix.
+
+### The barrel can have a bomb in it
+
+**35% SOMETHING, THEN 50/50 CHICKEN OR BOMB** -- so a barrel is 17.5% chicken,
+17.5% bomb and 65% empty. Asked for 2026-08-24. ⚠️ **Both rolls happen at BIRTH,
+not at the break**, which is the rule `dropChance` already followed: what is IN
+a barrel does not change, and breaking it twice cannot give two answers.
+
+⚠️ **AND I READ HALF THE ART WRONG.** `bomb2` is not "the same bomb with a
+coiled fuse", it is the bomb's OTHER FACING -- fuse to the right, fuse to the
+left. The user had to say so: "it also has front and back". They are HAND-DRAWN
+VIEWS rather than mirrors (the coil differs, the highlight differs, the anchors
+sit at 41% and 59% of the frame), so `Bomb._frame` picks the ROW from the facing
+and `draw` passes the pack's NATIVE side -- letting `sheets.draw` flip one would
+have mirrored the left drawing back to the right and left `bomb2` unused, which
+is what was happening. ⚠️ **The same pairing exists for `side`/`side2` and the
+barrel uses only `side`** -- not an oversight to copy: a barrel lying down is
+near enough symmetrical for a flip to pass and a lit fuse is not.
+
+**THE ART TOLD ME WHAT THE BOMB DOES.** The pack has had `bomb` and `bomb2`
+sitting in it unused -- three frames each of a round black bomb whose FUSE BURNS
+DOWN, the spark walking in toward the casing and the sprite losing 8px of height
+doing it. A straight fuse and a coiled one: two drawings of ONE object, not two
+stages, so a bomb picks one at birth and keeps it. Nothing else fits a burning
+fuse, so it lands, burns, and goes off.
+
+⚠️ **WHO IT HURTS WAS THE ONE THING NOT SPECIFIED, AND THE READING IS: EVERYONE
+IN RANGE, PLAYER INCLUDED.** That is what makes the 50/50 with the chicken a
+GAMBLE rather than a reward -- break a barrel and you might get a heal or you
+might get a problem -- and it is why `fuseMs` is 1400, about two and a half
+walking seconds to get clear. Flagged rather than assumed; sparing either side
+is one test in `Props._blast`. ⚠️ Bosses are NOT damaged: they are not in
+`crowd`, and adding them would let a barrel chip a boss from across the room.
+
+**AND THEN IT BECAME A WEAPON, WHICH REWROTE THE CLASS.** Asked for within the
+hour: pick it up, throw it, it explodes on whatever it hits -- and on nothing at
+all if it hits nothing -- and 8 seconds if you leave it. It went in as a class of
+its own (land, burn, explode) and that was right for the first spec and wrong
+for this one.
+
+⚠️ **`Bomb extends Prop` NOW, AND THAT IS THE WHOLE DESIGN.** A throwable that
+breaks on impact is a BARREL THAT ENDS DIFFERENTLY: the lift arc, the carry, the
+throw, the tumble, `combat.propHits`, the reaper and the punchability are all
+already written and already tuned. Three overrides -- the fuse, the smash, the
+frame -- and it goes off FOUR ways of which only the last is its own code:
+thrown into an enemy, thrown onto the floor, punched where it lies, or the fuse.
+**When a new thing acquires an existing thing's verbs, it is that thing.**
+
+⚠️ **THE FUSE RUNS WHILE IT IS HELD**, deliberately: picking one up starts a
+countdown you are now carrying and the throw is how you spend it. Pausing it in
+his hands would make holding a lit bomb the safest thing in the game.
+
+⚠️ **AND `smash()` HAS TO RELEASE THE HOLDER FIRST.** `Prop.smash` nulls its own
+`holder` and stops there -- fine for a barrel, because nothing smashes one in a
+player's hands. A bomb does, EVERY TIME THE FUSE WINS, and half a released
+reference is the two-references bug this file has now hit six times: the player
+keeps `carrying` pointed at something that has exploded, stays in the carry
+pose, and the punch button goes on trying to throw it.
+
+⚠️ **AND THE SUBCLASSING BROUGHT ITS OWN TRAPS, ALL FOUND BY RUNNING IT:**
+* `cfg` is a FIELD on Prop, and it had been a METHOD on the standalone Bomb.
+  `Props._blast` still called `bomb.cfg()` -- a crash reachable only by an
+  explosion, which is to say only in play.
+* `Prop`'s constructor rolls `drops` for EVERYTHING, and `Props.update` spawns a
+  drop for any prop that smashes with it set. Without `this.drops = false` a
+  bomb would explode and leave a chicken in the crater.
+* `smashMs` must be at least as long as the BURST -- `gone` arrives that long
+  after the smash and the reaper removes it then. 1100 was one draft: 21ms
+  SHORTER than the 1121ms burst, so the explosion would have been deleted
+  before its last frame.
+* `throwDamage` cannot be 0: `combat.js` reads it as `C.throwDamage || 22`, the
+  falsy trap this file documents in four other places. 8, and the blast is the
+  rest.
+* The boom sheet is read through `sheets.assets`. The shell hands everything in
+  the sorted pass `(ctx, sheets, camX)` and only a BOSS gets raw `assets`, by
+  declaring `usesSheets` false -- a bomb needs BOTH, so it takes what it is
+  given rather than growing a second exception in `render()`.
+
+**IT WAS SIMULATED RATHER THAN ASSUMED**, after `node --check` had already
+passed over two real defects earlier in the same feature: the 8s fuse, the
+lift/throw/land path, the fuse running out while held (and releasing the
+holder), the blast radius hitting a player 30px away and sparing an enemy 500px
+away, one blast per bomb, and the reap landing at 9.3s and not 9.0s.
+
+**THE BLAST GOES THROUGH `hurt()` LIKE ANY OTHER BLOW**, so the knockdown, the
+i-frames, the flinch and the stats all behave as they do for a punch -- nothing
+in there knows what a bomb is except the numbers. Its radius weights DEPTH
+DOUBLE, the same weighting the crowd's token uses: a belt 190 deep against a
+screen 1280 wide means an unweighted circle would cover most of the lane.
+
+**THE LAST THREE SECONDS PANIC.** The fuse flickers 75ms -> 40ms a frame and a
+RED GLOW blinks with it. ⚠️ A STEP rather than a ramp, deliberately: a threshold
+is something you can NOTICE -- the moment it changes is the warning -- where a
+gradual acceleration is only visible in hindsight, by which time it has gone
+off.
+
+⚠️ **"TOGETHER WITH THE NEW SPRITE FREQUENCY" IS A REQUIREMENT ABOUT TWO THINGS
+AGREEING, AND IT IS MET BY DERIVATION.** The glow is lit on step 0 of the
+three-frame cycle, so it pulses at exactly a third of whatever rate the fuse is
+flickering at -- measured, 8.6 blinks a second and lit 34% of the time -- and it
+follows `animPanicMs` automatically if that ever moves. Given a timer of its own
+the two would drift into and out of phase and read as two effects rather than
+one alarm. **When two effects are asked to be "together", make one read the
+other rather than giving them matching numbers.**
+
+⚠️ **THE BOMB ITSELF IS PAINTED RED, AND A GLOW AROUND IT WENT IN FIRST AND WAS
+HORRIBLE.** The halo was reached for because it is cheap and because
+`sheets.draw`'s `flash` pass cannot do colour -- it is `lighter` with the sprite
+as its own source, and adding a black bomb to itself adds nothing. **Cheap was
+not the requirement**, and the argument written to justify it ("on a black bomb a
+halo reads better anyway") was a rationalisation of the easy option. It is a
+MASKED FILL now: the frame is drawn into a shared scratch canvas, `source-in`
+replaces every opaque pixel with flat red while keeping the alpha, and that
+silhouette -- fuse, spark and all -- is blitted over the bomb.
+
+⚠️ **THE SCRATCH CANVAS IS A STATIC ON THE CLASS**, cleared each use and resized
+only when the drawn size changes. One per bomb per frame would be an allocation
+25 times a second.
+
+⚠️ **AND THE RED IS SKIPPED DURING THE HOIST.** `Prop.draw` shifts `drawY` while
+a prop is being lifted -- the arithmetic that keeps a turning barrel's centre
+still -- and this pass draws at the plain ground point, so the two disagree for
+the 640ms of a pickup. Rather than copy that arithmetic into a second place
+where it could drift, the red simply does not paint then. The wick is still
+flickering, so the bomb is not silent.
+
+⚠️ **NO EXPLOSION SOUND.** There is no boom in `CONFIG.SFX` and none was
+invented.
+
+**A PLACEMENT CAN OVERRULE BOTH ROLLS** -- `drops` and `dropKind` on a
+`ROOMS[].props` barrel entry, threaded through `Props.add` as the whole
+placement rather than as two more arguments. The first test barrel has
+`drops: true`: at the real 35% you would break four barrels to see one chicken,
+and that barrel exists to be broken the moment a run starts. The KIND is left to
+the honest 50/50, which is what "always drop a chicken or a bomb" asks for.
+
+⚠️ **AND WIRING IT TURNED UP A LIVE BUG I HAD JUST SHIPPED: `dropKind` WAS NEVER
+WRITTEN.** An earlier edit had added `o.dropKind || 'chicken'` at the break site
+while the constructor half of the same change never reached the file -- so the
+field was undefined and **every barrel dropped a chicken. The bomb could never
+have appeared.** It would have been reported as "the bomb does not work" and
+looked like a drawing or a spawn problem.
+
+⚠️ **AND `node --check` PASSED THE WHOLE TIME, TWICE.** It is a SYNTAX check: it
+cannot see an undefined field, and it did not see `place` being read as an
+undeclared identifier inside a class either -- which is a hard ReferenceError on
+every barrel, in strict mode, which classes always are. **A syntax check is not
+evidence that code runs.** Instantiating the class once, with each shape of
+argument, found both in seconds and also confirmed the distribution: 35.1%
+drops, 49/51 bomb to chicken over 20,000 rolls.
+
+### The white flash became the bosses' tell by being nobody else's
+
+**`hitFlash: false`.** Mooks and the player no longer whiten when they are hit;
+the two bosses still do. Asked for 2026-08-24.
+
+**IT COSTS THE FIGHTERS NOTHING** because a fighter already announces a hit
+three other ways: the flinch pose, the knockback, and -- since this same session
+-- a grunt if it was floored. The flash was the fourth cue on an event that was
+never ambiguous.
+
+⚠️ **AND THE BOSSES HAVE NO HURT ART AT ALL.** `horse-boss.js` says so at the
+top -- "there is no hurt, knockdown or death art, confirmed rather than
+assumed" -- so for them the flash is the ONLY thing that says a punch landed.
+Taking it off everybody else is what turns it from decoration into their tell.
+
+**THE KNOB CANNOT REACH THEM, AND THAT IS STRUCTURE RATHER THAN LUCK.**
+`FlyBoss` and `HorseBoss` do not extend `Fighter`; each keeps its own `flash`
+field, sets it in its own `hurt()` and decays it in its own `update()`. So
+`CONFIG.hitFlash` is the FIGHTERS' knob by construction and cannot silence a
+boss by accident -- which is also why the asymmetry needs no test anywhere.
+
+The machinery stays: `flash` is still a field, still decays, still reaches
+`sheets.draw`. One boolean brings it back.
+
+### Fourth cause: a threshold coarser than the slowest step
+
+**"IT APPEARS AS IF HE IS BETWEEN TWO LOOPS, AND IS STUCK BETWEEN THEM."** That
+description located it. The two points are the ENDS of the orbit ellipse.
+
+⚠️ **`_seek`'s ARRIVE THRESHOLD WAS 1px, AND A THRESHOLD IS A DEADZONE BY
+ANOTHER NAME.** It fails the same way and for the same reason: it has to be
+smaller than the SLOWEST step the target ever takes, and the orbit is an ELLIPSE
+-- so the target's speed varies around it.
+
+    side of the ellipse   1.35 px/frame   fine
+    end of the ellipse    0.47 px/frame   BELOW a 1px threshold
+
+At the two ends the understudy stopped dead, the target crept past 1px, he took
+one step onto it and stopped again. Only him, because his ring turns at half
+speed and his target is the slowest thing on screen -- which is the same reason
+he was the one still twitching in the round before. 0.05px now: small enough
+that nothing in this game can hide under it, and it exists only to keep `gap`
+out of a divisor.
+
+**AND THE RADIUS IS EASED RATHER THAN SWITCHED**, `enemyRingEase`. This is belt
+AND braces: read fresh each frame, becoming the understudy teleported the target
+30px inward, so the flag changing for ANY reason lurched the enemy between two
+circles. Held as state and eased, a promotion reads as stepping in, and a flag
+that ever did flicker could not produce more than a fraction of a pixel.
+
+⚠️ **THAT IS THE SAME CLASS OF BUG FOUR TIMES IN ONE SESSION** -- a value read
+fresh from something that moves. The orbit direction, the understudy flag, the
+seek deadzone, the ring radius. **The fix that lasts is not a better threshold,
+it is removing the thing that can be read fresh:** `orbitDir` is dealt once,
+`ready` is sticky, `ringR` is eased, and the deadzone is gone rather than
+retuned. A threshold small enough today is a bug waiting for a slower target.
+
+### The outer ring wanders off
+
+**EVERYBODY PAST THE UNDERSTUDY GETS BORED.** `ENEMY_STROLL`: every 4 to 9
+seconds an enemy with no turn and no understudy flag walks to the far end of the
+arena from the player and then rejoins the ring. Asked for 2026-08-24 -- "the
+5th and beyond can distract themselves from time to time, going to the other end
+of the screen and coming back to check the fight".
+
+**AND THE UNDERSTUDY WENT BACK TWO STEPS**, `enemyReadyRadius` 130 -> 180: "the
+4th guy is still too close". At ~192px/s a step is about 40px, so that is
+literally the couple of steps asked for. Still inside the 210 ring and still far
+outside `enemyStandoffX` (63) -- the intent at 130 was right and the number
+overshot.
+
+⚠️ **THE DESTINATION IS READ ONCE**, at the moment the stroll begins: the far
+end of the walkable span from where the PLAYER was standing then. Recomputing it
+per frame is the bug this file has already produced TWICE in one day -- the
+orbit direction, then the understudy flag -- and here it would be worse than a
+jiggle: the enemy would turn round every time the player crossed the middle of
+the arena.
+
+⚠️ **A SUMMONS ENDS A WANDER, AND `stroll` IS NOT IN THE TOKEN'S SKIP LIST.**
+That is the "coming back to check the fight" half of the request and it needed
+no code: the token branch runs before this one. What it DID need was clearing
+the flag in `takeTurn()` -- otherwise, the moment his turn ended, he would
+resume walking towards a place chosen for a fight that had since moved.
+
+⚠️ **AND TWO CLOCKS HAD TO BE ARGUED WITH, NOT GUESSED:**
+* `strollT` starts SEEDED, not at zero. At zero the countdown is already expired
+  and every enemy set off the instant it stopped attacking -- the whole back of
+  the crowd walking away at once, which is the opposite of the effect.
+* `maxMs` must be LONGER THAN A CROSSING or it is the normal exit rather than a
+  safety net. It was 4000 for one pass: the arena is 1160px, an enemy at the 210
+  ring is ~840px from the far target, and at 163px/s that is 5.1 seconds -- so
+  nobody ever arrived, they turned round three quarters of the way, and it read
+  as aimless rather than as going somewhere. 6000.
+
+### The enemy answers a knockdown
+
+**`enemy-hit-1.ogg` PLAYS WHEN A BLOW PUTS A FIGHTER DOWN** -- the finisher and
+the air attack. Asked for 2026-08-24.
+
+⚠️ **IT WAS A TAKE, NOT AN EFFECT, AND THAT IS THE THIRD TIME.** 1.93s of
+recording with the grunt 452ms of it starting at **734ms** -- played raw the
+enemy would have answered three quarters of a second after hitting the floor.
+`build-beat-sfx.py enemy-hit-1` cuts it. **Envelope every borrowed or raw file
+before wiring it**; the coin, the victory clip and now this one all looked
+equally finished from the filename and two of the three were not.
+
+**LAYERED UNDER THE PUNCH, NOT INSTEAD OF IT.** The blow is the event and this
+is the reaction -- the same arrangement `_takeHitSound()` already makes for the
+player. `SFX_GAIN` 0.7, about 3dB under `comboFinish`, which is itself lifted to
+1.2: at 1.0 the two arrived level and fought.
+
+⚠️ **TRIGGERED BY `box.def.knockdown`, NOT BY THE MOVE'S NAME**, so a third
+knockdown attack gets it without touching this.
+
+⚠️ **AND `t.scores !== false` IS THE "IS THIS A FIGHTER" TEST**, the same one the
+kill counter uses. A barrel answers the whole target interface and is struck by
+exactly this code, so without it a finisher that caught only a crate would play
+a grunt for a crate.
+
+⚠️ **ONCE PER SWING, NOT ONCE PER BODY** -- the `sweep` lesson again, and the
+fourth thing on that path to need it.
+
+**AND THE HERO GOT A VOICE, OUT OF THE ENEMIES' POOL.** `enemy-hit-3` was the
+enemies' second grunt for about an hour and was then moved: it plays for the
+PLAYER now, under the pitched-down punch, on every hit he takes. The enemy pool
+is back to one entry -- and is still a POOL, because it has already been both
+sizes in a day.
+
+⚠️ **ONLY ON A KNOCKDOWN, AND I GOT THIS WRONG FIRST.** It went in on EVERY hit
+he takes, on the argument that "a knockback hit" describes every blow because
+every enemy attack carries knockback -- and that only the barata's charge sets
+`knockdown`, making the narrow reading a once-a-level event. **The count was
+wrong.** I had read the cigarettes' plain punches, which set nothing, and
+generalised from them. FOUR attacks bowl the player over:
+
+    BARATA_CHARGE.knockdown        the rolling ball, all through the roach waves
+    HORSE_BOSS.chargeKnockdown     his charge
+    HORSE_BOSS.kickKnockdown       his kick
+    FlyBoss, `knockdown: ambush`   the Mosca's ambush pass
+
+So "a knockback hit" IS a real category in this game. ⚠️ **Counting how often a
+flag is set is not the same as grepping the first place it could be set** --
+the cigarettes are the enemies you meet most and they were the least
+representative sample available.
+
+**AND HE HAS A DEATH CRY** (`enemy-hit-2`, cut to `player-death`). On the blow
+that kills, IN PLACE OF the knockdown voice -- the killing blow also floors him,
+so both would fire on one frame. Same precedence the enemies' death takes over
+their grunt. The strike still plays; he was still hit.
+
+⚠️ **IT IS NOT `GAME_OVER_STING`.** That is MUSIC, it stops the bed, and it only
+happens on the LAST life. This is a voice on EVERY death, and when the two
+coincide they are a beat apart: this one on the blow, that one once the death
+has finished being watched.
+
+**ALL FOUR TAKES ARE NOW USED, AND TWO OF THEM TURNED OUT TO BE HIS.** They were
+recorded as enemy noises -- `enemy-hit-1` is the enemy grunt, `-3` became the
+hero's, `-4-oof` the enemy death, `-2` his. ⚠️ Their gains are all DERIVED
+rather than judged: the first three cuts land between -14.2 and -14.6 dBFS and
+share 0.7, while `player-death` measures -10.8 and so takes 0.47 to sit in the
+same place. A file being hotter is not the same as a sound being louder.
+
+**AND THEN THE BOSSES CAME OUT OF IT, the same day.** `bossHits` passes `false`,
+so of those four only the BARATA CHARGE reaches the voice -- both bosses come
+through one function and both were grunting. Requested, and it holds up: a
+boss's blows already announce themselves. The Mosca's ambush drops the player
+for no damage at all as its whole point, and the horse's charge has a wind-up
+you are meant to read; a voice under either is one cue too many on the loudest
+moments in the game. The strike still plays for both.
+
+**AND IT IS THE SOUND THAT SAYS WHO WAS HIT.** The pitched punch is the same
+recording he hears when HE connects -- deliberate, so the fight has one
+vocabulary -- and a pitch shift alone is a thin way to tell the two directions
+apart in a crowd. The voice is the difference, the same job the enemies' grunt
+does for a knockdown.
+
+**AND THERE WERE TWO OF THEM FOR AN HOUR, ROLLED PER KNOCKDOWN** (`ENEMY_HIT_SFX`,
+`enemy-hit-1` and `enemy-hit-3`). ⚠️ **RANDOM, NOT ALTERNATING**, and with two
+entries that is a real difference: strict alternation is perfectly predictable
+-- every other knockdown the same sound -- which is the pattern an ear finds
+fastest. A free roll repeats sometimes, and a grunt repeating is what a person
+knocked down twice actually sounds like. ⚠️ The roll is on the EVENT, never per
+frame, which is the rule the impact art already follows. Kept as a LIST so a
+third costs one entry and nothing in combat.js.
+
+**AND A THIRD SOUND FOR THE BLOW THAT KILLS** (`enemyDeath`, cut from
+`enemy-hit-4-oof`). ⚠️ **IT REPLACES THE GRUNT RATHER THAN STACKING WITH IT** --
+the killing blow also knocks down, so both tests pass on the same frame, and two
+vocal samples out of one body at once is a mess. The death is the more
+interesting of the two, so it wins.
+
+⚠️ **READ ON THE TRANSITION, NOT ON `dead`.** A body stays `dead` for its whole
+0.8s fade, so a sweep that clipped one would announce a death that happened
+seconds ago. `!wasDead && t.dead`, tracked OUTSIDE the `stats` block because a
+sound must not depend on there being a scoreboard.
+
+**A THROWN BARREL GETS IT TOO** -- a death should sound like one however it
+arrived, and `hitIds` already guarantees one visit per enemy per throw.
+
+⚠️ **AND THEN THE BOSSES WERE TAKEN OUT OF IT, WHICH WAS FLAGGED IN ADVANCE.**
+When this went in, `scores !== false` was the only gate, so the Mosca and the
+horse grunted and cried like mooks -- noted at the time as probably wrong and
+left for the user, who reported it: "the fly boss is still making getting hit
+noises, I want just the punch hit noise, not the cry."
+
+**`voiced: false` ON BOTH BOSSES**, and it is a SECOND gate rather than a
+widening of the first, because the two ask different questions: `scores` is "is
+this a fighter" (it keeps barrels out), `voiced` is "does this one make noises
+about it". A boss is announced by its own art, its own health bar and its own
+death; the grunt and the cry belong to the mooks. ⚠️ A property on the target
+rather than a `kind` test in combat.js -- the bargain every other thing about a
+boss makes -- so a third boss is silent by declaring it.
+
+⚠️ **enemy-hit-3's TAKE PEAKS AT 1.015** -- already clipped on the phone. The
+cutter's -1 dBFS ceiling is what makes it usable, and the two cuts land within
+0.3dB of each other, so one `SFX_GAIN` does for both and the random pick cannot
+double as a volume change.
+
+**A TOOLING NOTE WORTH KEEPING:** the cut failed the first time with "Unknown
+encoder 'libopus'". `/home/cmoryah/anaconda3/bin/ffmpeg` is first on PATH in
+some shells and does NOT have it; `/usr/bin/ffmpeg` does. Every audio tool here
+shells out to bare `ffmpeg`. It failed loudly and wrote nothing, which is the
+right failure -- but if a bake ever produces silence, check which ffmpeg ran.
+
 ### The pause screen, and most of it already existed
 
 **ENTER OR START.** `CONFIG.PAUSE`. Almost none of this was new plumbing:

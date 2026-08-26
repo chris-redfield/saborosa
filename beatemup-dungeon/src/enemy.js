@@ -61,6 +61,36 @@ class Enemy extends Fighter {
     // than randomly so a restarted arena plays the same way — a fight that
     // reshuffles itself on every attempt cannot be learned.
     this.orbit = ((x * 0.017 + z * 0.031) % (Math.PI * 2));
+    /* ⚠️ WHICH WAY ROUND IT GOES, DECIDED ONCE AND KEPT -- and this is a BUG
+       FIX, not a tidy-up. It used to be recomputed every frame from
+       `this.z > player.z`, which is a direction derived from a position the
+       orbit itself moves. Crossing the player's depth line flipped the sign,
+       which walked the enemy back across the line, which flipped it again: an
+       enemy parked at the crossing shivered on the spot for as long as the
+       fight lasted. That is the "jiggly at a distance" that was reported.
+
+       ⚠️ THE DEFAULT HERE IS ONLY FOR AN ENEMY WITH NO CROWD. `Crowd.add`
+       overwrites it with an ALTERNATING one -- see the note there. Seeding it
+       off the spawn position was tried first and clumped: the whole first
+       cigarette wave came out the same way round, because the x coefficient
+       times the gap between two placements is smaller than one parity step. */
+    this.orbitDir = 1;
+    /* THE UNDERSTUDY. Set by the Crowd, not by the enemy: whether you are the
+       next one in is a fact about the GROUP, exactly like the attack token.
+       See Crowd.update(). */
+    this.ready = false;
+    /* THE WANDER. `strollT` counts down to the next one and then counts the
+       current one out; `strollX` is where it is going, fixed when it sets off.
+       See the orbit branch in _think and CONFIG.ENEMY_STROLL. */
+    /* THE RING HE IS ACTUALLY ON, eased toward the one his role asks for. See
+       the orbit branch: a promotion has to look like stepping in. */
+    this.ringR = CONFIG.enemyCircleRadius;
+    this.strollX = 0;
+    this.strolling = false;
+    /* ⚠️ SEEDED, NOT ZERO. At 0 the countdown is already expired, so every enemy
+       set off the instant it stopped attacking -- the whole back of the crowd
+       walking away at once, which is the opposite of the effect. */
+    this._rollStroll(CONFIG.ENEMY_STROLL || {});
     this.showBarT = 0;
     /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
        from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
@@ -171,6 +201,11 @@ class Enemy extends Fighter {
    * turns into a jump.
    */
   takeTurn() {
+    /* ⚠️ A SUMMONS ENDS A WANDER. `_stroll` is never reached while he holds the
+       token, so without this he would resume the old walk -- towards a place
+       chosen for a fight that has since moved -- the moment his turn ended. */
+    this.strolling = false;
+    this._rollStroll(CONFIG.ENEMY_STROLL || {});
     const c = (CONFIG.enemyLeapChance && CONFIG.enemyLeapChance[this.kind]) || 0;
     this.wantsLeap = !!this.leap && Math.random() < c;
     /* ROLLED ON THE TURN, exactly like the leap and for the same reason: this
@@ -464,19 +499,165 @@ class Enemy extends Fighter {
       /* No token: ORBIT. Hanging back at a radius, drifting round the player,
          is what makes a crowd read as alive rather than as a queue. It also
          keeps the un-committed enemies visibly present and threatening, which
-         is the pressure the token system would otherwise remove. */
-      this.orbit += CONFIG.enemyCircleSpeed * dt * (this.z > player.z ? 1 : -1);
-      const r = CONFIG.enemyCircleRadius;
+         is the pressure the token system would otherwise remove.
+
+         ⚠️ THE DIRECTION IS `orbitDir`, FIXED AT SPAWN, AND NOT `this.z >
+         player.z`. See the constructor: deriving it from live position made it
+         oscillate the moment an enemy sat on the player's depth line.
+
+         ⚠️ AND THERE ARE TWO RADII. The nearest enemy without a turn is the
+         UNDERSTUDY and waits close enough to step straight in when a slot
+         frees; everyone else keeps well back. A single radius meant the whole
+         crowd sat at arm's length and a freed slot took a walk to fill. */
+      /* ⚠️ THE OUTER RING WANDERS OFF, and the understudy never does -- his
+         whole job is to be near. See CONFIG.ENEMY_STROLL. Handled before the
+         orbit because a stroller is not orbiting at all; it returns. */
+      const ST = CONFIG.ENEMY_STROLL || {};
+      if (ST.on === false || this.ready) {
+        /* Re-rolled every frame it is NOT allowed to wander, so the moment it
+           is demoted out of the understudy slot it gets a full delay rather
+           than an expired clock left over from before its promotion. */
+        this.strolling = false;
+        this._rollStroll(ST);
+      }
+      else if (this._stroll(dt, player, bounds, ST)) { this.ai = 'stroll'; return; }
+
+      this.orbit += CONFIG.enemyCircleSpeed * dt * this.orbitDir
+                  * (this.ready ? (CONFIG.enemyReadySpeedRel || 0.5) : 1);
+      /* ⚠️ THE RADIUS IS EASED, NOT SWITCHED, and that is deliberate belt AND
+         braces. Read fresh each frame, becoming the understudy teleports the
+         target 30px inward -- so the moment the flag changed, for any reason,
+         the enemy lurched between two circles. Held as state and eased, a
+         promotion is a step in, and a flag that ever DID flicker could not
+         produce more than a wobble of a fraction of a pixel. The bug this file
+         has produced three times is a value read fresh from something that
+         moves; this is the same class, removed rather than guarded. */
+      const wantR = this.ready ? (CONFIG.enemyReadyRadius || 180)
+                              : CONFIG.enemyCircleRadius;
+      this.ringR += (wantR - this.ringR)
+                  * Math.min(1, dt * (CONFIG.enemyRingEase || 3));
+      const r = this.ringR;
       const tx = player.x + Math.cos(this.orbit) * r;
       const tz = player.z + Math.sin(this.orbit) * r * 0.35;
-      const ix = Math.abs(tx - this.x) < 10 ? 0 : (tx > this.x ? 1 : -1);
-      const iz = Math.abs(tz - this.z) < 10 ? 0 : (tz > this.z ? 1 : -1);
-      this.walk(dt, ix, iz, bounds, this.speedScale * 0.8);
+      this._seek(dt, tx, tz, bounds, this.speedScale * 0.8);
       this.ai = 'circle';
       // Keep looking at the player even while sidling — an enemy that faces the
       // way it is walking reads as having lost interest.
       this._face(player);
     }
+  }
+
+  /**
+   * One frame of wandering off and coming back. Returns true while it is
+   * walking somewhere and the orbit should be skipped.
+   *
+   * ⚠️ THE DESTINATION IS READ ONCE. `strollX` is the far end of the walkable
+   * span from where the PLAYER was standing at the moment this began, and it is
+   * never re-read. Recomputing it per frame would be the bug this file has
+   * already produced twice -- a destination derived from a live quantity that
+   * walking towards it changes -- and here it would be worse than a jiggle: an
+   * enemy would turn round every time the player crossed the middle.
+   *
+   * ⚠️ AND IT ENDS THREE WAYS, all of them here: it arrives, it runs out of
+   * `maxMs`, or the crowd hands it a turn -- which never reaches this code at
+   * all, because `hasToken` is tested one branch up. A stroller answering a
+   * summons is the "coming back to check the fight" half of the request and it
+   * needs no case of its own.
+   */
+  _stroll(dt, player, bounds, ST) {
+    this.strollT -= dt;
+    if (this.strolling) {
+      if (this.strollT <= 0 || Math.abs(this.strollX - this.x) < (ST.arrivePx || 46)) {
+        this.strolling = false;
+        this._rollStroll(ST);
+        return false;
+      }
+      const ix = this.strollX > this.x ? 1 : -1;
+      this.walk(dt, ix, 0, bounds, this.speedScale * (ST.speedRel || 0.85));
+      /* STILL WATCHING THE FIGHT WHILE HE WALKS AWAY FROM IT. An enemy that
+         faced the way it was strolling would read as having left. */
+      this._face(player);
+      return true;
+    }
+    if (this.strollT > 0) return false;
+    /* OFF HE GOES. The far end from the player, so it is a real crossing rather
+       than a shuffle -- and `bounds` is the arena's own walls, which is what
+       makes "the other end of the screen" mean the screen. */
+    const pad = ST.padPx || 110;
+    const mid = (bounds ? (bounds.minX + bounds.maxX) : 0) / 2;
+    this.strollX = bounds
+      ? (player.x < mid ? bounds.maxX - pad : bounds.minX + pad)
+      : this.x;
+    this.strolling = true;
+    this.strollT = (ST.maxMs || 4000) / 1000;
+    return true;
+  }
+
+  /**
+   * Walk toward a point, at whatever speed actually reaches it -- and stop
+   * exactly on it rather than in a band around it.
+   *
+   * ⚠️ THIS EXISTS BECAUSE A FIGHTER CAN ONLY WALK AT ONE SPEED, AND THAT WAS
+   * THE LAST OF THE WIGGLE. `walk()` takes a direction of -1/0/1, so tracking a
+   * moving point with a deadzone means moving at FULL speed or not at all. The
+   * orbit target moves at `enemyCircleSpeed * radius`:
+   *
+   *     outer ring   189 px/s   against a walk of 192  -- near enough matched,
+   *                             so it walks continuously and looks smooth
+   *     understudy    81 px/s   against the same 192   -- it sat inside the
+   *                             10px deadzone for seven frames, jerked 3.2px,
+   *                             and sat still again
+   *
+   * That is why the understudy was the one still twitching after the orbit
+   * direction and the sticky flag were both fixed: his target is the SLOWEST,
+   * so he spent the most time unable to move at all. **A deadzone does not
+   * smooth a follow; it quantises it.**
+   *
+   * So there is no deadzone. The step is scaled down to exactly close the gap
+   * when the gap is smaller than a full step, which both removes the overshoot
+   * the deadzone was there to prevent AND lets him move at 81px/s.
+   *
+   * ⚠️ THE ARRIVE THRESHOLD IS 0.05px, AND IT WAS 1px, AND THAT ONE PIXEL WAS
+   * ITS OWN BUG. A threshold is a deadzone by another name, and it fails the
+   * same way: it has to be smaller than the SLOWEST step the target ever takes.
+   * The orbit is an ELLIPSE, so the target's speed varies around it --
+   *
+   *     side of the ellipse   1.35 px/frame   fine
+   *     end of the ellipse    0.47 px/frame   BELOW a 1px threshold
+   *
+   * -- so at the two ends the understudy stopped dead, the target crept past
+   * 1px, he took one step onto it and stopped again. Twice per orbit, and only
+   * him, because his ring turns at half speed and his target is the slowest
+   * thing on screen. Reported as "stuck between two loops": those two points
+   * are exactly the ends of the x sweep, where he looks caught between going
+   * one way round and the other.
+   *
+   * 0.05 is small enough that no target in this game can hide under it, and it
+   * exists only to keep `gap` out of the divisor below. The sub-pixel `ix`
+   * churn it used to guard against cannot happen either: this passes the RAW
+   * delta, and the orbit branch overwrites `facing` with `_face(player)`.
+   */
+  _seek(dt, tx, tz, bounds, base) {
+    const dx = tx - this.x, dz = tz - this.z;
+    const gap = Math.hypot(dx, dz);
+    if (gap < 0.05) return;
+    /* ⚠️ THE RAW DELTA IS PASSED, NOT ITS SIGN. `walk()` normalises whatever it
+       is given, so `(dx, dz)` is a PROPORTIONAL direction -- which is the
+       difference between "walk northeast" and "walk mostly east". Handed
+       `(±1, ±1)` a fighter one pixel out in depth walks a full diagonal, sails
+       past in z, and flips back next frame: a second wiggle, at right angles to
+       the one this method was written to remove. */
+    const ux = dx / gap, uz = dz / gap;
+    // What `walk` will actually cover this frame along that direction -- read
+    // the way it moves (x and z have different speeds) or the scale is a guess.
+    const full = Math.hypot(ux * CONFIG.walkSpeedX, uz * CONFIG.walkSpeedZ) * base * dt;
+    this.walk(dt, dx, dz, bounds, full > gap ? base * (gap / full) : base);
+  }
+
+  /** How long until this one gets bored again. */
+  _rollStroll(ST) {
+    const lo = (ST.everyMinMs || 4200), hi = (ST.everyMaxMs || 9000);
+    this.strollT = (lo + Math.random() * Math.max(0, hi - lo)) / 1000;
   }
 
   _face(player) {
@@ -498,7 +679,18 @@ class Enemy extends Fighter {
 class Crowd {
   constructor() { this.list = []; }
 
-  add(e) { this.list.push(e); }
+  /**
+   * ⚠️ AND IT DEALS OUT THE ORBIT DIRECTION, ALTERNATING. Which way an enemy
+   * circles is a property of the GROUP for the same reason the attack token is:
+   * what matters is that a wave splits BOTH ways, and no enemy can know that on
+   * its own. Seeding it from the spawn position was tried and clumped -- all
+   * five of the first arena's cigarettes came out identical, which is the
+   * queue-shaped crowd the orbit exists to avoid. Index parity cannot.
+   */
+  add(e) {
+    e.orbitDir = (this.list.length % 2) ? 1 : -1;
+    this.list.push(e);
+  }
   /** Everything, corpses included. For a HARD reset only -- a run beginning or
       ending, or a room swap behind the fade's black. Never mid-level: it cuts
       whatever was still fading. Use clearLiving() there. */
@@ -613,6 +805,42 @@ class Crowd {
         best.takeTurn();
       }
     }
+
+    /* THE UNDERSTUDY: one enemy without a turn waits CLOSE (see the orbit branch
+       in Enemy) so that a slot freeing is filled immediately rather than after a
+       walk across the arena.
+
+       ⚠️ IT IS STICKY, AND THE FIRST VERSION WAS NOT -- WHICH PUT THE JIGGLE
+       BACK. Rechosen every frame by distance, the flag ping-ponged between the
+       two nearest candidates whenever they were about equally far: being the
+       understudy changes your target radius by 80px, so the pair lurched
+       between 130 and 210 on alternate frames. That is the SAME SHAPE as the
+       orbit-direction bug this replaced -- a decision derived from a live
+       quantity that the decision itself moves -- reintroduced one function
+       away, an hour later, in the fix for it.
+
+       ⚠️ SO THE RULE IS: HOLD IT UNTIL IT STOPS BEING ELIGIBLE. Taking a turn,
+       being hit, going down or dying ends the job; nothing else does. And it
+       cannot go stale in the way "not sticky" was written to prevent, because
+       being the understudy pulls an enemy IN -- it can only get nearer, never
+       drift to the back while still holding the flag.
+
+       ⚠️ AND IT IS SET BEFORE `update`, so an enemy reads the flag on the same
+       frame it is decided rather than acting on last frame's answer. */
+    const eligible = (e) => !e.dead && !e.hasToken
+      && e.ai !== 'enter' && e.ai !== 'gone'
+      && e.state !== 'hurt' && e.state !== 'down';
+    let ready = null;
+    for (const e of this.list) if (e.ready && eligible(e)) { ready = e; break; }
+    if (!ready) {
+      let readyD = Infinity;
+      for (const e of this.list) {
+        if (!eligible(e)) continue;
+        const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
+        if (d < readyD) { readyD = d; ready = e; }
+      }
+    }
+    for (const e of this.list) e.ready = (e === ready);
 
     for (const e of this.list) e.update(dt, player, bounds);
 

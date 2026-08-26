@@ -61,6 +61,10 @@ class HorseBoss {
     this.noShadow = CONFIG.HORSE_BOSS.shadow === false;
     this.hp = C.health;
     this.maxHp = C.health;
+    /* ⚠️ NO VOICE, same as the Mosca -- the grunt and the death cry are the
+       MOOKS'. See FlyBoss for the reasoning and for why it is a property here
+       rather than a `kind` test in combat.js. */
+    this.voiced = false;
     this.dead = false;
     this.facing = facing || 'left';
     this.phase = 'enter';

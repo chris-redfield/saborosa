@@ -185,9 +185,33 @@ class Combat {
        off with distance -- it is one swing that happened to catch three people,
        and each of them was hit by it. Splitting the damage would make the
        finisher WORSE the more it connected with, which is backwards. */
+    /* Did this blow put a FIGHTER on the floor, and did it KILL one? One answer
+       each for the whole swing, not one per body -- see the sound block below. */
+    let floored = false;
+    let killed = false;
     for (const t of struck) {
       const wasDead = t.dead;
       t.hurt(dmg, box.dir, box.def.knockback, box.def.lift, box.def.knockdown);
+      /* ⚠️ TWO GATES, AND THEY ASK DIFFERENT THINGS. `scores !== false` is the
+         "is this a fighter" test the kill counter uses -- a barrel answers the
+         whole target interface and is struck by exactly this code, so without
+         it a finisher that caught only a crate would grunt for a crate.
+         `voiced !== false` is "does this one make NOISES ABOUT IT", and it is
+         how the bosses stay silent: the grunt and the death cry belong to the
+         mooks, and a boss is announced by its own art, its own bar and its own
+         death. Both are properties on the target rather than `kind` tests here,
+         so a third boss is silent by declaring it.
+
+         Read off the DEF rather than the move's name, so a third knockdown
+         attack gets this for free. */
+      const voices = t.scores !== false && t.voiced !== false;
+      if (box.def.knockdown && voices) floored = true;
+      /* ⚠️ READ ON THE TRANSITION, not on `dead` alone -- a body already on the
+         floor stays `dead` for the whole fade, and a sweep that clipped one
+         would announce a death that happened seconds ago. Tracked out here
+         rather than inside the `stats` block below because the SOUND must not
+         depend on there being a scoreboard. */
+      if (!wasDead && t.dead && voices) killed = true;
       if (this.stats) {
         /* ⚠️ THE ATTACK OBJECT IS PASSED so a sweep counts as ONE connected
            swing however many it caught -- accuracy is hits/swings and would
@@ -234,6 +258,25 @@ class Combat {
        ⚠️ ONCE, NOT ONCE PER BODY. A sweep that caught three enemies is one
        punch connecting; three copies of the same sample in the same frame is
        not three punches, it is a flanged one. */
+      /* ⚠️ AND THE ENEMY ANSWERS, ONCE. Layered UNDER the punch rather than
+         replacing it: the blow is the event and this is the reaction, which is
+         the same arrangement `_takeHitSound` makes for the player. It is the
+         KNOCKDOWN that earns it -- the finisher and the air attack today --
+         and, like the punch above, once per SWING however many bodies the sweep
+         caught. Three grunts in one frame is one flanged grunt. */
+      /* ⚠️ THE DEATH TAKES PRECEDENCE OVER THE GRUNT, it does not stack with
+         it. The blow that kills also knocks down, so both tests pass on the
+         same frame -- and two vocal samples from one body at once is a mess.
+         The death is the more interesting of the two, so it wins. */
+      if (killed) {
+        this.sound.play('enemyDeath');
+      } else if (floored) {
+        /* ⚠️ THE ROLL IS HERE, ON THE EVENT, not somewhere that runs per frame.
+           Same rule the impact art follows: a variant chosen inside a draw
+           would strobe through the pool instead of picking one. */
+        const pool = CONFIG.ENEMY_HIT_SFX || ['enemyHit'];
+        this.sound.play(pool[(Math.random() * pool.length) | 0]);
+      }
       if (player.atk.last) {
         this.sound.play('comboFinish');
       } else {
@@ -268,10 +311,26 @@ class Combat {
        0/false; the boss's blows differ from each other — the ambush pass knocks
        the player down for no damage at all, which is the entire shape of that
        move — and hardcoding here would quietly flatten it into an ordinary hit. */
+    /* ⚠️ READ ACROSS THE BLOW, not after it. `player.dead` alone stays true for
+       the whole death, and this runs again for any other boss pass that lands
+       in the same moment. */
+    const wasDead = player.dead;
     player.hurt(box.def.damage, box.dir, box.def.knockback,
                 box.def.lift || 0, !!box.def.knockdown);
+    const died = !wasDead && player.dead;
     if (this.stats) this.stats.tookHit(box.def.damage);
-    this._takeHitSound();
+    /* ⚠️ NO VOICE FROM A BOSS, ONLY THE STRIKE. Asked for 2026-08-24: the
+       player's grunt was firing on the Mosca's ambush pass and on the horse's
+       charge and kick, because both bosses come through here and both set
+       `knockdown`. It is `false` rather than a test on which boss, because it
+       is EVERY boss -- and a boss's blows already announce themselves: the
+       Mosca's ambush drops him for no damage at all as its whole point, and
+       the horse's charge has a wind-up you are meant to read. A grunt under
+       either is one cue too many on the loudest moments in the game.
+
+       So the voice is the CROWD's doing only -- see crowdHits, which is the
+       barata charge in practice. */
+    this._takeHitSound(false, died);
     this._impact(boss, player, 'finisher', false);
   }
 
@@ -291,10 +350,11 @@ class Combat {
          exactly as it did. It is the barata's CHARGE that needs it. A move that
          bowls you over and keeps going has to actually bowl you over, or it
          reads as a very fast enemy brushing past. */
+      const wasDead = player.dead;   // see the note in bossHits
       player.hurt(box.def.damage, box.dir, box.def.knockback,
                   box.def.lift || 0, !!box.def.knockdown);
       if (this.stats) this.stats.tookHit(box.def.damage);
-      this._takeHitSound();
+      this._takeHitSound(!!box.def.knockdown, !wasDead && player.dead);
       this._impact(e, player, 'straight', false);
     }
   }
@@ -354,7 +414,15 @@ class Combat {
         this.stats.hit(C.throwDamage || 22);
         if (e.dead) this.stats.killed(e.kind);
       }
-      if (this.sound) this.sound.play('hit', 0.92);
+      if (this.sound) {
+        this.sound.play('hit', 0.92);
+        /* A BARREL KILLS TOO, and a death should sound like one however it
+           arrived. `hitIds` already guarantees one visit per enemy per throw,
+           so this cannot fire twice for the same body. */
+        if (e.dead && e.scores !== false && e.voiced !== false) {
+          this.sound.play('enemyDeath');
+        }
+      }
       this._impact(prop, e, 'finisher', true);
       if (!C.throwPierce) { prop.smash(true); return; }
     }
@@ -379,10 +447,35 @@ class Combat {
    * other way arrive from different attackers at irregular spacing and have
    * nothing to be told apart from.
    */
-  _takeHitSound() {
+  /**
+   * A BLOW LANDING ON THE PLAYER, heard from his side: the punch sample pitched
+   * down, plus his own voice under it.
+   *
+   * ⚠️ TWO SOUNDS, AND THE SECOND IS THE ONE THAT SAYS WHO WAS HIT. The pitched
+   * punch is the same recording the player hears when HE connects -- deliberate,
+   * so the fight has one vocabulary -- and pitch alone is a thin way to tell the
+   * two directions apart in a crowd. The voice is the difference, the same way
+   * the enemies' grunt answers a knockdown.
+   *
+   * ⚠️ THE PUNCH IS ON EVERY HIT, THE VOICE ONLY ON A KNOCKDOWN. `floored` is
+   * the caller's `box.def.knockdown`, and it is the same rule the enemies'
+   * grunt follows -- being bowled over is the event worth a voice, and an
+   * ordinary jab is not.
+   *
+   * ⚠️ AND `died` REPLACES THE VOICE RATHER THAN ADDING TO IT. The blow that
+   * kills also floors him, so both would otherwise fire on one frame -- the
+   * same precedence the enemies' death takes over their grunt, and for the same
+   * reason: two voices out of one body at once is a mess. The strike still
+   * plays either way; he was still hit.
+   */
+  _takeHitSound(floored, died) {
     if (!this.sound) return;
     const r = (CONFIG.sfxTakeHitRate != null) ? CONFIG.sfxTakeHitRate : 0.82;
     this.sound.play('hit', r);
+    const D = CONFIG.PLAYER_DEATH_VOICE || {};
+    if (died && D.on !== false && D.sfx) { this.sound.play(D.sfx); return; }
+    const V = CONFIG.PLAYER_HIT_VOICE || {};
+    if (floored && V.on !== false && V.sfx) this.sound.play(V.sfx);
   }
 
   /**
