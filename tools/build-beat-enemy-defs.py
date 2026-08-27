@@ -49,6 +49,20 @@ below exists because of it, and none of it applies to the coconut:
     plume's height over an empty patch of sky. Each frame carries `bh`, the
     body's height above its own anchor, and `size()` reports that.
 
+A ROW MAY BE CUT ON COLUMNS INSTEAD, and the hedgehog is why. Cutting on
+bodies assumes every frame HAS one; his death row ends with him bursting into a
+cloud of loose spines, which is four frames with no body in them at all. The
+body cut finds 8 frames where the art has 10, and the wisp pass then adopts every
+spine of both bursts onto the last body it can see -- one tile with two
+explosions welded to a corpse.
+
+So a row may say `{'cut': 'columns'}`. That row is split on EMPTY COLUMNS over
+all of its own ink, and each run is a frame carrying every piece inside it.
+⚠️ IT IS PER ROW AND NOT PER SHEET, because the column cut is the weaker rule --
+it is what the body cut was introduced to replace. On this same sheet it finds 5
+frames in the 6-frame jump row and 6 in the 7-frame air punch: the frames
+genuinely touch. Use it only where there is no body to find.
+
 THE ANCHOR IS THE BASE, NOT THE WHOLE BODY. The coconut's anchor is the
 centroid of its whole body; a cigarette is a long thing that LEANS, and on the
 lunging punch the top of him travels most of a body-width forward. Taking the
@@ -109,10 +123,34 @@ SIZE_TOL = 2       # px of width/height difference tolerated when matching
 # smoke IS sometimes drawn below a fighter (dust off a landing, dirt off a
 # hoof); those sit within a few px of the feet and still win easily at 3x.
 BELOW_PENALTY = 3
+# Empty columns tolerated inside one frame of a COLUMN-CUT row -- see the
+# `cut: 'columns'` note in SHEETS. Measured on the hedgehog's death row: the
+# scattered spines of one burst sit within 4px of each other and the gap between
+# two bursts is over 30, so anything in between separates them. 0 found 12
+# frames where the art has 10; 10 and 30 both found exactly 10.
+COLUMN_GAP = 20
 
-# How many pixels of body a row needs before it counts as the bottom. Guards
-# against an antialiased tail hanging one pixel below the feet and planting the
-# character that much into the floor.
+# How many pixels of body a row needs before it counts as the bottom -- the
+# GROUND LINE the character is drawn standing on.
+#
+# It began as a guard against an antialiased tail hanging one pixel below the
+# feet and planting the character that much into the floor. ⚠️ THE HEDGEHOG
+# TURNED IT INTO A REAL KNOB, and per sheet: he is a ball of SPIKES, and his
+# lowest spike is 39px below his feet on the idle frame and 17px below on the
+# walk. At 6 the ground line lands on the spike TIP, so he is drawn hanging off
+# it -- reported in play as "the espeto is standing too high, it looks like it is
+# floating", and obvious the moment he stands next to the coconut.
+#
+# ⚠️ THE ANSWER IS NOT TO ANCHOR ON HIS FEET (the yellow). They are drawn at
+# different heights in different frames -- 39px of spike under them in idle, 17
+# in walk -- so a palette rule would make him BOB by the difference. What is
+# stable is where the silhouette becomes SUBSTANTIAL, which is what this counts.
+# Measured on his sheet: at 80 he drops 27px onto his feet and his frame-to-frame
+# spread is 8.3px, better than the 10.3 he had at 6.
+#
+# Raise it per sheet with `bodyMinRun`. ⚠️ IT MOVES `bodyH` TOO, because the top
+# of the body is found the same way -- so the pack scale, the drawn size and the
+# measured reaches all shift with it. Re-measure after changing it.
 BODY_MIN_RUN = 6
 # The fraction of the body, measured up from its feet, that counts as its BASE
 # for the horizontal anchor. See the header: a leaning body must not drag its
@@ -246,6 +284,75 @@ SHEETS = {
             ('ball',   6, 5),
         ],
     },
+    # ESPETO -- THE HEDGEHOG, and the desert's own villain. A black spiky ball
+    # with a red toothed mouth and two yellow fists, drawn 6974x8557.
+    #
+    # NINE ROWS, named by the user when the sheet arrived. It is the cigarettes'
+    # eight-row plan with a SECOND COMBO ROW inserted, and everything else lines
+    # up with them one for one.
+    #
+    # ⚠️ `bodyArea` IS 50000, NOT THE SHARED 15000, and the sheet is why the
+    # `bodies` count exists. Two fragments of the death bursts come in at 22522
+    # and 21030 -- comfortably over the shared threshold -- so at 15000 the tool
+    # finds 60 bodies for 58 and adopts two pieces of an explosion as frames.
+    # The real bodies start at 86699, so 50000 sits in a gap 3.9x wide.
+    #
+    # ⚠️ ROW 9 IS COLUMN-CUT, and it is the first row in this repo that has to
+    # be. He does not fall over and lie there -- he BURSTS, and its last four
+    # frames are clouds of loose spines with no body in them at all. See the
+    # module header for what the body cut does to them.
+    #
+    # ⚠️ ROWS 5 AND 6 SHARE THEIR FIRST EIGHT DRAWINGS and differ only in the
+    # last two, which is the illustrator's plan and the same bargain the
+    # baratas' hurt/death rows make: the interner packs the shared frames ONCE
+    # and both rows index the same tiles. Two endings on one wind-up.
+    #
+    # `native` IS RIGHT, and it was MEASURED rather than assumed -- getting it
+    # wrong does not error, the character simply walks backwards for a whole
+    # build. The yellow fists sit right of the body centre on every strike frame
+    # of both combo rows (+33, +33, +138 on the lunge), so he punches right.
+    #
+    # `baseWhite` IS FALSE: he is black, red and yellow, and the white base
+    # centroid the cigarettes use has nothing to find on him. Same as the horse.
+    #
+    # `scale` 0.38 brings his 451px idle body to ~171px in the atlas, which is
+    # where every other pack lands. Sizing in game is `bodyH` in the defs, never
+    # this.
+    'espeto': {
+        'src': 'assets-v2/beatemup-dungeon/espeto-sprites-fim.png',
+        'base': 'espeto-beat',
+        'native': 'right',
+        'scale': 0.38,
+        'baseWhite': False,
+        # ⚠️ 80, NOT THE SHARED 6, AND IT IS WHAT PUTS HIM ON THE FLOOR. See
+        # BODY_MIN_RUN: he is a ball of spikes and the lowest one is 39px below
+        # his feet on the idle frame, so at 6 the ground line lands on the spike
+        # tip and he is drawn hanging off it. At 80 he comes down 27px onto his
+        # feet and his frame-to-frame spread improves as well (8.3px against
+        # 10.3). ⚠️ IT ALSO MOVES `bodyH`, so his pack scale, drawn size and the
+        # measured reaches in CONFIG.ENEMY_COMBOS.espeto all follow it.
+        'bodyMinRun': 80,
+        'bodyArea': 50000,
+        'bodies': 58,
+        'rows': [
+            ('idle',      1,  3),   # parado
+            ('walk',      2,  6),   # andando
+            ('jump',      3,  6),   # pulando
+            ('airPunch',  4,  7),   # pulando e atacando
+            ('combo',     5, 10),   # combo 1 -- five wind-up/strike PAIRS
+            ('comboLow',  6, 10),   # combo 2 -- the same opening, another ending
+            ('hurt',      7,  2),   # apanhando; both frames cycle
+            ('knockdown', 8,  6),   # cai e levanta
+            # ⚠️ `centreFrom: 6` -- frames 6..9 are the explosion and are anchored
+            # on their own CENTRE, not on the ground. See the note where
+            # `centre_tiles` is built: a burst has no feet, and pinning its bbox
+            # bottom to the belt walks the whole thing across the floor as it
+            # grows. 6 is the first burst frame and must agree with
+            # CONFIG.DEATH_BURST.espeto.from, which slows the same four down.
+            ('death',     9, 10, {'cut': 'columns', 'centreFrom': 6}),
+        ],
+    },
+
     # THE HORSE BOSS, and the first thing through this cutter that is not a
     # cigarette. Five rows, 55 frames, named by the illustrator in one line.
     #
@@ -398,7 +505,7 @@ def body_mask(opaque):
     return labels == big
 
 
-def anchor(tile, base_white=True):
+def anchor(tile, base_white=True, min_run=None):
     """Ground point and body height inside a tile.
 
     Returns (ax, ay, bh): the horizontal anchor, the ground line, and how tall
@@ -423,7 +530,7 @@ def anchor(tile, base_white=True):
     body = body_mask(opaque)
 
     per_row = body.sum(axis=1)
-    solid = np.nonzero(per_row >= BODY_MIN_RUN)[0]
+    solid = np.nonzero(per_row >= (BODY_MIN_RUN if min_run is None else min_run))[0]
     if not len(solid):
         solid = np.nonzero(per_row > 0)[0]
     top, bottom = int(solid.min()), int(solid.max()) + 1
@@ -448,12 +555,21 @@ def main():
     spec = SHEETS.get(which)
     if not spec:
         raise SystemExit(f'unknown sheet {which!r}; have {sorted(SHEETS)}')
-    rows = spec['rows']
+    # Rows are (name, human, want) or (name, human, want, opts). Normalised
+    # here so nothing below has to ask which shape it was written in.
+    rows = [tuple(r) + ({},) if len(r) == 3 else tuple(r) for r in spec['rows']]
 
     im = Image.open(spec['src']).convert('RGBA')
     px = np.array(im)
     a = px[:, :, 3] > ALPHA
-    want_total = sum(n for _, _, n in rows)
+    # HOW MANY BODIES THE SHEET SHOULD HAVE. Normally one per frame slot -- but
+    # a COLUMN-CUT row has frames with no body in them at all (the hedgehog's
+    # two widest death bursts are loose spines and nothing else), so a sheet
+    # with one says how many bodies it really has. Stated rather than derived
+    # on purpose: it is the check that catches a `bodyArea` set too low, which
+    # is otherwise silent -- at the shared 15000 this sheet finds 60 bodies for
+    # 58, adopts two burst fragments as frames, and cuts something plausible.
+    want_total = spec.get('bodies', sum(n for _, _, n, _ in rows))
 
     # THE SHEET IS CUT ON BODIES, NOT ON INK -- see the module header.
     labels, stats = components(a)
@@ -501,25 +617,97 @@ def main():
         return len(tiles) - 1
 
     # Every body, as (row index, its label), found by the band it falls in.
+    # `frames_of` is the BODIES of each body-cut row -- what a loose piece may be
+    # adopted by. `groups_of` is the frames themselves, as lists of labels, and
+    # is what the tiles are built from. They are the same thing for a body-cut
+    # row and deliberately not for a column-cut one.
     frames_of = []                              # row -> [labels, left to right]
-    for (name, human, want), (y0, y1) in zip(rows, bands):
-        here = [l for l, s in bodies.items() if y0 <= (s[0] + s[1]) // 2 <= y1]
+    groups_of = []                              # row -> [[labels], ...]
+    claimed = set()                             # labels a column-cut row owns
+    for i, ((name, human, want, opts), (y0, y1)) in enumerate(zip(rows, bands)):
+        if opts.get('cut') == 'columns':
+            # A ROW WITH FRAMES THAT HAVE NO BODY -- see the module header.
+            # Split on empty COLUMNS over all of this row's own ink, and let
+            # each run be a frame carrying every piece inside it.
+            #
+            # ⚠️ THE ROW'S OWN INK IS NOT THE BAND. The band comes from BODIES,
+            # so it stops at the last body's feet -- the hedgehog's bursts throw
+            # spines 73px below it and 106px above, and cutting on the band
+            # would slice them off. Everything whose centre lies between the
+            # neighbouring bands belongs to this row, which is also the test
+            # that keeps a neighbour's smoke out of it.
+            lo = bands[i - 1][1] if i else -1
+            hi = bands[i + 1][0] if i + 1 < len(bands) else labels.shape[0]
+            mine = [l for l, st in stats.items() if lo < (st[0] + st[1]) // 2 < hi]
+            mask = np.isin(labels, mine)
+            yy0 = min(stats[l][0] for l in mine)
+            yy1 = max(stats[l][1] for l in mine)
+            cuts = runs(mask[yy0:yy1 + 1].any(axis=0), opts.get('gap', COLUMN_GAP))
+            if len(cuts) != want:
+                raise SystemExit(
+                    f'row {human} ({name}, column cut): expected {want} frames, '
+                    f'found {len(cuts)} at gap {opts.get("gap", COLUMN_GAP)}')
+            groups = []
+            for (x0, x1) in cuts:
+                # A connected component occupies a contiguous span of columns, so
+                # it lies wholly inside one run and its centre picks the right one.
+                groups.append([l for l in mine
+                               if x0 <= (stats[l][2] + stats[l][3]) // 2 <= x1])
+            groups_of.append(groups)
+            frames_of.append([])          # nothing here may adopt a loose piece
+            claimed.update(mine)
+            continue
+
+        here = [l for l, st in bodies.items() if y0 <= (st[0] + st[1]) // 2 <= y1]
         here.sort(key=lambda l: bodies[l][2])
         if len(here) != want:
             raise SystemExit(
                 f'row {human} ({name}): expected {want} frames, found {len(here)}')
         frames_of.append(here)
+        groups_of.append(None)            # filled in after the wisps are owned
 
     # EVERY WISP GOES BACK TO THE FRAME IT CAME OFF, which is the other half of
     # cutting on bodies: the bodies say where the frames are, and this says which
     # frame each loose piece of smoke belongs to. Nothing is discarded -- a wisp
     # that found no owner would simply vanish from the sheet, so the count is
     # printed at the end where it can be seen.
+    # ⚠️ THE CANDIDATES ARE FRAMES, NOT BODIES, and on the hedgehog that is the
+    # difference between an atlas and a mess. This search used to walk the
+    # BODIES; a column-cut frame has none, so every spine thrown upward out of a
+    # death burst was adopted by the nearest knockdown body instead -- one tile
+    # came out 1278px wide against its neighbours' 183, a corpse with an
+    # explosion welded to it from three frames away.
+    #
+    # A column-cut group answers the same question a body does -- "where is this
+    # frame" -- so it is offered as an owner on the same terms. Keyed (row,
+    # frame) rather than by label for exactly that reason: the two kinds of frame
+    # have nothing else in common.
+    #
+    # ⚠️ ORDER IS INSERTION ORDER, row by row and frame by frame, which is the
+    # order the old body walk used. Ties therefore resolve the way they always
+    # did and the existing sheets cut byte-for-byte identically -- checked, not
+    # assumed.
+    cand = {}
+    for ri, groups in enumerate(groups_of):
+        if groups is None:
+            for fi, b in enumerate(frames_of[ri]):
+                cand[(ri, fi)] = bodies[b][:4]
+        else:
+            for fi, g in enumerate(groups):
+                cand[(ri, fi)] = [min(stats[l][0] for l in g),
+                                  max(stats[l][1] for l in g),
+                                  min(stats[l][2] for l in g),
+                                  max(stats[l][3] for l in g)]
+
     owner = {}
     for l, s in stats.items():
         if l in bodies:
             continue
-        # NEAREST BODY BY THE GAP BETWEEN THE TWO BOXES, IN BOTH AXES, WITH NO
+        # ⚠️ AND NOT A PIECE A COLUMN-CUT ROW HAS ALREADY TAKEN. Those are not
+        # loose smoke looking for an owner -- they ARE their frame.
+        if l in claimed:
+            continue
+        # NEAREST FRAME BY THE GAP BETWEEN THE TWO BOXES, IN BOTH AXES, WITH NO
         # ASSUMPTION ABOUT WHICH WAY THE SMOKE LIES. Two narrower rules were
         # tried and both quietly mangled the atlas rather than failing:
         #
@@ -536,24 +724,33 @@ def main():
         # beside its own head scores 0 vertically and a few px horizontally,
         # and nothing further away can beat that.
         best, bestd = None, None
-        for row in frames_of:
-            for b in row:
-                bs = bodies[b]
-                dy = max(0, bs[0] - s[1], s[0] - bs[1])
-                dx = max(0, s[2] - bs[3], bs[2] - s[3])
-                # ...EXCEPT THAT DOWN IS NOT THE SAME AS UP. See BELOW_PENALTY:
-                # a body that ends entirely above this piece is upwind of it.
-                if bs[1] < s[0]:
-                    dy *= BELOW_PENALTY
-                d = (dy + dx, dy)
-                if bestd is None or d < bestd:
-                    bestd, best = d, b
+        for key, bs in cand.items():
+            dy = max(0, bs[0] - s[1], s[0] - bs[1])
+            dx = max(0, s[2] - bs[3], bs[2] - s[3])
+            # ...EXCEPT THAT DOWN IS NOT THE SAME AS UP. See BELOW_PENALTY:
+            # a frame that ends entirely above this piece is upwind of it.
+            if bs[1] < s[0]:
+                dy *= BELOW_PENALTY
+            d = (dy + dx, dy)
+            if bestd is None or d < bestd:
+                bestd, best = d, key
         owner.setdefault(best, []).append(l)
 
-    for (name, human, want), here in zip(rows, frames_of):
+    # A frame is now its own pixels plus whatever loose pieces were given to it:
+    # a body for a body-cut row, a column run for a column-cut one.
+    for ri, (name, human, want, opts) in enumerate(rows):
+        if groups_of[ri] is None:
+            groups_of[ri] = [[b] for b in frames_of[ri]]
+        groups_of[ri] = [g + owner.get((ri, fi), [])
+                         for fi, g in enumerate(groups_of[ri])]
+
+    # TILES THAT EXPAND FROM A POINT RATHER THAN STAND ON THE GROUND. Filled in
+    # below; see the `centreFrom` note in the packing loop for what it means.
+    centre_tiles = {}
+
+    for (name, human, want, opts), groups in zip(rows, groups_of):
         seq = []
-        for b in here:
-            group = [b] + owner.get(b, [])
+        for group in groups:
             ys0 = min(stats[l][0] for l in group)
             ys1 = max(stats[l][1] for l in group)
             xs0 = min(stats[l][2] for l in group)
@@ -569,6 +766,35 @@ def main():
             sub[~keep] = 0
             seq.append(intern(Image.fromarray(sub, 'RGBA')))
         anims[name] = seq
+
+        # AN EXPLOSION HAS NO FEET, and anchoring it as though it did is what
+        # made the hedgehog's death SLIDE. Reported 2026-08-27: "looks like he
+        # is moving while exploding, we want him to explode in the same place,
+        # in an expansive animation".
+        #
+        # Every other frame in this game is anchored on the ground it stands on
+        # -- the bottom of the body, the centroid of its base. A burst has
+        # neither: it is a cloud that grows in all directions, so its bbox
+        # bottom drops and its bbox centre drifts frame to frame, and pinning
+        # the bottom of that to the belt walks the whole explosion across the
+        # floor while it plays.
+        #
+        # `centreFrom: N` says frames N onward are anchored on their own CENTRE
+        # instead, held at a fixed height -- so successive frames, which are
+        # drawn larger and larger, expand about one unmoving point. That is the
+        # flying dungeon's fly again: its burst is drawn at the fly's position
+        # and scaled by one factor, so it comes apart where it died.
+        #
+        # THE HEIGHT IS READ OFF THE LAST FRAME BEFORE THE BURST -- the body's
+        # own bbox centre above its ground point -- so the explosion starts
+        # where the animal's middle was rather than at some chosen number.
+        cf = opts.get('centreFrom')
+        if cf is not None and cf < len(seq):
+            ref = tiles[seq[cf - 1]]
+            _, ref_ay, _ = anchor(ref, min_run=spec.get('bodyMinRun'))
+            hc = ref_ay - ref.height / 2.0
+            for ix in seq[cf:]:
+                centre_tiles[ix] = hc
 
     # Shelf pack, as square as the ragged frames allow.
     cw = max(t.width for t in tiles) + PAD
@@ -590,7 +816,38 @@ def main():
         for i, t in enumerate(s):
             x = i * cw
             atlas.paste(t, (x, y))
-            ax, ay, bh = anchor(t)
+            # ⚠️ `baseWhite` IS DECLARED BY TWO SHEETS AND HAS NEVER BEEN
+            # PASSED. The horse's spec sets it False with a paragraph explaining
+            # that his chrome highlights defeat the white test, and this call has
+            # always been `anchor(t)` -- so he has been anchored on whichever leg
+            # caught the most light since the day he was cut. Found 2026-08-27
+            # while adding the hedgehog.
+            #
+            # NOT FIXED HERE ON PURPOSE. Passing it would move the anchors of a
+            # boss who is tuned, shipped and played, in a session that was about
+            # a different character -- and the horse looks right today, whatever
+            # the reason. It is `spec.get('baseWhite', True)` as the second
+            # argument whenever someone wants to take that on deliberately, and
+            # the horse wants looking at frame by frame when they do.
+            #
+            # It costs the hedgehog nothing: his only white is his TEETH, which
+            # sit well above the bottom `BASE_FRAC` of him, so the white base
+            # comes up short of 20 px and `anchor` falls back to the whole body
+            # -- which is what `baseWhite: False` would have asked for anyway.
+            # ⚠️ `len(frames)` IS THE TILE INDEX, because one frame record is
+            # appended per tile in packing order -- which is the order `intern`
+            # handed them out, and therefore the order `anims` indexes. It is not
+            # `i`, which only counts along the current shelf.
+            ti = len(frames)
+            if ti in centre_tiles:
+                # A BURST: anchored on its own centre, held at the height the
+                # body's centre was. See centre_tiles above. `bh` is the tile,
+                # because there is no "body" left to measure.
+                ax = t.width / 2.0
+                ay = t.height / 2.0 + centre_tiles[ti]
+                bh = float(t.height)
+            else:
+                ax, ay, bh = anchor(t, min_run=spec.get('bodyMinRun'))
             frames.append({'x': x, 'y': y, 'w': t.width, 'h': t.height,
                            'ax': round(ax, 1), 'ay': round(ay, 1),
                            'bh': round(bh, 1)})
@@ -633,7 +890,7 @@ def main():
           f'{len(tiles)} unique frames for {slots} slots, body {body_h}px')
     print(f'  {len(bodies)} bodies, {wisps} of {len(stats) - len(bodies)} loose '
           f'pieces of smoke re-attached')
-    for name, human, _ in rows:
+    for name, human, _, _ in rows:
         print(f'  row {human:2d}  {name:10s} {len(anims[name]):2d} slots  '
               f'-> {anims[name]}')
 

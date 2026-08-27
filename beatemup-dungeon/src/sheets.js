@@ -191,7 +191,26 @@ class Sheets {
        and bottom-aligned, which is what it was always drawn with. */
     const ox = (f.ax != null ? -f.ax * s : -w / 2);
     const oy = (f.ay != null ? -f.ay * s : -h);
-    const nudge = (CONFIG.poseNudge && CONFIG.poseNudge[pose]) || 0;
+    /* TWO NUDGES, AND THEY ARE DIFFERENT QUESTIONS. `poseNudge` is per POSE and
+       shared by every character -- "this pose is drawn a little high". The
+       second is per CHARACTER and applies to every frame of it: "this pack's
+       ground line is not quite where the cutter put it".
+
+       ⚠️ ESPETO IS WHY THE SECOND EXISTS, and it is deliberately NOT a re-cut.
+       His ground line was already moved once, in the cutter (`bodyMinRun`), and
+       that worked -- but it also changed `bodyH`, and therefore his drawn size,
+       and therefore the reaches measured off him. A second pass of the same
+       medicine would move all three again for what is a pure vertical taste
+       call. This is drawn px, down, and it touches nothing else: not the
+       hurtbox, not the reaches, not the shadow, not `depthScale`.
+
+       ⚠️ WHICH ALSO MAKES IT THE WRONG TOOL FOR A BIG NUMBER. It moves the
+       PICTURE off the point the game thinks the fighter is standing on, so a
+       large nudge is a sprite that no longer agrees with its own hitbox. Small
+       corrections here; if it wants more than a few px, re-cut. */
+    const pack_cfg = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[kind]) || {};
+    const nudge = ((CONFIG.poseNudge && CONFIG.poseNudge[pose]) || 0)
+                + (pack_cfg.groundNudge || 0);
 
     // The whole transform is built around the ground point so the flip mirrors
     // the sprite about its own anchor rather than sliding it sideways.

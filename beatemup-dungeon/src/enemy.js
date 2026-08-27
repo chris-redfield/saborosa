@@ -92,6 +92,11 @@ class Enemy extends Fighter {
        walking away at once, which is the opposite of the effect. */
     this._rollStroll(CONFIG.ENEMY_STROLL || {});
     this.showBarT = 0;
+    /* THE DEATH BLAST HAS GONE OFF. Declared here rather than left to spring
+       into existence as `undefined` in _deathBlast(): the window it latches is
+       300ms wide, and a corpse that could arm a second one would explode twice
+       on its way out. See _deathBlast(). */
+    this.blastDone = false;
     /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
        from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
        from the shared knobs. The two are the same shape — a list of attack
@@ -268,6 +273,50 @@ class Enemy extends Fighter {
       this._think(dt, player, bounds);
     }
     super.update(dt, bounds);
+    // AFTER the body has moved, so the burst goes off where the corpse ended up.
+    if (this.dead) this._deathBlast();
+  }
+
+  /**
+   * THE HIT THAT COMES OUT OF A CORPSE — ESPETO's death burst, and the only
+   * attack in the game nobody decides to throw. See CONFIG.DEATH_BLAST.
+   *
+   * ⚠️ IT DOES NOT GO THROUGH `attack()` AND MUST NOT. That path calls
+   * `canAct()` (false for a dead fighter, correctly) and, worse, the attack tick
+   * that would drive it ENDS by setting `state = 'idle'` — which would stand the
+   * corpse back up mid-explosion. So the window is opened and closed here, off
+   * the death clock, and `state` is never touched.
+   *
+   * The shape of `atk` is the ordinary one because two other things read it and
+   * neither should need to know where it came from: `hitbox()` wants
+   * `phase === 'active'` and `hasHit`, and `combat.crowdHits` writes `hasHit`
+   * back after it lands. `hasHit` is also what makes it hit ONCE — an explosion
+   * that re-hit every frame of its 300ms would be an instant kill.
+   *
+   * ⚠️ TIMED OFF `deathT`, WHICH IS THE SAME CLOCK THE DEATH ROW IS DRAWN FROM
+   * (`frameStep`). That is the whole reason it lines up with the picture: the
+   * spines fly on frame 6 and the box opens at 6 x `POSE_MS.death`. Time it off
+   * `stateT` instead and it drifts the moment the knockdown timings are retuned.
+   */
+  _deathBlast() {
+    const B = (CONFIG.DEATH_BLAST || {})[this.kind];
+    if (!B || this.blastDone) return;
+    const at = (B.atMs || 0) / 1000;
+    if (this.deathT < at) return;
+    if (this.deathT >= at + (B.activeMs || 200) / 1000) {
+      // Window closed. Clear it so nothing keeps a spent box around, and latch
+      // so a corpse cannot explode twice on its way out.
+      this.blastDone = true;
+      if (this.atk && this.atk.def === B) this.atk = null;
+      return;
+    }
+    if (!this.atk || this.atk.def !== B) {
+      this.atk = { def: B, phase: 'active', t: 0, hasHit: false,
+                   last: true, lunge: 0, lungeDir: 1,
+                   // Keeps Fighter._updateAttack's hands off it -- see the note
+                   // there. Without this the corpse stands back up mid-burst.
+                   external: true };
+    }
   }
 
   _think(dt, player, bounds) {
@@ -743,7 +792,12 @@ class Crowd {
     return false;
   }
 
-  update(dt, player, bounds) {
+  /* ⚠️ `sheets` IS NEW AND THE REAPER NEEDS IT. A corpse may not be removed
+     before its death ROW has finished playing (see Fighter.corpseGone), and how
+     long that takes is a property of the drawings -- so the thing that decides
+     when a body goes has to be able to ask them. Optional: without it the reaper
+     falls back to the fade clock alone, which is what it always did. */
+  update(dt, player, bounds, sheets) {
     /* ===== THE ATTACK TOKEN =====================================================
        Count who is currently committed — winding up or mid-swing. If that is
        under the cap, hand the token to the CLOSEST eligible enemy that does not
@@ -853,7 +907,7 @@ class Crowd {
        over whenever it likes and the dead still leave the way they were drawn
        to. `corpseGone()` is the same arithmetic the fade uses. */
     for (let i = this.list.length - 1; i >= 0; i--) {
-      if (this.list[i].corpseGone && this.list[i].corpseGone()) this.list.splice(i, 1);
+      if (this.list[i].corpseGone && this.list[i].corpseGone(sheets)) this.list.splice(i, 1);
     }
   }
 }

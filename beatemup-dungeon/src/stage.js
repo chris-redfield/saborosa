@@ -50,6 +50,11 @@ class Stage {
        boss room would otherwise replay the street against the boss's shot. */
     const first = CONFIG.ROOMS && CONFIG.ROOMS[0];
     if (first && this.backdrop) this.backdrop.setPlate(first.plate);
+    /* AND THE BELT GOES BACK TO THE FIRST ROOM'S, for the same reason the plate
+       does: a restart from the desert would otherwise play the street on a
+       double-depth floor. See belt.js -- how much ground a room has is a
+       property of the room. */
+    Belt.set(first);
     this.banner = 0;        // seconds left on the "GO" arrow
     /* The follow reference. Null means "re-seed from wherever the player is on
        the next frame" — which is what a restart wants, since the player jumps
@@ -93,9 +98,15 @@ class Stage {
     this.lastPlayerX = null;
     const r = this.room();
     if (r && this.backdrop) this.backdrop.setPlate(r.plate);
+    /* ⚠️ THE BELT BEFORE THE PLAYER, AND THE ORDER IS LOAD-BEARING. Where he
+       stands is `Belt.depth * playerStartZRel`, so setting the room's band one
+       line later would place him on the PREVIOUS room's floor -- 114 into a
+       380-deep desert instead of 228, which reads as the character standing too
+       far up the picture and looks like a sprite-anchor bug. */
+    Belt.set(r);
     if (player && r) {
       player.x = r.startX != null ? r.startX : 220;
-      player.z = CONFIG.beltDepth * CONFIG.playerStartZRel;
+      player.z = Belt.depth * CONFIG.playerStartZRel;
     }
   }
   isArena() {
@@ -228,7 +239,7 @@ class Stage {
            changes the meaning of existing data is not a default. The two share
            no code -- only the interface combat.js and the overlay talk to. */
         const bx = this.camX + CONFIG.GAME_W * 0.5;
-        const bz = CONFIG.beltDepth * 0.5;
+        const bz = Belt.depth * 0.5;
         /* AND ON WHAT TERMS. `fleeAt` is the fraction of health the Mosca
            breaks off at, and it is read off the SEGMENT because the same boss
            is fought twice in the street on different terms -- see ROOMS. The

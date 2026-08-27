@@ -475,7 +475,7 @@
     paused = false;
     sound.setPaused(false);   // whatever route got here, the audio is running
     outroTo = 'fade';
-    player = new Player(220, CONFIG.beltDepth * CONFIG.playerStartZRel);
+    player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
     /* DEV: start somewhere other than the beginning. Applied after the player
        exists, because entering a room places them at its own origin. */
     if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
@@ -636,9 +636,15 @@
          that into the new room is how a shortcut starts producing bugs that
          only a shortcut can produce. */
       crowd.clear();
-      player = new Player(220, CONFIG.beltDepth * CONFIG.playerStartZRel);
+      player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
       player.props = props;
       stage.enterRoom(jump, player);
+      /* AND HE WALKS IN HERE TOO, like the fade and like the start of a run.
+         ⚠️ NOT ONLY FOR TIDINESS: the number keys are how a room gets LOOKED AT,
+         so a jump that skipped the walk-on would be a shortcut that hides the
+         one thing it was used to check. After `enterRoom` for the usual reason
+         -- `enterWalk` backs him off the mark he has just been given. */
+      player.enterWalk(CONFIG.playerEnterPx);
       props.enterRoom(stage.room(), player);
       flies.enterRoom(stage.room(), stage.camX);
       roomMusic();
@@ -688,7 +694,7 @@
          for the whole walk-out. A dead enemy skips its own AI (`Enemy.update`
          guards on `dead`), so this advances the fall and nothing else. */
       player.walkOut(dt);
-      crowd.update(dt, player, stage.bounds());
+      crowd.update(dt, player, stage.bounds(), sheets);
       combat.tick(dt);
       // Out of frame. Where it goes from here depends on why he was walking.
       if (player.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad) {
@@ -722,6 +728,25 @@
         faded = true;
         crowd.clear();
         stage.enterRoom(stage.roomIndex + 1, player);
+        /* HE WALKS INTO A NEW ROOM, exactly as he walks on at the start of a
+           run -- asked for 2026-08-27, "the character should enter level 2 in
+           the same way he did for level 1". He used to simply BE at the room's
+           mark when the fade lifted, which reads as a cut into a standing pose
+           after a walk-out that was all movement.
+
+           ⚠️ AFTER `enterRoom`, FOR THE REASON THE ONE IN `start()` IS AFTER THE
+           DEV JUMP: `enterWalk` measures from where he has already been PLACED
+           and backs him off THAT, so it has to be told his new mark first. Read
+           before the swap it would walk him in from the previous room's origin.
+
+           ⚠️ AND IT IS EVERY ROOM, NOT A DESERT FLAG. There is no honest way to
+           say "walk into this room but not that one" -- entering is what a room
+           entry looks like. So the boss room gets it too: HIPÓLITO's room opens
+           with a wave of roaches, and the player is now walking in while they
+           walk in. He is untouchable while `state === 'enter'` and the wave
+           takes its own beat to arrive, so the two overlap rather than collide.
+           If it reads wrong there, this line is the whole of it. */
+        player.enterWalk(CONFIG.playerEnterPx);
         props.enterRoom(stage.room(), player);
         /* ⚠️ AT THE BLACKEST POINT WITH EVERYTHING ELSE. The street has flies
            and the boss room does not, so swapping them a moment early or late
@@ -842,7 +867,7 @@
 
     const bounds = stage.bounds();
     player.update(dt, input, bounds);
-    crowd.update(dt, player, bounds);
+    crowd.update(dt, player, bounds, sheets);
     if (stage.boss) stage.boss.update(dt, player, bounds);
 
     // Hits are resolved AFTER both sides have moved, so a punch and a step that
@@ -1037,11 +1062,13 @@
        is a lie about what the player is looking at -- and this one would sit
        there at exactly half, inviting the last few punches at a boss already
        out of reach. `fleeing` is undefined on the horse. */
+    /* ⚠️ THE NAME GOES UNDER IT, and the whole block moved into `hud.drawBoss`
+       for that -- the bar and its nameplate are one readout and drawing them
+       from two files is how they drift apart. The GATE stays here, because when
+       a bar may be shown is a fact about the fight and not about the drawing. */
     if (stage.boss && stage.boss.arrived() && !stage.boss.dead
         && !stage.boss.fleeing) {
-      lifeBar.render(ctx, stage.boss.hp / stage.boss.maxHp, {
-        centre: true, top: CONFIG.flyBossBarTop, wRel: CONFIG.flyBossBarWRel,
-      });
+      hud.drawBoss(ctx, stage.boss, lifeBar);
     }
     hud.drawGo(ctx, stage.banner, assets.getDrawable('go'), assets.getDrawable('hand'));
 
@@ -1149,7 +1176,7 @@
     if (f.noShadow) return;          // the horse -- see its constructor
     if (f.dead && f.downPhase === 'lie') return;
     const x = f.groundX(camX);
-    const y = CONFIG.beltTopY + f.z;
+    const y = Belt.topY + f.z;
 
     /* `lift` IS CLAMPED TO 0..1 AND MUST STAY THAT WAY. It used to be
        `jumpY / CONFIG.jumpHeight` — which quietly assumed every shadow-caster

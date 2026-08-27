@@ -45,6 +45,11 @@ class HorseBoss {
   constructor(x, z, camX, facing) {
     const C = CONFIG.HORSE_BOSS;
     this.kind = 'horse';
+    /* The nameplate under his bar. He IS a proper pack, so unlike the Mosca his
+       name is the cast table's -- read from it rather than written here, so it
+       cannot drift from the one anything else prints. See FlyBoss for why she
+       has to be the other way round. */
+    this.name = ((CONFIG.CHARACTERS || {})[this.kind] || {}).name || '';
     this.x = x;
     this.z = z;
     this.jumpY = 0;          // he never leaves the floor; kept so the shared
@@ -112,12 +117,12 @@ class HorseBoss {
   bodyHeight() { return CONFIG.HORSE_BOSS.sizePx; }
 
   groundX(camX) { return this.x - camX; }
-  groundY() { return CONFIG.beltTopY + this.z - this.jumpY; }
+  groundY() { return Belt.topY + this.z - this.jumpY; }
   /* The belt's own near/far scale, read the same way FlyBoss reads it. Copied
      rather than invented: a second formula here would put the boss on a
      different floor from everyone else. */
   depthScale() {
-    const t = CONFIG.beltDepth ? this.z / CONFIG.beltDepth : 1;
+    const t = Belt.depth ? this.z / Belt.depth : 1;
     return CONFIG.beltFarScale + (1 - CONFIG.beltFarScale) * t;
   }
 

@@ -511,7 +511,7 @@ class Combat {
       if (!ev.fx) continue;
       const p = 1 - ev.t / (ev.life || 0.22);       // 0 -> 1 through the burst
       const x = ev.x - camX;
-      const y = CONFIG.beltTopY + ev.z - ev.y
+      const y = Belt.topY + ev.z - ev.y
               - CONFIG.fighterSizePx * (cfg.chestRel != null ? cfg.chestRel : 0.42);
       /* The fade runs over the TAIL only. The art dissipates on its own -- it
          ends as a scatter of dots -- so ramping alpha across the whole life

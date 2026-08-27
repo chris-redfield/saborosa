@@ -58,6 +58,54 @@ class Hud {
   }
 
   /**
+   * A BOSS's bar, top-centre and wider, with its NAME under it.
+   *
+   * ⚠️ THE NAME IS ASKED OF THE BOSS, NOT DERIVED FROM ITS `kind` HERE. The two
+   * bosses get theirs from different places -- HIPÓLITO from `CONFIG.CHARACTERS`
+   * because he is a proper pack, NARUTÃO from `CONFIG.MOSCA_NAME` because she is
+   * two raw sheets and has no cast entry -- and a branch on `kind` in the HUD
+   * would be the third place that has to know which is which. Each boss sets
+   * `this.name` in its own constructor, so a third one declares a name and
+   * nothing here changes.
+   *
+   * Hung off the footprint `render()` hands back, exactly like the player's, so
+   * moving or resizing the bar carries the name with it rather than needing a
+   * second set of coordinates kept in step by hand.
+   *
+   * ⚠️ WHETHER THE BAR IS UP AT ALL IS THE CALLER'S DECISION and deliberately
+   * not made here -- it is gated on the boss having ARRIVED and being neither
+   * dead nor fleeing, which are facts about the fight rather than about the
+   * drawing. See the call site in game.js, where the reasons are written down.
+   *
+   * Like drawPlayer: if the sheet has not loaded, render() returns null and the
+   * whole block is skipped rather than falling back to a drawn rectangle.
+   */
+  drawBoss(ctx, boss, lifeBar) {
+    const box = lifeBar && lifeBar.render(ctx, Math.max(0, boss.hp / boss.maxHp), {
+      centre: true, top: CONFIG.flyBossBarTop, wRel: CONFIG.flyBossBarWRel,
+    });
+    if (!box || !boss.name) return;
+
+    ctx.save();
+    ctx.fillStyle = CONFIG.hudColor;
+    ctx.font = this._font(CONFIG.hudSize * (CONFIG.bossNameSizeRel || 0.62), 'bold');
+    ctx.textBaseline = 'top';
+    /* LEFT-ALIGNED ON THE BAR'S LEFT EDGE, exactly as the player's name is on
+       his -- requested 2026-08-27, over a centred version. The BAR is still
+       centred; it is the name inside it that starts at the same corner the
+       player's does, so the two plates read as the same piece of interface
+       rather than as two different ones that happen to sit under bars.
+
+       ⚠️ `box.x` IS THE BAR'S OWN LEFT EDGE, NOT THE SCREEN'S. LifeBar.render
+       computes it from `centre: true` and hands it back for exactly this -- so
+       widening the boss bar (`flyBossBarWRel`) slides the name with it and there
+       is no second number to keep in step. */
+    ctx.textAlign = 'left';
+    ctx.fillText(boss.name, box.x, box.y + box.h + (CONFIG.bossNameGap || 4));
+    ctx.restore();
+  }
+
+  /**
    * An enemy's bar, floating over its head — and ONLY for a beat after it was
    * last hit. A permanent bar over every enemy turns a crowd into a wall of
    * meters and buries the thing the player should be watching, which is the
@@ -266,6 +314,15 @@ class Hud {
       ctx.fillText(row.text(p >= 1 ? row.value : Math.round(shown)), R.valueX, y);
       y += R.rowStep;
 
+      /* ⚠️ NO ROW SUPPLIES A `note` SINCE 2026-08-27. The DOWNED row carried the
+         roll-call of who was beaten -- "DUDU x7   DIDI x5" -- and it was taken
+         off the board on request. The mechanism is kept because putting the line
+         back is one field in `Stats.rows()`, and because a future row may want
+         a second line under it. Nothing here is dead by accident.
+
+         ⚠️ IT COSTS THE BOARD NOTHING WHILE UNUSED: `_resultsTimes` reads
+         `rows().length`, which the note never contributed to, so the tally runs
+         to exactly the same clock as before. */
       if (row.note) {
         ctx.font = this._font(R.noteSize, 'bold');
         ctx.globalAlpha = alpha * Math.min(1, p * 5) * 0.72;

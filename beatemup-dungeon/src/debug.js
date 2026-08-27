@@ -54,7 +54,27 @@ const DBG = {
 
 class Debug {
   static sx(x, camX) { return x - camX; }
-  static sy(z) { return CONFIG.beltTopY + z; }
+  static sy(z) { return Belt.topY + z; }
+
+  /**
+   * The NAME of the knob that governs this room's belt, for the overlay labels.
+   *
+   * ⚠️ A DEBUG LABEL THAT NAMES THE WRONG KNOB IS WORSE THAN NO LABEL, because
+   * it is followed. The belt is per room as of 2026-08-27: a room may declare
+   * its own `belt` (the desert does -- 380 deep against the default 190) and
+   * everything else falls back to CONFIG. Editing `CONFIG.beltDepth` while
+   * standing in the desert changes nothing and looks like the overlay lying.
+   *
+   * Read off the same room `Belt` was set from, so the label and the band it is
+   * pointing at cannot disagree.
+   */
+  static beltKnob(stage, field) {
+    const r = stage && stage.room && stage.room();
+    if (r && r.belt && r.belt[field] != null) {
+      return `ROOMS[${stage.roomIndex}].belt.${field}`;
+    }
+    return field === 'topY' ? 'CONFIG.beltTopY' : 'CONFIG.beltDepth';
+  }
 
   render(ctx, all, stage, backdrop, camX) {
     ctx.save();
@@ -156,12 +176,18 @@ class Debug {
    * THE TWO BANDS ARE GOVERNED BY DIFFERENT NUMBERS, which is why they are
    * labelled separately rather than as one "no-walk" area:
    *
-   *     top band     ends at  beltTopY                  — LOWER beltTopY to eat it
-   *     bottom band  starts at beltTopY + beltDepth     — RAISE beltDepth to eat it
+   *     top band     ends at  topY                  — LOWER topY to eat it
+   *     bottom band  starts at topY + depth         — RAISE depth to eat it
    *
    * So "make the belt 100px taller" is two different edits depending on which
    * edge is meant to move, and this makes which one obvious before the change
    * rather than after.
+   *
+   * ⚠️ AND THE LABEL NAMES THE KNOB THAT ACTUALLY GOVERNS THIS ROOM. Since
+   * 2026-08-27 the belt is per room (see belt.js) -- the desert's is double the
+   * street's -- so an overlay hard-coded to say "beltTopY" would send the reader
+   * to a CONFIG line that has no effect on the room they are looking at. It
+   * reads the same room the geometry does; see beltKnob().
    *
    * Drawn with an even-odd fill — the whole canvas, minus the walkable rect —
    * so the two can never disagree about where the boundary is.
@@ -169,7 +195,7 @@ class Debug {
   _noWalk(ctx, stage, camX) {
     const b = stage.bounds();
     const x0 = Debug.sx(b.minX, camX), x1 = Debug.sx(b.maxX, camX);
-    const y0 = Debug.sy(0), y1 = Debug.sy(CONFIG.beltDepth);
+    const y0 = Debug.sy(0), y1 = Debug.sy(Belt.depth);
 
     ctx.save();
     ctx.beginPath();
@@ -189,11 +215,13 @@ class Debug {
     // The measurements, at the edge each one governs.
     ctx.fillStyle = DBG.nowalk;
     ctx.fillText(`NO-WALK  ${Math.round(y0)}px tall  ` +
-                 `— beltTopY ${CONFIG.beltTopY}, lower it to eat into this`,
+                 `— ${Debug.beltKnob(stage, 'topY')} ${Belt.topY}, ` +
+                 `lower it to eat into this`,
                  12, Math.max(2, y0 - 15));
     const below = CONFIG.GAME_H - y1;
     ctx.fillText(`NO-WALK  ${Math.round(below)}px tall  ` +
-                 `— beltDepth ${CONFIG.beltDepth}, raise it to eat into this`,
+                 `— ${Debug.beltKnob(stage, 'depth')} ${Belt.depth}, ` +
+                 `raise it to eat into this`,
                  12, y1 + 6);
     ctx.restore();
   }
@@ -204,7 +232,7 @@ class Debug {
   _walkable(ctx, stage, camX) {
     const b = stage.bounds();
     const x0 = Debug.sx(b.minX, camX), x1 = Debug.sx(b.maxX, camX);
-    const y0 = Debug.sy(0), y1 = Debug.sy(CONFIG.beltDepth);
+    const y0 = Debug.sy(0), y1 = Debug.sy(Belt.depth);
 
     ctx.save();
     ctx.fillStyle = 'rgba(90,190,255,0.07)';
@@ -213,7 +241,7 @@ class Debug {
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, x1 - x0 - 1, y1 - y0 - 1);
     ctx.fillStyle = DBG.walk;
     ctx.fillText('z=0 FAR', Math.max(4, x0 + 5), y0 + 3);
-    ctx.fillText(`z=${CONFIG.beltDepth} NEAR`, Math.max(4, x0 + 5), y1 - 13);
+    ctx.fillText(`z=${Belt.depth} NEAR`, Math.max(4, x0 + 5), y1 - 13);
     ctx.setLineDash([4, 4]);
     for (const [wx, label] of [[x0, 'minX'], [x1, 'maxX']]) {
       if (wx < -30 || wx > CONFIG.GAME_W + 30) continue;
@@ -299,7 +327,7 @@ class Debug {
        what is on screen. The walls are drawn where they fall inside it. */
     const spanX = CONFIG.GAME_W;
     const s = PW / spanX;
-    const PH = CONFIG.beltDepth * s;
+    const PH = Belt.depth * s;
 
     const px = wx => PX + (wx - camX) * s;
     const pz = z => PY + HEAD + z * s;
@@ -512,7 +540,7 @@ class Debug {
     ctx.fillText(`segment ${stage.index} ${seg ? seg.kind : 'end'}   camX ${Math.round(stage.camX)}`, x + 8, y + 7);
     // The DEFAULT band. A live attack whose def overrides it shows its own
     // number in the condition readout, which is where a specific blow is judged.
-    ctx.fillText(`belt z 0..${CONFIG.beltDepth}   vertical reach ${CONFIG.verticalReach} (default)`, x + 8, y + 22);
+    ctx.fillText(`belt z 0..${Belt.depth}   vertical reach ${CONFIG.verticalReach} (default)`, x + 8, y + 22);
     /* The plate's status as TEXT rather than an outline — it fills the whole
        frame and encloses the walkable band, so a rectangle round it says nothing
        (see _plateInfo). Green when it covers, red plus a filled band on screen

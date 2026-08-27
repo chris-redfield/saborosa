@@ -42,9 +42,9 @@
 
 /** Shared: the belt projection, identical to Fighter's so nothing drifts. */
 function propGroundX(o, camX) { return o.x - camX; }
-function propGroundY(o) { return CONFIG.beltTopY + o.z - (o.jumpY || 0); }
+function propGroundY(o) { return Belt.topY + o.z - (o.jumpY || 0); }
 function propDepthScale(o) {
-  const t = CONFIG.beltDepth ? o.z / CONFIG.beltDepth : 1;
+  const t = Belt.depth ? o.z / Belt.depth : 1;
   return CONFIG.beltFarScale + (1 - CONFIG.beltFarScale) * t;
 }
 

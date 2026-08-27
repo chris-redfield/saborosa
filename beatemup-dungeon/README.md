@@ -90,6 +90,25 @@ section warns about is now roughly 17% of a roach.
 | DIDI / DEDÉ (cigarro2, cigarro3) | 231px |
 | CLAUDINHO & ZIDANE (baratas) | 302px (~224px of animal) |
 | HIPÓLITO (horse) | 304px — **and his hurtbox and reaches grew with him** |
+| ESPETO (espeto) | **123px** — `drawScale` 0.9, the same as LEBRON |
+
+> ⚠️ **Shrinking ESPETO moves five other numbers.** `drawScale` is drawn size
+> only, so his three string `reachX` values, the death blast's `reachX`/`reachZ`
+> and his `groundNudge` were all multiplied by the same 0.9. Move the scale again
+> and they follow. This is the discipline both cigarettes failed at.
+
+> ⚠️ **His body measurement is the ball PLUS the spikes.** His `bodyH` measures the
+> solid ball (`bodyMinRun` 80 in the cutter), so the ball is `fighterSizePx` like
+> everyone else's body and the spikes are extra on top. Raising that threshold is
+> also what stopped him floating — see below.
+
+> ⚠️ **ESPETO is the exception in both directions.** He is the smallest villain
+> (a shade taller than LEBRON, less than half a roach) because he ships at the
+> size the cutter gives him — and he is also the only one whose **reaches were
+> measured off the art** rather than inherited. Those two facts go together: at
+> `drawScale` 1.0 his fist ends where his hitbox does. Grow him and
+> `ENEMY_COMBOS.espeto`'s three `reachX` values have to grow by the same factor,
+> or he joins the others in swinging past his own box.
 
 `flyBossSizePx` is different — `halfW()` and `bodyHeight()` derive from it, so
 the boss's size in the simulation moves with its drawn size.
@@ -422,6 +441,32 @@ into nothing" — true until there was somewhere to arrive. The outro now carrie
 `outroTo` so it knows whether it is a door or an ending, and `endingShown` keeps
 the photograph behind the tally instead of the boss room he already left.
 
+## Boss nameplates
+
+The boss's name sits under its health bar — **NARUTÃO**, **HIPÓLITO** — centred
+under a centred bar, drawn by `Hud.drawBoss` along with the bar itself.
+
+```js
+bossNameSizeRel: 0.62,  // x hudSize (26) -> ~16px
+bossNameGap: 4,         // px below the bar
+```
+
+**The name is asked of the boss, not worked out from its `kind` in the HUD.**
+Each constructor sets `this.name`, from wherever that boss's name lives:
+
+| boss | name from | why |
+|---|---|---|
+| HIPÓLITO | `CONFIG.CHARACTERS.horse.name` | he is a proper ragged pack |
+| NARUTÃO | `CONFIG.MOSCA_NAME` | two raw flapping sheets, no pack entry |
+
+So **a third boss declares a name and nothing in the HUD changes.**
+
+> ⚠️ **Whether the bar is up at all is decided in `game.js`, not here** — it is
+> gated on the boss having arrived and being neither dead nor fleeing. That is a
+> fact about the fight, not about the drawing.
+
+---
+
 ## The CLEAR board
 
 Clearing the last room no longer writes CLEAR and stops — it counts the run up,
@@ -456,11 +501,17 @@ line.
 | damage dealt | **ESTRAGO** | |
 | damage taken | **PREJUÍZO** | |
 | time | **TEMPO** | |
-| enemies downed | **RANGO** | with a by-name breakdown under it |
+| enemies downed | **RANGO** | the count. ⚠️ the by-name breakdown under it was removed 2026-08-27 |
 | the stamp | **NOTA** | the letter |
 
 The card reads **OBRIGADO POR JOGAR** with **THANK YOU** under it, and the
 prompt is *pressione qualquer botão*. Losing shows **PERDEU!**
+
+> ⚠️ **Putting the roll-call back is one field.** `Stats.rows()` used to hang
+> `note: this.downedBy()` on the RANGO row, which printed "DUDU x7   DIDI x5"
+> under it. Nothing was deleted when it came off — `downedBy()` and the `note`
+> mechanism in `hud.js` are both intact, and the board's clock is unchanged
+> (`_resultsTimes` counts rows, and a note was never one).
 
 > ⚠️ **THANK YOU is English on purpose** — the end card was asked for as
 > "obrigado por jogar THANK YOU", both languages, the same pairing the flying
@@ -815,6 +866,56 @@ because that shot is a shipped, judged asset.
 locking, with the whole room as walls rather than one screen. That is what a
 small room wants.
 
+### How deep the belt is — per room
+
+```js
+{ name: 'desert', belt: { topY: 330, depth: 380 }, ... }   // double the default
+```
+
+The belt is the band a fighter walks in: `z` runs `0..depth` and anything
+standing on it draws at `topY + z`. **A room may declare its own**; one that does
+not gets `CONFIG.beltTopY` (520) and `CONFIG.beltDepth` (190).
+
+| room | topY | depth | near edge |
+|---|---|---|---|
+| street | 520 | 190 | 710 |
+| **desert** | **330** | **380** | 710 |
+| boss room | 520 | 190 | 710 |
+
+> ⚠️ **`topY` and `depth` are a pair.** `z` lives at `topY + z`, so doubling the
+> depth alone puts the near edge at 900 — 180px below a 720-tall canvas, and the
+> player walks off the bottom of the screen. Move `topY` up by whatever `depth`
+> gains. `Belt.set()` takes the whole room for exactly this reason.
+
+> ⚠️ **Every `z` in that room is on the new band.** The desert's enemies sit at
+> `z: 220` where the street's equivalents sit at `110` — the same 58% across the
+> belt, a different number. **A `z` copied from a street wave lands at half the
+> depth it means.**
+
+**What does not change:** the perspective. `depthScale` is `z / depth`, a
+fraction, so bodies shrink from far to near across the same range — a deeper belt
+is more room to move, not a different camera.
+
+⚠️ **Nothing reads `CONFIG.beltTopY` / `CONFIG.beltDepth` directly.**
+`src/belt.js` resolves the room's band and everything on the floor reads
+`Belt.topY` / `Belt.depth`. A read left on CONFIG is a body standing on the
+street's floor in the desert — and it looks like a sprite-anchor bug, not like a
+missed find-and-replace. **The C-key overlay reads `Belt` too**, so its band,
+walkable region, depth ruler and plan view all follow a room's belt, and its
+labels name the room's own knob (`ROOMS[1].belt.depth`) rather than the CONFIG
+default.
+
+### Walking into a room
+
+The player **walks on from the left** whenever a room begins — the start of a
+run, a fade into the next room, and a DEV number-key jump. `CONFIG.playerEnterPx`
+(360) is how far off his mark he starts; `state: 'enter'` means the controls are
+dead and nothing can hit him on the way in.
+
+> ⚠️ **`enterWalk` is measured from where he has already been PLACED**, so it
+> must be called *after* whatever puts him on his mark (`stage.enterRoom`). Read
+> before it, it walks him in from the previous room's origin.
+
 ### How long a room can be
 
 Two numbers, and the FOOTAGE decides both:
@@ -1053,6 +1154,148 @@ shipped build where every punch does 50 reads as a balance disaster rather than
 a forgotten switch, and by then the person looking at it is usually not the
 person who left it on.
 
+## When a sprite looks like it is floating
+
+**The ground line is the last row of the body with at least `BODY_MIN_RUN` (6)
+opaque pixels in it.** That is a guard against an antialiased tail — and on a
+spiky character it is not enough. ESPETO's lowest spike is 39px below his feet on
+the idle frame, so at 6 he was drawn hanging off the spike tip.
+
+```python
+'bodyMinRun': 80,     # in tools/build-beat-enemy-defs.py, per sheet
+```
+
+> ⚠️ **Do not anchor on the feet instead.** They are drawn at different heights
+> in different frames (39px of spike under them in idle, 17 in walk), so a
+> palette rule makes the character BOB by the difference. What is stable is where
+> the silhouette becomes substantial, which is what the threshold measures.
+
+> ⚠️ **It also changes the drawn SIZE, and the reaches with it.** The same
+> threshold finds the top of the body, so `bodyH` moves, so the pack scale moves,
+> so every drawn distance moves. ESPETO went 137px → 170px and his measured
+> reaches 123/97/121 → 146/116/138. **Re-measure after touching it.**
+
+> ⚠️ **`baseWhite` in that tool is declared by two sheets and has never been
+> passed** — `anchor(t)` at the call site. The horse has been anchored on his
+> chrome highlights since he was cut. Left alone deliberately; fixing it moves a
+> tuned boss.
+
+**For the last few px, nudge instead of re-cutting:**
+
+```js
+CHARACTERS.espeto.groundNudge: 10,   // drawn px, DOWN
+```
+
+Per character, every frame, added to the shared per-pose `poseNudge`. It moves
+the **picture only** — not the hurtbox, the reaches, the shadow or `depthScale`
+— so it is the right tool for a taste call and the wrong one for a big number: a
+large nudge is a sprite standing somewhere its hitbox is not. If it wants more
+than a few px, re-cut.
+
+### Why ESPETO needed both
+
+His ground line was on a spike tip (the cutter fixed 27px of it) **and** his idle
+row is drawn with the ball tucked up — feet 24px above the line on the first idle
+frame against 4–7px across the whole walk. So the pose you look at while standing
+still was the one that read as floating, and the last 10px is a nudge.
+
+## Corpses, fading, and the one that explodes
+
+```js
+CHARACTERS.espeto.corpseFade: false,   // trust the sprites, do not dim them
+```
+
+Most death rows end with a body on the floor, so the corpse fades out over
+`corpseFadeS` and is reaped. **ESPETO's ends with the body gone** — four frames
+of spines scattering — so fading it as well is dimming an explosion.
+
+> ⚠️ **The flag is the OPACITY only.** `corpseGone()` does not read it, so he is
+> still removed on the same clock as everyone else. Skipping that too would leave
+> the last frame of the burst lying there for the rest of the level.
+
+### The burst has its own frame rate
+
+```js
+DEATH_BURST: { espeto: { from: 6, ms: [140, 210, 294, 224] } },
+```
+
+A death row may **change pace part way through**. Every animation otherwise runs
+at one rate (`POSE_MS[pose]`), which is right for eight frames of a body falling
+over. ESPETO's row is two things end to end: six frames of him going down, then
+four of an explosion — a different kind of event that wants a different clock.
+
+**The principle is the flying dungeon's fly.** Its burst was never part of
+another animation: `FLY_RECTS[1..4]` play on `flyBurstMs` (70), their own number,
+and every frame is scaled by the factor derived from frame 0 — so because the
+burst frames are drawn bigger on the sheet, the explosion visibly expands. The
+second half is already true here for free (his burst tiles are 302px against a
+~180px body, and the pack scale is one number). What was missing was the clock.
+
+`ms` may be one number or one per frame. A list is what lets the **biggest frame
+hold longest**, which is the specific thing that read as too fast.
+
+> ⚠️ **The corpse has to live long enough to play it.** Slowing the burst took
+> his death from 1.30s to 2.02s, past the 1.32s at which a body is reaped — he
+> would have been deleted mid-explosion. `Fighter.corpseGone` now also waits for
+> the death animation. Frames only, **not** `deathWatch` — that adds
+> `deathHoldMs` (1000ms), which would leave every corpse in the game lying around
+> a second longer.
+
+> ⚠️ **`DEATH_BLAST.atMs` is derived from this table and nothing enforces it.**
+> Re-time the burst and the blast is silently pointing at a different frame.
+
+| frame | starts | held |
+|---|---|---|
+| 0–5 | 0 | 130ms each |
+| 6 | 780ms | 140ms |
+| 7 | 920ms | 210ms — **blast opens** |
+| 8 | 1130ms | 294ms — the widest |
+| 9 | 1424ms | 224ms |
+
+### An explosion is anchored on its centre, not its feet
+
+```python
+('death', 9, 10, {'cut': 'columns', 'centreFrom': 6}),   # in the cutter
+```
+
+Frames from `centreFrom` on are anchored on their own **centre**, held at the
+height the body's centre was — so a burst that grows frame by frame expands about
+one unmoving point instead of walking across the floor. Every other frame in the
+game is anchored on the ground it stands on; a burst has no feet, and its bbox
+bottom drops as it expands.
+
+> ⚠️ **`centreFrom` must agree with `CONFIG.DEATH_BURST.espeto.from`.** Same
+> frame index, two files: the cutter decides which frames stop being a body, the
+> game decides which slow down.
+
+### The death blast
+
+```js
+DEATH_BLAST: {
+  espeto: { atMs: 920, activeMs: 300, damage: 8, knockdown: true, radial: true,
+            reachX: 187 * BODY_SCALE, reachZ: 63 * BODY_SCALE, knockback: 240 },
+}
+```
+
+`atMs` 920 is **frame 7**, not frame 6. Frame 6 is the first burst frame but it
+is a tight starburst barely wider than the body — a hit landing on it reads as
+damage arriving *before* the explosion. **The rule is "when it reaches you", not
+"when it begins":** the 300ms window spans frames 7 and 8, the two widest
+drawings. Timed off `deathT`, the same clock the row is drawn from, so the box
+and the picture cannot drift.
+
+> ⚠️ **`radial: true`** — every other hitbox in the game extends forward from the
+> fighter only. An explosion that only went the way the corpse was facing would
+> be the one hitbox a player could beat by standing behind it.
+
+> ⚠️ **It hits the player only.** `crowdHits` never tests enemies against each
+> other; friendly fire is new code in the resolver, not a number here.
+
+> ⚠️ **`knockdown: true` is a design choice.** Nothing else a mook throws floors
+> the player except the barata's charge. An explosion that merely stings is a
+> tax; one that puts you down is a thing you step away from. `false` makes it a
+> tax again.
+
 ## How hard everyone hits
 
 ```
@@ -1067,7 +1310,20 @@ DIDI      (cigarro2) 40   0.72    4 + 4 + 7  = 15        20%        -
 DEDÉ      (cigarro3) 55   0.58    6 + 6 + 10 = 22        20%        -
 CLAUDINHO (barata)   50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/turn
 ZIDANE    (barata2)  66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
+ESPETO    (espeto)   60   0.95    3+3+5+3+7  = 21         8%*       -   (the desert)
+                                  * five hits, not three -- P(all five) is 1 in 12
 ```
+
+**ESPETO throws the only FIVE-hit string in the game**, because his punch row is
+ten drawings where every cigarette's is six. It is not five times the damage: 21
+for the whole thing, a shade *under* DEDÉ's 22 over three hits, and no single
+blow costs more than 7. **The length is the character, not the total** — and the
+weights `[5, 3, 2, 1, 1]` mean he averages 2.2 hits and reaches the finisher one
+time in twelve.
+
+> ⚠️ **A missing `enemyComboWeights` entry caps the string silently.**
+> `_rollChain` reads `min(weights.length, combo.length)`, so four weights on a
+> five-hit string means two of his drawings are never seen in play.
 
 **Everyone throws a combo now**, so `enemyDamage` is read for nobody — it is
 kept as the number each string was balanced against. Damage is SPREAD, not

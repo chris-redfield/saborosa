@@ -86,11 +86,17 @@ class Stats {
 
   /** "DUDU x7 · DIDI x5 · CLAUDINHO x4", in the order the cast is declared.
 
+      ⚠️ NOTHING CALLS THIS SINCE 2026-08-27. It was the `note` under the DOWNED
+      row of the results board and was taken off on request -- see rows(). Kept
+      because putting it back is one field there, and because it is the only
+      place that formats the tally by name.
+
       ⚠️ IT WALKS `CONFIG.CHARACTERS`, so it can only ever name a character that
       has a pack entry there. The Mosca does not -- it is a FlyBoss with two raw
-      sheets -- so NARUTÃO can never appear on this line, and neither boss is
-      counted here. That is why `CONFIG.MOSCA_NAME` exists and why nothing reads
-      it yet. */
+      sheets -- so NARUTÃO could never have appeared on this line and neither
+      boss was counted here. `CONFIG.MOSCA_NAME` is now read by the boss
+      NAMEPLATE instead (FlyBoss sets `this.name` from it; hud.drawBoss draws
+      it), which is the thing that finally uses it. */
   downedBy() {
     const out = [];
     for (const kind of Object.keys(CONFIG.CHARACTERS)) {
@@ -153,8 +159,16 @@ class Stats {
       { label: L.dealt,    value: this.damageOut,  text: (n) => `${n}` },
       { label: L.suffered, value: this.damageIn,   text: (n) => `${n}` },
       { label: L.time,     value: this.time,       text: mm },
-      { label: L.downed,   value: this.downed(),   text: (n) => `${n}`,
-        note: this.downedBy() },
+      /* ⚠️ NO `note` ANY MORE. This row used to carry `downedBy()` under it --
+         "DUDU x7   DIDI x5   CLAUDINHO x4" -- and it was taken off the board on
+         request, 2026-08-27: "remove the name of the guys we beat at the end
+         screen". The COUNT stays; it is the roll-call of who they were that
+         went.
+
+         `downedBy()` is kept rather than deleted, and so is the `note`
+         mechanism in hud.js that drew it: putting the line back is this one
+         field. Both are documented as unused where they live. */
+      { label: L.downed,   value: this.downed(),   text: (n) => `${n}` },
     ];
   }
 }

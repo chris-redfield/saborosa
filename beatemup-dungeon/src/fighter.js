@@ -6,7 +6,7 @@
  * THE WORLD MODEL, in one place:
  *
  *     x       along the belt, world px. The level is thousands of these.
- *     z       across the belt, 0 (far) .. CONFIG.beltDepth (near).
+ *     z       across the belt, 0 (far) .. Belt.depth (near).
  *     jumpY   height off the floor. DRAWN ONLY — see below.
  *
  * `jumpY` NEVER TOUCHES x OR z, and that is a rule rather than an
@@ -129,11 +129,11 @@ class Fighter {
 
   /** Screen position of the point its feet stand on. */
   groundX(camX) { return this.x - camX; }
-  groundY() { return CONFIG.beltTopY + this.z - this.jumpY; }
+  groundY() { return Belt.topY + this.z - this.jumpY; }
 
   /** Depth scale — 1 at the near edge, CONFIG.beltFarScale at the far one. */
   depthScale() {
-    const t = CONFIG.beltDepth ? this.z / CONFIG.beltDepth : 1;
+    const t = Belt.depth ? this.z / Belt.depth : 1;
     return CONFIG.beltFarScale + (1 - CONFIG.beltFarScale) * t;
   }
 
@@ -389,7 +389,7 @@ class Fighter {
   }
 
   clamp(bounds) {
-    this.z = Math.max(0, Math.min(CONFIG.beltDepth, this.z));
+    this.z = Math.max(0, Math.min(Belt.depth, this.z));
     if (bounds) this.x = Math.max(bounds.minX, Math.min(bounds.maxX, this.x));
   }
 
@@ -447,6 +447,19 @@ class Fighter {
   _updateAttack(dt, bounds) {
     const a = this.atk;
     a.t += dt;
+    /* ⚠️ SOMEBODY ELSE OWNS THIS ONE'S CLOCK. `external` means the box was put
+       here by code that runs its own window -- ESPETO's death blast is the only
+       one (Enemy._deathBlast) -- and ticking it here would be actively wrong in
+       two ways. Its def has no `startupMs`, so every comparison below is against
+       NaN and falls through to the final branch; and that branch sets
+       `state = 'idle'`, which STANDS A CORPSE BACK UP in the middle of its own
+       explosion. Found by reading the order, not in play.
+
+       ⚠️ `this.atk` IS STILL THE FIELD, deliberately, because `hitbox()`,
+       `debugHitbox()` and `combat.crowdHits` all read it and none of them should
+       have to learn where a box came from. This is the one line that has to. */
+    if (a.external) return;
+
     const d = a.def;
     const startup = d.startupMs / 1000;
     const active = d.activeMs / 1000;
@@ -615,9 +628,59 @@ class Fighter {
    */
   deathWatch(sheets) {
     if (!this.dead || !sheets.has(this.kind, 'death')) return 0;
+    return this.deathAnimS(sheets) + (CONFIG.deathHoldMs || 0) / 1000;
+  }
+
+  /**
+   * How long the death ROW takes to play, in seconds. Frames only -- no
+   * `deathHoldMs`, which is a beat AFTER the drawing has finished and belongs to
+   * the player's death lock rather than to the animation.
+   *
+   * Split out from `deathWatch` because two things now need it and they need
+   * different halves: the player's lock wants the hold, and the corpse reaper
+   * wants only the picture (see corpseGone).
+   */
+  deathAnimS(sheets) {
+    if (!sheets || !sheets.has(this.kind, 'death')) return 0;
     const n = sheets.poseLength(this.kind, 'death');
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
-    return n * (ms / 1000) + (CONFIG.deathHoldMs || 0) / 1000;
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    if (!B || B.from >= n) return n * (ms / 1000);
+    let t = B.from * (ms / 1000);
+    for (let i = B.from; i < n; i++) t += this._burstMs(B, i - B.from) / 1000;
+    return t;
+  }
+
+  /** The ms this burst frame is held. One number, or one per frame. */
+  _burstMs(B, i) {
+    if (Array.isArray(B.ms)) return B.ms[Math.min(i, B.ms.length - 1)];
+    return B.ms || 110;
+  }
+
+  /**
+   * Which frame of the death row is showing.
+   *
+   * ⚠️ THE ROW MAY CHANGE PACE PART WAY THROUGH, and ESPETO's does: six frames
+   * of a body going down at `POSE_MS.death`, then four of an EXPLOSION on its
+   * own clock. See CONFIG.DEATH_BURST for why -- the short version is that the
+   * flying dungeon's fly burst has never been part of another animation either.
+   *
+   * ⚠️ IT WALKS THE BURST FRAMES RATHER THAN DIVIDING, because their durations
+   * may differ from each other (the widest frame holds longest, which is the
+   * whole point). Four iterations at most; this runs once per draw of a corpse.
+   */
+  _deathFrame(n, ms) {
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    const plain = Math.min(n - 1, Math.floor(this.deathT / (ms / 1000)));
+    if (!B || B.from >= n) return plain;
+    const preS = B.from * (ms / 1000);
+    if (this.deathT < preS) return plain;
+    let t = preS;
+    for (let i = B.from; i < n; i++) {
+      t += this._burstMs(B, i - B.from) / 1000;
+      if (this.deathT < t) return i;
+    }
+    return n - 1;
   }
 
   /** Seconds left of that watch. 0 once the death has been seen. */
@@ -812,9 +875,7 @@ class Fighter {
 
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS[p]) || 110;
     // Death reads its own clock; the other one-shots reset with their state.
-    if (p === 'death') {
-      return Math.min(n - 1, Math.floor(this.deathT / (ms / 1000)));
-    }
+    if (p === 'death') return this._deathFrame(n, ms);
     /* ⚠️ ONE DRAWING PER BLOW, HELD -- AND A DIFFERENT ONE NEXT TIME. Asked for
        2026-08-24: "for every hit we use one of these frames, they should
        alternate for each hit."
@@ -856,7 +917,19 @@ class Fighter {
       const period = CONFIG.hurtBlinkMs / 1000;
       alpha = (Math.floor(this.hurtT / period) % 2) ? 0.35 : 1;
     }
-    if (this.dead && this.downPhase === 'lie') {
+    /* ⚠️ A PACK MAY REFUSE THE FADE, and ESPETO does. The fade exists because a
+       body has to be taken away and most death rows END with one lying on the
+       floor; his ends with the body GONE -- four frames of spines scattering,
+       the last almost empty -- so fading it as well is dimming an explosion.
+       Requested 2026-08-27: "trust the sprites, don't touch the opacity".
+
+       ⚠️ THIS IS THE OPACITY ONLY. `corpseGone()` deliberately does NOT read the
+       flag, so he is still reaped on exactly the same clock as everyone else --
+       skipping that too would leave the last frame of the burst lying there for
+       the rest of the level. The two used to be described as one thing ("the
+       same arithmetic"); they are one CLOCK, and now only one of them draws. */
+    const pack = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[this.kind]) || {};
+    if (this.dead && this.downPhase === 'lie' && pack.corpseFade !== false) {
       // Fade out where it fell, rather than vanishing. The two numbers are in
       // CONFIG because `corpseGone()` has to agree with this exactly.
       const d = CONFIG.corpseFadeDelayS, f = CONFIG.corpseFadeS;
@@ -903,8 +976,15 @@ class Fighter {
     return {
       // Extends FORWARD from the body only — a punch that reached behind the
       // fighter would let a player clear a crowd by standing in it and mashing.
-      x0: s > 0 ? this.x : this.x - d.reachX,
-      x1: s > 0 ? this.x + d.reachX : this.x,
+      /* ⚠️ UNLESS IT IS `radial`, AND EXACTLY ONE THING IS: ESPETO'S DEATH
+         BLAST. An explosion is not a punch -- it has no front -- and a burst
+         that only went the way the corpse happened to be facing would be the
+         one hitbox in the game a player could beat by standing behind it. The
+         flag is on the DEF rather than on the fighter because it is a property
+         of the blow: the same body throws directional punches while it is
+         alive. See CONFIG.DEATH_BLAST. */
+      x0: d.radial ? this.x - d.reachX : (s > 0 ? this.x : this.x - d.reachX),
+      x1: d.radial ? this.x + d.reachX : (s > 0 ? this.x + d.reachX : this.x),
       z0: this.z - d.reachZ,
       z1: this.z + d.reachZ,
       /* HOW FAR THE BLOW REACHES IN HEIGHT, carried WITH the box rather than
@@ -986,9 +1066,23 @@ class Fighter {
    * which is exactly the bug this was written for, only self-inflicted instead
    * of caused by `crowd.clear()`.
    */
-  corpseGone() {
-    return this.dead && this.downPhase === 'lie'
-        && this.stateT >= CONFIG.corpseFadeDelayS + CONFIG.corpseFadeS;
+  corpseGone(sheets) {
+    if (!(this.dead && this.downPhase === 'lie')) return false;
+    if (this.stateT < CONFIG.corpseFadeDelayS + CONFIG.corpseFadeS) return false;
+    /* ⚠️ AND NOT BEFORE THE DEATH ROW HAS FINISHED PLAYING. The fade clock and
+       the death animation are two different lengths, and until ESPETO's burst
+       was slowed down the fade was always the longer of the two, so nothing ever
+       noticed. His is 2.02s against the fade's 1.32s -- reaped on the fade alone
+       he is deleted mid-explosion.
+
+       ⚠️ FRAMES ONLY (`deathAnimS`), NOT `deathWatch`. The latter adds
+       `deathHoldMs` (1000ms), which is the beat the game holds AFTER the
+       player's death before the panel -- borrowing it here would leave every
+       corpse in the game lying around a second longer than it does today.
+
+       `sheets` IS OPTIONAL so an older caller degrades to the old behaviour
+       rather than throwing; `deathAnimS` returns 0 without it. */
+    return this.deathT >= this.deathAnimS(sheets);
   }
 
   /** Does a hitbox overlap this fighter's body? */

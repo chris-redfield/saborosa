@@ -67,6 +67,16 @@ class FlyBoss {
      and what the last one still means. */
   constructor(x, z, camX, opts) {
     this.kind = 'mosca';
+    /* WHAT THE NAMEPLATE UNDER HER BAR SAYS. A boss carries its own name rather
+       than the HUD branching on `kind`, so a third one declares this and the
+       HUD needs no case for it.
+
+       ⚠️ IT COMES FROM `CONFIG.MOSCA_NAME` AND NOT FROM `CONFIG.CHARACTERS`,
+       because she has no entry there and should not have one: that table is the
+       PACK table -- sheets, scale, cut -- and she is two raw flapping images
+       read straight out of `assets`. Adding a fake entry to borrow the name
+       would put her in front of everything that walks the cast. */
+    this.name = CONFIG.MOSCA_NAME || '';
     this.x = x;
     this.z = z;
     this.jumpY = CONFIG.flyBossHoverY;
@@ -148,9 +158,9 @@ class FlyBoss {
   bodyHeight() { return CONFIG.flyBossSizePx; }
 
   groundX(camX) { return this.x - camX; }
-  groundY() { return CONFIG.beltTopY + this.z - this.jumpY; }
+  groundY() { return Belt.topY + this.z - this.jumpY; }
   depthScale() {
-    const t = CONFIG.beltDepth ? this.z / CONFIG.beltDepth : 1;
+    const t = Belt.depth ? this.z / Belt.depth : 1;
     return CONFIG.beltFarScale + (1 - CONFIG.beltFarScale) * t;
   }
 
@@ -287,7 +297,7 @@ class FlyBoss {
     this.facing += Math.max(-rate, Math.min(rate, this.faceTarget - this.facing));
     this.facing = Math.max(0, Math.min(1, this.facing));
 
-    this.z = Math.max(0, Math.min(CONFIG.beltDepth, this.z));
+    this.z = Math.max(0, Math.min(Belt.depth, this.z));
   }
 
   _to(phase) { this.phase = phase; this.t = 0; this.hasHit = false; }
@@ -340,7 +350,7 @@ class FlyBoss {
          a CUT, not a teleport the player can watch happen — the same trick
          Still Life uses to get it from the far edge back to the top of the map. */
       this.x = (b ? (b.minX + b.maxX) / 2 : this.enterToX);
-      this.z = CONFIG.beltDepth * 0.5;
+      this.z = Belt.depth * 0.5;
       this.jumpY = CONFIG.flyBossDescendFromY;
       this._to('descend');
     }
