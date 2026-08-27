@@ -193,12 +193,24 @@ culprit was `filmFlickerMs` — at Still Life's 24ms the lamp value is re-rolled
 went to 80 (~12 changes/s), the dip came down 30% and the scratch with it. It
 was still not wanted. **Do not re-propose this as a tuning problem.**
 
-⚠️ **AND NOTHING WAS DELETED, ON REQUEST.** `CONFIG.film: false` is the whole of
-the off switch. `src/film.js`, `renderFilmed()` in game.js and the entire
-`CONFIG.film*` block are live and correct; one flag brings it back. It also
-covers the HUD, which is the one deliberate difference from Still Life, where
-the HUD is drawn outside the film pass — `renderFilmed()` is the split point if
-that ever matters.
+⚠️ **IT WAS KEPT WIRED AND OFF ON REQUEST — AND THEN DELETED FIVE DAYS LATER.**
+On 2026-08-22 nothing was removed: `CONFIG.film: false` was the whole off switch,
+`src/film.js` and `renderFilmed()` stayed live, and the config carried the line
+*"Do not delete any of it to tidy up"*. On **2026-08-27** the user asked for
+exactly that — *"remove this film thing, this is badness from the past"* — and it
+is now gone: the file, the `CONFIG.film*` block, the `index.html` entry and the
+`game.js` wiring. `renderFilmed()` is `renderFrame()` and only clears the frame.
+
+⚠️ **A "DO NOT DELETE THIS" NOTE HAS A SHELF LIFE.** It was correct when written
+and it was not a veto on the next decision. Written as *this is the state now*
+rather than as a prohibition, it would not have needed overturning at all — the
+same lesson the coverage target taught by moving three times in one day.
+
+⚠️ **AND "FILM" STILL MEANS THE PLATE.** The backdrop is filmed footage: a
+`video` source the camera scrubs, plus a `film` source kind for frame sequences,
+in `backdrop.js`, `stage.js` and `SOURCES`. When this deletion was asked for, the
+word was ambiguous enough to be worth confirming before touching anything — the
+projector went, the footage stayed.
 
 **THE TITLE NO LONGER WAITS, AND IT LANDS WITH A BOUNCE.** The 08-19 note below defends a two-second hold on
 the bare photograph before the name arrives — *the wait is the design* — and the
@@ -3523,6 +3535,91 @@ the version you can see working.
 
 ---
 
+## The day passes over the desert (2026-08-27)
+
+*"A color filter on stage 2 ... begin with a color like orange, and end with
+purple, that will give the player the impression that the day is passing ... it
+should affect everything on screen, except the HUD ... smooth transition, almost
+unperceivable."* `src/grade.js` + `CONFIG.GRADE` + `ROOMS[1].grade`.
+
+One composited rectangle over the whole frame, walking orange to purple as the
+player crosses the room.
+
+⚠️ **"EXCEPT THE HUD" IS THE DRAW ORDER AND NOTHING ELSE.** `game.js` paints the
+layers, then the combat FX, then `grade.draw`, then the bars. There is no mask
+and no second canvas, and that is not a shortcut — it is the cheapest correct
+answer, and it makes the exclusion list READABLE: anything that must stay
+ungraded goes after that one call. The room fade, the dev text and the debug
+overlay were already there and needed nothing.
+
+⚠️ **IT IS DRIVEN BY DISTANCE, NOT TIME, AND THAT IS WHAT MAKES THE BRIEF
+LITERALLY TRUE.** "Purple at the end" is a promise about a PLACE. A wall clock
+keeps it only for a player who moves at the speed you imagined — it turns the sky
+purple early for one who lingers in the first fight and leaves it orange for one
+who runs. The cost is that the sunset pauses inside a locked arena, which is
+invisible: nothing is moving to compare it against.
+
+⚠️ **AND IT IS A HIGH-WATER MARK, SO THE DAY NEVER RUNS BACKWARDS.** This room
+reverses. A raw `camX / span` would rewind the evening every time the player
+walked back over ground they had already crossed. `peak` only goes up.
+
+⚠️ **THE RAMP HAS STOPS BECAUSE ORANGE TO PURPLE IS NOT A STRAIGHT LINE.** Lerped
+channel-wise in one hop, `#ffa24a` to `#6b3fa0` passes through a dead grey-brown
+around the middle — the two sit on opposite sides of the wheel, so the straight
+line between them runs through the middle of it. The stops bend the path the way
+a sky goes: orange, red, pink-purple, purple. Sampled every 10%, saturation never
+drops below 0.53.
+
+⚠️ **`multiply`, NOT A FLAT RECTANGLE.** Source-over at 20% is a sheet of coloured
+plastic over the picture: it lifts the blacks and flattens the frame toward one
+value. Multiply is coloured LIGHT — black stays black, the midtones take the
+tint, and the picture darkens as the tint darkens, which is what an evening does
+to a desert. The alpha ramps with the colour, so dusk is dimmer than noon with no
+separate darkening pass.
+
+### It shipped too strong, and the fix was a knob rather than four edits
+
+*"We want the filter to be slightly lighter, its too strong, too perceivable, can
+you make it more subtle."* **`GRADE.strength`, 1.0 -> 0.50 -> 0.70.** The halving
+went further than wanted and it settled one step back up: *"instead of 0.5 in the
+knob, make it 0.7"*. **The useful range is narrow and the answer was the middle of
+it** — worth knowing before anyone reaches for the ends again.
+
+⚠️ **THE STOPS ARE THE SHAPE; `strength` IS THE LEVEL.** Retuning "too strong" by
+editing the four stop alphas is four chances to change the SHAPE of the day while
+trying to change its WEIGHT — the relative build from noon to dusk is the part
+that was right. One multiplier over the whole ramp preserves that by construction
+and leaves exactly one number to argue about — which is exactly what happened:
+1.0, then 0.50, then 0.70, three edits to one line with the shape untouched
+throughout. 0.35 is barely there and the end stops reading as purple; 0.50 reads
+as a warm/cool shift that is easy to miss; 1.00 was refused.
+
+⚠️ **AND "TOO PERCEIVABLE" MEANT THE TINT, NOT THE TRANSITION.** The brief asked
+for a change that is almost unperceivable, so the phrase could have sent this at
+the RATE — spreading the stops further apart, easing the ends. It did not: the
+rate is already spread over 5006px of camera travel, minutes of play, and what
+was too much was the weight of the colour at any given moment. Two different
+dials that the same words can point at; the one that was wrong is the level.
+
+⚠️ **THE BOSS ROOM IS NOT GRADED AND THAT IS A DECISION TO REVISIT.** The desert
+now ends purple and cuts to an ungraded room, which reads as the lights coming
+back on. It was left alone because the ask named stage 2 — one `grade: true` plus
+a stops list that OPENS where this one closes is the fix if the cut looks wrong.
+
+### How it was previewed without playing it
+
+Headless Chrome boots the game and proves it loads, but **it cannot get past the
+title screen** — that needs a keypress — so no screenshot of the graded desert
+was available. The ramp was previewed instead by compositing it in Python over a
+real frame pulled from `desert-plate.mp4` with the same multiply maths the canvas
+uses. That is what the colour and strength calls were made against.
+
+⚠️ **IT IS A PREVIEW, NOT A RENDER.** It has the plate and the grade and nothing
+else — no mounds, no fighters, no HUD. Good enough to choose a colour and a
+strength, not good enough to sign off the look.
+
+---
+
 ## Boss nameplates, and the roll-call left the board
 
 Two asks in one, 2026-08-27: *"Add the boss names under their HP bars, remove the
@@ -3926,7 +4023,6 @@ PERFORMANCE.md for what happened last time textures got away from us.
 | `src/hit-fx.js` | the impact burst: six variants, picked per blow |
 | `src/horse-boss.js` | the HORSE: the final boss, and the last fight |
 | `src/title.js` | the photo title screen: the name drops in, LEBRON walks past |
-| `src/film.js` | **STILL LIFE'S PROJECTOR**, copied unchanged — the post effect (OFF) |
 | `src/prop.js` | barrels and food: punched, lifted, thrown, eaten |
 | `src/flies.js` | STILL LIFE's flies, crossing the sky above the belt — **pure scenery** |
 | `src/boom.js` | the string of explosions both bosses die in |

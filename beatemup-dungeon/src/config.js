@@ -155,64 +155,94 @@ const CONFIG = {
      had never shown. */
   spawnMarginPx: 70,
 
-  /* --- Old-film style (post effect) ---------------------------------------
-     STILL LIFE'S FILTER, COPIED VALUE FOR VALUE on request (2026-08-22), and
-     `src/film.js` is that game's file unchanged. The headline is the FRAME
-     LINE: the dark gap between two film frames rolling down the picture like a
-     misframed projector. Around it: grain, brightness flicker, a vignette, gate
-     weave, and the odd scratch. Colour is KEPT -- these are projector
-     artifacts, not a black-and-white grade.
+  /* =========================================================================
+     THE DAY PASSING (stage 2's colour grade)
+     =========================================================================
+     ONE COMPOSITED RECTANGLE OVER THE WHOLE FRAME, walking from orange to purple
+     as the player crosses the desert. Asked 2026-08-27: "a color filter on stage
+     2 ... begin with a color like orange, and end with purple, that will give the
+     player the impression that the day is passing ... it should affect everything
+     on screen, except the HUD ... smooth transition, almost unperceivable".
 
-     ⚠️ THREE OF THESE HAVE SINCE BEEN SOFTENED AND NO LONGER MATCH STILL LIFE.
-     Seen on this game's plate the flicker read as a blink rather than as a
-     projector -- watched on the wall photograph and the filmed street it is the
-     one artifact with nowhere to hide, where over there it sits under a busy
-     scrolling world. So on the same day it landed: the dip is 30% shallower and
-     it is HELD more than three times as long (24ms -> 80ms), which is the part
-     that was actually wrong -- a value re-rolled every 24ms changes ~42 times a
-     second and the eye reads that as strobing, not as a lamp. The scratch came
-     down 30% with it. Still Life's originals are in the comments beside each.
+     ⚠️ "EXCEPT THE HUD" IS THE DRAW ORDER AND NOTHING ELSE. game.js paints the
+     layers, then the combat FX, then this, then the bars. There is no mask and no
+     second canvas. Anything that must stay ungraded goes AFTER the `grade.draw`
+     call, which is also why the room fade, the dev text and the debug overlay are
+     untouched -- they already sat below it.
 
-     ⚠️ EVERYTHING ELSE HERE IS THAT GAME'S, VALUE FOR VALUE, and should stay
-     that way: the point of the request was that the two games look like they
-     came off the same projector. If the grain, the vignette or the weave move,
-     move them in flying-dungeon/src/config.js too. They are duplicated rather
-     than imported for the same reason TITLE_FONT is: each game's config.js is
-     self-contained.
+     ⚠️ IT IS DRIVEN BY DISTANCE, NOT TIME. "Purple at the end" is a promise about
+     a PLACE, and only a position clock keeps it: a wall clock turns the sky
+     purple early for a player who lingers in the first fight and leaves it orange
+     for one who runs. The trade is that the sunset pauses inside a locked arena,
+     which cannot be seen -- nothing is moving to compare it against.
 
-     ⚠️ IT SITS OVER EVERYTHING, INCLUDING THE HUD AND THE END CARDS, which is
-     one difference from that game -- there the HUD is drawn outside the film
-     pass. Here the whole frame is one projected picture: the grain, the
-     vignette and the 1.4px gate weave take the health bar with them. If the
-     HUD ever needs to sit outside it, the split point is `renderFilmed()` in
-     game.js, not a knob in here. */
-  /* ⚠️ OFF. It was built, seen, and turned down on the day it landed
-     (2026-08-22): "it causes a terrible feeling". The flicker was softened
-     first -- see the note above -- and it still was not wanted, so the answer
-     is not another pass on these numbers.
+     ⚠️ AND IT IS A HIGH-WATER MARK. This room reverses, so `camX / span` would
+     rewind the evening every time the player walked back. Evenings do not do
+     that; `peak` only goes up.
 
-     EVERYTHING BELOW STAYS, AND THE CODE PATH STAYS, on request: `film.js`,
-     `renderFilmed()` and this whole block are live and one flag from working.
-     Set this true to see it again. Do not delete any of it to tidy up. */
-  film: false,
-  filmBarSpeed: 60,      // px/sec the frame-gap bar rolls down
-  filmBarHeight: 0,      // px thickness of the dark frame gap (0 = no frame line)
-  filmBarDark: 0.78,     // how dark the gap gets (0-1)
-  filmGrain: 0.11,       // grain opacity
-  filmFlicker: 0.042,    // max brightness dip (black overlay alpha). 0.06 there
-  /* How long ONE brightness value is held before a new one is rolled -- this is
-     the BLINK RATE, and it is the knob that matters. At Still Life's 24ms the
-     lamp changes ~42 times a second, which strobes; at 80 it changes ~12 times,
-     which breathes. Raise it further to slow the flicker, lower it to bring the
-     strobe back, 0 = a new value every single frame. */
-  filmFlickerMs: 80,     // 24 there
-  filmVignette: 0.22,    // corner darkening strength
-  filmWeave: 1.4,        // px vertical gate jitter of the whole picture
-  filmScratchChance: 0.028, // per-frame chance of a vertical scratch. 0.04 there
-  /* Optional CSS grade on the canvas element (kept EMPTY = full colour). A
-     gentle 'contrast(1.08)' would add filmic punch; desaturation would not be
-     this effect. Empty in Still Life too. */
-  filmCss: '',
+     ⚠️ THE STOPS EXIST BECAUSE ORANGE TO PURPLE IS NOT A STRAIGHT LINE. In one
+     hop, #ffa24a -> #6b3fa0 lerps through a dead grey-brown at the midpoint --
+     the two sit on opposite sides of the wheel and the straight line between them
+     runs through the middle of it. The stops bend the path the way a sky goes:
+     orange, red, pink-purple, purple. No leg crosses the grey.
+
+     ⚠️ `multiply`, NOT A PLAIN RECTANGLE. Flat source-over at 20% is a sheet of
+     coloured plastic: it lifts the blacks and flattens the frame toward one
+     value. Multiply is coloured LIGHT -- black stays black, midtones take the
+     tint, and the picture darkens as the tint darkens. The alpha ramps with the
+     colour, so dusk is dimmer than noon without a second darkening pass.
+
+     ⚠️ "ALMOST UNPERCEIVABLE" IS A RATE, NOT A STRENGTH. The end colours are
+     meant to be seen -- orange at the start and purple at the end is the brief --
+     what must not be seen is the CHANGE. It is spread over 5006px of camera
+     travel, which is minutes of play, so the per-second delta is far under what
+     the eye tracks. If it ever reads as a wipe, the fault will be a stop with too
+     big a jump to its neighbour, not the overall spread.
+
+     ⚠️ OPT IN PER ROOM (`ROOMS[n].grade`), like `scenery` and `flies`. The street
+     is a different day and the boss room is indoors.
+
+     ⚠️ THE BOSS ROOM IS NOT GRADED AND THAT IS A DECISION TO REVISIT. The desert
+     ends purple and cuts to an ungraded room, which reads as the lights coming
+     back on. It was left alone because the ask named stage 2 and the boss room is
+     its own place -- one `grade: true` plus a stops list that opens where this one
+     closes is the fix if that cut looks wrong in play. */
+  GRADE: {
+    on: true,
+    mode: 'multiply',
+    /* ⚠️ HOW MUCH OF THE RAMP IS LET THROUGH -- THE ONE KNOB TO TUNE. It scales
+       every stop's alpha, so the SHAPE of the day (which colour, and how the
+       weight builds toward dusk) is preserved by construction and only the level
+       moves. Editing the four alphas by hand is four chances to change the shape
+       while trying to change the level.
+
+       ⚠️ IT LANDED AT 1.0, WAS HALVED, AND CAME BACK UP. 1.0 was refused -- "its
+       too strong, too perceivable, can you make it more subtle" -- and 0.50 was
+       the correction. Seen in play that was further than wanted, and it settled
+       at 0.70: "instead of 0.5 in the knob, make it 0.7". So the useful range is
+       narrow and the middle of it is the answer, which is worth knowing before
+       anyone reaches for the ends again.
+
+           0.35   barely there; the end stops reading as purple
+           0.50   the over-correction; visibly a warm/cool shift, easy to miss
+           0.70   ships
+           1.00   the first pass, refused
+
+       ⚠️ AND IT IS NOT THE SAME DIAL AS THE TRANSITION. "Too perceivable" here
+       meant the tint's STRENGTH; the RATE of change is set by the room's length
+       and the spacing of the stops. If the change ever reads as a wipe, that is
+       a stop with too big a jump to its neighbour and this number will not fix
+       it. */
+    strength: 0.70,
+    /* t is the fraction of the room crossed. Colour AND alpha ramp together --
+       see the note above about dusk being dimmer as well as bluer. */
+    stops: [
+      { t: 0.00, color: '#ffa24a', alpha: 0.16 },   // low warm sun
+      { t: 0.45, color: '#ff6a4d', alpha: 0.22 },   // late afternoon
+      { t: 0.80, color: '#b0508f', alpha: 0.30 },   // dusk, pink over the sand
+      { t: 1.00, color: '#6b3fa0', alpha: 0.38 },   // purple
+    ],
+  },
 
   /* =========================================================================
      THE BELT
@@ -930,6 +960,11 @@ const CONFIG = {
          collide with nothing, so this changes what the room LOOKS like and
          nothing about how it plays. */
       scenery: true,
+      /* THE DAY PASSES OVER THIS ROOM AND ONLY THIS ONE. Orange at the start,
+         purple at the end, driven by how far across the room the camera has been
+         -- see CONFIG.GRADE. Declared per room for the same reason `scenery` is:
+         which rooms a whole-frame effect covers is level data. */
+      grade: true,
       /* 5007px of pan + one screen. `camX` is clamped to `endX - GAME_W`, so
          this is the hard ceiling on how much of the shot can ever be seen —
          set at exactly the end of the film, the way the street's 4704 is. */

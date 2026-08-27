@@ -132,58 +132,99 @@ If that gets too tight, lower **`flyBossHoverY`** (150) rather than touching
 
 ---
 
-## The projector — built, and switched OFF
+## The old-film filter — DELETED
 
-**`film: false`. It is off in the shipping build and that is a decision, not a
-default.** Still Life's old-film post effect was ported on request, seen, and
-turned down the same day — *"it causes a terrible feeling"*. The flicker had
-already been softened once (see below) and it still was not wanted, so **another
-pass on these numbers is not the answer**.
+**It is gone, and it is not coming back as a flag.** Still Life's projector post
+effect — grain, brightness flicker, a vignette, gate weave, the odd scratch, a
+rolling frame line — was ported on request on 2026-08-22, seen, and turned down
+the same day: *"it causes a terrible feeling"*. It was then kept wired and
+switched off, on request, with a note in the config saying not to delete it.
 
-Everything stays wired: `src/film.js` is that game's file copied unchanged,
-`renderFilmed()` in `game.js` still routes every frame through the pass, and
-this whole config block is live. Set `film: true` to see it. **Do not delete any
-of it to tidy up** — keeping it toggleable was the ask.
+On 2026-08-27 that reversed: *"remove this film thing, this is badness from the
+past"*. `src/film.js`, the `CONFIG.film*` block, the `index.html` entry and the
+`game.js` wiring are all deleted. `renderFilmed()` became `renderFrame()` and
+now does nothing but clear the frame under each of its six call sites.
 
-What it does when it is on: grain, a brightness flicker, a vignette, vertical
-gate weave, the odd scratch, and a rolling frame line that is switched off.
+> ⚠️ **"Film" still means something in this codebase, and it is not this.** The
+> backdrop is *filmed footage* — a `video` plate the camera scrubs, and a `film`
+> source kind for frame sequences. `src/backdrop.js`, `src/stage.js` and
+> `SOURCES` all use the word that way. Those are core and were not touched.
 
-| knob | what it does |
+> ⚠️ **A "keep it toggleable, don't delete it" instruction has a shelf life.**
+> The config carried *"Do not delete any of it to tidy up"* for five days and
+> then the user asked for exactly that. The note was right when written; it was
+> not a veto on the next decision. Same shape as the coverage target that moved
+> three times — record what is true now, not a prohibition on what comes next.
+
+## The day passing (stage 2's colour grade)
+
+```js
+GRADE: {
+  on: true,
+  mode: 'multiply',
+  strength: 0.70,        // <- THE knob. scales every stop's alpha
+  stops: [
+    { t: 0.00, color: '#ffa24a', alpha: 0.16 },   // low warm sun
+    { t: 0.45, color: '#ff6a4d', alpha: 0.22 },   // late afternoon
+    { t: 0.80, color: '#b0508f', alpha: 0.30 },   // dusk, pink over the sand
+    { t: 1.00, color: '#6b3fa0', alpha: 0.38 },   // purple
+  ],
+},
+// ...and per room, like `scenery` and `flies`:
+{ name: 'desert', grade: true, ... }
+```
+
+One composited rectangle over the whole frame, walking orange to purple as the
+player crosses the desert. `src/grade.js`.
+
+> ⚠️ **"Except the HUD" is the draw order and nothing else.** `game.js` paints
+> the layers, then the combat FX, then `grade.draw`, then the bars. No mask, no
+> second canvas. Moving that one call is how anything joins or leaves the grade —
+> which is also why the room fade, the dev text and the debug overlay are already
+> outside it.
+
+> ⚠️ **Driven by distance, not time.** "Purple at the end" is a promise about a
+> *place*; a wall clock would turn the sky purple early for a player who lingers
+> in the first fight. Trade: the sunset pauses inside a locked arena, which can't
+> be seen — nothing is moving to compare it against.
+
+> ⚠️ **High-water mark.** The desert reverses, and `camX / span` would rewind the
+> evening every time the player walked back. `peak` only goes up.
+
+> ⚠️ **The stops exist because orange to purple is not a straight line.** In one
+> hop `#ffa24a` to `#6b3fa0` lerps through a dead grey-brown at the midpoint —
+> they sit on opposite sides of the wheel. The stops bend the path the way a sky
+> does: orange, red, pink-purple, purple. Sampled every 10% the saturation never
+> drops below 0.53, so no leg crosses the grey.
+
+> ⚠️ **`multiply`, not a plain rectangle.** Flat source-over is a sheet of
+> coloured plastic: it lifts the blacks and flattens the frame. Multiply is
+> coloured *light* — black stays black, midtones take the tint, and the picture
+> darkens as the tint does, so dusk is dimmer than noon with no second pass.
+
+**Tuning it: `strength`, and only `strength`.** It scales every stop's alpha, so
+the *shape* of the day is preserved and only the level moves. It landed at 1.0
+and was refused — *"too strong, too perceivable"* — was halved to 0.50, and
+settled at **0.70**. The useful range is narrow and the answer was in the middle
+of it.
+
+| strength | reads as |
 |---|---|
-| `film` | **`false` — shipped off.** `true` turns the whole thing on |
-| `filmGrain` | 0.11 — grain opacity |
-| `filmFlicker` | **0.042** — the brightness dip. Still Life's is 0.06 |
-| `filmFlickerMs` | **80** — how long one dip is held, i.e. the **blink rate**. Still Life's is 24 |
-| `filmVignette` | 0.22 — corner darkening |
-| `filmWeave` | 1.4 — px of vertical gate jitter of the whole picture |
-| `filmScratchChance` | **0.028** — per-frame odds of a scratch. Still Life's is 0.04 |
-| `filmBarHeight` | 0 — the rolling frame line, off. `filmBarSpeed` / `filmBarDark` size it if it goes on |
-| `filmCss` | a CSS grade on the canvas element. Empty. `contrast(1.08)` would add punch; desaturation would be a different effect |
+| 0.35 | barely there; the end stops reading as purple |
+| 0.50 | the over-correction — a warm/cool shift that's easy to miss |
+| **0.70** | ships |
+| 1.00 | the first pass, refused |
 
-**Three of those no longer match Still Life, deliberately.** On this game's
-plate the flicker read as a blink rather than as a lamp, and the knob that was
-actually wrong is `filmFlickerMs`: at 24 the value is re-rolled ~42 times a
-second, which the eye reads as strobing. At 80 it changes ~12 times a second and
-breathes instead. The dip came down 30% with it and the scratch 30% with that.
-**Everything else is that game's value for value** — if the grain, the vignette
-or the weave move, move them in `flying-dungeon/src/config.js` too. The point of
-the request was that the two games look like they came off one projector.
+> ⚠️ **Strength is not the transition dial.** "Too perceivable" meant the tint's
+> weight. The *rate* of change comes from the room's length and the spacing of
+> the stops — it is spread over 5006px of camera travel, minutes of play. If the
+> change ever reads as a wipe, that is one stop jumping too far to its neighbour
+> and `strength` will not fix it.
 
-**It is the last thing drawn, over everything — including the HUD.** That is the
-one structural difference from Still Life, where the HUD sits outside the film
-pass. Here the whole frame is one projected picture, so the health bar grains
-and weaves with the fight. `renderFilmed()` in `game.js` is the split point if
-that ever needs to change.
-
-Two rules inside `renderFilmed()` that are not obvious:
-
-* **The frame is cleared BEFORE the weave**, in unshifted space — otherwise the
-  strip the picture has just moved off keeps last frame's pixels, a smear along
-  one edge that looks like a rendering bug rather than like a projector.
-* **The overlay is not weaved with the picture.** Grain, vignette, frame line
-  and flicker are the *projector*; they stay nailed to the screen while the
-  picture moves under them. Drawn inside the translate they would ride along and
-  the weave would stop being visible at all.
+> ⚠️ **The boss room is not graded, and that is a decision to revisit.** The
+> desert ends purple and cuts to an ungraded room, which reads as the lights
+> coming back on. One `grade: true` plus a stops list that opens where this one
+> closes is the fix if that cut looks wrong in play.
 
 ---
 

@@ -63,12 +63,10 @@
      and the props are -- it belongs to a ROOM, and the shell is what changes
      rooms. Pure scenery: nothing else in this file asks it anything. */
   const scenery = new Scenery(assets);
-  /* STILL LIFE'S PROJECTOR, the file copied over unchanged and driven from the
-     same knobs (CONFIG.film*). It is a post effect and it is the LAST thing
-     drawn every frame -- see renderFilmed(). */
-  const film = new Film(CONFIG);
-  canvas.style.filter = (CONFIG.film && CONFIG.filmCss) ? CONFIG.filmCss : '';
-
+  /* The day passing over the desert. Owned here for the reason the flies, the
+     props and the mounds are -- it belongs to a ROOM, and the shell is what
+     changes rooms. Nothing else in this file asks it anything. */
+  const grade = new Grade();
   let player = null;
   let phase = 'boot';          /* boot | logo | title | play | outro | ending
                                   | fade | dead | gameover | clear */
@@ -498,6 +496,7 @@
     flies.enterRoom(stage.room(), stage.camX);
     // ...and so does the ground it walks on. See CONFIG.SCENERY.
     scenery.enterRoom(stage.room());
+    grade.enterRoom(stage.room(), stage);
     /* How the player finds what is within reach. Handed over rather than looked
        up globally, so a Player built for the ending screen or a test has none
        and simply cannot pick anything up. */
@@ -525,13 +524,6 @@
     let dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     input.poll();
-    /* THE PROJECTOR RUNS IN EVERY PHASE, and it is ticked here rather than in
-       any of them: the grain, the flicker and the gate weave belong to the
-       projector, not to what happens to be on the screen. That includes the
-       hitstop return below -- the picture is HELD, but a projector holding a
-       frame still weaves and still shows grain. */
-    if (CONFIG.film) film.update(dt);
-
     /* THE PAUSE SCREEN. Read here, above everything, because a pause has to
        beat every other reason a frame might be skipped -- including the hitstop
        return further down, which would otherwise swallow the press for a few
@@ -567,7 +559,7 @@
          game's recurring bug and it presents as input being dead on a screen
          that looks completely normal -- which, on a pause screen, would look
          exactly like a pause screen. */
-      renderFilmed(render);
+      renderFrame(render);
       hud.drawCard(ctx, CONFIG.PAUSE.LINES || ['PAUSA'], 1, CONFIG.hudColor,
                    CONFIG.PAUSE.dimAlpha);
       requestAnimationFrame(loop);
@@ -611,7 +603,7 @@
        that looks completely normal. */
     if (phase === 'logo') {
       const finished = logo.update(dt, input);
-      renderFilmed(() => logo.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
+      renderFrame(() => logo.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
       if (finished) {
         /* Straight to the title, or straight into the fight if there is no
            title screen -- start() schedules its own frame, which is why that
@@ -625,7 +617,7 @@
 
     if (phase === 'title') {
       const finished = title.update(dt, input);
-      renderFilmed(() => title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
+      renderFrame(() => title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
       if (finished) { start(); return; }
       requestAnimationFrame(loop);
       return;
@@ -654,6 +646,7 @@
       props.enterRoom(stage.room(), player);
       flies.enterRoom(stage.room(), stage.camX);
       scenery.enterRoom(stage.room());
+      grade.enterRoom(stage.room(), stage);
       roomMusic();
       phase = 'play';
       phaseT = 0;
@@ -665,7 +658,7 @@
        too would show up as a dropped frame — a stutter — rather than as a held
        moment of impact. */
     if (combat.tickFreeze(dt)) {
-      renderFilmed(render);
+      renderFrame(render);
       requestAnimationFrame(loop);
       return;
     }
@@ -761,6 +754,7 @@
            visible. */
         flies.enterRoom(stage.room(), stage.camX);
         scenery.enterRoom(stage.room());
+        grade.enterRoom(stage.room(), stage);
         roomMusic();
         input.flush();
       }
@@ -859,7 +853,7 @@
       else { toTitle(); return; }
     }
 
-    renderFilmed(render);
+    renderFrame(render);
     requestAnimationFrame(loop);
   }
 
@@ -1000,36 +994,24 @@
 
   // --- Render --------------------------------------------------------------
   /**
-   * ONE FRAME, THROUGH THE PROJECTOR.
+   * ONE FRAME.
    *
    * Everything this game draws goes through here, in every phase -- the title,
-   * the fight, the fades, the panels. `body` draws the picture; this puts it on
-   * film.
+   * the fight, the fades, the panels. `body` draws the picture; this clears the
+   * frame under it.
    *
-   * ⚠️ THE FRAME IS CLEARED BEFORE THE WEAVE, NOT AFTER. The gate jitter
-   * translates the whole picture by a pixel or so, so the clear has to happen
-   * in UNSHIFTED space or the strip the picture has just moved off keeps last
-   * frame's pixels -- a smear along one edge that looks like a rendering bug
-   * rather than like a projector.
-   *
-   * ⚠️ AND THE OVERLAY IS NOT WEAVED WITH IT. Grain, vignette, frame line and
-   * flicker are the PROJECTOR; they stay nailed to the screen while the picture
-   * moves under them. Drawn inside the translate they would ride along and the
-   * weave would stop being visible at all. Still Life's arrangement, kept.
+   * ⚠️ IT IS A WRAPPER FOR ONE FILL AND THAT IS ENOUGH REASON TO KEEP IT. Six
+   * call sites draw six different pictures and every one of them needs the frame
+   * cleared first; the alternative is the same two lines copied six times and
+   * forgotten in the seventh. It used to hold the projector post-effect too
+   * (deleted 2026-08-27, "this is badness from the past").
    */
-  function renderFilmed(body) {
-    const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
+  function renderFrame(body) {
     ctx.save();
     ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, W, H);
+    ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);
     ctx.restore();
-
-    ctx.save();
-    if (CONFIG.film) ctx.translate(0, film.weaveOffset());
     body();
-    ctx.restore();
-
-    if (CONFIG.film) film.render(ctx, W, H);
   }
 
   function render() {
@@ -1061,6 +1043,14 @@
     }
 
     combat.drawFX(ctx, camX);
+
+    /* ⚠️ THE DAY, AND THE LINE ABOVE IT IS THE WHOLE OF "EXCEPT THE HUD". Every
+       layer, every fighter and every hit burst is already down; every bar, the GO
+       banner, the room fade, the dev text and the debug overlay come after. There
+       is no mask -- moving this one call is how anything joins or leaves the
+       grade. See CONFIG.GRADE. */
+    grade.update(stage);
+    grade.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
 
     if (player) hud.drawPlayer(ctx, player, lifeBar);
     for (const e of crowd.list) hud.drawEnemy(ctx, e, sheets, camX);
