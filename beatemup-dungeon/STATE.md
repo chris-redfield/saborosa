@@ -3242,6 +3242,64 @@ mound-width of slack either side and drew about a third more than the screen can
 show. `ax` is the centre, so the left edge is `sx - ax` and the right is
 `sx + (w - ax)`.
 
+### And then the floor was given three speeds (2026-08-27)
+
+*"One crazy feature: for the cigarrete bums mounts, we want to try to create a
+parallax effect on them, it should be 3 layers, a closer one, a mid one and a far
+away one, they should move in different speeds."*
+
+The six rows are cut into three depth **bands**, two rows each, and each band
+scrolls at its own rate — `CONFIG.SCENERY.parallax`, `near: 1.00 / mid: 0.90 /
+far: 0.80`, the same meaning `parallax` has on a backdrop layer. Walk 1000px and
+the back of the belt has drifted 200px against the sand under it. The belt reads
+as having thickness instead of as one flat decal.
+
+⚠️ **THIS DELIBERATELY BREAKS THE RULE THE SECTION ABOVE IS BUILT ON.** "They
+behave as the ground" was the whole reason this was a day's work: a mound sits on
+a fixed patch of sand and the fighters walk over it. A band under 1.0 does not —
+it slides against the filmed plate, which is parallax 1.0, and against every
+fighter, who are 1.0 by definition. **That is the effect, and it is only
+affordable because of the same bargain: nothing in this game ever asks a mound
+where it is, so there is nothing for the slide to be wrong about.** The two
+features cannot both exist the moment a mound has to be stood on for real.
+
+⚠️ **THE NEAR BAND IS PINNED AT 1.0, AND THAT IS A CHOICE, NOT THE DEFAULT.**
+Textbook parallax anchors the FAR plane and races the near one — far 1.0, mid
+1.1, near 1.25. Do that here and the ground **directly under the player's feet**
+outruns him: he reads as skating on the butts rather than walking through them,
+and this is a beat 'em up where the feet are the entire contract with the belt.
+Anchoring the NEAR band instead keeps the ground he is standing on honest and
+spends the whole effect on the depth behind him, which is where the eye goes for
+it anyway. Both are one edit; what ships is the anchored-near version.
+
+⚠️ **THE SPREAD IS THE DIAL, NOT THE THREE NUMBERS.** 1.00/0.90/0.80 is a 0.20
+spread. Under ~0.06 total it is invisible and costs only the coherence; much over
+0.25 and the back of the belt visibly crawls *backwards* under a fast camera,
+which reads as a bug rather than as distance.
+
+⚠️ **THE BAND COMES OFF THE ROW INDEX, NOT OFF THE JITTERED `z`.** `zJitter`
+moves a row's ground point up to 30px, and a mound that changed SPEED because its
+scatter landed slightly forward would tear the boundary open. Rows are what the
+bands are made of, so rows are what get sorted into them — a clean 2/2/2 at
+`rows: 6`, and the split follows `rows` if it changes.
+
+⚠️ **A BAND OVER 1.0 COSTS SCATTER; A BAND UNDER IT COSTS NOTHING.** A mound is
+drawn at `x - camX * p`, so filling the screen at the far end of the room needs
+mounds out to `p * camMax + GAME_W`. Below 1.0 that is *inside* the room and the
+existing field already over-covers it — which is why the shipped values needed no
+new extent. Above 1.0 it is past `endX`, and `enterRoom` extends the scatter to
+match or the last stretch of a fast layer would simply be bare. Per *frame* it is
+one multiply per item: the 9–12 draws and the single atlas bind are unchanged,
+and so is the ~67% coverage (shifting a row in x moves the holes, it does not
+make more of them).
+
+⚠️ **THREE BANDS MEANS TWO SEAMS**, and that is what "3 layers" costs over a
+smooth gradient — rows 1 and 2 are 84px apart in depth and now differ by 0.10 in
+speed. If a boundary ever reads as a tear rather than as distance, the fix is not
+a smaller spread; it is giving every *row* a rate lerped from far to near, one
+line in `scenery.js`. Three discrete layers is what was asked for, and it is also
+the version you can see working.
+
 ---
 
 ## Boss nameplates, and the roll-call left the board

@@ -819,6 +819,12 @@ SCENERY: {
   zFrom: 0.0,       // where the rows run, as fractions of the depth,
   zTo: 1.10,        // INCLUSIVE at both ends -- and zTo is past 1 on purpose
   marginPx: 1000,   // must clear the widest mound (995px)
+  parallax: {       // three depth bands, two rows each, each at its own rate
+    on: true,
+    near: 1.00,     // the rows the player walks through -- PINNED on purpose
+    mid:  0.90,
+    far:  0.80,
+  },
 },
 // ...and per room, like `flies`:
 { name: 'desert', scenery: true, ... }
@@ -878,6 +884,45 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 
 > ⚠️ **Anything that must be stood on for real** — a height `z` or `jumpY`
 > answers to — is a PROP, not scenery, and belongs in `prop.js`.
+
+### The three speeds
+
+`parallax` cuts the six rows into three depth bands — two rows each — and scrolls
+each at its own rate, the same meaning `parallax` has on a backdrop layer. Walk
+1000px and the far band has drifted 200px against the sand. `on: false` puts
+every row back at 1.0.
+
+> ⚠️ **It breaks "they behave as the ground", on purpose.** A band under 1.0 no
+> longer sits on a fixed patch of sand — it slides against the plate (1.0) and
+> against the fighters (1.0). Affordable only because nothing ever asks a mound
+> where it is. Incompatible with ever standing on one for real.
+
+> ⚠️ **`near` is pinned at 1.0 — that is the choice, not the default.** Anchoring
+> the far plane instead (far 1.0 / mid 1.1 / near 1.25) makes the ground under
+> the player's feet outrun him, and he reads as skating rather than walking.
+
+> ⚠️ **The spread is the dial, not the three numbers.** 1.00/0.90/0.80 is 0.20.
+> Under ~0.06 it is invisible; much over 0.25 and the back of the belt crawls
+> backwards under a fast camera and reads as a bug. Halve it for a hint, double
+> it for the crazy version.
+
+| spread | near / mid / far | reads as |
+|---|---|---|
+| 0.10 | 1.00 / 0.95 / 0.90 | a hint of depth |
+| **0.20** | **1.00 / 0.90 / 0.80** | ships |
+| 0.40 | 1.00 / 0.80 / 0.60 | the crazy version |
+| — | 1.00 / 1.10 / 1.25 (anchored far) | skating; don't |
+
+> ⚠️ **Bands come off the row index, not the jittered `z`** — `zJitter` would
+> otherwise flip a mound's speed and tear the boundary. 2/2/2 at `rows: 6`.
+
+> ⚠️ **Over 1.0 costs scatter, under it costs nothing.** A lagging band is inside
+> the room and the field already over-covers; a fast one runs past `endX` and
+> `enterRoom` extends the layout to match. Per frame it is one multiply — the
+> 9–12 draws, the single atlas bind and the ~67% coverage are all unchanged.
+
+> ⚠️ **Three bands means two seams.** If a boundary reads as a tear, the fix is a
+> per-*row* rate lerped far→near (one line in `scenery.js`), not a smaller spread.
 
 ---
 

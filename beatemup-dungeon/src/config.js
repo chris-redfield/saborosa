@@ -3709,7 +3709,68 @@ const CONFIG = {
 
      ⚠️ AND THE MEASURED NUMBER UNDERSTATES WHAT IT LOOKS LIKE. It counts ALPHA,
      and the art is porous on purpose -- a drift of loose butts with sand showing
-     between them. */
+     between them.
+
+     -------------------------------------------------------------------------
+     THE THREE SPEEDS (2026-08-27)
+     -------------------------------------------------------------------------
+     Asked for as "one crazy feature": *"for the cigarrete bums mounts, we want
+     to try to create a parallax effect on them, it should be 3 layers, a closer
+     one, a mid one and a far away one, they should move in different speeds."*
+
+     The six rows are cut into three depth BANDS -- two rows each -- and each band
+     scrolls at its own rate. The far drifts lag, the near ones keep up, and the
+     belt reads as having thickness instead of as one flat decal.
+
+     ⚠️ THIS DELIBERATELY BREAKS "THEY BEHAVE AS THE GROUND". A band under 1.0 no
+     longer sits on a fixed patch of sand -- it slides against the filmed plate,
+     which is parallax 1.0, and against the fighters, who are 1.0 by definition.
+     That IS the effect. It is only affordable because of the bargain at the top
+     of scenery.js: nothing in this game ever asks a mound where it is, so there
+     is nothing to be wrong. The moment one has to be stood on, this feature and
+     that one cannot both exist.
+
+     ⚠️ THE NEAR BAND IS PINNED AT 1.0, AND THAT IS THE CHOICE, NOT A DEFAULT.
+     Textbook parallax anchors the FAR plane and makes the near one race (far 1.0
+     / mid 1.1 / near 1.25). Try it and the ground directly under the player's
+     feet outruns him -- he reads as skating on the butts rather than walking
+     through them, and this is a beat 'em up where the feet are the whole
+     contract with the belt. Anchoring the NEAR band instead keeps the ground he
+     is actually standing on honest and spends the whole effect on the depth
+     behind him, which is where a player looks for it anyway. Both are one edit;
+     the values below are the anchored-near version.
+
+     ⚠️ THE SPREAD IS THE DIAL, NOT THE INDIVIDUAL NUMBERS. 1.00/0.90/0.80 is a
+     0.20 spread: walk 1000px and the far band has drifted 200px against the
+     sand. Under about 0.06 total it stops being visible at all and only costs
+     the coherence; much over 0.25 and the back of the belt visibly crawls
+     backwards when the camera moves fast, which reads as a bug rather than as
+     distance. Halve it (1.00/0.95/0.90) for a hint of depth; double it for the
+     crazy version that was asked for.
+
+     ⚠️ THE BANDS COME OFF THE ROW INDEX, NOT OFF THE JITTERED z. `zJitter` can
+     move a row's ground point 30px, and a mound that changed SPEED because its
+     scatter landed slightly forward would tear the boundary. Rows are what the
+     bands are made of. With `rows: 6` that is a clean 2/2/2; change `rows` and
+     the split follows it (rows 5 -> 2/2/1).
+
+     ⚠️ A BAND OVER 1.0 COSTS DRAWS AND SCATTER, a band under it costs nothing.
+     Below 1.0 a layer lags, so the existing field already over-covers the far
+     end of the room. Above 1.0 it outruns the room and scenery.js has to extend
+     the scatter past `endX` to keep it from going bare -- more items laid out,
+     and the same number on screen. Nothing else changes; the cull already uses
+     each item's own rate.
+
+     ⚠️ THREE BANDS MEANS TWO SEAMS, and that is the cost of "3 layers" over a
+     smooth gradient. Rows 1 and 2 sit 84px apart in depth and now differ by 0.10
+     in speed, so if the boundary ever reads as a tear rather than as distance,
+     the fix is not a smaller spread -- it is giving every ROW its own rate
+     interpolated from far to near (one line in scenery.js, `layers` becomes a
+     lerp on `r / (rows - 1)`). Three discrete layers is what was asked for and
+     it is also the version you can actually see working.
+
+     ⚠️ IT COSTS NOTHING PER FRAME. One multiply per item in the draw loop. The
+     9-12 mounds and the single atlas bind are exactly what they were. */
   SCENERY: {
     on: true,
     /* The pack, cut by tools/build-beat-fundo-defs.py. Loaded under the asset
@@ -3737,6 +3798,18 @@ const CONFIG = {
        field that began at his feet would show bare sand in the one moment the
        room is introducing itself. */
     marginPx: 1000,    // ...and it must clear the WIDEST mound, now 995px
+    /* THE THREE SPEEDS -- px of mound movement per px of camera movement, the
+       same meaning `parallax` has on a BACKDROP layer. The rows are split into
+       three equal bands of depth and each band takes one of these.
+
+       `on: false` and every row goes back to 1.0, which is what the ground cover
+       was before this and what any room that is not the desert wants. */
+    parallax: {
+      on: true,
+      near: 1.00,      // the rows the player walks through -- PINNED, see above
+      mid:  0.90,
+      far:  0.80,      // the drifts at the back of the belt lag furthest
+    },
   },
 
   /* =========================================================================

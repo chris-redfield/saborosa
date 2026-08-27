@@ -27,6 +27,15 @@
  * that when this first shipped: the coverage target came down from 80% to 60%,
  * and then the mounds grew 30%, which means fewer of them.
  *
+ * ⚠️ THE THREE SPEEDS ARE A LOOK, AND THEY BREAK THE ONE RULE ABOVE ON PURPOSE.
+ * `CONFIG.SCENERY.parallax` splits the rows into three bands that scroll at
+ * different rates, so the drifts at the back of the belt lag behind the ones the
+ * player is walking over. **A layer under 1.0 no longer sits on a fixed patch of
+ * sand** -- it slides against the filmed plate, which is at parallax 1.0. That is
+ * the effect, not a bug, and it is affordable for exactly the reason the rest of
+ * this file is: nothing asks a mound where it is. The near band is left at 1.0
+ * so the ground the player's feet are actually on still holds still.
+ *
  * ⚠️ IT IS FILL, NOT VRAM, WHICH IS THE GOOD KIND OF EXPENSIVE HERE. Every one
  * of those draws samples ONE 699x857 atlas, so there is a single texture bound
  * and nothing to thrash -- and VRAM is what actually cost this project its frame
@@ -37,7 +46,7 @@
 class Scenery {
   constructor(assets) {
     this.assets = assets;
-    this.items = [];       // {x, z, k} in world coords, sorted far -> near
+    this.items = [];       // {x, z, k, p} world coords + scroll rate, far -> near
     this.defs = null;
   }
 
@@ -75,8 +84,28 @@ class Scenery {
        him, so a scatter that began at his feet would show bare sand at the one
        moment the room is introducing itself. */
     const x0 = -margin;
-    const x1 = (room.endX || CONFIG.GAME_W) + margin;
     const depth = (room.belt && room.belt.depth) || CONFIG.beltDepth;
+
+    /* THE THREE SPEEDS, far band first, so `layers[b]` matches the band index a
+       row falls into. Off -- or absent -- and every row is 1.0, which is the
+       behaviour this had before and is still what every room but the desert
+       wants. */
+    const P = S.parallax;
+    const layers = (P && P.on)
+      ? [P.far, P.mid, P.near].map(v => (v == null ? 1 : v))
+      : null;
+    const bands = layers ? layers.length : 1;
+
+    /* ⚠️ A LAYER FASTER THAN THE CAMERA RUNS OUT OF SCATTER BEFORE THE ROOM DOES.
+       A mound at world `x` is drawn at `x - camX * p`, so filling the screen at
+       the far end of the room needs mounds out to `p * camMax + GAME_W`. Under
+       1.0 that is INSIDE the room and the existing field over-covers -- which is
+       why the shipped values need none of this. Over 1.0 it is past the end, and
+       without this the last stretch of a fast layer would simply be bare. */
+    const camMax = Math.max(0, (room.endX || CONFIG.GAME_W) - CONFIG.GAME_W);
+    const pMax = layers ? Math.max(1, ...layers) : 1;
+    const x1 = Math.max((room.endX || CONFIG.GAME_W),
+                        pMax * camMax + CONFIG.GAME_W) + margin;
 
     /* ⚠️ ROWS SPAN THE WHOLE BAND, END TO END, AND THE FIRST VERSION DID NOT.
        They were placed at the CENTRE of each of `rows` equal bands -- 5 rows
@@ -98,10 +127,18 @@ class Scenery {
       const f = rows > 1 ? r / (rows - 1) : 0.5;
       const z = (S.zFrom + (S.zTo - S.zFrom) * f) * depth
               + (Scenery._h(r * 97 + 3) - 0.5) * (S.zJitter || 40);
+      /* ⚠️ THE BAND IS PICKED OFF THE ROW INDEX, NOT OFF THE JITTERED `z`.
+         `zJitter` can push a row's ground point across a band's edge, and a mound
+         that changed SPEED because its scatter landed 30px further forward would
+         make the boundary visible as a tear. Rows are what the depth bands are
+         made of, so rows are what get sorted into them. */
+      const p = layers
+        ? layers[Math.min(bands - 1, Math.floor(r * bands / rows))]
+        : 1;
       let x = x0, i = 0;
       while (x < x1) {
         const k = Math.floor(Scenery._h(r * 911 + i * 57) * n) % n;
-        this.items.push({ x, z, k });
+        this.items.push({ x, z, k, p });
         /* SPACED BY THE MOUND'S OWN WIDTH, so a run of narrow ones packs tighter
            than a run of wide ones and the field never reads as a grid. Under 1
            they overlap, which is what covers the ground -- see CONFIG.SCENERY. */
@@ -135,7 +172,9 @@ class Scenery {
     const topY = Belt.topY;
     for (const it of this.items) {
       const f = defs.frames[it.k];
-      const sx = it.x - camX;
+      /* ⚠️ EACH ITEM CARRIES ITS OWN SCROLL RATE, and the CULL below has to use
+         the same number or a lagging layer pops in and out at the screen edge. */
+      const sx = it.x - camX * it.p;
       /* ⚠️ AGAINST THE ANCHOR, NOT THE WIDTH. `ax` is the mound's centre, so its
          left edge is `sx - ax` and its right is `sx + (w - ax)`. Culling on the
          full width either side was a whole mound's slack in both directions and
