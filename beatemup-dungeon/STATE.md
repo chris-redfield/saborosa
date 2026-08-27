@@ -2645,6 +2645,151 @@ the cue landing backwards. A narrower band high up is what survived that.
 
 ---
 
+## And then on 2026-08-27: a second room, and the horse moved to the end
+
+**THERE IS A DESERT BETWEEN THE STREET AND THE BOSS ROOM.** Asked for as a new
+level after the Mosca rematch, with the horse's room *"passed to the end of
+everything"*. The order of the game is now street → **desert** → boss room.
+
+⚠️ **MOVING THE BOSS ROOM WAS INSERTING AN ENTRY ABOVE IT, AND THAT IS THE
+POINT.** A room's place in the game is its index in `CONFIG.ROOMS` and **nothing
+in the codebase reads a room number** — `stage.roomIndex` walks the array,
+`hasNextRoom()` looks one ahead, the fade does `roomIndex + 1`. So re-ordering
+the level is editing level data. Not one line of the horse's room, its music,
+its props or its two `lock: false` segments changed.
+
+**IT IS THE STREET'S LOGIC AND NOT A NEW KIND OF PLACE**, which is what was
+asked for. A filmed plate scrubbed by camera position, `reverse: true` paired
+with the plate's `allowReverse`, and a list of segments alternating walking with
+fighting. What differs is only what the FOOTAGE decides — see below.
+
+**ITS TWO ARENAS WERE PLACED EMPTY AND THEN GIVEN ONE BODY EACH.** First:
+*"Don't add any enemies yet, just try to add 2 arenas, but when the player
+enters the arena, he can already move forward, he doesn't get blocked."* An
+arena with an empty `enemies` list became a **doorway** — see below, it is still
+there and still works. An hour later: *"add one cigarrete enemy, so I can test
+the arena effect."* Both now hold one **DUDU**, the lightest of the three
+cigarettes (34 HP, 5 damage), which is what a rig wants — the arena is the thing
+under test and a long fight is in the way of looking at it.
+
+**AND THEN A THIRD, AT THE VERY END: THE BOSS ARENA.** *"Place a final arena at
+the end of the level, this will be the boss arena."* It is still `kind: 'arena'`
+with DEDÉ standing in, because the desert has no boss decided; the room's last
+segment being a fight is what makes clearing it the door into HIPÓLITO's room.
+It costs no film — an arena locks the camera, and the walk before it has already
+spent all 5007px of the shot, the same trade the street's last two fights make.
+
+⚠️ **"THE CAMERA WILL NOT GO BACK ANYMORE AFTER EACH ARENA" NEEDED NO CODE.**
+That is what a cleared LOCKED arena already does, in this room as in the street:
+`_checkpoint()` raises `reverseFloorX` to the camera, `_followCamera` clamps to
+it, and `bounds()` derives the player's left wall from `camX` — one number moves
+both. It was **absent** while the arenas were empty only because the doorway
+path deliberately skips the checkpoint; putting an enemy in each turned it back
+on by itself. The desert therefore reverses freely inside a stretch and never
+past a fight it has finished, which is the street's behaviour exactly.
+
+### The desert's numbers are the shot's numbers
+
+`tools/build-desert-plate.py` is new and does what the other two plate tools do
+between them: it MEASURES the pan by phase correlation and re-encodes the clip
+so it can be scrubbed backwards.
+
+| | street | desert |
+|---|---|---|
+| shot | 29.52s | **26.03s** |
+| pan | 2266px of an 848-wide picture | **3317px** |
+| `worldPxPerSecond` | 116 | **192.4** |
+| camera travel | 3424px | **5007px** |
+| `endX` | 4704 | **6286** |
+| plays at `walkSpeedX` 300 | ~2.6x | **~1.6x** |
+
+⚠️ **THE DESERT IS THE LONGEST ROOM IN THE GAME OUT OF THE SHORTEST WALKING
+CLIP**, because its camera pans 1.7x faster. Camera travel is
+`worldPxPerSecond * duration` and `endX` is that plus one screen — so the film,
+not the level designer, decides how much room there is to walk in. Everything
+in the segment list is derived from those two numbers and the ~668px the camera
+trails the player by.
+
+⚠️ **IT IS THE ONLY PLATE THAT WAS DOWNSCALED.** The master is 1920x1080 HEVC at
+17.7 Mbps — **56MB, against a whole shipped itch build of 30**. The plate is
+stretched to the 1280x720 canvas whatever its own size, so it is cut to the
+848x478 both existing plates already are: 56MB → 9.9MB, with the per-frame blit
+cost left exactly where PERFORMANCE.md measured it. GOP 12 and 3000k are the
+street tool's settled trade, reused.
+
+⚠️ **AND THE ASSERTION IN THAT TOOL IS THE DURATION, NOT THE FRAME COUNT.** The
+street's tool asserts the count because `worldPxPerSecond` was measured against
+it. This master is variable-rate (`r_frame_rate` 29.917, `avg_frame_rate`
+30.046), so ffprobe counts 782 frames where a constant-rate decode yields 780 —
+the same file, counted two ways. The sync is measured per SECOND, so the
+duration is the thing that must not move.
+
+### An empty arena had to be made into a doorway on purpose
+
+Leaving `enemies` empty **already advanced on the first frame** — `crowd.cleared()`
+is true when nothing spawned. It was not enough, because on the way through it
+did three things only a fight has earned:
+
+* **It left a checkpoint.** `_checkpoint()` raises `reverseFloorX` to the camera,
+  a floor the player can never walk back past. Behind a cleared fight that is the
+  design; in the middle of an empty walk it is an invisible wall across ground
+  where nothing happened — and this room offers walking back.
+* **It raised the GO arrow.** The prompt means *the way forward has OPENED*, and
+  nothing had closed it. 2.6s of arrow over an uninterrupted walk.
+* **It locked the camera for that frame** and dropped the follow reference, so
+  the shot stopped for a frame in the middle of a scroll.
+
+So the emptiness is read at the top of the arena branch, before any of it. The
+segment still exists and is still consumed — write a wave into the list and the
+branch stops matching, and it is an ordinary arena again with nothing to undo.
+
+⚠️ **IT IS THE CURRENT SEGMENT FOR EXACTLY ONE FRAME, AND `bounds()` IS ASKED
+BEFORE `stage.update`** — so the walls it would raise do apply for that frame.
+Harmless where an empty arena can be: the scroll before it hands over with the
+player around screen x 670 and the walls are at 40 and 1240. Worth knowing before
+an empty arena is ever put somewhere the player could be against an edge.
+
+**What the desert deliberately does NOT have**, both per-room declarations and
+neither asked for: no `flies` (the street's were placed for its rooftops) and no
+`props` (its barrels are a pickup test rig). Two decisions waiting to be made,
+not oversights.
+
+### And it plays nothing at all
+
+*"Remove the main song from the desert level, we will use other songs later."*
+
+⚠️ **THAT IS `music: false`, AND LEAVING THE FIELD OUT IS THE OPPOSITE OF IT.**
+An absent `music` means *the level bed* — which is precisely the song being
+removed, and is what the room shipped with an hour earlier. `roomMusic()` now
+reads three states rather than two:
+
+| `ROOMS[n].music` | what plays |
+|---|---|
+| absent | the level bed (`music`) — the default every room had until now |
+| an asset key | that track |
+| `false` | **nothing.** The music is stopped on the way in |
+
+⚠️ **SILENCE CANNOT BE EXPRESSED BY PASSING A FALSY KEY DOWN TO `Sound`, which
+is why the test is in `roomMusic()` and not in `playMusic()`.** `playMusic`
+opens with `key || 'music'`, so `null`, `false` and `''` every one of them mean
+the bed — and that is deliberate, because that fallback is what makes
+`roomMusic()` safe to call for a room that declares nothing. A "no music" value
+handed to it would be swallowed by the same line that makes the default work.
+
+It uses `stopMusic()`'s own default fade rather than the 0.35 a track SWITCH
+uses: this is the music ending, not one piece giving way to another. The layers
+go with it (`layerVoices` is emptied), so the baratas' whistle stops too — and
+`whistleGate()` can carry on being asked every frame, because `setLayerOn` walks
+a list that is now empty.
+
+⚠️ **NOTHING BRINGS THE BED BACK BY ITSELF.** Walking out into the boss room
+starts the horse's theme because that room names one. A room added *after* the
+desert with no `music` field would pick the bed back up mid-game — which is the
+default doing its job, and would read as the street's song returning in a place
+it was never meant to.
+
+---
+
 ## The flies
 
 Three of Still Life's flies, crossing the sky behind the street. Everything
@@ -3265,8 +3410,15 @@ segments against one plate; the boss room made that insufficient.
 
 | room | travel | plate | film | camera |
 |---|---|---|---|---|
-| `street` | 3424px | the 29.5s dolly | 100% | forward only |
+| `street` | 3424px | the 29.5s dolly | 100% | **both ways** |
+| `desert` | 5007px | a 26.0s dolly | 100% | **both ways** |
 | `boss-room` | 337px | a 5.2s clip | 100% | **both ways** |
+
+⚠️ **THE ORDER OF THAT TABLE IS THE ORDER OF THE GAME, and it is `CONFIG.ROOMS`
+and nothing else.** No file reads a room number, so the desert went in between
+the street and the horse on 2026-08-27 by inserting an entry. The street's
+`reverse` also reads `true` here now — it was `false` until the shot was
+re-encoded on 08-26.
 
 Rooms hand over through the walk-out and a **fade**: the player leaves the right
 edge, the screen goes black, and the room swaps **at the blackest point** —
@@ -3301,17 +3453,51 @@ footage was cut to be reversible. Everything else about an arena is unchanged.
 ## The level
 
 A sequence of segments, alternating walking and fighting — the genre's spine.
+Each ROOM has its own list; these are the two walking ones.
+
+**The street**, read off `CONFIG.ROOMS[0]` on 2026-08-27:
 
 | # | kind | | film |
 |---|---|---|---|
 | 0 | scroll | to x2100 — **the opening passage, 1880px / 6.3s** | 42% |
-| 1 | arena | CIGARRO, STUB, ERKPA, **+ERKPA, CIGARRO from behind** | |
+| 1 | arena | DUDU, DIDI, DEDÉ, **+DEDÉ, DUDU from behind** | |
 | 2 | scroll | to x3300 | 77% |
-| 3 | **sub-boss** | the Mosca Boss | |
+| 3 | **sub-boss** | NARUTÃO, `fleeAt: 0.5` — **she breaks off and leaves alive** | |
 | 4 | scroll | to x3690 | 88% |
-| 5 | arena | CIGARRO, STUB, **ERKPA behind**, STUB, **CIGARRO behind** | |
+| 5 | arena | DEDÉ, CLAUDINHO, **ZIDANE behind**, CLAUDINHO, **ZIDANE behind** | |
 | 6 | scroll | to x4092 | **100%** |
-| 7 | arena | ERKPA, CIGARRO, **STUB behind**, **ERKPA behind**, STUB | |
+| 7 | arena | ZIDANE, DEDÉ, **CLAUDINHO behind**, **ZIDANE behind**, CLAUDINHO | |
+| 8 | **boss** | NARUTÃO again, no `fleeAt` — **this is the one that kills her** | |
+
+**The desert**, added 2026-08-27. No cast of its own yet — every occupant below
+is a stand-in:
+
+| # | kind | | film |
+|---|---|---|---|
+| 0 | scroll | to x2400 — the opening passage, 2180px / 7.3s | 35% |
+| 1 | arena | DUDU at x2600 — *lock ≈1732, walls 1772..2972* | |
+| 2 | scroll | to x4000 | 67% |
+| 3 | arena | DUDU at x4200 — *lock ≈3332, walls 3372..4572* | |
+| 4 | scroll | to x5674 | **100%** |
+| 5 | **the boss arena** | DEDÉ at x5900 — *lock 5006, walls 5046..6246* | |
+
+⚠️ **SEGMENT 5 IS THE BOSS ARENA AND IT IS STILL AN `arena`.** The desert has no
+boss yet; DEDÉ is holding the spot. Clearing it exhausts the room, which with the
+horse's room still to come is a **door** — he walks off the right edge and fades
+in there. No GO arrow, because `_goPrompt` self-gates to scroll segments and
+there is nothing left to walk to.
+
+⚠️ **WHEN A BOSS LANDS THERE, `who` IS NOT OPTIONAL.** `{ kind: 'boss' }` with no
+`who` means the **Mosca** — a default that predates the horse and means her
+everywhere it appears — and she is fought twice in the street and dies there.
+
+⚠️ **AND THAT FIGHT WILL HAVE A STILL BACKDROP WHICHEVER WAY IT IS SET.** The
+plate is scrubbed by camera position and nothing else, so a locked fight freezes
+the shot — the boss room's answer was `lock: false`. That answer is worth less
+here: this arena sits on the **final frame** of the film, so even unlocked the
+camera has nowhere forward to go and the shot can only move if the player walks
+back. Buying room for it means framing the fight deliberately with an explicit
+`camX` a few hundred px short of the end.
 
 ⚠️ **THE LEVEL ENDS ON A WALK, NOT A FREEZE.** Clearing the last fight no
 longer stops the world and throws up the card. It hands to an `outro` phase: the

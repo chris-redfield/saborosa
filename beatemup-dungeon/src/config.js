@@ -56,9 +56,13 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    /* ⚠️ OFF. This is the shipping state, and `package.sh` refuses to build
-       while it is true -- so a forgotten `true` costs a failed build rather
-       than a shipped cheat.
+    /* ⚠️ CURRENTLY **ON**, WHICH IS NOT THE SHIPPING STATE. Off is what ships,
+       and `package.sh` refuses to build while this is true -- so a forgotten
+       `true` costs a failed build rather than a shipped cheat.
+
+       ⚠️ THIS LINE IS THE ONE THING IN THE BLOCK THAT DESCRIBES A VALUE RATHER
+       THAN A RULE, so read the value below and not this sentence. It said "OFF"
+       for three days while the flag was true.
 
        It went off for the first itch build on 2026-08-22, back on the same day
        to test the horse fight and the barrels, off again for the final package,
@@ -68,7 +72,7 @@ const CONFIG = {
        submission build. Everything below is dead while it is false,
        and so is the number-key ROOM JUMP, which is refused in input.js as well
        as here (see the note there). */
-    on: false,
+    on: true,
     /* vs the real string's 4 / 5 / 6 / 4 / 9.
 
        ⚠️ THIS IS THE ONE THING THAT MAKES A DEV SESSION UNABLE TO JUDGE THE
@@ -79,13 +83,22 @@ const CONFIG = {
        walk the level for pacing; use 50 to get somewhere quickly. */
     punchDamage: 50,
 
-    /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. 0 is the street, 1
-       the boss room. Testing a late room by playing to it is how a late room
-       stops getting tested; this is the shortcut.
+    /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. Testing a late room
+       by playing to it is how a late room stops getting tested; this is the
+       shortcut.
 
-       The NUMBER KEYS do the same thing live -- 1 for the first room, 2 for the
-       second -- so a room can be jumped to mid-session without touching this
-       file. Both are dev-only and dead when `on` is false. */
+           0  street        1  desert        2  boss room (HIPÓLITO)
+
+       The NUMBER KEYS do the same thing live, and they are **one-based** --
+       `input.js` sets the jump to `n - 1`, so 1 is the street, **2 is the
+       desert** and 3 is the boss room. Both are dev-only and dead when `on` is
+       false.
+
+       ⚠️ THE KEYS FOLLOW THE ARRAY AND NOTHING ELSE, which is why inserting the
+       desert at index 1 on 2026-08-27 moved 2 off the boss room and on to it
+       without a line of input code changing. Re-order ROOMS again and the keys
+       re-order with it -- so THIS COMMENT is the thing that goes stale, not the
+       behaviour. It already had, and said "1 the boss room". */
     startRoom: 0,
   },
 
@@ -459,6 +472,49 @@ const CONFIG = {
       maxRate: 8,
       tint: '',
     },
+    /* THE DESERT'S PLATE — the second walking room, and the street's treatment
+       applied to a different shot. Nothing here is a new idea: it is a video
+       scrubbed by camera position, it may be run backwards, and its sync is a
+       measurement. See tools/build-desert-plate.py, which produces the file and
+       prints the number below.
+
+       ⚠️ IT PANS 1.7x FASTER THAN THE STREET, and that is the only thing about
+       this room that is not the street's numbers. 3317px of pan across a
+       848-wide picture is 5007px at the 1280 canvas, in 26.026s — 192.4 px/s
+       against the street's 116. Two consequences worth knowing before touching
+       the room's segments:
+
+         * ONE SECOND OF FILM BUYS MORE WALKING. 5007px of camera travel here
+           against the street's 3424, out of a SHORTER clip. That is why the
+           room's `endX` is 6286 and the street's is 4704.
+         * AND IT PLAYS SLOWER TO KEEP UP. At `walkSpeedX` 300 the shot runs at
+           about 1.6x, where the street runs at 2.6x.
+
+       ⚠️ AND IT IS THE ONLY PLATE THAT WAS DOWNSCALED. The master is 1920x1080
+       HEVC at 17.7 Mbps — 56MB, against a whole itch build of 30 — and the
+       plate is stretched to the canvas whatever its own size, so it is cut to
+       the 848x478 both other plates already are. 56MB -> 9.9MB, and the
+       per-frame blit cost stays exactly what PERFORMANCE.md measured. */
+    desertPlate: {
+      kind: 'video',
+      src: 'v2:beatemup-dungeon/desert-plate.mp4',
+      /* 5007 screen px of pan across 26.026s. Measured by phase correlation
+         over all 780 frames, like the other two. */
+      worldPxPerSecond: 192.4,
+      /* Paired with `reverse` on the room — see the note on the street's plate,
+         both flags go together or the camera follows the player over a shot
+         that cannot go with it. The clip carries a keyframe every 12 frames,
+         which is what makes the backward seek affordable. */
+      allowReverse: true,
+      /* The street's 6.0, and for the street's reason: an arena handing over
+         yanks the camera most of a screen, and a threshold under that tripped a
+         seek every frame so nothing ever decoded. Absorb the handoff by playing
+         fast; reserve a seek for a genuine discontinuity. */
+      resyncS: 6.0,
+      trackGain: 1.2,
+      maxRate: 10,
+      tint: '',
+    },
     // Declared but unused until there is art — see the LAYERS note.
     foreground: { kind: 'image', src: '', scale: 1 },
   },
@@ -751,6 +807,150 @@ const CONFIG = {
        does. See the note at the top of this stretch -- scrolls are what the
        footage pays for, and this adds none. */
     { kind: 'boss' },],
+    },
+
+    /* ===== THE DESERT ========================================================
+       THE SECOND WALKING ROOM, added 2026-08-27, and it goes BETWEEN the street
+       and the horse: "after the player kills the fly boss, the next level is
+       this one", with the boss room pushed to the end of everything. Nothing
+       about the horse's room changed — a room's place in the game is its index
+       in this array and nothing else reads one, so moving it was inserting this
+       entry above it.
+
+       IT IS THE STREET'S LOGIC AND NOT A NEW KIND OF PLACE, as asked. A filmed
+       plate scrubbed by the camera, a camera that may run backwards, and a list
+       of segments alternating walking with fighting. The only numbers that
+       differ are the ones the FOOTAGE decides: 26.0s of shot at 192.4 px/s is
+       5007px of camera travel (the street gets 3424 out of a longer clip), so
+       this is the LONGER of the two rooms. See SOURCES.desertPlate.
+
+       ⚠️ IT HAS NO CAST OF ITS OWN, AND THE TWO ARENAS HOLD ONE DUDU EACH AS A
+       TEST RIG. They were placed empty first — "don't add any enemies yet, just
+       try to add 2 arenas" — and given a body an hour later, "so I can test the
+       arena effect". So each is now a REAL arena: the camera locks, the walls
+       go up at the edges of the view, and clearing it leaves the checkpoint
+       that stops the camera coming back. The waves that eventually live here
+       are still an open design question; these two are one enemy each.
+
+       ⚠️ THE EMPTY-ARENA PATH IS STILL THERE AND STILL WORKS. `Stage.update`
+       reads an empty `enemies` list as a DOORWAY — hands over on the first
+       frame, no lock, no GO arrow, no checkpoint. Emptying either list below
+       puts this room back to one uninterrupted 5450px walk.
+
+       ⚠️ NO FLIES AND NO PROPS. Both are per-room declarations and neither was
+       asked for; the street's flies were placed for its rooftops and its
+       barrels are a pickup test rig. Add them here as deliberate choices rather
+       than by copying the street wholesale.
+
+       ⚠️ IT PLAYS NOTHING. `music: false` — see below. */
+    {
+      name: 'desert',
+      plate: 'desertPlate',
+      startX: 220,
+      /* ⚠️ SILENT, AND THAT IS `false` RATHER THAN AN ABSENT FIELD. Requested
+         2026-08-27: "remove the main song from the desert level, we will use
+         other songs later". Leaving `music` out is the OTHER thing — it means
+         "the level bed", which is exactly the song being removed.
+
+         `roomMusic()` in game.js reads the three states: absent is the bed, a
+         key is that track, `false` stops the music on the way in. The room is
+         then quiet until something asks for a track — nothing in it does, since
+         it has no boss and the whistle layer rides the bed it no longer has.
+
+         ⚠️ AND THE STREET'S BED DOES NOT COME BACK BY ITSELF AFTERWARDS. The
+         boss room declares `musicBoss`, so walking out of here starts the
+         horse's theme as it always did; but a room added after this one with no
+         `music` would pick the bed up again mid-game. Put the song here when
+         there is one. */
+      music: false,
+      /* 5007px of pan + one screen. `camX` is clamped to `endX - GAME_W`, so
+         this is the hard ceiling on how much of the shot can ever be seen —
+         set at exactly the end of the film, the way the street's 4704 is. */
+      endX: 6286,
+      /* Paired with `allowReverse` on the plate; both go together or the camera
+         follows the player back over a shot that cannot follow. The clip is
+         re-encoded at GOP 12 for it — tools/build-desert-plate.py. */
+      reverse: true,
+      /* THE CAMERA TRAILS THE PLAYER BY ~668px (`GAME_W * camFocusX` +
+         `camDeadzone`), so a scroll ending at `toX` leaves the camera at
+         roughly `toX - 668`. Every film percentage below is derived that way,
+         and retuning either camera number moves all of them together. */
+      segments: [
+        /* THE OPENING IS A PASSAGE, like the street's and for the same reason:
+           long enough to establish the shot and the walk before anything asks
+           for a fight. 2180px, and it spends the first third of the film. */
+        { kind: 'scroll', toX: 2400 },   // camera 0 -> 1732   (film 35%)
+        /* THE FIRST FIGHT. ⚠️ ONE ENEMY, AND IT IS A TEST RIG RATHER THAN A
+           WAVE -- asked for 2026-08-27 as "one cigarrete enemy, so I can test
+           the arena effect". One body is enough to make the arena a real one:
+           the camera locks, the walls go up, and clearing it leaves the
+           checkpoint that stops the camera going back. What is being tested is
+           the lock, not the fight.
+
+           DUDU IS THE LIGHTEST OF THE THREE CIGARETTES (34 HP, 5 damage against
+           DEDÉ's 55 and 10), which is what a rig wants -- the arena is the
+           thing under test and a long fight is in the way of looking at it.
+           Change `kind` to `cigarro2` or `cigarro3` for a heavier one; nothing
+           else moves.
+
+           WHERE IT STANDS IS DERIVED. The camera locks around 1732, so the view
+           is 1732..3012 and the walls (`camX + gateMarginX`) are 1772..2972 --
+           that is the window an `x` has to fall inside. The scroll before it
+           lands the player on 2400, and 2600 puts this 200px in front of him,
+           which is the same beat the street's first arena opens on. z 110 is
+           mid-belt, a step in front of where he walks on (114). */
+        { kind: 'arena', enemies: [{ kind: 'cigarro', x: 2600, z: 110 }] },
+        { kind: 'scroll', toX: 4000 },   // camera 1732 -> 3332 (film 67%)
+        /* THE SECOND FIGHT, and the same rig again. Camera locks around 3332;
+           view 3332..4612, walls 3372..4572, player lands on 4000. */
+        { kind: 'arena', enemies: [{ kind: 'cigarro', x: 4200, z: 110 }] },
+        /* THE LAST WALK, and it lands the camera on the final frame of the shot
+           exactly as the player crosses it. */
+        { kind: 'scroll', toX: 5674 },   // camera 3332 -> 5006 (film 100%)
+
+        /* ===== THE BOSS ARENA =================================================
+           THE LAST THING IN THE ROOM, asked for 2026-08-27: "place a final arena
+           at the end of the level, this will be the boss arena". Clearing it is
+           what opens the door -- the segments run out, which with a room still
+           to come is a DOOR rather than the end of the game, so he walks off the
+           right-hand edge and fades into HIPÓLITO's room. No GO arrow: there is
+           nothing left to walk to, and `_goPrompt` self-gates on that.
+
+           ⚠️ IT IS STILL AN `arena`, BECAUSE THE DESERT HAS NO BOSS YET. When
+           one exists this becomes `{ kind: 'boss', who: '<name>' }` and the
+           enemy below goes. ⚠️ DO NOT LEAVE `who` OFF WHEN THAT HAPPENS: a boss
+           segment with no `who` is the MOSCA, which is a default that predates
+           the horse and means "the Mosca" everywhere it appears -- and she is
+           already fought twice in the street and dies there.
+
+           ⚠️ AND A LOCKED BOSS FIGHT HERE WILL FREEZE THE BACKDROP. The plate is
+           a video scrubbed by camera position and nothing else, so a camera that
+           does not move is a shot that does not move -- the boss room hit this
+           on 2026-08-24 and answered it with `lock: false`. That answer is worth
+           less here than it was there: this fight sits on the FINAL FRAME of the
+           film, so even unlocked the camera has nowhere forward to go and the
+           shot can only move if the player walks BACK. So expect a still
+           backdrop for this fight whichever way it is set, exactly as the
+           Mosca's street fight already looks. Framing it deliberately with an
+           explicit `camX` a few hundred px short of the end is the way to buy
+           room for the shot to keep running.
+
+           IT COSTS NO FILM, which is the only reason it fits. An arena locks the
+           camera, and the camera has already spent all 5007px of the shot by the
+           time the walk before it is over -- the same trade the street's last
+           two fights make.
+
+           THE OCCUPANT IS A STAND-IN AND IT IS DEDÉ, the strongest cigarette
+           (55 HP, 10 damage) rather than the DUDU the other two arenas hold. One
+           body is what makes this a real arena rather than a doorway, and the
+           heavier one reads as the last fight of the room. He stands 226px in
+           front of where the walk leaves the player (5674), mid-belt. The walls
+           are 5046..6246, so there is a whole screen of room around him. */
+        {
+          kind: 'arena',
+          enemies: [{ kind: 'cigarro3', x: 5900, z: 110 }],
+        },
+      ],
     },
 
     /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter

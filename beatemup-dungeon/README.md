@@ -760,8 +760,9 @@ reason, and hitting one of the three was the half that never worked.
 
 ```js
 ROOMS: [
-  { name: 'street',    plate: 'plate',     startX: 220, endX: 4704, reverse: false, segments: [...] },
-  { name: 'boss-room', plate: 'bossPlate', startX: 220, endX: 1617, reverse: true,  segments: [...] },
+  { name: 'street',    plate: 'plate',       startX: 220, endX: 4704, reverse: true, segments: [...] },
+  { name: 'desert',    plate: 'desertPlate', startX: 220, endX: 6286, reverse: true, segments: [...] },
+  { name: 'boss-room', plate: 'bossPlate',   startX: 220, endX: 1617, reverse: true, segments: [...] },
 ],
 fadeMs: 900,   // the whole room-to-room fade; the swap happens at its midpoint
 ```
@@ -770,17 +771,83 @@ Each room has its own footage and its own camera origin. To add one: add a
 `SOURCES` entry for its plate, a `ROOMS` entry pointing at it, and set `endX` so
 the camera crosses exactly as much of the shot as exists.
 
+**A room's place in the game is its index in this array and nothing else.**
+No file reads a room number, so re-ordering the level is moving an entry — which
+is how the desert went in between the street and the horse on 2026-08-27 without
+touching the boss room at all.
+
 **`reverse: true` needs a plate that can be scrubbed backwards.** Video cannot
 play backwards, so reverse means seeking, and a seek decodes from the previous
 keyframe. Re-encode the clip with dense keyframes first:
 
 ```
-python3 tools/build-boss-plate.py     # crops at the pan's turn, keyframe every 3 frames
+python3 tools/build-boss-plate.py       # crops at the pan's turn, keyframe every 3 frames
+python3 tools/build-street-plate.py     # keyframe every 12
+python3 tools/build-desert-plate.py     # keyframe every 12, downscaled, prints the pan
 ```
 
 **`lock: false` on an arena** makes the camera follow that fight instead of
 locking, with the whole room as walls rather than one screen. That is what a
 small room wants.
+
+### How long a room can be
+
+Two numbers, and the FOOTAGE decides both:
+
+| room | pan | `worldPxPerSecond` | camera travel | `endX` |
+|---|---|---|---|---|
+| street | 29.52s | 116 | 3424 | 4704 |
+| desert | 26.03s | 192.4 | 5007 | 6286 |
+| boss room | 5.21s | 64.8 | 337 | 1617 |
+
+`camX` is clamped to `endX - GAME_W` (1280), so **`endX` = camera travel + 1280**
+and it is a hard ceiling on how much of the shot can ever be seen. Camera travel
+is `worldPxPerSecond * duration` — which is why the desert is the longest room in
+the game out of the shortest walking clip: its shot pans nearly twice as fast.
+
+The camera trails the player by `GAME_W * camFocusX + camDeadzone` ≈ **668px**,
+so a scroll ending at `toX` leaves the camera at about `toX - 668`. Retune either
+camera number and every scroll's film percentage moves with it.
+
+### An arena with no enemies is a doorway
+
+```js
+{ kind: 'arena', enemies: [] },   // walked straight through
+```
+
+`Stage.update` reads the empty list and hands over on the segment's first frame:
+**no camera lock, no GO arrow, no checkpoint.** It holds the place a wave will go
+while a room is being laid out. Write enemies into the list and it is an ordinary
+arena again, with nothing else to change — which is how the desert's two went
+from doorways to fights, one `cigarro` each.
+
+### The room's last segment is the door
+
+The desert ends on an **arena**, not a scroll: clearing it exhausts the room, and
+a room with another one after it means a **door** — the player walks off the
+right edge and fades into the next. No GO arrow, because there is nothing left to
+walk to. That is the shape the street already has (it ends on the Mosca rematch),
+and it is why a "boss arena" placed last needs nothing else wired.
+
+> ⚠️ **When that arena becomes a real boss, `who` is not optional.**
+> `{ kind: 'boss' }` with no `who` is the **Mosca** — a default older than the
+> horse — and she dies in the street. And the fight will show a **still
+> backdrop**: the plate is scrubbed by camera position, this arena sits on the
+> final frame of the film, so the shot has nowhere forward to go whether it locks
+> or not. Give it an explicit `camX` a few hundred px short of the end if the
+> footage needs to keep running under the fight.
+
+> ⚠️ **The checkpoint comes back with the enemy, and that is usually what you
+> want.** An empty arena leaves the ground behind it walkable both ways; a
+> cleared one pins the camera at it (`reverseFloorX`). So "the camera stops going
+> back after each fight" is not a setting — it is the difference between the two
+> paths above.
+
+> ⚠️ **Leaving `enemies` empty was not enough on its own.** It already cleared
+> itself on the first frame, but on the way through it locked the camera for that
+> frame, raised a GO arrow over a walk nothing had interrupted, and left a
+> `reverseFloorX` checkpoint — an invisible wall across ground where no fight
+> happened, which matters in a room that offers walking back.
 
 ### The Mosca leaves and comes back
 
@@ -948,7 +1015,7 @@ DEV: { startRoom: 1 },   // which room the game boots into
 ```
 
 The **number keys do the same thing live** — `1` for the street, `2` for the
-boss room — with no fade, because sitting through the fade is exactly the
+desert, `3` for the boss room — with no fade, because sitting through the fade is exactly the
 waiting the shortcut exists to avoid. It rebuilds the player from scratch, so a
 key pressed mid-combo or on the death screen cannot carry that state into the
 new room. The marker shows which room you are in.
@@ -1111,6 +1178,21 @@ Three knobs and three pipelines.
 an asset key, and `roomMusic()` in game.js plays it on every room entry. Only
 one piece of music ever plays, so asking for one stops the other — and asking
 for the one already playing is a no-op, not a restart.
+
+**It has three states, and `false` is not the same as leaving it out:**
+
+```js
+// (no music field)     the level bed — the default, and what every room did until 2026-08-27
+music: 'musicBoss',  // that track
+music: false,        // NOTHING. The music stops on the way in and the room is silent
+```
+
+> ⚠️ **A falsy key does not mean silence.** `Sound.playMusic(key)` opens with
+> `key || 'music'`, so `null`, `false` and `''` all reach it as *the bed* — that
+> fallback is what makes `roomMusic()` safe for a room declaring nothing.
+> Silence is decided in `roomMusic()` before the call, and nowhere else.
+
+The desert is `music: false` — it is waiting on songs of its own.
 
 > ⚠️ **It starts when the player walks in, not when the horse arrives.** It was
 > hung off the boss spawning first, and the boss room opens with a wave of
@@ -1681,8 +1763,10 @@ Two rules, and the difference is which one the player experiences as the change.
 
 | track | scoped to | starts | stops |
 |---|---|---|---|
-| `musicBoss` (the horse) | the **room** — `ROOMS[1].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`VICTORY_STING`, 2026-08-24). It used to run through everything to the title — that was an explicit request and it was explicitly reversed |
+| `music` (the bed) | the **room**, by default — any room with no `music` field | walking through the door | when a room asks for something else, or for `music: false` |
+| `musicBoss` (the horse) | the **room** — `ROOMS[2].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`VICTORY_STING`, 2026-08-24). It used to run through everything to the title — that was an explicit request and it was explicitly reversed |
 | `musicMosca` (Still Life) | the **boss** — `FlyBoss.musicKey` | she flies in | ⚠️ **when she dies *or breaks off*** — the street gets its bed back |
+| *nothing* (the desert) | the **room** — `music: false` | — | the bed is stopped on the way in |
 
 **The horse's is room-scoped because his room opens with a wave of roaches.**
 Hanging it on the boss made it arrive a minute late, with the room's first fight

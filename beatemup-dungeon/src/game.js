@@ -385,8 +385,25 @@
     sound.setLayerOn(G.layer, on, G.fadeSec);
   }
 
+  /* ⚠️ THREE STATES, NOT TWO, AND `false` IS NOT THE SAME AS ABSENT.
+     A room with no `music` gets the level bed -- that is the default and it is
+     what every room did before 2026-08-27. `music: false` means the room plays
+     NOTHING: the bed is stopped on the way in and the room is silent until
+     something else asks for a track.
+
+     ⚠️ IT CANNOT BE EXPRESSED BY PASSING A FALSY KEY, which is why it is a test
+     here rather than a value handed to Sound. `playMusic(key)` opens with
+     `key || 'music'`, so null, false and '' all mean the bed -- deliberately,
+     because that fallback is what makes `roomMusic()` safe to call for a room
+     that declares nothing. Silence has to be decided BEFORE that.
+
+     The fade is `stopMusic`'s own default rather than the 0.35 a track SWITCH
+     uses: this is the music ending, not one piece giving way to another.
+
+     Added for the desert, which is waiting on songs of its own. */
   function roomMusic() {
     const r = stage.room();
+    if (r && r.music === false) { sound.stopMusic(); return; }
     sound.playMusic((r && r.music) || 'music');
   }
 

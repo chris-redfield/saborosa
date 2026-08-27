@@ -271,6 +271,46 @@ class Stage {
     }
 
     // --- arena -------------------------------------------------------------
+    /* AN ARENA WITH NOBODY IN IT IS A DOORWAY, NOT A FIGHT, and it hands over
+       on its first frame without doing any of the three things a fight does.
+       Added 2026-08-27 for the desert room, which is laid out as a real level --
+       two arenas, in the places its waves will go -- and has no cast yet: "when
+       the player enters the arena, he can already move forward, he doesn't get
+       blocked (because there aren't any enemies)".
+
+       ⚠️ IT IS NOT ENOUGH TO LEAVE `enemies` EMPTY AND LET IT CLEAR ITSELF.
+       That already advanced on the first frame -- `crowd.cleared()` is true when
+       nothing spawned -- but on the way through it did three things that only a
+       fight has earned:
+
+         * IT LEFT A CHECKPOINT. `_checkpoint()` raises `reverseFloorX` to the
+           camera, which is a floor the player can never walk back past. Behind
+           a fight that is the point; in the middle of an empty walk it is an
+           invisible wall across ground nothing happened on -- and this room has
+           `reverse: true`, so walking back is a thing it offers.
+         * IT RAISED THE GO ARROW. The prompt means "the way forward has
+           OPENED", and nothing had closed it. 2.6s of arrow over an
+           uninterrupted walk.
+         * IT DROPPED THE CAMERA'S FOLLOW REFERENCE and locked for a frame, so
+           the shot stopped for one frame in the middle of a scroll.
+
+       So the emptiness is read HERE, before any of that. The segment still
+       exists and is still consumed -- it holds the place a wave will go, and
+       the moment one is written into it this branch stops matching and it is an
+       ordinary arena again, with nothing to undo.
+
+       ⚠️ IT IS CURRENT FOR EXACTLY ONE FRAME, and `bounds()` is asked before
+       this runs -- so the walls it would raise do apply for that frame. Harmless
+       where an empty arena can be: the scroll before it hands over with the
+       player around screen x 670, and the walls are 40..1240. */
+    if (!(s.enemies && s.enemies.length)) {
+      this._followCamera(dt, player);
+      this.index++;
+      this.spawned = false;
+      this.lockX = null;
+      return this._enter(player, crowd);
+    }
+
     this.backdrop.setMode('plate', 'play');
 
     /* `camX` IS OPTIONAL, AND LEAVING IT OUT IS USUALLY RIGHT. Omitted, the
