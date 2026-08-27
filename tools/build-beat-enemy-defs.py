@@ -97,6 +97,18 @@ BAND_GAP = 2       # empty rows tolerated inside one row band
 GAP = 0            # empty columns tolerated inside one frame
 SAME = 2.5         # mean abs channel difference below which two frames are one
 SIZE_TOL = 2       # px of width/height difference tolerated when matching
+# SMOKE RISES, so a loose piece found entirely BELOW a body has to be much
+# closer than one found above it before that body may adopt it. This multiplies
+# the vertical gap in that case only. It is not a style preference: on the stub
+# and the third cigarette the death row's tallest plume climbs 190px into the
+# gap under the knockdown row, and the plain gap made the get-up frame above it
+# (190px away) a nearer owner than the dying body it rises off (211px away).
+# The wisp was welded onto the wrong frame, and every knocked-down cigarette
+# got back up trailing a speck of someone else's smoke a body-height below his
+# feet -- off the bottom of the screen. A penalty rather than a ban because
+# smoke IS sometimes drawn below a fighter (dust off a landing, dirt off a
+# hoof); those sit within a few px of the feet and still win easily at 3x.
+BELOW_PENALTY = 3
 
 # How many pixels of body a row needs before it counts as the bottom. Guards
 # against an antialiased tail hanging one pixel below the feet and planting the
@@ -529,6 +541,10 @@ def main():
                 bs = bodies[b]
                 dy = max(0, bs[0] - s[1], s[0] - bs[1])
                 dx = max(0, s[2] - bs[3], bs[2] - s[3])
+                # ...EXCEPT THAT DOWN IS NOT THE SAME AS UP. See BELOW_PENALTY:
+                # a body that ends entirely above this piece is upwind of it.
+                if bs[1] < s[0]:
+                    dy *= BELOW_PENALTY
                 d = (dy + dx, dy)
                 if bestd is None or d < bestd:
                     bestd, best = d, b
