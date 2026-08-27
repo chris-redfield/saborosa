@@ -3647,17 +3647,61 @@ const CONFIG = {
      player walks back over ground they have already seen; a re-rolled scatter
      would be a different desert behind them. Same room, same layout, always.
 
-     ⚠️ AND IT IS THE MOST EXPENSIVE SCENERY IN THIS GAME. About fourteen mounds
-     are on screen at once at these settings, each roughly 550x140 -- close to
-     one extra full-screen blit on top of the plate's. The flies cost nothing
-     next to this. `rows` and `spacing` are the dials and `on` is the switch;
-     read PERFORMANCE.md before adding a second thing that paints the whole belt.
+     ⚠️ AND IT IS THE MOST EXPENSIVE SCENERY IN THIS GAME. 17-20 mounds are on
+     screen at once at these settings, each roughly 550x140 -- about four screens
+     of overdraw on top of the plate's own. The flies cost nothing next to this.
+     `rows` and `spacing` are the dials and `on` is the switch; read
+     PERFORMANCE.md before adding a second thing that paints the whole belt.
 
-     ⚠️ THE TARGET IS 60%, NOT 80%. The first ask was "cover like 80%"; watching
-     it in play changed that to 60 -- "its not 80%, its actually 60%". The number
-     is a LOOK, not a spec: at 80 the desert reads as a carpet of butts, at 60 it
-     reads as a desert with butts drifted over it, and the second is the one that
-     was wanted. Do not "fix" this back up.
+     ⚠️ IT IS STILL CHEAPER THAN THE LAST TIME THIS RAN AT 80%, which is the
+     comparison that matters: the original 80% pass drew 29-35 a frame at the old
+     mound size. Bigger mounds means fewer of them for the same cover, so the same
+     look now costs about a third less fill than it did the first time.
+
+     ⚠️ THE TARGET IS 90%, AND IT HAS NOW MOVED THREE TIMES. "cover like 80%" ->
+     "its not 80%, its actually 60%" -> "lets bring that up to 80% back" -> "fill
+     it 100% ... to the brim", immediately softened to "if 100% is unreasonable,
+     try 90%". **The number is a LOOK, not a spec, and it is the USER'S look.**
+     Every one of those was a new target rather than a complaint about the last.
+     Do not defend whatever number is here against the next one; re-measure and
+     move it. What ships now is 90.7%.
+
+     ⚠️ MOVING THE FIELD DOWN RAISED COVERAGE INSTEAD OF LOWERING IT, which is
+     the opposite of the obvious guess and worth keeping. Dropping far and mid by
+     20% of the belt took the SAME 12 x 1.20 from 90.7% to 95.0% at an identical
+     draw count. A mound's ink sits entirely ABOVE its ground point, so the top
+     rows had been spending a slice of themselves painting up the back wall where
+     it does nothing; moving them down brought that ink into the belt for free.
+     Which is why `rows` came back DOWN from 12 to 9 to hold the 90% target -- the
+     same look now costs 17-20 draws instead of 23-27.
+
+     ⚠️ AND THE FAR BAND IS NOW THE ONE TO WATCH. Its first row sits at z 0.200
+     (76px, screen y 406), so the top 76px of the belt has no ground point in it
+     at all and is covered only by ink hanging up from that row. It measures 90.9%
+     and is fine. Push the field down again and the BACK of the belt is what goes
+     bare first -- the far edge, not the near one, which is the reverse of the
+     failure this feature had on its first pass.
+
+     ⚠️ 100% WAS MEASURED AND DECLINED ON COST, NOT ON TASTE, and the user made
+     that call themselves by offering 90 as the fallback. It IS reachable -- the
+     art is porous, so a solid mat is a question of stacking enough porous layers,
+     and 28 x 0.80 measures a true 100.0% at every third and every camera. It
+     costs **86-93 mounds a frame, about 16 screens of overdraw**, against 23-27
+     and ~5 screens at 90%. That is FOUR TIMES the fill for the last nine points,
+     on the one project whose frame rate has already collapsed once
+     (PERFORMANCE.md). The knee is sharp and it is between 90 and 100:
+
+         81.7%   18-23 drawn    ~4 screens of overdraw
+         90.7%   23-27 drawn    ~5              <- shipped
+         99.5%   49-55 drawn    ~9
+        100.0%   86-93 drawn   ~16
+
+     ⚠️ IF A TRUE CARPET IS EVER WANTED, THE ANSWER IS NOT MORE ROWS. Ninety
+     mounds a frame to paint one belt is the scatter being used as a fill tool.
+     Bake the six drifts into one wide repeating strip at build time and the whole
+     floor is two or three blits -- but it is a different feature: a baked strip
+     cannot have three bands moving at three speeds over it, so the parallax and
+     the carpet are alternatives, not additions.
 
      COVERAGE IS `rows`, NOT `spacing`, AND THE FIRST PASS HAD THAT BACKWARDS.
      Packing tighter in x (spacing 0.52) merged each row into a continuous ridge
@@ -3679,7 +3723,16 @@ const CONFIG = {
 
      Measured over SEVEN camera positions across the room (four was not enough
      once the mounds got big and sparse -- the coverage varies by 15 points from
-     one stretch of the room to the next, and a four-sample average hid that):
+     one stretch of the room to the next, and a four-sample average hid that).
+
+     ⚠️ THE MEASUREMENT IS A PORT OF scenery.js, AND ITS ONLY CLAIM TO BE TRUSTED
+     IS THAT IT REPRODUCES A ROW OF THIS TABLE. It lays the scatter out with the
+     same hash and the same math, blits the frames' ALPHA into the belt strip at
+     seven camera positions and counts. Calibrated against the shipped 6 x 1.45
+     row -- it prints 66.3% / 76.5 / 65.2 / 57.4 and 9-12 drawn against the 67% /
+     77 / 66 / 57 and 9-12 recorded here, on an alpha > 63 threshold. A port that
+     cannot reproduce a known row is measuring a fiction, and every number under
+     it would be one:
 
                               belt        far/mid/near     drawn/frame
       old size, 0.11:
@@ -3691,15 +3744,53 @@ const CONFIG = {
          6 x 1.45  z 0-1.10    66%      74 / 64 / 58         9-12
          6 x 1.70  z 0-1.05    54%      72 / 53 / 39         8-11
       at 0.157 (current):
-         6 x 1.45  z 0-1.10    67%      77 / 66 / 57         9-12   <- shipped
+         6 x 1.45  z 0-1.10    67%      77 / 66 / 57         9-12
          6 x 1.55  z 0-1.12    64%      75 / 61 / 55         9-11
          5 x 1.45  z 0-1.12    58%      64 / 60 / 49         7-10
+     at 0.157 WITH THE THREE BANDS (bandScale + bandOffsetZ), 2026-08-27:
+         6 x 1.45  mid off 0   62.6%    75 / 46 / 66         9-12   <- the hole
+         6 x 1.45  mid off .10 65.8%    66 / 64 / 67         9-12   <- ramp alone
+        11 x 1.45  mid off .10 78.8%    83 / 76 / 77        17-21
+        10 x 1.35  mid off .10 78.6%    85 / 76 / 74        17-22
+        11 x 1.35  mid off .05 80.3%    89 / 76 / 76        18-23
+        11 x 1.35  mid off .10 81.7%    86 / 78 / 80        18-23
+        12 x 1.35  mid off .10 83.5%    87 / 79 / 85        19-25
+        11 x 1.25  mid off .10 86.7%    90 / 85 / 85        20-24
+     and the run at 90% (2026-08-27, "fill it 100% ... try 90%"):
+        11 x 1.10  mid off .10 90.4%    94 / 88 / 89        25-28
+        12 x 1.20  mid off .10 90.7%    93 / 87 / 92        23-27
+        15 x 1.35  mid off .10 90.5%    87 / 91 / 94        25-31
+        14 x 0.70  mid off .10 99.5%    99 / 99 /100        49-55
+        28 x 0.80  mid off .10 100.0%  100 /100 /100        86-93
+     then all three planes down 20% (offsets .20 / .30 / .20):
+        12 x 1.20              95.0%    96 / 92 / 97        23-27   the drop alone
+         9 x 1.20              90.3%    91 / 91 / 90        17-20   <- shipped
+        12 x 1.35              90.5%    92 / 85 / 94        19-25
+        13 x 1.35              91.3%    94 / 85 / 96        20-27
+
+     ⚠️ THE SHIPPED ROW IS THE FLATTEST THIS FEATURE HAS EVER MEASURED --
+     90.9 / 90.6 / 89.5, a spread of 1.4 points across the thirds, against the
+     6.2 of the row before it. Nine rows land more evenly than twelve did because
+     the flat 0.20 stopped the top rows wasting their ink above the belt.
+
+     ⚠️ THE SHIPPED ROW IS THE EVENEST, NOT THE HIGHEST, and that is deliberate --
+     86.5 / 78.4 / 80.3 is the flattest spread anything measured, and per-camera it
+     runs 72-85% against the old 48-75%. A higher average with a weak third is
+     what this feature has now got wrong twice.
 
      ⚠️ IT WILL NOT GO MUCH UNDER 65 WITHOUT GOING PATCHY at this mound size, and
      that is the trade to know: each drift is now most of a screen wide, so
      thinning them further stops meaning "more sand between mounds" and starts
      meaning "some screens have a bare stretch". 66% with an even spread beat 60%
-     with holes in it.
+     with holes in it. (Moot while the target is 80, and worth keeping for the
+     next time it moves down.)
+
+     ⚠️ `rows` IS STILL THE DIAL AND SPACING BARELY MOVED. Getting from 62.6% to
+     81.7% was rows 6 -> 11 and spacing 1.45 -> 1.35, and rows did nearly all of
+     it. Spacing stays ABOVE 1.0 on purpose -- under it the drifts in a row merge
+     into one continuous ridge, which is the old "stuck together too much"
+     complaint. Rows alone saturate: 11 x 1.45 measures 78.8%, so the last two
+     points came from the small tighten and not the other way round.
 
      ⚠️ READ THE THIRDS, NOT THE AVERAGE. The first pass was 78% overall and 42%
      where the player actually walks -- "the lower part has no cigarettes" -- and
@@ -3776,14 +3867,14 @@ const CONFIG = {
     /* The pack, cut by tools/build-beat-fundo-defs.py. Loaded under the asset
        key `scenery` -- see src/manifest.js, which spells that key twice. */
     sheet: 'v2:beatemup-dungeon/cigarros-fundo',
-    rows: 6,           // bands across the belt's depth -- the COVERAGE dial
+    rows: 9,           // bands across the belt's depth -- the COVERAGE dial
     /* X STEP AS A FRACTION OF EACH MOUND'S OWN WIDTH. Over 1 they do not touch.
        ⚠️ IT WAS 0.52 AND THAT WAS THE COMPLAINT: at half a width apart the
        mounds in a row merged into one continuous ridge -- "stuck together too
        much". At 1.05 each drift is its own thing with sand between it and the
        next, and the COVERAGE comes from the rows overlapping in depth instead,
        which is what `rows` is for. */
-    spacing: 1.45,
+    spacing: 1.20,
     zJitter: 60,       // px, so the rows do not read as stripes
     /* WHERE THE ROWS RUN, as fractions of the belt's depth, INCLUSIVE at both
        ends. A mound's ink sits entirely ABOVE its ground point, so a row at z
@@ -3882,9 +3973,25 @@ const CONFIG = {
        vacated, so the numbers in the table above should stand. If the near third
        looks thin in play, that table is how it was measured the first time. */
     bandOffsetZ: {
+      /* ⚠️ ALL THREE ARE DOWN 20% OF THE BELT NOW, and the ramp is what is left
+         over the top of that. Asked 2026-08-27: "in the same way you pulled the
+         first plane down by 20%, do the same thing with the other planes, bring
+         them down by 20%". So far took its 0.20, mid took 0.20 ON TOP of the 0.10
+         ramp it already had, and near -- which had already had its 20% the turn
+         before -- did not move again. Read them as `0.20 + ramp`: 0 / 0.10 / 0
+         graded, plus a flat 0.20 that the whole field now sits on. */
       near: 0.20,
-      mid:  0,
-      far:  0,
+      /* ⚠️ 0.10 IS WHAT TURNS A STEP INTO A RAMP, and it is a COVERAGE fix as
+         much as a depth one. With near at 0.20 and mid at 0 the bands ran
+         0 / 0 / 0.20 -- and the 129px of belt between the mid band's last row and
+         the near band's first had nothing in it. Measured: the MIDDLE THIRD fell
+         to 45.9% while the average still read 62.6%, which is the "read the
+         thirds, not the average" trap from the first pass arriving a second time
+         from the opposite direction. Graded 0 / 0.10 / 0.20 it is 78.4%. It is
+         also simply more correct: a mid plane should sit between the other two,
+         not on top of the far one. */
+      mid:  0.30,
+      far:  0.20,
     },
   },
 

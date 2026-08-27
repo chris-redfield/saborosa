@@ -3374,6 +3374,146 @@ index *after* z was computed, which was fine while a band only decided speed and
 size. Now the band MOVES z, so the order in `enterRoom` is: row index → band →
 z. Still the row index and never the jittered z, for the same reason as before.
 
+### Back up to 80%, and the mid third had a hole in it (2026-08-27)
+
+*"We asked to fill the ground by 60% with these cigarettes background props, lets
+bring that up to 80% back."* **rows 6 → 11, spacing 1.45 → 1.35, and
+`bandOffsetZ.mid` 0 → 0.10.** Measured 81.7%, thirds 86.5 / 78.4 / 80.3. (The
+target moved again an hour later — see the next section. The `mid` ramp below is
+the part of this pass that survived.)
+
+⚠️ **THE TARGET HAS NOW MOVED TWICE AND THAT IS FINE.** 80 → 60 → 80. Each was a
+NEW TARGET, not a complaint about the last one — the same lesson the 80→60 move
+already taught, arriving in the other direction. The config comment used to say
+*"do not fix this back up"*; it now says the number is the user's look and to
+re-measure rather than defend whatever is in the file. **Do not argue the history
+at someone asking for a number.**
+
+⚠️ **AND THE FIRST THING THE MEASUREMENT FOUND WAS NOT THE DENSITY.** What
+shipped before this ask measured **62.6% overall with the MIDDLE THIRD at 45.9%**
+— a hole, not a shortfall. `bandOffsetZ.near: 0.20` had pulled two of six rows
+down past the belt, leaving 129px between the mid band's last row and the near
+band's first with nothing in it. The bands ran 0 / 0 / 0.20 — a step. Graded to
+**0 / 0.10 / 0.20** the hole closes: the same 6 × 1.45 goes to 65.8% with thirds
+66 / 64 / 67, which is the *evenest* this feature has ever measured. **The ramp is
+a fix, not a coverage grab** — it bought 3 points of average and 18 of middle.
+
+**This is "read the thirds, not the average" for the third time**, and the second
+time *I* introduced the hole rather than inheriting it. The offset shipped last
+turn with its coverage "reasoned from the ink spans, not re-measured" — the
+reasoning was right about the near third and never looked at the middle.
+
+⚠️ **`rows` DID NEARLY ALL THE WORK, AS THE ORIGINAL PASS SAID IT WOULD.** 6 → 11
+rows; spacing only 1.45 → 1.35 and deliberately kept **above 1.0**, under which
+the drifts in a row merge into one ridge (the old "stuck together too much").
+Rows alone saturate — `11 × 1.45` measures 78.8% — so the last two points came
+from the small tighten, not the other way round.
+
+⚠️ **THE SHIPPED ROW IS THE EVENEST, NOT THE HIGHEST.** `11 × 1.25` measures
+86.7% and `12 × 1.35` 83.5%; the one that ships is 81.7% because 86 / 78 / 80 is
+the flattest spread anything measured and per-camera it runs 72–85% against the
+old 48–75%.
+
+⚠️ **AND THE NEAR BAND DID NOT MOVE.** Chasing coverage by pulling `zTo` back
+down scores well (`9 × 1.00, z 0–0.80` measures 83.7%) and would have silently
+undone the "20% down the screen" from the turn before. The search was constrained
+to keep the near band's front row past 1.20 of the depth; at `rows: 11` its rows
+land at z 1.08 / 1.19 / 1.30 against the 1.08 / 1.30 that shipped — **the same
+two positions, with a third row added between them.**
+
+**Cost: 18–23 drawn a frame, up from 9–12.** Still under the *first* 80% pass's
+29–35: the mounds grew 30% since, and bigger means fewer for the same cover.
+
+### "To the brim" — 100% measured, then 90% (2026-08-27)
+
+*"Fill it 100% instead of 90, to the brim"*, and in the same breath *"if 100% is
+unreasonable, try 90%"*. **rows 11 → 12, spacing 1.35 → 1.20. Measured 90.7%,
+thirds 93.2 / 87.0 / 91.7, 23–27 drawn.**
+
+⚠️ **100% IS REACHABLE AND WAS MEASURED, NOT ESTIMATED.** The art is porous on
+purpose, so a solid mat is only a question of stacking enough porous layers, and
+they do converge: `28 × 0.80` measures a true **100.0% at every third and every
+camera**. It is not a wall you argue about; it is a price you look up.
+
+⚠️ **AND THE PRICE IS WHERE THE KNEE IS — BETWEEN 90 AND 100.**
+
+| coverage | drawn/frame | overdraw |
+|---|---|---|
+| 81.7% (before) | 18–23 | ~4 screens |
+| **90.7%** (ships) | **23–27** | **~5 screens** |
+| 99.5% | 49–55 | ~9 screens |
+| 100.0% | 86–93 | ~16 screens |
+
+**Four times the fill for the last nine points**, on the one project whose frame
+rate has already collapsed once. Nine points of alpha that the eye cannot find,
+because the porosity the measurement counts is the sand *between the butts inside
+a drift* — the thing that makes it read as loose rubbish rather than a carpet.
+
+⚠️ **THE USER MADE THIS CALL, NOT ME.** They offered 90 as the fallback in the
+same message. What was owed was the measurement and the price, not a lecture:
+100 was priced, the number was reported, 90 shipped. Compare the 80→60 episode —
+the failure there was reading a new target as a defect. The failure available
+here would have been *refusing a target on taste*. Neither is the job.
+
+⚠️ **IF A TRUE CARPET IS EVER WANTED, MORE ROWS IS THE WRONG ANSWER.** Ninety
+mounds a frame to paint one belt is the scatter being used as a fill tool. Bake
+the six drifts into one wide repeating strip at build time and the floor becomes
+two or three blits. **But a baked strip cannot have three bands moving at three
+speeds over it — the parallax and the carpet are alternatives, not additions**,
+and that trade is the thing to put to the user, not the row count.
+
+### All three planes down 20%, and the field got cheaper (2026-08-27)
+
+*"In the same way you pulled the first plane down by 20%, do the same thing with
+the other planes, bring them down by 20%."* **`bandOffsetZ` far 0 → 0.20, mid
+0.10 → 0.30**; near did not move again, having had its 20% the turn before. Read
+the three as **a flat 0.20 the whole field sits on, plus the 0 / 0.10 / 0.20
+ramp** that was already there.
+
+⚠️ **MOVING THE FIELD DOWN RAISED COVERAGE INSTEAD OF LOWERING IT.** The obvious
+guess is that vacating the top of the belt costs cover. The same `12 × 1.20` went
+**90.7% → 95.0% at an identical draw count**. A mound's ink sits entirely ABOVE
+its ground point, so the top rows had been spending a slice of themselves
+painting up the back wall where it does nothing; moving them down brought that
+ink into the belt for free.
+
+**That one fact is behind most of the tuning in this whole section** — it is why
+`zTo` runs past 1, why rows placed at band centres left the near edge bare on the
+first pass, and now why the field got cheaper by moving down.
+
+⚠️ **SO `rows` CAME BACK DOWN, 12 → 9, TO HOLD THE 90% THE USER SET ONE MESSAGE
+EARLIER.** Two live instructions — "90%" and "drop the planes" — and the drop
+alone would have shipped 95%, quietly overshooting a number chosen by watching.
+The retune holds both: **90.3%, and 17–20 draws against 23–27.** The same look,
+a quarter less fill.
+
+⚠️ **AND IT IS THE FLATTEST THIS FEATURE HAS EVER MEASURED: 90.9 / 90.6 / 89.5**,
+a spread of 1.4 points across the thirds against 6.2 for the row before it. Nine
+rows land more evenly than twelve did, for the same reason — none of them is
+wasting itself above the belt any more.
+
+⚠️ **THE FAR BAND IS NOW THE ONE TO WATCH, AND THAT IS A REVERSAL.** Its first row
+sits at z 0.200 (76px, screen y 406), so the top 76px of the belt has **no ground
+point in it at all** and is covered only by ink hanging up from that row. It
+measures 90.9% and is fine. But push the field down again and **the BACK of the
+belt goes bare first** — the far edge, where this feature's original bug was at
+the near edge. The next failure will look like the first one upside down.
+
+#### How it was measured
+
+There was no coverage tool — the earlier tables were measured once and the
+instrument was not kept, so it was rebuilt. It is a port of `scenery.js` that
+lays the scatter out with the same hash and the same math, blits the frames'
+ALPHA into the belt strip at seven camera positions and counts.
+
+⚠️ **A PORT'S ONLY CLAIM TO BE TRUSTED IS THAT IT REPRODUCES A KNOWN ROW.**
+Calibrated against the shipped `6 × 1.45`: it prints 66.3% / 76.5 / 65.2 / 57.4
+and 9–12 drawn against the 67% / 77 / 66 / 57 and 9–12 recorded in the table, on
+an alpha > 63 threshold. Had it not landed there, every number it produced would
+have been a fiction and the tuning would have been against one. It lives in the
+session scratchpad rather than `tools/`; it is a measuring instrument and not a
+harness, but it was not put in the repo without asking.
+
 ⚠️ **THREE BANDS MEANS TWO SEAMS**, and that is what "3 layers" costs over a
 smooth gradient — rows 1 and 2 are 84px apart in depth and now differ by 0.10 in
 speed. If a boundary ever reads as a tear rather than as distance, the fix is not

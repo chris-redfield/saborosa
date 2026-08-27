@@ -22,10 +22,22 @@
  * row and the index, so the same room always lays out the same way.
  *
  * ⚠️ AND IT IS A REAL PER-FRAME COST, unlike the flies. Measured at the shipped
- * density: **9-12 mounds drawn per frame**, each roughly 790x200 -- well under one
- * full-screen blit's worth of FILL on top of the plate's own. It was three times
- * that when this first shipped: the coverage target came down from 80% to 60%,
- * and then the mounds grew 30%, which means fewer of them.
+ * density: **17-20 mounds drawn per frame**, each roughly 790x200 -- about four
+ * screens of overdraw on top of the plate's own. The coverage target has moved
+ * three times (80 -> 60 -> 80 -> 90) and this is the expensive end of it.
+ *
+ * ⚠️ A MOUND'S INK IS ENTIRELY ABOVE ITS GROUND POINT, and that one fact explains
+ * most of the tuning in CONFIG.SCENERY. It is why `zTo` runs past 1, why a row
+ * placed at a band's CENTRE left the near edge bare, and why pushing the whole
+ * field DOWN the belt raises coverage rather than lowering it -- the top rows stop
+ * spending half of themselves painting up the back wall.
+ *
+ * ⚠️ THE COST KNEE IS BETWEEN 90% AND 100%, and it is why 100 was measured and
+ * declined: 90.7% is 23-27 draws, a true 100.0% is 86-93. Four times the fill for
+ * the last nine points. If a solid carpet is ever really wanted, the answer is to
+ * BAKE the drifts into one repeating strip at build time (two or three blits) --
+ * but a baked strip cannot have three bands moving at three speeds over it, so
+ * the parallax and the carpet are alternatives, not additions.
  *
  * ⚠️ THE THREE SPEEDS ARE A LOOK, AND THEY BREAK THE ONE RULE ABOVE ON PURPOSE.
  * `CONFIG.SCENERY.parallax` splits the rows into three bands that scroll at

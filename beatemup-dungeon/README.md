@@ -813,8 +813,8 @@ reason, and hitting one of the three was the half that never worked.
 SCENERY: {
   on: true,
   sheet: 'v2:beatemup-dungeon/cigarros-fundo',
-  rows: 6,          // bands across the belt's depth  <- the coverage dial
-  spacing: 1.45,    // x step as a fraction of each mound's width; >1 = a gap
+  rows: 9,          // bands across the belt's depth  <- the coverage dial
+  spacing: 1.20,    // x step as a fraction of each mound's width; >1 = a gap
   zJitter: 60,
   zFrom: 0.0,       // where the rows run, as fractions of the depth,
   zTo: 1.10,        // INCLUSIVE at both ends -- and zTo is past 1 on purpose
@@ -832,8 +832,8 @@ SCENERY: {
   },
   bandOffsetZ: {    // ...and where it sits, in fractions of the belt's DEPTH
     near: 0.20,     // + is toward the viewer = DOWN the screen. 0.20 = 76px
-    mid:  0,
-    far:  0,
+    mid:  0.30,     // read as 0.20 (all planes) + 0.10 (the ramp)
+    far:  0.20,
   },
 },
 // ...and per room, like `flies`:
@@ -846,8 +846,40 @@ rule, not a physics one, so the belt is exactly as walkable as it was.
 
 Re-cut them with `python3 tools/build-beat-fundo-defs.py`.
 
-**The target is ~60%, not 80%** — the first ask was "cover like 80%", and
-watching it changed that to 60. It is a look, not a spec; don't "fix" it back up.
+**The target is 90%, and it has moved three times** — "cover like 80%" → "its not
+80%, its actually 60%" → "lets bring that up to 80% back" → "fill it 100% … to
+the brim", softened in the same breath to "if 100% is unreasonable, try 90%".
+Each was a *new target*, not a complaint about the last one. It is a look, not a
+spec, and it is the user's look: don't defend the number that happens to be here
+— re-measure and move it. What ships is **90.7%**.
+
+**100% was measured and declined on cost**, and the user made that call by
+offering 90 as the fallback. It is reachable — the art is porous, so a solid mat
+is just a question of stacking enough porous layers — but the knee is sharp:
+
+| coverage | drawn/frame | overdraw |
+|---|---|---|
+| 81.7% | 18–23 | ~4 screens |
+| **90.7%** (ships) | **23–27** | **~5 screens** |
+| 99.5% | 49–55 | ~9 screens |
+| 100.0% | 86–93 | ~16 screens |
+
+> ⚠️ **Four times the fill for the last nine points**, on the one project whose
+> frame rate has already collapsed once (`PERFORMANCE.md`).
+
+> ⚠️ **If a true carpet is ever wanted, the answer is not more rows.** Ninety
+> mounds a frame to paint one belt is the scatter being used as a fill tool. Bake
+> the six drifts into one wide repeating strip at build time and the floor is two
+> or three blits — but a baked strip can't have three bands moving at three
+> speeds over it. **The parallax and the carpet are alternatives, not additions.**
+
+**Re-measuring it.** The numbers below come from a port of `scenery.js` that lays
+the scatter out with the same hash and math, blits the frames' alpha into the
+belt strip at seven camera positions and counts. **Its only claim to be trusted
+is that it reproduces a row of the table** — calibrated on the shipped `6 × 1.45`
+row, it prints 66.3% / 76.5 / 65.2 / 57.4 and 9–12 drawn against the 67% /
+77 / 66 / 57 and 9–12 recorded here (alpha > 63). It lives in the session
+scratchpad, not in `tools/` — ask if it should be kept.
 
 ⚠️ **Every number below is tied to the mounds' SIZE** (`SCALE` in the cutter,
 raised twice: 0.11 → 0.143 → 0.157). Roughly **+2 points of coverage per +10% of
@@ -864,10 +896,53 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 | *at 0.143* | | | |
 | 6 × 1.30, z 0–1.05 | 68% | 80 / 71 / 53 | 12–16 |
 | 6 × 1.45, z 0–1.10 | 66% | 74 / 64 / 58 | 9–12 |
-| *at 0.157 (current)* | | | |
-| **6 × 1.45, z 0–1.10** (ships) | **67%** | **77 / 66 / 57** | **9–12** |
+| *at 0.157* | | | |
+| 6 × 1.45, z 0–1.10 | 67% | 77 / 66 / 57 | 9–12 |
 | 6 × 1.55, z 0–1.12 | 64% | 75 / 61 / 55 | 9–11 |
 | 5 × 1.45, z 0–1.12 | 58% | 64 / 60 / 49 | 7–10 |
+| *at 0.157 **with the three bands**, 2026-08-27* | | | |
+| 6 × 1.45, mid off 0 | 62.6% | 75 / **46** / 66 | 9–12 |
+| 6 × 1.45, mid off .10 | 65.8% | 66 / 64 / 67 | 9–12 |
+| 11 × 1.45, mid off .10 | 78.8% | 83 / 76 / 77 | 17–21 |
+| 10 × 1.35, mid off .10 | 78.6% | 85 / 76 / 74 | 17–22 |
+| 11 × 1.35, mid off .05 | 80.3% | 89 / 76 / 76 | 18–23 |
+| 11 × 1.35, mid off .10 | 81.7% | 86 / 78 / 80 | 18–23 |
+| 12 × 1.35, mid off .10 | 83.5% | 87 / 79 / 85 | 19–25 |
+| 11 × 1.25, mid off .10 | 86.7% | 90 / 85 / 85 | 20–24 |
+| *the 90% run* | | | |
+| 11 × 1.10, mid off .10 | 90.4% | 94 / 88 / 89 | 25–28 |
+| 12 × 1.20, mid off .10 | 90.7% | 93 / 87 / 92 | 23–27 |
+| 15 × 1.35, mid off .10 | 90.5% | 87 / 91 / 94 | 25–31 |
+| 14 × 0.70, mid off .10 | 99.5% | 99 / 99 / 100 | 49–55 |
+| 28 × 0.80, mid off .10 | 100.0% | 100 / 100 / 100 | 86–93 |
+| *all three planes down 20% — offsets .20 / .30 / .20* | | | |
+| 12 × 1.20 (the drop alone) | 95.0% | 96 / 92 / 97 | 23–27 |
+| **9 × 1.20** (ships) | **90.3%** | **91 / 91 / 90** | **17–20** |
+| 12 × 1.35 | 90.5% | 92 / 85 / 94 | 19–25 |
+| 13 × 1.35 | 91.3% | 94 / 85 / 96 | 20–27 |
+
+> ⚠️ **Moving the field DOWN raises coverage.** The same `12 × 1.20` went 90.7% →
+> 95.0% at an identical draw count: a mound's ink is entirely *above* its ground
+> point, so the top rows had been spending a slice of themselves painting up the
+> back wall. That is why `rows` came back down 12 → 9 to hold 90% — same look,
+> 17–20 draws instead of 23–27.
+
+> ⚠️ **The far band is now the one to watch.** Its first row is at z 0.200 (screen
+> y 406), so the top 76px of belt has no ground point and is covered only by ink
+> hanging up from it. 90.9% and fine — but push the field down again and **the
+> back of the belt goes bare first**, the reverse of this feature's first bug.
+
+> ⚠️ **The shipped row is the evenest, not the highest.** 86 / 78 / 80 is the
+> flattest spread anything measured, and per-camera it runs 72–85% against the old
+> 48–75%. A high average hiding a weak third is what this has got wrong twice.
+
+> ⚠️ **`rows` did nearly all of it; spacing barely moved.** 6 → 11 rows and 1.45 →
+> 1.35. Spacing stays **above 1.0** so the drifts in a row stay separate — under
+> it they merge into one ridge, the old "stuck together too much". Rows alone
+> saturate: `11 × 1.45` is 78.8%, so the last two points came from the tighten.
+
+> ⚠️ **Cost: 17–20 drawn a frame** — about four screens of overdraw. `rows` down
+> first if it ever needs turning down; `on: false` kills it.
 
 > ⚠️ **It will not go much under 65% without going patchy at this size.** Each
 > drift is most of a screen wide now, so thinning further stops meaning "more
