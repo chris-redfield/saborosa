@@ -652,10 +652,23 @@ const CONFIG = {
       ],
     },
     { kind: 'scroll', toX: 3300 },
-    /* THE MOSCA. Locks the camera like an arena — it is one, with one very
-       large occupant — and ends when the boss is dead. It is a SUB-boss: the
-       level carries on past it. */
-    { kind: 'boss' },
+    /* THE MOSCA, THE FIRST TIME. Locks the camera like an arena — it is one,
+       with one very large occupant — and it is a SUB-boss: the level carries on
+       past it.
+
+       ⚠️ THIS ONE CANNOT BE KILLED. `fleeAt` is a fraction of its health: at
+       half a bar it stops fighting, climbs out of reach and flies off the side,
+       and the segment ends with it alive. Asked for 2026-08-27, and the reason
+       it is worth having is what it does to the REST of the street -- every
+       fight after this one is fought knowing the thing is still out there. The
+       rematch is the last segment of this room.
+
+       ⚠️ AND THE SEGMENT IS THE ONLY PLACE THAT KNOWS. FlyBoss without a
+       `fleeAt` is the boss it always was; nothing remembers that this encounter
+       happened, and nothing has to, because the rematch is a fresh one at full
+       health rather than the same animal carried forward. Delete this one field
+       and the street is exactly what it was before, twice. */
+    { kind: 'boss', fleeAt: 0.5 },
 
     /* ===== PAST THE SUB-BOSS ==================================================
        THE LEVEL IS AS LONG AS THE FILM, and this stretch is what makes it so.
@@ -717,7 +730,27 @@ const CONFIG = {
         { kind: 'barata2',  x: 4100, z: 180, delayMs: 4200, from: 'behind' },
         { kind: 'barata',   x: 4300, z: 40,  delayMs: 7000 },
       ],
-    },],
+    },
+    /* NARUTÃO COMES BACK, and this is what the street has been building to
+       since he flew off. Added 2026-08-27 with the escape above; the two are
+       one change and neither is worth anything alone.
+
+       AFTER THE LAST WAVE, NOT INSTEAD OF IT. The player clears the street's
+       final fight, the GO arrow does not come up -- there is nothing left to
+       walk to -- and the camera locks again on the same boss they could not
+       finish. It is the last thing in the room, so beating it is what opens the
+       door to the boss room.
+
+       ⚠️ NO `fleeAt`. This is the fight that ends him, and the absence of one
+       field is the whole difference between the two encounters.
+
+       IT COSTS NO FILM, which is the only reason there is room for it here. The
+       shot is 29.5s and the camera has already spent all 3424px of it by the
+       time the last wave is over; an arena and a boss both LOCK the camera, so
+       this fight plays against the final frame exactly as the wave before it
+       does. See the note at the top of this stretch -- scrolls are what the
+       footage pays for, and this adds none. */
+    { kind: 'boss' },],
     },
 
     /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter
@@ -3762,9 +3795,20 @@ const CONFIG = {
   },
 
   flyBossSizePx: 304,
-  // A MULTIPLE OF 22 (= BAR_FRAMES − 1), like the player's, so its bar steps
-  // evenly: 88 is exactly 4 damage a square.
-  flyBossHealth: 88,
+  /* A MULTIPLE OF 22 (= BAR_FRAMES − 1), like the player's, so its bar steps
+     evenly: 110 is exactly 5 damage a square.
+
+     RAISED FROM 88 ON 2026-08-27, asked for as "+20%". 20% of 88 is 105.6,
+     which is not a multiple of 22 and would make a square 4.8 damage -- so
+     identical hits would sometimes move the bar and sometimes not. 110 is the
+     multiple on the other side of it and was chosen deliberately over the exact
+     figure; the rule above is worth more than five points of percentage.
+
+     ⚠️ IT IS NOT THE WHOLE ENCOUNTER ANY MORE. The Mosca is fought TWICE (see
+     ROOMS -> street), breaks off at half a bar the first time and comes back
+     whole, so this number is what the player spends 1.5 times over. Read it
+     against the pair, not against one fight. */
+  flyBossHealth: 110,
   flyBossHurtMs: 150,        // i-frames. Never optional — see the note on hurtMs.
   flyBossHitWRel: 0.62,      // hurtbox width, × flyBossSizePx. Fixed, not the
                              // pose's own silhouette: the turn takes it from
@@ -3822,6 +3866,25 @@ const CONFIG = {
   flyBossSwoopDamage: 12,
   flyBossRecoverMs: 700,
   flyBossTouchKnockback: 260,
+
+  /* --- BREAKING OFF ---------------------------------------------------------
+     The Mosca does not fight to the death the first time. The threshold itself
+     is NOT here: it is `fleeAt` on the boss SEGMENT, because it is a property
+     of the encounter and the same boss has two of them -- see ROOMS -> street.
+     These are only the shape of the exit.
+
+     IT HAS TO BE WATCHABLE. The whole value of a boss that leaves is the beat
+     where the player sees it go, so it climbs out of reach in view and exits by
+     the SIDE rather than punching straight up through the top of the canvas.
+     `flyBossFleeY` is therefore above the tell (210) and well under the height
+     it descends from (620). */
+  flyBossFleeY: 330,         // altitude it breaks off to -- out of reach, in shot
+  flyBossFleeSpeed: 620,     // top speed of the exit: quicker than a hover drift
+  flyBossFleeAccelMs: 400,   // ...ramped into, so it reads as turning tail
+  /* THE FUSE ON THE WHOLE THING, and it is what stops an escape from becoming a
+     level that never advances. `finished()` normally waits for it to clear the
+     arena edge; this is the answer to every way that can fail to happen. */
+  flyBossFleeMaxMs: 4000,
 
   /* THE GROUND PASS. It charges the ENTIRE width of the arena at floor level in
      one lane, and the only answer is to step OUT of that lane in z. Every other

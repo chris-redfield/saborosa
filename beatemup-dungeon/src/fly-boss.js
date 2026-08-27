@@ -41,9 +41,31 @@
  * THE ROTATION IS DETERMINISTIC — swoop, sweep, swoop, sweep. A boss whose
  * next move is a coin flip cannot be learned, and learning the pattern IS the
  * fight in this genre. Only the timing inside each beat varies.
+ *
+ * AND IT CAN BREAK OFF AND LEAVE. `fleeAt` — a fraction of its health, passed
+ * in by the SEGMENT and not by this file — is the point at which it stops
+ * fighting, climbs out of reach and flies off the side. It does not die, the
+ * segment ends anyway, and the level carries on with the thing that beat it
+ * still alive somewhere ahead. See _beginFlee().
+ *
+ * ⚠️ FLEEING IS NOT A KIND OF DYING, and every place that asks "is this fight
+ * still on" has to be told so separately: `vulnerable()` (nobody may finish it
+ * off on the way out), the health bar in game.js (a bar over something that
+ * cannot be hit is a lie), its theme (the fight is over the moment it
+ * disengages) and `finished()` (which now has two ways to be true).
+ *
+ * ⚠️ WHETHER IT FLEES IS THE ENCOUNTER'S BUSINESS, NOT THE BOSS'S. Without
+ * `fleeAt` this is exactly the boss it was: it fights until it is dead. That is
+ * what makes the same class serve both halves of the street — the sub-boss
+ * declares a threshold, the rematch declares nothing — with no memory carried
+ * between them and no "is this the second time" flag anywhere.
  */
 class FlyBoss {
-  constructor(x, z, camX) {
+  /* `opts.fleeAt` is a fraction of full health, 0..1, and it is the whole of
+     what one encounter can say about itself. Omitted (or 0) it fights to the
+     death, which is what every boss segment written before the rematch meant
+     and what the last one still means. */
+  constructor(x, z, camX, opts) {
     this.kind = 'mosca';
     this.x = x;
     this.z = z;
@@ -52,6 +74,11 @@ class FlyBoss {
     this.maxHp = CONFIG.flyBossHealth;
     this.hp = this.maxHp;
     this.dead = false;
+    /* The health it breaks off at, in HP rather than as a fraction, so the
+       comparison in hurt() is one number against another. Zero means never. */
+    this.fleeHp = (opts && opts.fleeAt > 0) ? this.maxHp * opts.fleeAt : 0;
+    this.fleeing = false;
+    this.fleeDir = 1;           // always RIGHT -- see _beginFlee()
     /* THE MUSIC SHE BRINGS WITH HER, by asset key. Declared as a PROPERTY OF
        THE BOSS rather than tested for in game.js, because that is the bargain
        every other thing about a boss makes here: `combat.js` and the overlay
@@ -109,7 +136,12 @@ class FlyBoss {
   /** Only a fight once the entrance is over — see the class header. */
   arrived() { return this.phase !== 'ambush' && this.phase !== 'descend'; }
 
-  vulnerable() { return !this.dead && this.arrived() && this.hurtT <= 0; }
+  /* ⚠️ AND NOT WHILE IT IS LEAVING. `arrived()` is about the ENTRANCE and stays
+     that way; the exit is a separate thing to be untouchable during, and it has
+     to be, or the escape is only an escape when the player misses. */
+  vulnerable() {
+    return !this.dead && !this.fleeing && this.arrived() && this.hurtT <= 0;
+  }
 
   halfW() { return CONFIG.flyBossSizePx * CONFIG.flyBossHitWRel / 2; }
   halfZ() { return CONFIG.flyBossHitZ / 2; }
@@ -148,7 +180,15 @@ class FlyBoss {
       this.phase = 'die';
       this.booms.arm(CONFIG.flyBossDeathBoom, CONFIG.flyBossSizePx);
       this.t = 0;
+      return true;
     }
+    /* IT HAS HAD ENOUGH. Tested here rather than in update() so it breaks off
+       on the HIT that took it under, in the same frame the player sees land --
+       a boss that carried on to the end of its current attack and then left
+       would read as the attack ending, not as the punch driving it away.
+       That also means it can leave from the middle of a sweep, which is
+       correct: the pass simply stops, and `hitbox()` goes cold with it. */
+    if (this.fleeHp && this.hp <= this.fleeHp) this._beginFlee();
     return true;
   }
 
@@ -238,6 +278,7 @@ class FlyBoss {
       case 'recover':  this._recover(dt); break;
       case 'sweepSet': this._sweepSet(dt, bounds); break;
       case 'sweepRun': this._sweep(dt, bounds); break;
+      case 'flee':     this._flee(dt); break;
       case 'die':      this._die(dt); break;
     }
 
@@ -448,6 +489,53 @@ class FlyBoss {
     }
   }
 
+  /**
+   * BREAKING OFF — it stops fighting and goes, and the fight is over without
+   * anybody winning it.
+   *
+   * IT ALWAYS LEAVES TO THE RIGHT, which is up the street, the way it came in,
+   * and the way it will come back. Asked for 2026-08-27, and it is the better
+   * rule: fleeing is the level pointing FORWARD, at the fight still to come,
+   * and a boss that escapes back over ground the player has already cleared
+   * says the opposite.
+   *
+   * It was first written to leave the way the punch sent it -- `dir` is already
+   * "away from whoever just hit it" -- which never flew out through the player
+   * but did send it left half the time, for no reason the player could read.
+   *
+   * ⚠️ SO IT CAN CROSS THE PLAYER, and that is safe rather than tolerated: it
+   * is climbing to `flyBossFleeY`, out of reach, and `hitbox()` has been cold
+   * since the frame it broke off (`flee` is not in the live list). It passes
+   * over them, not through them.
+   *
+   * ⚠️ THE KNOCKBACK IS CANCELLED. `hurt()` has just set `vx`, and leaving it
+   * would have the exit fighting a shove for its first half second -- most
+   * visibly when the blow shoved it left and it is leaving right, which is now
+   * every blow landed from the player's right-hand side.
+   */
+  _beginFlee() {
+    this.fleeing = true;
+    this.fleeDir = 1;
+    this.vx = 0;
+    this._to('flee');
+  }
+
+  /**
+   * The exit: up out of reach first, then away.
+   *
+   * THE CLIMB LEADS AND THE SPEED RAMPS, so the shape of it is a thing giving
+   * up rather than a thing being teleported off screen -- and it stays in the
+   * frame long enough to be seen leaving, which is the entire point of a boss
+   * that comes back. `flyBossFleeY` is deliberately NOT above the canvas top:
+   * it exits by the side, in view.
+   */
+  _flee(dt) {
+    this.jumpY += (CONFIG.flyBossFleeY - this.jumpY) * Math.min(1, 3 * dt);
+    const ramp = Math.min(1, this.t / (CONFIG.flyBossFleeAccelMs / 1000));
+    this.x += this.fleeDir * CONFIG.flyBossFleeSpeed * ramp * dt;
+    this.faceTarget = this.fleeDir < 0 ? 0 : 1;
+  }
+
   _die(dt) {
     /* IT USED TO FALL OUT OF THE SKY, tumbling, and fade where it landed. Since
        2026-08-22 it BLOWS UP WHERE IT IS HIT, on request -- so it neither falls
@@ -549,6 +637,24 @@ class FlyBoss {
    * constant, so retiming the string moves this with it.
    */
   finished() {
+    /* GONE COUNTS AS FINISHED. The segment advances on this and does not ask
+       why, which is what lets a boss that flew away and a boss that blew up end
+       the same segment without stage.js learning the difference.
+
+       ⚠️ THE FUSE IS NOT PADDING. This is the only thing that ends the segment,
+       so an exit that never clears the edge -- no bounds, a speed knob at zero,
+       an arena wider than the ramp can cross -- would hang the level on a boss
+       nobody can hit, with nothing visibly wrong. */
+    if (this.fleeing) {
+      /* Both edges, though `_beginFlee` only ever sets +1 today: the exit
+         direction is a named thing rather than a sign written into three
+         places, so turning it around again is one assignment and not a hunt. */
+      const b = this._bounds;
+      const gone = b && (this.fleeDir < 0
+        ? this.x < b.minX - CONFIG.flyBossEnterMargin
+        : this.x > b.maxX + CONFIG.flyBossEnterMargin);
+      return !!gone || this.t > CONFIG.flyBossFleeMaxMs / 1000;
+    }
     if (!this.dead) return false;
     const span = this.booms.armed ? Booms.spanMs(CONFIG.flyBossDeathBoom) / 1000 : 0;
     return this.t > Math.max(2.0, span);

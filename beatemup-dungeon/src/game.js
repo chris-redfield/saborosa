@@ -421,7 +421,15 @@
    */
   function bossMusic() {
     const b = stage.boss;
-    const want = !!(b && b.musicKey && !b.dead);
+    /* ⚠️ `fleeing` ENDS IT AS SURELY AS `dead` DOES. The Mosca's first
+       encounter finishes with her alive and leaving, and her theme is the
+       FIGHT's, not hers -- held until the segment cleared her away, it played
+       over a street with nothing in it to fight. The bed comes back the moment
+       she breaks off, which is also the clearest signal the player gets that
+       the fight is over rather than paused. Undefined on the horse, so this
+       does nothing to him -- see the note above about why he has no theme
+       here at all. */
+    const want = !!(b && b.musicKey && !b.dead && !b.fleeing);
     if (want === bossTheme) return;
     bossTheme = want;
     if (want) sound.playMusic(b.musicKey);
@@ -1008,7 +1016,12 @@
     /* The boss's bar: the SAME hand-drawn bar, top-centre and wider. Up only
        once it has arrived — a bar during the entrance would promise a fight
        that has not started, and the boss cannot be hurt yet anyway. */
-    if (stage.boss && stage.boss.arrived() && !stage.boss.dead) {
+    /* ⚠️ AND NOT WHILE SHE IS LEAVING. A bar over something that cannot be hurt
+       is a lie about what the player is looking at -- and this one would sit
+       there at exactly half, inviting the last few punches at a boss already
+       out of reach. `fleeing` is undefined on the horse. */
+    if (stage.boss && stage.boss.arrived() && !stage.boss.dead
+        && !stage.boss.fleeing) {
       lifeBar.render(ctx, stage.boss.hp / stage.boss.maxHp, {
         centre: true, top: CONFIG.flyBossBarTop, wRel: CONFIG.flyBossBarWRel,
       });

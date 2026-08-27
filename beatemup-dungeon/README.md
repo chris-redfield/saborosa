@@ -782,6 +782,57 @@ python3 tools/build-boss-plate.py     # crops at the pan's turn, keyframe every 
 locking, with the whole room as walls rather than one screen. That is what a
 small room wants.
 
+### The Mosca leaves and comes back
+
+The street fights her **twice**, and the difference between the two encounters
+is one field on the segment:
+
+```js
+{ kind: 'boss', fleeAt: 0.5 },   // mid-street: at half a bar she breaks off and flies away
+...                              // three more waves
+{ kind: 'boss' },                // the last segment of the street: this one kills her
+```
+
+`fleeAt` is a **fraction of her health**. Reaching it, she stops fighting on the
+hit that took her under, climbs out of reach, and leaves **to the right** — up
+the street, the way she came in and the way she will come back. The segment ends
+with her **alive**.
+
+> She first left in the direction the punch sent her, which meant half the time
+> she escaped back over ground the player had already cleared. Fleeing should
+> point **forward**, at the fight still to come. She can now cross over the
+> player on her way out; that is safe, not tolerated — she is climbing to
+> `flyBossFleeY` and her hitbox went cold the frame she broke off.
+
+- **The encounter owns the rule, not the boss.** A `FlyBoss` with no `fleeAt`
+  is exactly the boss she has always been. Nothing remembers the first fight
+  happened — the rematch is a **fresh boss at full health**, which is what makes
+  two encounters out of one class with no state carried anywhere. Delete the
+  field and the street is what it was before, twice.
+- ⚠️ **`finished()` no longer means dead.** It is what the segment advances on,
+  and it is now true either way. Anything hung on that moment — a tally, a drop,
+  a one-time unlock — has to ask which happened.
+- **Three things had to be told separately** that fleeing is not dying:
+  `vulnerable()` (nobody finishes her off on the way out), the health bar in
+  `game.js` (a bar over something that cannot be hit is a lie, and this one would
+  sit at exactly half inviting punches), and her theme (see *Sound*).
+- **The exit is fused.** `finished()` normally waits for her to clear the arena
+  edge; `flyBossFleeMaxMs` (4 s) is the answer to every way that can fail to
+  happen, because otherwise the level hangs on a boss nobody can hit with
+  nothing visibly wrong.
+
+| knob | |
+|---|---|
+| `flyBossFleeY` | 330 — the altitude she breaks off to. Above the tell (210), well under the 620 she descends from: she must exit **by the side, in shot**, not punch up through the top of the canvas. The player seeing her go is the whole point |
+| `flyBossFleeSpeed` | 620 px/s — quicker than a hover drift, slower than a ground pass |
+| `flyBossFleeAccelMs` | 400 — ramped into, so it reads as turning tail rather than as a teleport |
+| `flyBossFleeMaxMs` | 4000 — the fuse above. Not padding |
+
+**It costs no film.** The street's footage is spent by the time the last wave is
+over; an arena and a boss both lock the camera, so the rematch plays against the
+final frame exactly as the wave before it does. Scrolls are what the shot pays
+for — see *Rooms*, and the note in `CONFIG.ROOMS`.
+
 ### Where enemies come from
 
 They are placed **off screen and walk in**, rather than appearing at the spot
@@ -870,7 +921,9 @@ DEV: { on: true, punchDamage: 50 },   // top of config.js
 Every player punch does `punchDamage` instead of its own. **Damage and nothing
 else** — reach, timing, knockdown, the combo and every enemy's HP behave exactly
 as they ship, so what you are testing is the real fight at speed rather than a
-different game. At 50: both cigarettes die in one hit, ERKPA and the Mosca in two.
+different game. At 50: both cigarettes die in one hit, ERKPA in two, and the
+Mosca **breaks off on the second punch and dies on the third** in the rematch
+(110 HP since 2026-08-27, and half of it is the threshold she leaves at).
 
 It is applied at the one place the player's damage is read (`combat.playerHits`)
 rather than by rewriting `CONFIG.COMBO` — the table documents a 28-damage string
@@ -1012,8 +1065,13 @@ more than double the others, which is the entire reason backing out of a string
 is worth doing.
 
 **Keep the player's HP a multiple of 22.** The hand-drawn life bar is 22 squares,
-so 110 makes each square exactly 5 damage. The boss's 88 is a multiple for the
-same reason.
+so 110 makes each square exactly 5 damage. The Mosca's HP is a multiple for the
+same reason — and it is **110** as of 2026-08-27, raised from 88. That was asked
+for as "+20%", which is 105.6 and not a multiple of anything: it would make a
+square 4.8 damage, so identical hits would sometimes move the bar and sometimes
+not. 110 is the multiple on the other side and was taken over the exact figure
+deliberately. ⚠️ It is no longer the whole encounter either — she is fought
+twice and comes back whole, so the player spends it 1.5 times over.
 
 The full-combo total was held at 28 when the combo went from three hits to five,
 deliberately — so every enemy's time-to-kill stayed where it was tuned. Raising
@@ -1624,7 +1682,7 @@ Two rules, and the difference is which one the player experiences as the change.
 | track | scoped to | starts | stops |
 |---|---|---|---|
 | `musicBoss` (the horse) | the **room** — `ROOMS[1].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`VICTORY_STING`, 2026-08-24). It used to run through everything to the title — that was an explicit request and it was explicitly reversed |
-| `musicMosca` (Still Life) | the **boss** — `FlyBoss.musicKey` | she flies in | ⚠️ **when she dies** — the street gets its bed back |
+| `musicMosca` (Still Life) | the **boss** — `FlyBoss.musicKey` | she flies in | ⚠️ **when she dies *or breaks off*** — the street gets its bed back |
 
 **The horse's is room-scoped because his room opens with a wave of roaches.**
 Hanging it on the boss made it arrive a minute late, with the room's first fight
@@ -1640,6 +1698,12 @@ room's theme every frame.
 ⚠️ **It reverts on `dead`, not on `finished()`.** She has a death fall and a
 fade to play out; waiting for those would leave her theme running over her own
 corpse.
+
+⚠️ **And on `fleeing`, for the same reason.** She survives her first encounter
+(see *The Mosca leaves and comes back*), and her theme belongs to the **fight**,
+not to her: held until the segment cleared her away, it played over an empty
+street. The bed coming back is also the clearest signal the player gets that the
+fight is over rather than paused.
 
 ### He walks on at the start of a run
 

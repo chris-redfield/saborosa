@@ -229,13 +229,25 @@ class Stage {
            no code -- only the interface combat.js and the overlay talk to. */
         const bx = this.camX + CONFIG.GAME_W * 0.5;
         const bz = CONFIG.beltDepth * 0.5;
+        /* AND ON WHAT TERMS. `fleeAt` is the fraction of health the Mosca
+           breaks off at, and it is read off the SEGMENT because the same boss
+           is fought twice in the street on different terms -- see ROOMS. The
+           stage carries nothing between the two: the first encounter ends when
+           it flies away, the second is a fresh one at full health, and neither
+           this file nor the boss remembers the other happened. */
         this.boss = (s.who === 'horse')
           ? new HorseBoss(bx, bz, this.camX)
-          : new FlyBoss(bx, bz, this.camX);
+          : new FlyBoss(bx, bz, this.camX, { fleeAt: s.fleeAt });
       }
       /* Waits for `finished()`, not for `dead` — the death fall and fade play
          out before the level is called, so the boss is not deleted out from
-         under its own last beat. */
+         under its own last beat.
+
+         ⚠️ AND `finished()` DOES NOT MEAN DEAD. The Mosca's first encounter
+         ends with it ALIVE and off the side of the screen (see `fleeAt` above);
+         it finishes the segment exactly as a death does, and the level advances
+         without knowing which of the two happened. Anything added here that
+         assumes a corpse -- a tally, a drop, a one-time unlock -- has to ask. */
       /* THE BOSS HANDS OFF LIKE ANY OTHER SEGMENT -- it does not end the level
          itself. It used to set `done` and return 'clear' directly, which made
          it permanently the last thing in the game and SILENTLY IGNORED anything
