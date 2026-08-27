@@ -25,10 +25,49 @@ that works, and this tool does both.
    costs at most twelve frames of an 848x478 picture.
 
 AND IT IS DOWNSCALED, which the other two plates did not need. The master is
-1920x1080 HEVC at 17.7 Mbps -- 59MB, against a whole itch build of 30. The plate
+1920x1080 HEVC at 17.7 Mbps -- 56MB, against a whole itch build of 30. The plate
 is stretched to the 1280x720 canvas whatever its own size, so 848x478 (what both
-existing plates already are) costs nothing visible and takes the file to about a
-sixth.
+existing plates already are) costs nothing visible.
+
+3. IT HAS TO BE SMALL. Asked for 2026-08-27 -- "drastically reduce the video
+   size, in order to use it in our game". The first cut of this plate was
+   `-b:v 3000k` (the street tool's setting) and came out at 9.9MB. CRF 32 puts
+   it at 4.8MB, and the whole ladder was measured rather than picked:
+
+   ⚠️ SSIM HERE IS AGAINST THE MASTER AT THE 1280x720 THE PLAYER ACTUALLY SEES,
+   not at the encode's own size -- comparing plates at their native resolution
+   would flatter a small one for free. It is also PESSIMISTIC on this shot: the
+   picture is a field of gravel, which is the texture SSIM punishes hardest, and
+   the chroma planes score 0.98 throughout. Read the ordering, not the value.
+
+       848x478, GOP 12, preset slow
+         b:v 3000k   9.9 MB   0.904     <- what this tool shipped first
+         crf 28      7.9 MB   0.897
+         crf 30      6.1 MB   0.884
+         crf 32      4.8 MB   0.867     <- chosen
+         crf 34      3.8 MB   0.845
+
+   THREE OTHER LEVERS WERE TRIED AND ALL THREE ARE DEAD ENDS. They are recorded
+   because each one is the obvious next idea:
+
+     * ⚠️ DROPPING THE RESOLUTION IS WORSE THAN RAISING CRF, AT THE SAME FILE
+       SIZE. 640x360 crf 26 is 6.1MB and scores 0.831, against 0.884 for 848x478
+       crf 30 at 6.1MB; 512x288 crf 28 is 3.0MB / 0.749 against 3.8MB / 0.845 at
+       native. It is visible too -- the small ones go mushy on the gravel while
+       the high-CRF ones only lose grain. Do not "save space" by scaling further.
+     * ⚠️ VP9 IS TWICE THE SIZE, NOT HALF. 19.2MB at crf 34 and 13.9MB at crf 38,
+       against 10.2MB for x264 crf 26. The reason is the GOP: libvpx spends far
+       more on a keyframe than x264 does, and this file is forced to carry 65 of
+       them. VP9's usual advantage assumes long GOPs, which is exactly what a
+       scrubbable plate cannot have.
+     * ⚠️ DENOISING FIRST SAVES NOTHING. `hqdn3d=4:3:6:4` before the scale came
+       out at 10.18MB against 10.22MB clean, and a heavy 8:6:12:9 only reached
+       7.60MB against 7.86MB. The bits are going into real gravel, not into
+       sensor noise, so there is nothing to take out.
+
+   AND THE GOP IS NOT WHERE THE SIZE IS EITHER: 12 -> 48 at crf 26 saves 2.7MB
+   and makes every backward step decode four times as far. Not a trade worth
+   making for a room whose camera reverses.
 
 ⚠️ THE ASSERTION HERE IS THE DURATION, NOT THE FRAME COUNT, and that is the one
 deliberate difference from the street's tool. The master is variable-rate
@@ -54,7 +93,8 @@ OUT = 'assets-v2/beatemup-dungeon/desert-plate.mp4'
 W, H = 848, 478       # what both existing plates are; the canvas stretches it anyway
 CANVAS_W = 1280       # CONFIG.GAME_W -- the width the pan is finally seen at
 KEYINT = 12           # keyframe every N frames -- the reverse-scrub budget
-BITRATE = '3000k'
+CRF = 32              # the size knob; see the ladder above before moving it
+PRESET = 'slow'       # costs encode time only, and buys ~5% of file size
 DURATION_TOL = 0.05   # seconds
 
 # ⚠️ NOT WHICHEVER ffmpeg IS FIRST ON PATH. A conda ffmpeg shadows the system one
@@ -131,7 +171,11 @@ def main():
 
     subprocess.run(
         [FFMPEG, '-v', 'error', '-i', SRC, '-an', '-vf', f'scale={W}:{H}',
-         '-c:v', 'libx264', '-b:v', BITRATE,
+         # ⚠️ CRF, NOT A BITRATE. A fixed bitrate spends the same on the whole
+         # shot; this picture is uniformly detailed but its DETAIL varies with
+         # what the camera is over, and constant quality is what keeps the
+         # gravel from breaking up on the busy stretches.
+         '-c:v', 'libx264', '-crf', str(CRF), '-preset', PRESET,
          # ⚠️ `-sc_threshold 0` MATTERS. Left on, x264 also places keyframes on
          # scene cuts, which on filmed footage means the spacing is whatever the
          # shot happens to do -- and the guarantee this file exists to make is a
@@ -143,10 +187,11 @@ def main():
     if abs(got - want) > DURATION_TOL:
         raise SystemExit(f'duration changed: {want:.3f} -> {got:.3f}; the plate '
                          'sync (worldPxPerSecond) is measured against it')
-    print(f'{OUT}  {got:.3f}s at {W}x{H}, keyframe every {KEYINT} '
-          f'({keyframes(OUT)} of them), '
-          f'{os.path.getsize(OUT) / 1048576:.2f} MB')
-    print(f'  master was {os.path.getsize(SRC) / 1048576:.2f} MB')
+    mb = os.path.getsize(OUT) / 1048576
+    print(f'{OUT}  {got:.3f}s at {W}x{H}, crf {CRF}, keyframe every {KEYINT} '
+          f'({keyframes(OUT)} of them), {mb:.2f} MB')
+    print(f'  master was {os.path.getsize(SRC) / 1048576:.2f} MB '
+          f'({os.path.getsize(SRC) / 1048576 / mb:.0f}x)')
 
 
 if __name__ == '__main__':

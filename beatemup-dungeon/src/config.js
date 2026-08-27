@@ -493,8 +493,17 @@ const CONFIG = {
        ⚠️ AND IT IS THE ONLY PLATE THAT WAS DOWNSCALED. The master is 1920x1080
        HEVC at 17.7 Mbps — 56MB, against a whole itch build of 30 — and the
        plate is stretched to the canvas whatever its own size, so it is cut to
-       the 848x478 both other plates already are. 56MB -> 9.9MB, and the
-       per-frame blit cost stays exactly what PERFORMANCE.md measured. */
+       the 848x478 both other plates already are, and encoded at CRF 32.
+       56MB -> 4.8MB, twelve to one, and the per-frame blit cost stays exactly
+       what PERFORMANCE.md measured.
+
+       ⚠️ THE SIZE KNOB IS CRF AND NOT THE RESOLUTION, which is the opposite of
+       the obvious move and was measured both ways: at the same file size,
+       640x360 scores 0.831 against 848x478's 0.884, and it LOOKS it — the small
+       one goes mushy on the gravel where the high-CRF one only loses grain.
+       VP9 and a denoise pass were tried too and are both dead ends. The whole
+       ladder, and why each lever was dropped, is in tools/build-desert-plate.py.
+       Do not shrink this plate by scaling it further. */
     desertPlate: {
       kind: 'video',
       src: 'v2:beatemup-dungeon/desert-plate.mp4',

@@ -782,9 +782,34 @@ keyframe. Re-encode the clip with dense keyframes first:
 
 ```
 python3 tools/build-boss-plate.py       # crops at the pan's turn, keyframe every 3 frames
-python3 tools/build-street-plate.py     # keyframe every 12
-python3 tools/build-desert-plate.py     # keyframe every 12, downscaled, prints the pan
+python3 tools/build-street-plate.py     # keyframe every 12, -b:v 3000k          -> 11.0 MB
+python3 tools/build-desert-plate.py     # keyframe every 12, crf 32, downscaled  ->  4.8 MB
 ```
+
+### Making a plate small
+
+**The knob is `CRF`, not the resolution.** Measured on the desert shot at the
+1280x720 the player actually sees — at the *same file size*, native 848x478 beats
+a scaled-down encode every time (crf 30 / 6.1 MB scores 0.884; 640x360 crf 26 /
+6.1 MB scores 0.831), and it is visible: the scaled ones go mushy where the
+high-CRF ones only lose grain.
+
+| desert plate, 848x478, GOP 12 | size |
+|---|---|
+| crf 28 | 7.9 MB |
+| crf 30 | 6.1 MB |
+| **crf 32** — what ships | **4.8 MB** |
+| crf 34 | 3.8 MB |
+
+> ⚠️ **VP9 is twice the size here, not half** (19.2 MB), because a scrubbable
+> plate is forced to carry 65 keyframes and libvpx spends far more on each one
+> than x264. **Denoising first saves nothing** — the bits are real gravel, not
+> sensor noise. **And a longer GOP is not the answer either:** 12 → 48 saves
+> 2.7 MB and makes every backward step decode four times as far.
+
+The street plate is still `-b:v 3000k` at **11 MB** — the largest file in the
+build. The same CRF pass would take it to roughly half that; it has not been done
+because that shot is a shipped, judged asset.
 
 **`lock: false` on an arena** makes the camera follow that fight instead of
 locking, with the whole room as walls rather than one screen. That is what a

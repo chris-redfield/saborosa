@@ -2713,9 +2713,50 @@ trails the player by.
 ⚠️ **IT IS THE ONLY PLATE THAT WAS DOWNSCALED.** The master is 1920x1080 HEVC at
 17.7 Mbps — **56MB, against a whole shipped itch build of 30**. The plate is
 stretched to the 1280x720 canvas whatever its own size, so it is cut to the
-848x478 both existing plates already are: 56MB → 9.9MB, with the per-frame blit
-cost left exactly where PERFORMANCE.md measured it. GOP 12 and 3000k are the
-street tool's settled trade, reused.
+848x478 both existing plates already are, with the per-frame blit cost left
+exactly where PERFORMANCE.md measured it.
+
+### Making it small, and the three levers that do not work
+
+It first shipped at the street tool's `-b:v 3000k` and came out at **9.9MB**, on
+a build that is 30MB whole. *"Drastically reduce the video size."* It is now
+**CRF 32 → 4.8MB**, twelve to one against the master.
+
+⚠️ **THE SIZE KNOB IS CRF, NOT THE RESOLUTION, AND THAT IS THE OPPOSITE OF THE
+OBVIOUS MOVE.** Measured at the 1280x720 the player actually sees (comparing
+plates at their own native size would flatter a small one for free):
+
+| | size | SSIM |
+|---|---|---|
+| `-b:v 3000k` — what it shipped as | 9.9 MB | 0.904 |
+| crf 28 | 7.9 MB | 0.897 |
+| crf 30 | 6.1 MB | 0.884 |
+| **crf 32** | **4.8 MB** | **0.867** |
+| crf 34 | 3.8 MB | 0.845 |
+| 640x360 crf 26 | 6.1 MB | 0.831 |
+| 512x288 crf 28 | 3.0 MB | 0.749 |
+
+**At the same file size, native resolution wins every time** — 848 crf 30 is
+0.884 against 640 crf 26's 0.831 for the same 6.1MB — and it is visible, not
+just a number: the scaled-down ones go mushy on the gravel where the high-CRF
+ones only lose grain. ⚠️ **Do not shrink a plate by scaling it further.**
+
+⚠️ **SSIM IS PESSIMISTIC ON THIS SHOT.** The picture is a field of gravel, the
+texture SSIM punishes hardest; the chroma planes sit at 0.98 throughout. Read
+the ordering, not the value.
+
+Two more levers, both tried, both dead:
+
+* ⚠️ **VP9 IS TWICE THE SIZE, NOT HALF** — 19.2MB at crf 34 against 10.2MB for
+  x264 crf 26. The GOP is why: libvpx spends far more on a keyframe than x264,
+  and a scrubbable plate is forced to carry 65 of them. VP9's usual advantage
+  assumes long GOPs, which is exactly what this file cannot have.
+* ⚠️ **DENOISING FIRST SAVES NOTHING** — `hqdn3d=4:3:6:4` came out 0.04MB
+  smaller. The bits are going into real gravel, not sensor noise.
+
+And the GOP itself is not where the size is either: 12 → 48 saves 2.7MB and
+makes every backward step decode four times as far. Not a trade worth making in
+a room whose camera reverses.
 
 ⚠️ **AND THE ASSERTION IN THAT TOOL IS THE DURATION, NOT THE FRAME COUNT.** The
 street's tool asserts the count because `worldPxPerSecond` was measured against
