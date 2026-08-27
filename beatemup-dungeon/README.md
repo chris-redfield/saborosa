@@ -807,6 +807,80 @@ reason, and hitting one of the three was the half that never worked.
 
 ---
 
+## The ground cover (the desert's cigarette floor)
+
+```js
+SCENERY: {
+  on: true,
+  sheet: 'v2:beatemup-dungeon/cigarros-fundo',
+  rows: 6,          // bands across the belt's depth  <- the coverage dial
+  spacing: 1.45,    // x step as a fraction of each mound's width; >1 = a gap
+  zJitter: 60,
+  zFrom: 0.0,       // where the rows run, as fractions of the depth,
+  zTo: 1.10,        // INCLUSIVE at both ends -- and zTo is past 1 on purpose
+  marginPx: 1000,   // must clear the widest mound (995px)
+},
+// ...and per room, like `flies`:
+{ name: 'desert', scenery: true, ... }
+```
+
+Six drifts of cigarette butts scattered over the belt. **They are drawn behind
+every fighter and collide with nothing** — "behave as the ground" is a drawing
+rule, not a physics one, so the belt is exactly as walkable as it was.
+
+Re-cut them with `python3 tools/build-beat-fundo-defs.py`.
+
+**The target is ~60%, not 80%** — the first ask was "cover like 80%", and
+watching it changed that to 60. It is a look, not a spec; don't "fix" it back up.
+
+⚠️ **Every number below is tied to the mounds' SIZE** (`SCALE` in the cutter,
+raised twice: 0.11 → 0.143 → 0.157). Roughly **+2 points of coverage per +10% of
+size** — the +10% needed no retune, a third bump will. The scatter spaces by width so x looks after itself, but a
+bigger mound covers more DEPTH — the same 6 × 1.30 gave 62% at the old size and
+68% at this one. Re-cut the pack, re-measure. Seven camera positions, not four:
+coverage varies ~15 points across the room and a four-sample average hid it.
+
+| rows × spacing, z span | belt | far / mid / near | drawn/frame |
+|---|---|---|---|
+| *old size 0.11* | | | |
+| 5 × 0.52, z .10–.90 | 78% | 95 / 91 / **42** | 31–35 |
+| 6 × 1.30, z 0–1.05 | 62% | 71 / 63 / 68 | 15–16 |
+| *at 0.143* | | | |
+| 6 × 1.30, z 0–1.05 | 68% | 80 / 71 / 53 | 12–16 |
+| 6 × 1.45, z 0–1.10 | 66% | 74 / 64 / 58 | 9–12 |
+| *at 0.157 (current)* | | | |
+| **6 × 1.45, z 0–1.10** (ships) | **67%** | **77 / 66 / 57** | **9–12** |
+| 6 × 1.55, z 0–1.12 | 64% | 75 / 61 / 55 | 9–11 |
+| 5 × 1.45, z 0–1.12 | 58% | 64 / 60 / 49 | 7–10 |
+
+> ⚠️ **It will not go much under 65% without going patchy at this size.** Each
+> drift is most of a screen wide now, so thinning further stops meaning "more
+> sand between mounds" and starts meaning "some screens have a bare stretch".
+
+> ⚠️ **`rows` is the coverage dial, not `spacing`.** Packing tighter in x merges
+> each row into one continuous ridge and does not fill what is actually empty —
+> the gaps *between rows*. Over 1.0, `spacing` leaves visible sand between mounds
+> and the rows overlapping in depth do the covering.
+
+> ⚠️ **`zTo` is past 1 on purpose.** A mound's ink sits entirely ABOVE its ground
+> point, so a row at z covers about `[z - 140, z]`. Rows placed at band *centres*
+> left the near edge of the belt bare — 42% where the player actually walks,
+> against 78% overall. Watch the near-third column, not the average.
+
+> ⚠️ **Read the thirds, not the average.** 78% overall was 42% where the player
+> actually walks. The shipped 62% is *even* across the depth (71/63/68); the 78%
+> one was not.
+
+> ⚠️ **Cost is fill, not VRAM** — all the draws share one 908×1110 atlas, so
+> there is nothing to thrash (the atlas is 997×1216). At 9–12 a frame it is under one
+> full-screen blit on top of the plate's. `rows` down first, `on: false` to kill
+> it.
+
+> ⚠️ **Anything that must be stood on for real** — a height `z` or `jumpY`
+> answers to — is a PROP, not scenery, and belongs in `prop.js`.
+
+---
+
 ## Rooms
 
 ```js

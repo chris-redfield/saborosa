@@ -3108,6 +3108,142 @@ one line is the whole of it if it reads wrong.
 
 ---
 
+## The desert's floor is made of cigarettes
+
+*"Spread these bad boys all over stage 2, in the walkable zone — these mounds
+should behave as the ground, the player will step on top of them — cover like 80%
+of the ground."* Three sheets arrived, **six drifts of cigarette butts**, two to a
+file.
+
+⚠️ **"BEHAVE AS THE GROUND" IS A DRAWING RULE, NOT A PHYSICS ONE**, and reading
+it that way is what made this a day's work instead of a week's. They are painted
+BEHIND every fighter and collide with nothing, so the belt is exactly as walkable
+as it was — the player passes over the top because there is nothing there to stop
+him. **The moment one of these has to be stood on for real — a height the
+fighter's `z` or `jumpY` answers to — it stops being scenery and becomes a prop,
+which is a different file and a different bargain.**
+
+That bargain is the one *The flies* section already describes: a PROP is cheap
+because it answers the fighters' interface with no branch; SCENERY is cheap
+because it answers **nothing**. A mound has no hitbox, no z-sort entry, no
+shadow, no crowd entry, no stats, and neither `combat.js` nor `stage.js` ever
+asks it a question.
+
+### Cut on bands, because a mound is not a body
+
+`tools/build-beat-fundo-defs.py` is new and does **not** work the way the enemy
+cutter does. That one finds frames as connected components over a size threshold,
+because a fighter is one body. A mound is fifty loose butts, most touching and
+several not — its components are the individual cigarettes. So the unit here is
+the **row band**, and everything inside one band is one mound.
+
+⚠️ **AND ONE BAND IS NOT A MOUND.** `coconut-cigarros-fundo.png` carries a stray
+143×906 mark in its top-left corner that bands exactly like a drift does. Bands
+under `MIN_W` are dropped and the tool asserts the final count, so a sheet that
+gains or loses a mound fails at the tool rather than shipping a scrap of paper as
+level art.
+
+One scale for all six (0.11), the standing rule for a pack: the illustrator drew
+one 3270px wide and another 6339px, and that difference is the point — the small
+ones fill gaps the big ones leave. Atlas is 699×857, 587KB.
+
+### The layout is hashed, not random
+
+⚠️ **THE DESERT'S CAMERA REVERSES**, so the player walks back over ground they
+have already seen. A layout rolled with `Math.random` — even once, at room entry
+— would be fine until you turned round, and then it would be a *different desert
+behind you* on a restart. Hashed off the row and the index instead: same room,
+same layout, always.
+
+### Coverage was measured, not estimated
+
+The mounds were laid out at each setting and the belt's alpha counted at four
+camera positions across the room:
+
+⚠️ **THE TARGET IS 60%, NOT 80%.** The first ask was *"cover like 80%"*;
+watching it in play changed it to *"its not 80%, its actually 60%"*. **That was a
+new target, not a complaint** — and it was read as a complaint first, which cost
+a round trip. At 80 the desert is a carpet of butts; at 60 it is a desert with
+butts drifted over it, and the second is the one that was wanted.
+
+⚠️ **AND THEN THE MOUNDS GREW TWICE** — `SCALE` 0.11 → 0.143 (+30%) → 0.157
+(+10%), both on request. **Every coverage number below is tied to that size.**
+
+⚠️ **THE SECOND BUMP NEEDED NO RETUNE, AND THAT WAS CHECKED RATHER THAN
+ASSUMED.** At 0.157 the shipped 6 × 1.45 measures 67% against 66% at 0.143 —
+inside the variation between one stretch of the room and the next. Only
+`marginPx` moved, to clear the wider mound. The trend is roughly **+2 points of
+coverage per +10% of size**, so a third bump will not be free. The scatter
+spaces mounds by their own WIDTH so x looks after itself — but a bigger mound
+covers more DEPTH, and the same 6 × 1.30 that gave 62% at the old size gives 68%
+at this one. Re-cut the pack and re-measure; `rows` is what brings it back.
+
+Measured over SEVEN camera positions, not four — once the mounds got big and
+sparse the coverage varied 15 points from one stretch of the room to the next,
+and a four-sample average hid that.
+
+| rows × spacing, z span | belt | far / mid / near | drawn/frame |
+|---|---|---|---|
+| *at SCALE 0.11* | | | |
+| 5 × 0.52, z .10–.90 | 78% | 95 / 91 / **42** | 31–35 |
+| 9 × 1.05, z 0–1.05 | 81% | 92 / 84 / 83 | 29–32 |
+| 6 × 1.30, z 0–1.05 | 62% | 71 / 63 / 68 | 15–16 |
+| *at SCALE 0.143* | | | |
+| 6 × 1.30, z 0–1.05 | 68% | 80 / 71 / 53 | 12–16 |
+| 6 × 1.45, z 0–1.10 | 66% | 74 / 64 / 58 | 9–12 |
+| 6 × 1.70, z 0–1.05 | 54% | 72 / 53 / 39 | 8–11 |
+| *at SCALE 0.157 (current)* | | | |
+| **6 × 1.45, z 0–1.10** | **67%** | **77 / 66 / 57** | **9–12** |
+| 6 × 1.55, z 0–1.12 | 64% | 75 / 61 / 55 | 9–11 |
+| 5 × 1.45, z 0–1.12 | 58% | 64 / 60 / 49 | 7–10 |
+
+⚠️ **IT WILL NOT GO MUCH UNDER 65% WITHOUT GOING PATCHY AT THIS SIZE**, and that
+is the trade to know. Each drift is most of a screen wide now, so thinning them
+further stops meaning "more sand between mounds" and starts meaning "some screens
+have a bare stretch". 66% with an even spread beat 60% with holes in it.
+
+⚠️ **THE FIRST PASS HAD THE DIAL BACKWARDS.** It packed tighter in x (spacing
+0.52) to chase coverage, which merged each row into one continuous ridge — "stuck
+together too much" — and still left the belt at 78%, because what was uncovered
+was never the gaps between mounds. It was the gaps between ROWS, and the near
+edge, which no row reached at all.
+
+⚠️ **AND THE AVERAGE HID IT.** 78% overall looked fine as a number and was **42%
+where the player actually walks**, reported as "the lower part has no
+cigarettes". A mound's ink sits entirely ABOVE its ground point (bottom-centre
+anchor), so a row at z covers about `[z - 140, z]`; rows placed at band CENTRES
+put the last one at 342 of 380 and spent a quarter of the field painting up the
+wall. **That is a placement bug, not a density one** — and the near-third column
+is the one to read.
+
+**`rows` moves coverage; `spacing` above 1.0 is what leaves sand showing between
+individual drifts.**
+
+⚠️ **AND THE NUMBER UNDERSTATES WHAT IT LOOKS LIKE.** It counts alpha, and the
+art is porous on purpose — a drift of loose butts with sand showing between them.
+78% of alpha reads as a floor that is essentially covered, which is why it stops
+there rather than chasing 90.
+
+### It is the most expensive scenery in this game
+
+9–12 mounds per frame at roughly 790×200 each — **well under one full-screen
+blit's worth of fill** on top of the plate's own. It was two and a half at the
+80% density; dropping to 60% and then growing the mounds (fewer, bigger) took it
+down twice.
+
+⚠️ **IT IS FILL, NOT VRAM, WHICH IS THE GOOD KIND OF EXPENSIVE HERE.** Every one
+of those draws samples ONE 699×857 atlas, so there is a single texture bound and
+nothing to thrash — and VRAM is what actually cost this project its frame rate
+once (PERFORMANCE.md). Quad count is nothing to a GPU. If it ever needs turning
+down, `rows` first.
+
+⚠️ **THE CULL IS AGAINST THE ANCHOR, NOT THE WIDTH.** First pass allowed a whole
+mound-width of slack either side and drew about a third more than the screen can
+show. `ax` is the centre, so the left edge is `sx - ax` and the right is
+`sx + (w - ax)`.
+
+---
+
 ## Boss nameplates, and the roll-call left the board
 
 Two asks in one, 2026-08-27: *"Add the boss names under their HP bars, remove the

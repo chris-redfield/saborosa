@@ -334,6 +334,13 @@ const CONFIG = {
        a layer rather than drawn inline for the reason the entities layer is:
        where a thing sits in the stack is level data, not a line buried in
        render(). Off with `CONFIG.FLIES.on` -- see the note there. */
+    /* THE GROUND ITSELF, between the plate and everything that stands on it.
+       The desert's floor is covered in cigarette mounds; the player walks over
+       the top of them, so they are BEHIND every fighter and there is nothing to
+       z-sort. Declared as a layer for the reason the flies are: where a thing
+       sits in the stack is level data, not a line buried in render(). Off with
+       `CONFIG.SCENERY.on`, and per room with `ROOMS[n].scenery`. */
+    { name: 'scenery',    scenery: true },
     { name: 'flies',      flies: true },
     { name: 'fighters',   entities: true },
     /* The plane in front of everything. Off until there is art for it — the
@@ -917,6 +924,12 @@ const CONFIG = {
          band, its walkable region and its depth ruler follow this room without
          being told. */
       belt: { topY: 330, depth: 380 },
+      /* THE FLOOR IS CIGARETTES. Opt-in per room like `flies`, and for the same
+         reason: the street is a filmed pavement and the boss room is indoors.
+         See CONFIG.SCENERY -- the mounds are drawn behind every fighter and
+         collide with nothing, so this changes what the room LOOKS like and
+         nothing about how it plays. */
+      scenery: true,
       /* 5007px of pan + one screen. `camX` is clamped to `endX - GAME_W`, so
          this is the hard ceiling on how much of the shot can ever be seen —
          set at exactly the end of the film, the way the street's 4704 is. */
@@ -3614,6 +3627,118 @@ const CONFIG = {
      WEIGHTED TOWARD THE SHORT ONE ON PURPOSE. Three hits every time is a
      rhythm the player stops reading and starts waiting out; a single jab that
      might be the start of a string is what makes them respect the wind-up. */
+  /* =========================================================================
+     THE GROUND COVER
+     =========================================================================
+     SIX DRIFTS OF CIGARETTE BUTTS, scattered across the desert's belt so the
+     floor is made of them. Asked for 2026-08-27: "spread these bad boys all over
+     stage 2, in the walkable zone -- these mounds should behave as the ground,
+     the player will step on top of them -- cover like 80% of the ground".
+
+     ⚠️ "BEHAVE AS THE GROUND" IS A DRAWING RULE, NOT A PHYSICS ONE, and that is
+     what makes this affordable. They are painted BEHIND every fighter and
+     nothing collides with them, so the belt is exactly as walkable as it was --
+     the player passes over the top because there is nothing there to stop him.
+     Anything that has to be STOOD ON for real (a height the fighter's z or
+     jumpY answers to) is a different feature and a different file; see the note
+     at the top of src/scenery.js about the two bargains an object can make.
+
+     ⚠️ THE LAYOUT IS HASHED, NOT RANDOM. The desert's camera reverses, so the
+     player walks back over ground they have already seen; a re-rolled scatter
+     would be a different desert behind them. Same room, same layout, always.
+
+     ⚠️ AND IT IS THE MOST EXPENSIVE SCENERY IN THIS GAME. About fourteen mounds
+     are on screen at once at these settings, each roughly 550x140 -- close to
+     one extra full-screen blit on top of the plate's. The flies cost nothing
+     next to this. `rows` and `spacing` are the dials and `on` is the switch;
+     read PERFORMANCE.md before adding a second thing that paints the whole belt.
+
+     ⚠️ THE TARGET IS 60%, NOT 80%. The first ask was "cover like 80%"; watching
+     it in play changed that to 60 -- "its not 80%, its actually 60%". The number
+     is a LOOK, not a spec: at 80 the desert reads as a carpet of butts, at 60 it
+     reads as a desert with butts drifted over it, and the second is the one that
+     was wanted. Do not "fix" this back up.
+
+     COVERAGE IS `rows`, NOT `spacing`, AND THE FIRST PASS HAD THAT BACKWARDS.
+     Packing tighter in x (spacing 0.52) merged each row into a continuous ridge
+     and still left the belt at 78%, because what was uncovered was never the
+     gaps between mounds -- it was the gaps between ROWS, and the near edge,
+     which no row reached at all. Measured across four camera positions:
+
+     ⚠️ EVERY NUMBER BELOW IS TIED TO THE MOUNDS' SIZE, which went up twice on
+     2026-08-27 (SCALE in tools/build-beat-fundo-defs.py: 0.11 -> 0.143 -> 0.157).
+     The scatter spaces mounds by their own WIDTH so x looks after itself, but a
+     bigger mound covers more DEPTH -- the same 6 x 1.30 that gave 62% at 0.11
+     gives 68% at 0.143. Re-cut the pack and re-measure.
+
+     ⚠️ THE SECOND BUMP (+10%) NEEDED NO RETUNE, and that is worth knowing rather
+     than assuming: at 0.157 the shipped 6 x 1.45 measures 67% against 66% at
+     0.143, which is inside the variation between one stretch of the room and the
+     next. Only `marginPx` moved, to clear the wider mound. A third bump will not
+     be free -- the trend is roughly +2 points of coverage per +10% of size.
+
+     Measured over SEVEN camera positions across the room (four was not enough
+     once the mounds got big and sparse -- the coverage varies by 15 points from
+     one stretch of the room to the next, and a four-sample average hid that):
+
+                              belt        far/mid/near     drawn/frame
+      old size, 0.11:
+         5 x 0.52  z .10-.90   78%      95 / 91 / 42        31-35
+         9 x 1.05  z 0-1.05    81%      92 / 84 / 83        29-32
+         6 x 1.30  z 0-1.05    62%      71 / 63 / 68        15-16
+      at 0.143:
+         6 x 1.30  z 0-1.05    68%      80 / 71 / 53        12-16
+         6 x 1.45  z 0-1.10    66%      74 / 64 / 58         9-12
+         6 x 1.70  z 0-1.05    54%      72 / 53 / 39         8-11
+      at 0.157 (current):
+         6 x 1.45  z 0-1.10    67%      77 / 66 / 57         9-12   <- shipped
+         6 x 1.55  z 0-1.12    64%      75 / 61 / 55         9-11
+         5 x 1.45  z 0-1.12    58%      64 / 60 / 49         7-10
+
+     ⚠️ IT WILL NOT GO MUCH UNDER 65 WITHOUT GOING PATCHY at this mound size, and
+     that is the trade to know: each drift is now most of a screen wide, so
+     thinning them further stops meaning "more sand between mounds" and starts
+     meaning "some screens have a bare stretch". 66% with an even spread beat 60%
+     with holes in it.
+
+     ⚠️ READ THE THIRDS, NOT THE AVERAGE. The first pass was 78% overall and 42%
+     where the player actually walks -- "the lower part has no cigarettes" -- and
+     that was a PLACEMENT bug rather than a density one. It is why the shipped
+     row at 62% is EVEN across the depth (71/63/68) where the 78% one was not.
+     See scenery.js.
+
+     ⚠️ AND THE MEASURED NUMBER UNDERSTATES WHAT IT LOOKS LIKE. It counts ALPHA,
+     and the art is porous on purpose -- a drift of loose butts with sand showing
+     between them. */
+  SCENERY: {
+    on: true,
+    /* The pack, cut by tools/build-beat-fundo-defs.py. Loaded under the asset
+       key `scenery` -- see src/manifest.js, which spells that key twice. */
+    sheet: 'v2:beatemup-dungeon/cigarros-fundo',
+    rows: 6,           // bands across the belt's depth -- the COVERAGE dial
+    /* X STEP AS A FRACTION OF EACH MOUND'S OWN WIDTH. Over 1 they do not touch.
+       ⚠️ IT WAS 0.52 AND THAT WAS THE COMPLAINT: at half a width apart the
+       mounds in a row merged into one continuous ridge -- "stuck together too
+       much". At 1.05 each drift is its own thing with sand between it and the
+       next, and the COVERAGE comes from the rows overlapping in depth instead,
+       which is what `rows` is for. */
+    spacing: 1.45,
+    zJitter: 60,       // px, so the rows do not read as stripes
+    /* WHERE THE ROWS RUN, as fractions of the belt's depth, INCLUSIVE at both
+       ends. A mound's ink sits entirely ABOVE its ground point, so a row at z
+       covers about [z - 140, z] -- which is why `zTo` is past 1: the last row's
+       ground point sits just beyond the near edge so its drawing reaches it.
+       See the note in scenery.js; getting this wrong left the front of the belt
+       bare while a quarter of the field was painted up the wall. */
+    zFrom: 0.0,
+    zTo: 1.10,
+    /* How far outside the room the scatter runs. The player stands at `startX`
+       with the camera at 0 and can see a screen of ground to his left, so a
+       field that began at his feet would show bare sand in the one moment the
+       room is introducing itself. */
+    marginPx: 1000,    // ...and it must clear the WIDEST mound, now 995px
+  },
+
   /* =========================================================================
      THE DEATH BURST'S OWN FRAME RATE
      =========================================================================

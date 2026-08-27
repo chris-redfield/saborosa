@@ -104,6 +104,21 @@ function assetManifest() {
     out.push({ key: 'fly', src: CONFIG.FLIES.SHEET, how: 'image' });
   }
 
+  /* THE GROUND COVER: the desert's cigarette mounds. A pack in the same two-file
+     shape a character uses (`-game.png` + `-sprites.json`), but NOT in
+     CONFIG.CHARACTERS -- it is scenery, not a fighter, and putting it there
+     would hand it to `sheets.build()` and to everything that walks the cast.
+     So it is listed by hand, and the key `scenery` is spelled here twice and
+     read in src/scenery.js.
+
+     `image` rather than `big`: the atlas is 699x857 and every mound is drawn at
+     its own size, so there is nothing a downscale would save. ⚠️ GATED ON
+     `SCENERY.on`, so turning the floor off costs the download too. */
+  if (CONFIG.SCENERY && CONFIG.SCENERY.on && CONFIG.SCENERY.sheet) {
+    out.push({ key: 'scenery', src: CONFIG.SCENERY.sheet + '-game.png', how: 'image' });
+    out.push({ key: 'scenery', src: CONFIG.SCENERY.sheet + '-sprites.json', how: 'json' });
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>

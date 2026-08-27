@@ -59,6 +59,10 @@
      the props are -- they belong to a ROOM, and the shell is what changes
      rooms. Pure scenery: nothing else in this file asks them anything. */
   const flies = new Flies(assets);
+  /* The desert's floor of cigarette mounds. Owned here for the reason the flies
+     and the props are -- it belongs to a ROOM, and the shell is what changes
+     rooms. Pure scenery: nothing else in this file asks it anything. */
+  const scenery = new Scenery(assets);
   /* STILL LIFE'S PROJECTOR, the file copied over unchanged and driven from the
      same knobs (CONFIG.film*). It is a post effect and it is the LAST thing
      drawn every frame -- see renderFilmed(). */
@@ -492,6 +496,8 @@
     props.enterRoom(stage.room(), player);
     // Same rule, same reason: the flies belong to the room actually starting.
     flies.enterRoom(stage.room(), stage.camX);
+    // ...and so does the ground it walks on. See CONFIG.SCENERY.
+    scenery.enterRoom(stage.room());
     /* How the player finds what is within reach. Handed over rather than looked
        up globally, so a Player built for the ending screen or a test has none
        and simply cannot pick anything up. */
@@ -647,6 +653,7 @@
       player.enterWalk(CONFIG.playerEnterPx);
       props.enterRoom(stage.room(), player);
       flies.enterRoom(stage.room(), stage.camX);
+      scenery.enterRoom(stage.room());
       roomMusic();
       phase = 'play';
       phaseT = 0;
@@ -753,6 +760,7 @@
            would show three of them blinking out over a room that is still
            visible. */
         flies.enterRoom(stage.room(), stage.camX);
+        scenery.enterRoom(stage.room());
         roomMusic();
         input.flush();
       }
@@ -1047,6 +1055,7 @@
     for (const layer of CONFIG.LAYERS) {
       if (layer.on === false) continue;
       if (layer.entities) { drawEntities(camX); continue; }
+      if (layer.scenery) { scenery.draw(ctx, camX); continue; }
       if (layer.flies) { flies.draw(ctx, camX); continue; }
       backdrop.drawLayer(ctx, layer, camX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
     }
