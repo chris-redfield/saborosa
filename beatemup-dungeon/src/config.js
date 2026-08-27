@@ -3797,7 +3797,15 @@ const CONFIG = {
        with the camera at 0 and can see a screen of ground to his left, so a
        field that began at his feet would show bare sand in the one moment the
        room is introducing itself. */
-    marginPx: 1000,    // ...and it must clear the WIDEST mound, now 995px
+    /* ⚠️ THE WIDEST MOUND IS 995px AND THE NEAR BAND DRAWS IT AT 1094 (bandScale
+       below), so this no longer "clears the widest" -- and does not need to. The
+       camera never goes below 0 (`stage.js`: `minCam = reverseFloorX || 0`), so
+       the only thing the left margin has to do is put ink at x=0, which any
+       value over about one mound-width does. It is slack, not a clearance. It is
+       left at 1000 deliberately: `x0 = -marginPx` is where the scatter's index
+       starts counting, so changing it re-rolls the layout of EVERY band, and
+       there is nothing to buy with that. */
+    marginPx: 1000,
     /* THE THREE SPEEDS -- px of mound movement per px of camera movement, the
        same meaning `parallax` has on a BACKDROP layer. The rows are split into
        three equal bands of depth and each band takes one of these.
@@ -3809,6 +3817,74 @@ const CONFIG = {
       near: 1.00,      // the rows the player walks through -- PINNED, see above
       mid:  0.90,
       far:  0.80,      // the drifts at the back of the belt lag furthest
+    },
+    /* HOW BIG EACH BAND IS DRAWN, a multiplier on the pack's own scale. The
+       SAME three bands the parallax cuts -- rows 0-1 / 2-3 / 4-5 at `rows: 6`.
+
+       ⚠️ NEAR IS 1.10 BECAUSE IT WAS ASKED FOR ("the cigarettes in the first
+       plan, closer to the screen, make them 10% bigger"), and it is also the
+       other half of the depth cue the parallax started: a closer thing moves
+       faster AND is bigger, and doing only the first is what makes a parallax
+       read as sliding rather than as distance.
+
+       ⚠️ THIS IS NOT A RE-CUT, AND IT MUST NOT BECOME ONE. The pack is cut once
+       at one scale (`SCALE` in tools/build-beat-fundo-defs.py, 0.157) and that
+       stays the art's size -- see the wire-art rule: one scale per pack, never
+       normalised per sprite. What this multiplies is a BAND, which is a piece of
+       level composition, not a sprite. Every frame in the band is affected
+       equally, so the mounds' sizes relative to each other are untouched.
+
+       ⚠️ IT MOVES THE SPACING AND THE ANCHOR WITH IT, in scenery.js. `spacing`
+       is a fraction of a mound's own width, so the step scales too or the band
+       packs tighter as well as growing and "bigger" arrives as "denser". And the
+       anchor is in frame pixels, so it scales or the whole band floats off the
+       belt. Both are handled; a third consumer of these frames would have to be.
+
+       ⚠️ COVERAGE: the near third gains ~2 points (the +2-per-+10% rule above --
+       the mounds cover more DEPTH; x looks after itself via the spacing). Fill
+       is ~+10% on two of the six rows, so ~+3% overall, and the draw count is
+       unchanged to within a mound. Nothing here needed a retune. */
+    bandScale: {
+      near: 1.10,
+      mid:  1.05,      // +5%, 2026-08-27 -- a step between 1.10 and the far 1.00
+      far:  1.00,
+    },
+    /* WHERE EACH BAND SITS, as a fraction of the belt's DEPTH added to its rows'
+       z -- positive is toward the viewer, i.e. DOWN the screen. The same unit
+       `zFrom`/`zTo` are already in, and the same three bands.
+
+       ⚠️ `near: 0.20` IS 20% OF THE BELT'S DEPTH (76px of the 380), NOT 20% OF
+       THE SCREEN. Asked for as "bring the first plane 20% down on the screen",
+       and the belt is the unit every other z in this block uses, so that is the
+       reading taken. For 20% of GAME_H instead -- 144px, which crops most of the
+       front row away -- this is 0.38. One number either way.
+
+       ⚠️ A BAND MAY BE PUSHED PAST THE NEAR EDGE OF THE BELT, AND THIS ONE IS.
+       The near rows' ground points move from z 334/418 to 410/494 against a belt
+       380 deep, so they now sit BELOW the walkable strip and their ground points
+       are off the bottom of the 720px screen (740 and 824). That is the point --
+       a mound's ink is entirely ABOVE its ground point, so the drift still
+       reaches back up into the belt (row 4 covers z 169-410, row 5 253-494) and
+       what falls off the bottom edge is meant to. The front row is roughly half
+       cropped; nothing is lost that the eye was reading as ground.
+
+       ⚠️ IT DOES NOT MAKE THE BAND A FOREGROUND. Scenery is one layer, drawn
+       before every fighter (`CONFIG.LAYERS`), so a mound at z 494 is still
+       painted BEHIND a player standing at z 380 even though it is now nearer the
+       camera than he can ever get. It reads fine as ground sloping toward the
+       lens; it will NOT read as something he walks behind. Wanting that is a
+       draw-ORDER change -- a second scenery pass in the `foreground` layer slot,
+       which is already in LAYERS at parallax 1.25 and `on: false` -- and not a
+       number in here.
+
+       ⚠️ THE BELT'S COVERAGE WAS REASONED, NOT RE-MEASURED. Both near rows' ink
+       still spans the near third end to end, and row 3 still covers what row 4
+       vacated, so the numbers in the table above should stand. If the near third
+       looks thin in play, that table is how it was measured the first time. */
+    bandOffsetZ: {
+      near: 0.20,
+      mid:  0,
+      far:  0,
     },
   },
 

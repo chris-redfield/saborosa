@@ -36,6 +36,23 @@
  * this file is: nothing asks a mound where it is. The near band is left at 1.0
  * so the ground the player's feet are actually on still holds still.
  *
+ * ⚠️ A BAND CARRIES THREE NUMBERS, and they are independent: how fast it scrolls
+ * (`parallax`), how big it is drawn (`bandScale`) and where it sits down the belt
+ * (`bandOffsetZ`). Together they are one depth cue -- the near drifts are 10%
+ * larger, 10% faster and pushed 20% of the belt's depth toward the lens.
+ *
+ * The SCALE is applied at DRAW time, not baked into the pack -- the six frames
+ * are cut once at one scale (see wire-art: one scale per pack) and a band
+ * multiplies on top. The two places it has to be honoured are the ANCHOR, which
+ * is in frame pixels and must scale with the sprite, and the SPACING step, which
+ * is a fraction of a mound's own width.
+ *
+ * ⚠️ AND NONE OF IT CHANGES THE DRAW ORDER. A band pushed past the near edge of
+ * the belt is nearer the camera than any fighter can stand, and is still painted
+ * BEHIND all of them -- scenery is one layer. It reads as ground sloping toward
+ * the lens, not as something the player walks behind; that would be a second
+ * pass in the `foreground` layer slot, which is a different feature.
+ *
  * ⚠️ IT IS FILL, NOT VRAM, WHICH IS THE GOOD KIND OF EXPENSIVE HERE. Every one
  * of those draws samples ONE 699x857 atlas, so there is a single texture bound
  * and nothing to thrash -- and VRAM is what actually cost this project its frame
@@ -46,7 +63,7 @@
 class Scenery {
   constructor(assets) {
     this.assets = assets;
-    this.items = [];       // {x, z, k, p} world coords + scroll rate, far -> near
+    this.items = [];       // {x,z,k,p,s} world pos + scroll rate + draw scale
     this.defs = null;
   }
 
@@ -86,15 +103,25 @@ class Scenery {
     const x0 = -margin;
     const depth = (room.belt && room.belt.depth) || CONFIG.beltDepth;
 
-    /* THE THREE SPEEDS, far band first, so `layers[b]` matches the band index a
-       row falls into. Off -- or absent -- and every row is 1.0, which is the
-       behaviour this had before and is still what every room but the desert
-       wants. */
+    /* THE THREE DEPTH BANDS -- far, mid, near, in that order so `[b]` matches the
+       band index a row falls into. Two rows each at `rows: 6`.
+
+       A band carries TWO numbers and they are independent: how fast it scrolls
+       (`parallax`) and how big it is drawn (`bandScale`). Either block may be
+       absent or off on its own and that band's number falls back to 1.0, which
+       is what this file did before there were bands at all -- and at 1.0 both
+       are exact no-ops rather than near-misses, so a room that wants neither
+       draws byte-for-byte what it used to. */
+    const BANDS = 3;
     const P = S.parallax;
-    const layers = (P && P.on)
-      ? [P.far, P.mid, P.near].map(v => (v == null ? 1 : v))
-      : null;
-    const bands = layers ? layers.length : 1;
+    const rate = (P && P.on) ? [P.far, P.mid, P.near].map(v => (v == null ? 1 : v))
+                             : [1, 1, 1];
+    const BS = S.bandScale;
+    const size = BS ? [BS.far, BS.mid, BS.near].map(v => (v == null ? 1 : v))
+                    : [1, 1, 1];
+    const OZ = S.bandOffsetZ;
+    const drop = OZ ? [OZ.far, OZ.mid, OZ.near].map(v => (v == null ? 0 : v))
+                    : [0, 0, 0];
 
     /* ⚠️ A LAYER FASTER THAN THE CAMERA RUNS OUT OF SCATTER BEFORE THE ROOM DOES.
        A mound at world `x` is drawn at `x - camX * p`, so filling the screen at
@@ -103,7 +130,7 @@ class Scenery {
        why the shipped values need none of this. Over 1.0 it is past the end, and
        without this the last stretch of a fast layer would simply be bare. */
     const camMax = Math.max(0, (room.endX || CONFIG.GAME_W) - CONFIG.GAME_W);
-    const pMax = layers ? Math.max(1, ...layers) : 1;
+    const pMax = Math.max(1, ...rate);
     const x1 = Math.max((room.endX || CONFIG.GAME_W),
                         pMax * camMax + CONFIG.GAME_W) + margin;
 
@@ -124,25 +151,36 @@ class Scenery {
        a little past 1: the last row's ground point sits just beyond the near
        edge so its ink covers up to it. */
     for (let r = 0; r < rows; r++) {
+      /* ⚠️ THE BAND IS PICKED OFF THE ROW INDEX, NOT OFF THE `z` -- and now it has
+         to be picked BEFORE it, because the band is one of the things that MOVES
+         z. Off the row index because `zJitter` can push a row's ground point 30px
+         and a mound that changed SPEED because its scatter landed slightly
+         forward would tear the boundary open. Rows are what the bands are made
+         of, so rows are what get sorted into them. */
+      const b = Math.min(BANDS - 1, Math.floor(r * BANDS / rows));
+      const p = rate[b], sc = size[b];
       const f = rows > 1 ? r / (rows - 1) : 0.5;
-      const z = (S.zFrom + (S.zTo - S.zFrom) * f) * depth
+      /* `drop[b]` IS A FRACTION OF THE BELT'S DEPTH, positive = toward the
+         viewer, which is the unit `zFrom`/`zTo` are already in. A band may be
+         pushed past the near edge on purpose -- see CONFIG.SCENERY.bandOffsetZ:
+         the mound's ink still reaches back up into the belt, and what falls off
+         the bottom of the screen is meant to. */
+      const z = (S.zFrom + (S.zTo - S.zFrom) * f + drop[b]) * depth
               + (Scenery._h(r * 97 + 3) - 0.5) * (S.zJitter || 40);
-      /* ⚠️ THE BAND IS PICKED OFF THE ROW INDEX, NOT OFF THE JITTERED `z`.
-         `zJitter` can push a row's ground point across a band's edge, and a mound
-         that changed SPEED because its scatter landed 30px further forward would
-         make the boundary visible as a tear. Rows are what the depth bands are
-         made of, so rows are what get sorted into them. */
-      const p = layers
-        ? layers[Math.min(bands - 1, Math.floor(r * bands / rows))]
-        : 1;
       let x = x0, i = 0;
       while (x < x1) {
         const k = Math.floor(Scenery._h(r * 911 + i * 57) * n) % n;
-        this.items.push({ x, z, k, p });
+        this.items.push({ x, z, k, p, s: sc });
         /* SPACED BY THE MOUND'S OWN WIDTH, so a run of narrow ones packs tighter
            than a run of wide ones and the field never reads as a grid. Under 1
            they overlap, which is what covers the ground -- see CONFIG.SCENERY. */
-        const w = defs.frames[k].w;
+        /* ⚠️ BY THE DRAWN WIDTH, WHICH IS THE BAND'S SCALE TIMES THE FRAME'S.
+           `spacing` is a fraction of a mound's OWN width, so a band drawn 10%
+           bigger has to step 10% further or it packs 10% tighter as well as
+           growing -- and then "bigger" arrives as "denser", which is a different
+           change. Stepping with the scale keeps the band's composition exactly
+           as tuned and simply enlarges it: ~9% fewer mounds, each 21% more area. */
+        const w = defs.frames[k].w * sc;
         x += w * (S.spacing || 0.65)
            * (0.85 + 0.3 * Scenery._h(r * 17 + i * 13));
         i++;
@@ -175,14 +213,23 @@ class Scenery {
       /* ⚠️ EACH ITEM CARRIES ITS OWN SCROLL RATE, and the CULL below has to use
          the same number or a lagging layer pops in and out at the screen edge. */
       const sx = it.x - camX * it.p;
+      /* ⚠️ THE ANCHOR SCALES WITH THE SPRITE, and forgetting that is the way this
+         goes wrong. `ax`/`ay` are offsets in FRAME pixels: draw a 219px mound at
+         1.1x while still subtracting the raw `ay` and its top stays put while its
+         bottom drops 22px past the ground point -- the band hangs BELOW the belt
+         line it is supposed to sit on, which presents as a z bug and sends you
+         looking in the wrong file. Anchors here are exact bottom-centre
+         (ax = w/2, ay = h), so scaling both keeps the ground point nailed where
+         it was and the mound grows up and out around it. */
+      const s = it.s, aw = f.w * s, ah = f.h * s, ax = f.ax * s;
       /* ⚠️ AGAINST THE ANCHOR, NOT THE WIDTH. `ax` is the mound's centre, so its
          left edge is `sx - ax` and its right is `sx + (w - ax)`. Culling on the
          full width either side was a whole mound's slack in both directions and
          drew about a third more than the screen can show. */
-      if (sx + (f.w - f.ax) < 0 || sx - f.ax > CONFIG.GAME_W) continue;
+      if (sx + (aw - ax) < 0 || sx - ax > CONFIG.GAME_W) continue;
       ctx.drawImage(img, f.x, f.y, f.w, f.h,
-                    Math.round(sx - f.ax), Math.round(topY + it.z - f.ay),
-                    f.w, f.h);
+                    Math.round(sx - ax), Math.round(topY + it.z - f.ay * s),
+                    aw, ah);
     }
   }
 }

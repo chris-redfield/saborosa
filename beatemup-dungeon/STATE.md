@@ -3293,6 +3293,87 @@ one multiply per item: the 9–12 draws and the single atlas bind are unchanged,
 and so is the ~67% coverage (shifting a row in x moves the holes, it does not
 make more of them).
 
+### ...and then the near band was drawn 10% bigger
+
+*"The cigarettes in the first plan (closer to the screen), make them 10%
+bigger."* `CONFIG.SCENERY.bandScale`, `near: 1.10`, the same three bands.
+
+**It is the other half of the cue the speeds started.** A closer thing moves
+faster *and* is bigger; doing only the first is a large part of why a parallax
+can read as sliding rather than as distance. The bands now carry two independent
+numbers each — a rate and a size — and either block can be off on its own.
+
+⚠️ **THIS IS A BAND MULTIPLIER, NOT A RE-CUT, AND IT MUST NOT BECOME ONE.** The
+pack is cut once at one scale (`SCALE` 0.157 in the cutter) and that stays the
+art's size — the wire-art rule is one scale per pack, never normalised per
+sprite. What is scaled here is a *band*, which is level composition; every frame
+in it moves equally, so the six mounds' sizes relative to each other are
+untouched. Do not push this into the cutter.
+
+⚠️ **TWO THINGS HAVE TO SCALE WITH IT, AND EACH FAILS AS A DIFFERENT BUG.**
+
+- **The anchor.** `ax`/`ay` are offsets in FRAME pixels. Draw a 219px mound at
+  1.1x while still subtracting the raw `ay` and its top stays put while its bottom
+  drops 22px past the ground point — **the band hangs below the belt line it is
+  supposed to sit on**, which presents as a `z` bug and sends you looking in the
+  wrong file. The anchors are exact bottom-centre (`ax = w/2`, `ay = h`), so
+  scaling both nails the ground point and the mound grows up and out around it.
+- **The spacing step.** `spacing` is a fraction of a mound's OWN width. Leave the
+  step on the raw width and the band packs 10% tighter as well as growing, so
+  **"bigger" arrives as "denser"** — a different change, and one that would land
+  on the coverage number that was tuned over seven camera positions. Stepping
+  with the scale keeps the composition exactly as tuned and simply enlarges it:
+  ~9% fewer mounds, each 21% more area.
+
+⚠️ **`marginPx` NO LONGER "CLEARS THE WIDEST MOUND" AND DOES NOT NEED TO.** The
+widest is 995px and the near band draws it at 1094. The camera never goes below 0
+(`minCam = reverseFloorX || 0`), so the left margin's only job is to put ink at
+x=0. It stays at 1000 on purpose: `x0 = -marginPx` is where the scatter's index
+starts counting, so moving it re-rolls the layout of *every* band to buy nothing.
+
+**Cost:** the near third gains ~2 points of coverage (the +2-per-+10%-of-size
+rule, because a bigger mound covers more DEPTH — x looks after itself via the
+spacing). Fill is ~+10% on two of six rows, ~+3% overall; the draw count is
+unchanged to within a mound. Nothing needed retuning. **At 1.0 the scale is an
+exact no-op**, not a near-miss, so the other two bands and every other room draw
+byte-for-byte what they did before.
+
+### The near band came down the screen, and the mid one grew (2026-08-27)
+
+*"Bring the first plane (closest to screen) 20% down on the screen, increase the
+size of the cigarettes in the middle plane by 5%."* `bandOffsetZ.near: 0.20` and
+`bandScale.mid: 1.05`. A band now carries **three** independent numbers — a rate,
+a size and a place — and the three together are one depth cue.
+
+⚠️ **"20% DOWN" WAS TAKEN AS 20% OF THE BELT'S DEPTH (76px of 380), NOT OF THE
+SCREEN.** The belt is the unit every other z in `SCENERY` already uses
+(`zFrom`/`zTo` are fractions of it), so that is the reading. 20% of `GAME_H`
+would be 144px and is `0.38` — it crops most of the front row away. One number
+either way, and the alternative is written down next to it.
+
+⚠️ **THE BAND IS NOW PAST THE NEAR EDGE OF THE BELT, ON PURPOSE.** The near rows'
+ground points move from z 334/418 to **410/494 against a belt 380 deep** — below
+the walkable strip, and off the bottom of the 720px screen (740 and 824). That
+works because a mound's ink sits entirely ABOVE its ground point: row 4 still
+covers z 169–410 and row 5 covers 253–494, so both still blanket the near third
+of the belt, and only the front row's lower half is cropped by the screen edge.
+**Coverage here was reasoned from those spans, not re-measured** — row 3 still
+covers what row 4 vacated. The seven-camera table above is how to check it
+properly if the near third starts looking thin.
+
+⚠️ **AND IT IS STILL NOT A FOREGROUND.** This is the one likely to disappoint.
+Scenery is a single layer in `CONFIG.LAYERS`, drawn before every fighter, so a
+mound at z 494 is painted **behind** a player standing at z 380 even though it is
+now nearer the camera than he can ever get. It reads as ground sloping toward the
+lens. It will **not** read as something he walks behind, and no number in
+`SCENERY` will make it — that is a draw-ORDER change, a second scenery pass in
+the `foreground` slot that is already in LAYERS at parallax 1.25 and `on: false`.
+
+⚠️ **THE BAND HAD TO BE PICKED BEFORE `z`, NOT AFTER.** It was chosen off the row
+index *after* z was computed, which was fine while a band only decided speed and
+size. Now the band MOVES z, so the order in `enterRoom` is: row index → band →
+z. Still the row index and never the jittered z, for the same reason as before.
+
 ⚠️ **THREE BANDS MEANS TWO SEAMS**, and that is what "3 layers" costs over a
 smooth gradient — rows 1 and 2 are 84px apart in depth and now differ by 0.10 in
 speed. If a boundary ever reads as a tear rather than as distance, the fix is not

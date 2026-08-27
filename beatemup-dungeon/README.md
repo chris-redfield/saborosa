@@ -825,6 +825,16 @@ SCENERY: {
     mid:  0.90,
     far:  0.80,
   },
+  bandScale: {      // ...and how big each of those bands is DRAWN
+    near: 1.10,     // closer = faster AND bigger; the other half of the cue
+    mid:  1.05,
+    far:  1.00,
+  },
+  bandOffsetZ: {    // ...and where it sits, in fractions of the belt's DEPTH
+    near: 0.20,     // + is toward the viewer = DOWN the screen. 0.20 = 76px
+    mid:  0,
+    far:  0,
+  },
 },
 // ...and per room, like `flies`:
 { name: 'desert', scenery: true, ... }
@@ -923,6 +933,51 @@ every row back at 1.0.
 
 > ⚠️ **Three bands means two seams.** If a boundary reads as a tear, the fix is a
 > per-*row* rate lerped far→near (one line in `scenery.js`), not a smaller spread.
+
+`bandScale` is the same three bands, drawn bigger or smaller — a multiplier on
+the pack's own scale, applied at draw time. `near: 1.10` because a closer thing
+is bigger as well as faster.
+
+> ⚠️ **It is a band multiplier, not a re-cut.** The pack is cut once at one scale
+> (`SCALE` 0.157 in the cutter) and that stays the art's size — one scale per
+> pack, never normalised per sprite. A *band* is level composition; every frame
+> in it scales equally, so the mounds' sizes relative to each other are untouched.
+> Don't push this into the cutter.
+
+> ⚠️ **Two things scale with it, and each fails as a different-looking bug.** The
+> **anchor** (`ax`/`ay` are frame pixels — miss it and the band hangs below the
+> belt line, presenting as a `z` bug) and the **spacing step** (`spacing` is a fraction
+> of a mound's own width — miss it and the band packs tighter as well as growing,
+> so "bigger" arrives as "denser"). Both are handled in `scenery.js`; a third
+> consumer of these frames would have to handle them too.
+
+> ⚠️ **`marginPx` no longer clears the widest mound (995 → 1094 in the near band)
+> and doesn't need to.** `camX` never goes below 0, so the left margin only has
+> to put ink at x=0. It stays 1000 because `x0 = -marginPx` seeds the scatter's
+> index — moving it re-rolls every band's layout for nothing.
+
+> Cost: ~+2 points of coverage in the near third, ~+3% fill overall, draw count
+> unchanged. **At 1.0 the scale is an exact no-op**, so the other bands and every
+> other room draw exactly what they did before.
+
+`bandOffsetZ` moves a whole band down (or up) the belt — again the same three
+bands, in fractions of the belt's **depth**, positive toward the viewer.
+
+> ⚠️ **`near: 0.20` is 20% of the belt's depth (76px of 380), not of the screen.**
+> The belt is the unit `zFrom`/`zTo` already use. For 20% of `GAME_H` — 144px,
+> which crops most of the front row — use `0.38`.
+
+> ⚠️ **It puts the band past the near edge of the belt, deliberately.** Ground
+> points go from z 334/418 to 410/494 (screen y 740/824, below the 720px frame).
+> A mound's ink is entirely *above* its ground point, so both rows still blanket
+> the near third (169–410 and 253–494) and only the front row's lower half is
+> cropped. Coverage was reasoned from those spans, not re-measured.
+
+> ⚠️ **It does NOT make the band a foreground.** Scenery is one layer, drawn
+> before every fighter, so a mound at z 494 is still painted *behind* a player at
+> z 380. It reads as ground sloping toward the lens, not as something he walks
+> behind. That is a draw-order change — a second pass in the `foreground` layer
+> slot (already in `LAYERS`, parallax 1.25, `on: false`) — not a number here.
 
 ---
 
