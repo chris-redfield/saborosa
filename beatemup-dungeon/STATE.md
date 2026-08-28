@@ -3772,6 +3772,161 @@ with the two numbers, rather than shipped as if it had been done.
 still returns `'room'`. A switch to call the lift was floated for later and
 deliberately not built.
 
+### The sixth layer, 30% down — UNDECIDED, awaiting a look (2026-08-28)
+
+*"Bring the 6th layer 30% down, if that collide with the 5th layer, let me know,
+but I want to see it."* `backLayer.zFrom/zTo` -0.05/0.15 -> **0.25/0.45**.
+
+⚠️ **IT COLLIDES, AND IT WAS REPORTED RATHER THAN QUIETLY ADJUSTED.** Read in the
+belt's depth like every other z here, 30% is 114px, and it puts the layer INSIDE
+the far band instead of behind it:
+
+        z  95 (y 425)  rate 0.70   <- 6th
+        z 129 (y 459)  rate 0.75      5th
+        z 171 (y 501)  rate 0.70   <- 6th
+        z 187 (y 517)  rate 0.75      5th
+
+**42px of shared depth**, and the 6th's second row now draws IN FRONT of the
+5th's first. They are woven together rather than stacked.
+
+⚠️ **AND THE TWO SLIDE THROUGH EACH OTHER: 64px per screen of camera travel**
+(0.75 against 0.70, over 1280px). Two rows at nearly the same depth moving at
+different speeds is the exact thing that reads as a glitch rather than as
+distance -- it is the seam problem from the five-band pass, but between two rows
+that now occupy the same z.
+
+⚠️ **IT IS ALSO NO LONGER IN THE DEAD AREA**, which is what the layer was FOR one
+message earlier. Both ground points are inside the belt now (425 and 501 against
+a belt starting at 330). That is not a fault in the 30% -- it is simply where 30%
+of the belt lands from where it started -- but it means the ask and the layer's
+purpose have drifted apart, and saying so is part of delivering it.
+
+**Shipped anyway, because it was asked for explicitly** (*"but I want to see
+it"*) and a look is a legitimate reason. **Three separate fixes if it reads
+wrong, and they do different things:**
+
+* back to `zFrom: -0.05 / zTo: 0.15` -- the dead-area version;
+* keep the position, set `parallax: 0.75` -- it moves WITH the far band instead
+  of through it, losing the separation but killing the slide;
+* about 15% down -- sits just above the 5th without overlapping.
+
+---
+
+### A sixth layer of cigarettes, in the dead area (2026-08-28)
+
+*"Testar outra camada de cigarros (sexta, no fundo): essa camada não vai no belt
+normal do jogo, ela vai na área morta, uma parte dela vai pegar na área morta e a
+outra pode estar no belt, ela pode ser do mesmo tamanho que a quinta camada."*
+
+`CONFIG.SCENERY.backLayer` + a second pass in `Scenery.enterRoom`.
+
+⚠️ **IT IS NOT `bands: 6`, AND REFUSING THAT IS THE WHOLE REASON IT IS SAFE TO
+TEST.** The five bands share ONE row ladder running `zFrom -> zTo`; adding a
+sixth band means `rows` 10 -> 12 to keep the split even, which re-spaces the
+ladder and **moves all five planes the user tuned by eye**. Measured: the belt
+rows land at z 129/187/198/226/271/308/373/434/483/511 before and after, to the
+pixel. An additive block also means `on: false` takes it straight back out --
+which is what *"testar"* asks for.
+
+⚠️ **THE FEATURE IS NEGATIVE z, AND NOTHING ELSE IN SCENERY USES IT.** z measures
+DOWN from the belt's top edge, so a negative ground point is above the belt
+entirely. The first row lands at z -19 (screen y 311), the second at 57 (y 387).
+
+⚠️ **AND `zTo` IS POSITIVE ON PURPOSE** -- that is the *"uma parte na área morta e
+a outra no belt"* half. A mound's ink sits ENTIRELY above its ground point, so a
+row placed just inside the belt still spends most of itself in the dead area and
+only its bottom edge crosses the line. The layer paints y 111-387 against a belt
+starting at 330: about 80% dead area, the rest belt.
+
+⚠️ **IT ANSWERS NONE OF THE COVERAGE RULES**, and that is a real simplification
+rather than an oversight. Belt coverage is measured on the belt strip and this
+layer is almost entirely outside it, so the 90% the user set by watching is
+untouched and needed no retune. **It is backdrop, not ground cover** -- the third
+category this feature has grown, after "scenery that covers the floor" and "a
+band pushed past the near edge".
+
+⚠️ **ITS PARALLAX BREAKS THE 0.25 CEILING ON PURPOSE (0.70, a 0.30 spread).**
+That ceiling is about GROUND: a belt band under it visibly crawls backwards and
+stops reading as the floor the player stands on. This layer is up the back wall,
+where a slower rate is simply distance. **A rule's scope is the thing it was
+measured against** -- worth saying out loud rather than either obeying it
+reflexively or breaking it quietly. 0.75 (matching the far band) is the fallback
+if it reads as sliding.
+
+⚠️ **THE HASH SEED HAD TO MOVE CLEAR OF THE BELT ROWS.** The scatter is keyed on
+the row index, so reusing 0 and 1 would lay this layer out in lockstep with the
+two rows at the back of the belt -- the same drifts at the same x, which reads as
+one band drawn twice rather than as depth. Seeded at 100+.
+
+**Also this session:** espeto's tremble went **80ms -> 40ms**, *"the same
+frequency as the bomb when its about to blow"* -- literally
+`PROPS.bomb.animPanicMs`, not a number of its own. It sits right at the strobe
+wall the bomb's own note describes (25 drawings a second, "faster than about 40
+and it starts to strobe"), which the bomb spends its last three seconds at and
+espeto spends 800ms at. `tintMs` defaults to `ms`, so the red re-timed with it
+for free: 40ms lit every 120ms, the bomb's pattern exactly.
+
+---
+
+### He blows up like the bomb now (2026-08-28)
+
+*"Remove the character explosion frames. Like keep the 'when he is going to blow'
+frames, but the actual explosion frames that he has, remove those. Make him blow
+like the bomb, including flashing red."*
+
+`DEATH_BURST.espeto.hideBurst` + `shudder.tint` + `Fighter.bodyHidden` /
+`_shudderTint` / `deathBoomPeakS` + `DEATH_BLAST.espeto.atBoomPeak`.
+
+⚠️ **A BOMB HAS NO EXPLOSION DRAWINGS, AND THAT IS THE WHOLE MODEL.** It
+flickers, it goes red, and then it is simply NOT THERE while `boom.js` does the
+exploding. Espeto now does exactly that: the fall and the tremble stay, his four
+burst frames are never reached, and the body disappears on the same instant the
+boom fires. **Both hang on `deathFrameStartS(from)`**, so there is no frame where
+a hedgehog and an explosion are both on screen -- which is the one way this could
+have looked wrong.
+
+⚠️ **THE FOUR DRAWINGS ARE SWITCHED OFF, NOT DELETED, AND `ms` IS KEPT WITH
+THEM.** `hideBurst: false` brings the old death straight back. The `ms` array
+([140, 210, 294, 224], the widest frame holding longest) is dead config on
+purpose: it is the RECORD of how those frames were paced, and re-deriving it
+would be a day's work for a flag flip. **Dead config that documents a reversible
+decision earns its place; dead config that documents nothing does not.**
+
+⚠️ **THE RED BLINKS ONE BEAT IN THREE, AND THREE IS LOAD-BEARING.** The bomb's
+own pattern is `(fuseT * 1000) % (ms * 3) < ms`, and copying the NUMBER rather
+than just the idea mattered: the tremble swaps drawing every `ms`, so a two-beat
+blink would light the SAME drawing every cycle and read as *"one of his two poses
+is red"* instead of as flashing. At three the red walks across both frames --
+verified in the trace, it lands on airPunch 5, then 6, then 5, then 6.
+
+⚠️ **THE FILTER STRING IS COPIED, NOT SHARED.** It is the bomb's `panicTint`
+verbatim, and it is duplicated deliberately: these are two objects that happen to
+want the same colour today, and aliasing would tie a hedgehog's death to any
+future retune of the bomb's panic. If they must always match, that is a decision
+to take on purpose.
+
+⚠️ **AND THE RED IS DECIDED IN THE SIMULATION, NOT IN `draw()`** -- the rule
+prop.js already records, because it is a value read off a moving clock and this
+game has been bitten by putting those in the render pass.
+
+⚠️ **THE DAMAGE HAD TO MOVE ONTO THE BOOM.** The rule is unchanged -- *"when the
+explosion reaches you"* -- but the explosion is now the boom rather than a
+drawing of his, and death frame 7 is not painted at all. `atBoomPeak` asks
+`deathBoomPeakS` for the WIDEST frame of the explosion sheet (index 4 of 12,
++284ms), so re-cutting that art moves the hit with it. **Third knob today to go
+from a hand-computed millisecond to a question.**
+
+**Timeline:** fall 0-783ms · tremble + red 783-1583ms · body gone AND boom fires
+1583ms · damage 1864ms · boom ends 2431ms · corpse reaped just after.
+
+⚠️ **ONE THING LEFT DELIBERATELY ALONE: `DEATH_BOOM.espeto.sizePx` IS STILL 208.**
+That number was set one message earlier ("make it 20% smaller") while the boom
+was a flash layered INSIDE his own 302px drawn burst. It is now the entire
+explosion, and there is a real case for putting it back up -- but the user set it
+by watching, so it is theirs to move. Flagged, not changed.
+
+---
+
 ### A real explosion on top of the drawn one (2026-08-28)
 
 *"Lets add an explosion to the last frames, at the same time the espeto blows up,

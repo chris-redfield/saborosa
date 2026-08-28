@@ -1023,6 +1023,9 @@ SCENERY: {
   },
   bandScale:   [1.00, 1.025, 1.05, 1.075, 1.10],  // endpoints are the tuned ones
   bandOffsetZ: [0.20, 0.20, 0.20, 0.20, 0.20],    // fractions of the belt's DEPTH
+  // THE SIXTH LAYER — in the dead area, not on the belt. See below.
+  backLayer: { on: true, rows: 2, zFrom: -0.05, zTo: 0.15,
+               parallax: 0.70, scale: 1.00, spacing: 1.25 },
 },
 // ...and per room, like `flies`:
 { name: 'desert', scenery: true, ... }
@@ -1187,6 +1190,47 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 
 > ⚠️ **Anything that must be stood on for real** — a height `z` or `jumpY`
 > answers to — is a PROP, not scenery, and belongs in `prop.js`.
+
+### The sixth layer (the one in the dead area)
+
+`backLayer` is a **separate additive pass**, not a sixth band, and that is what
+makes it safe to try: the five bands share one row ladder, so `bands: 6` would
+need `rows` 10 → 12 and would **re-space every plane you already tuned**. This
+leaves them at exactly the z they have (verified: 129/187/198/226/271/308/373/
+434/483/511 before and after), and `on: false` removes it.
+
+> ⚠️ **Negative `z` is the feature** — z measures *down* from the belt's top
+> edge, so a negative ground point is above the belt entirely. Nothing else in
+> `SCENERY` uses it. Rows land at y 311 and 387 on the desert's belt.
+
+> ⚠️ **`zTo` is positive on purpose** — the "part in the dead area, part in the
+> belt" half. A mound's ink sits *entirely above* its ground point, so a row just
+> inside the belt still spends most of itself above the line. The layer paints
+> y 111–387 against a belt starting at 330: ~80% dead area.
+
+> ⚠️ **It answers none of the coverage rules.** Belt coverage is measured on the
+> belt strip and this is almost entirely outside it, so the 90% target is
+> untouched and needed no retune. It is *backdrop*, not ground cover.
+
+> ⚠️ **Its parallax breaks the 0.25 ceiling on purpose** (0.70 = a 0.30 spread).
+> That ceiling is about *ground* — a belt band under it crawls backwards and stops
+> reading as the floor. This is up the back wall, where slower is just distance.
+> **A rule's scope is what it was measured against.** Fallback: 0.75.
+
+> ⚠️ **CURRENTLY 30% DOWN AND OVERLAPPING THE 5TH — an open experiment.**
+> `zFrom: 0.25 / zTo: 0.45` puts its rows at y 425 / 501, *between* the far band's
+> 459 / 517: **42px of shared depth**, the 6th's second row drawing in front of
+> the 5th's first, and the two sliding **64px per screen** of camera travel
+> (0.70 vs 0.75). It is also no longer in the dead area — both ground points are
+> inside the belt. Shipped on request to be looked at. Three different fixes:
+> back to `-0.05 / 0.15` (the dead-area version), or `parallax: 0.75` (moves
+> *with* the far band, no slide, less separation), or ~15% down (just above it,
+> no overlap).
+
+> ⚠️ **Its hash seed is 100+, clear of the belt rows.** The scatter is keyed on
+> the row index; reusing 0 and 1 would lay it out in lockstep with the two rows at
+> the back of the belt — the same drifts at the same x, which reads as one band
+> drawn twice rather than as depth.
 
 ### The five speeds
 
@@ -1807,6 +1851,22 @@ was gone, so the moment he is visibly about to blow lasted a single frame.
 > `corpseGone` keeps him alive the full 2.448s (it was 1.648s) — the same trap
 > the burst's own slowdown hit. `holdMs` is the knob.
 
+> ⚠️ **`hideBurst: true` — espeto's own explosion frames are switched OFF.** He
+> blows up like the bomb: the fall and the tremble stay, his four burst drawings
+> are never reached, and the body simply disappears on the same instant the boom
+> fires (both hang on `deathFrameStartS(from)`, so a hedgehog and an explosion are
+> never on screen together). `hideBurst: false` brings the old death back — which
+> is why `ms` is kept below as dead config: it records how those four frames were
+> paced and re-deriving it would cost a day for a flag flip.
+
+> ⚠️ **`shudder.tint` is the bomb's red**, the same filter string as
+> `PROPS.bomb.panicTint`, **copied rather than shared** — two objects that want
+> the same colour today, and aliasing would tie this death to a future retune of
+> the bomb. It blinks **one beat in three**, which is the bomb's number and is
+> load-bearing: the tremble swaps drawing every `ms`, so a two-beat blink would
+> light the *same* drawing every cycle and read as "one of his poses is red"
+> rather than as flashing. Decided in the simulation, never in `draw()`.
+
 A death row may **change pace part way through**. Every animation otherwise runs
 at one rate (`POSE_MS[pose]`), which is right for eight frames of a body falling
 over. ESPETO's row is two things end to end: six frames of him going down, then
@@ -1913,7 +1973,7 @@ outside its alpha — a blast is not part of the corpse and must not fade with o
 
 ```js
 DEATH_BLAST: {
-  espeto: { atFrame: 7, activeMs: 300, damage: 8, knockdown: true, radial: true,
+  espeto: { atBoomPeak: true, activeMs: 300, damage: 8, knockdown: true, radial: true,
             reachX: 187 * BODY_SCALE, reachZ: 63 * BODY_SCALE, knockback: 240 },
 }
 ```

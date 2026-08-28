@@ -307,7 +307,13 @@ class Enemy extends Fighter {
        2026-08-28 is exactly that: it pushes the explosion 800ms later, and a
        fixed `atMs` would have detonated him while he was still trembling. Prefer
        `atFrame`; `atMs` is kept for anything that really does want a raw time. */
-    const at = (B.atFrame != null) ? this.deathFrameStartS(B.atFrame)
+    /* ⚠️ `atBoomPeak` MOVES THE DAMAGE ONTO THE BOOM, and it had to once his own
+       explosion frames were switched off (DEATH_BURST.hideBurst): "when the
+       explosion reaches you" is still the rule, but the explosion is now the
+       BOOM rather than a drawing of his. `deathBoomPeakS` finds the widest frame
+       in the sheet, so re-cutting the explosion moves the hit with it. */
+    const at = B.atBoomPeak ? this.deathBoomPeakS()
+             : (B.atFrame != null) ? this.deathFrameStartS(B.atFrame)
                                    : (B.atMs || 0) / 1000;
     if (this.deathT < at) return;
     if (this.deathT >= at + (B.activeMs || 200) / 1000) {

@@ -4356,6 +4356,68 @@ const CONFIG = {
        is already in LAYERS at parallax 1.25 and `on: false` -- and no number in
        here reaches it. */
     bandOffsetZ: [0.20, 0.20, 0.20, 0.20, 0.20],
+    /* =====================================================================
+       THE SIXTH LAYER — THE ONE IN THE DEAD AREA
+       =====================================================================
+       Asked for 2026-08-28: *"testar outra camada de cigarros (sexta, no
+       fundo): essa camada não vai no belt normal do jogo, ela vai na área
+       morta, uma parte dela vai pegar na área morta e a outra pode estar no
+       belt, ela pode ser do mesmo tamanho que a quinta camada."*
+
+       ⚠️ IT IS A SEPARATE BLOCK AND **NOT** `bands: 6`, AND THAT IS WHAT MAKES
+       IT SAFE TO TEST. The five bands share one row ladder running `zFrom` to
+       `zTo`; adding a sixth means `rows` 10 -> 12 to keep the split even, which
+       re-spaces the whole ladder and MOVES ALL FIVE PLANES that were tuned by
+       eye. This leaves them at exactly the z they have today, and `on: false`
+       takes it straight back out.
+
+       ⚠️ NEGATIVE z IS THE FEATURE. z measures DOWN from the belt's top edge, so
+       a negative ground point is above the belt entirely -- the dead area, where
+       nothing walks. Nothing else in SCENERY uses it.
+
+       ⚠️ AND `zTo` IS POSITIVE ON PURPOSE, which is the "uma parte na área morta
+       e a outra no belt" half of the ask. A mound's ink sits ENTIRELY above its
+       ground point, so a row placed just inside the belt still spends most of
+       itself in the dead area and only its bottom edge crosses the line. At the
+       desert's belt (topY 330, depth 380) these two rows land at screen y 311
+       and 387, painting from y 111 down -- about 90% dead area, the rest belt.
+
+       ⚠️ IT ANSWERS NONE OF THE COVERAGE RULES. Belt coverage is measured on the
+       belt strip and this layer is almost entirely outside it, so the 90% the
+       user set is untouched. It is backdrop, not ground cover. */
+    backLayer: {
+      on: true,
+      rows: 2,
+      /* Fractions of the belt's DEPTH, like every other z here -- but these may
+         go negative, and the first one does. */
+      /* ⚠️ DOWN 30% OF THE BELT, asked for 2026-08-28 ("bring the 6th layer 30%
+         down"), read in the belt's depth like every other z here: 0.30 x 380 =
+         114px. It WAS -0.05 / 0.15.
+
+         ⚠️ AND AT THIS OFFSET IT IS NO LONGER REALLY IN THE DEAD AREA -- both
+         ground points are now inside the belt (y 425 and 501 against a belt
+         starting at 330) and it INTERLEAVES with the far band rather than
+         sitting behind it. See the note in README; the user asked to see it
+         anyway. Back to -0.05 / 0.15 restores the dead-area version. */
+      zFrom: 0.25,
+      zTo: 0.45,
+      zJitter: 0,
+      /* ⚠️ SLOWER THAN THE FAR BAND (0.75), WHICH TAKES THE TOTAL SPREAD TO 0.30
+         AND PAST THE 0.25 CEILING THE BELT ROWS OBEY. That ceiling is about
+         GROUND: a belt band under it visibly crawls backwards and stops reading
+         as the floor the player is standing on. This layer is not floor -- it is
+         up the back wall, where a slower rate is just distance. If it reads as
+         sliding rather than as depth, 0.75 (matching the far band) is the first
+         thing to try and it costs only the separation between the two. */
+      parallax: 0.70,
+      /* "Do mesmo tamanho que a quinta camada" -- the fifth plane counting from
+         the front is the farthest, which is `bandScale[0]`, which is 1.00: the
+         pack's own scale with no multiplier. */
+      scale: 1.00,
+      /* Defaults to SCENERY.spacing when absent; named here so the density of
+         the dead area can be tuned without touching the belt. */
+      spacing: 1.25,
+    },
   },
 
   /* =========================================================================
@@ -4401,7 +4463,32 @@ const CONFIG = {
        had before the burst was given a clock of its own, which was the round
        before; the shape is kept and the whole thing plays quicker. */
     espeto: {
+      /* ⚠️ `from` IS NOW ONLY A BOUNDARY, NOT A BURST. It still marks where the
+         fall ends and the shudder begins -- and, with `hideBurst`, the moment he
+         is GONE. Frames 6-9 of his death row (the drawn explosion) are no longer
+         reached at all. */
       from: 6,
+      /* ⚠️ HE BLOWS UP LIKE THE BOMB NOW, AND HIS OWN EXPLOSION FRAMES ARE OFF.
+         Asked for 2026-08-28: *"remove the character explosion frames. Like keep
+         the 'when he is going to blow' frames, but the actual explosion frames
+         that he has, remove those. Make him blow like the bomb, including
+         flashing red."*
+
+         A bomb has no explosion drawings: it flickers, it goes red, and then it
+         is simply not there while `boom.js` does the exploding. This is that,
+         applied to a fighter. The body disappears and the boom fires on the SAME
+         instant -- both hang on `deathFrameStartS(from)` -- so there is no frame
+         where a hedgehog and an explosion are both on screen.
+
+         ⚠️ THE FOUR BURST DRAWINGS ARE STILL IN THE PACK and cost nothing; this
+         switches off DRAWING them, it does not re-cut anything. Set `hideBurst`
+         false and the old death comes straight back, which is why `ms` below is
+         kept rather than deleted -- it is the tuning those frames were given
+         (the widest one held longest) and re-deriving it from scratch would be
+         a day's work for a flag flip. */
+      hideBurst: true,
+      /* Unused while `hideBurst` is true. See above -- kept as the record of how
+         those four frames were paced, not as live config. */
       ms: [140, 210, 294, 224],
       /* ⚠️ THE TREMBLE BEFORE HE GOES -- THE BOMB'S SPUTTER, ON A DEATH ROW.
          Asked for 2026-08-28: *"o ouriço, quando ele vai explodir, tem que
@@ -4436,7 +4523,39 @@ const CONFIG = {
          broken (nothing is rescaled -- see the one-scale-per-pack rule). If the
          named pose is missing the tremble falls back to the death row rather
          than drawing nothing. */
-      shudder: { pose: 'airPunch', from: 5, to: 6, ms: 80, holdMs: 800 },
+      shudder: {
+        /* ⚠️ 40ms IS THE BOMB'S PANIC RATE, COPIED ON PURPOSE. Asked for
+           2026-08-28: *"make the frequency where the espeto enemy blink red and
+           animate, make it the same frequency as the bomb when its about to
+           blow"* -- so this is `PROPS.bomb.animPanicMs` and not a number of its
+           own. It was 80.
+
+           ⚠️ AND IT IS RIGHT AT THE STROBE WALL, WHICH IS WHERE THE BOMB PUTS IT
+           DELIBERATELY. 40ms is 25 drawings a second; the bomb's own note says
+           faster than about 40 it stops flickering and starts strobing, and that
+           it is worth being at the edge for the last three seconds and nowhere
+           else. Espeto's tremble is 800ms, which is well inside that budget.
+
+           ⚠️ `tintMs` FOLLOWS IT BY DEFAULT, so the red re-times with the
+           drawing rather than drifting out of step -- one beat lit in three, now
+           40ms lit every 120ms exactly like the bomb. */
+        pose: 'airPunch', from: 5, to: 6, ms: 40, holdMs: 800,
+        /* ⚠️ THE BOMB'S OWN RED, THE SAME FILTER STRING (CONFIG.PROPS.bomb
+           .panicTint). Copied deliberately rather than referenced: these are two
+           different objects that happen to want the same colour today, and a
+           shared constant would tie a hedgehog's death to any future retune of
+           the bomb's panic. If they should always match, that is a decision to
+           make on purpose, not by aliasing.
+
+           ⚠️ THE BLINK IS ONE BEAT LIT IN THREE, AND THREE IS NOT ARBITRARY.
+           The tremble swaps drawing every `ms`, so a two-beat blink would light
+           the SAME drawing every cycle -- which reads as "one of his two poses
+           is red", not as flashing. At three the red walks across both frames.
+           `tintMs` defaults to `ms`, keeping the red on the tremble's beat. */
+        tint: 'brightness(0) invert(24%) sepia(100%) saturate(4000%) ' +
+              'hue-rotate(-8deg) brightness(110%)',
+        tintAlpha: 0.85,
+      },
     },
   },
 
@@ -4568,7 +4687,14 @@ const CONFIG = {
          the row is drawn from, so this now moves by itself whenever the shudder
          or the burst pacing is retuned. `atMs` still works for anything that
          genuinely wants a raw time. */
-      atFrame: 7,
+      /* ⚠️ THE DAMAGE MOVED ONTO THE BOOM WHEN HIS OWN BURST WAS SWITCHED OFF.
+         The rule has not changed -- "when the explosion REACHES you" -- but the
+         explosion is now the boom rather than a drawing of his, and death frame
+         7 is no longer painted at all. `atBoomPeak` asks for the WIDEST frame of
+         the explosion sheet (index 4 of 12, +284ms), so re-cutting that art
+         moves the hit with it instead of stranding a hand-computed offset.
+         Set `hideBurst` false and this wants to go back to `atFrame: 7`. */
+      atBoomPeak: true,
       activeMs: 300,      // live across frames 7 and 8, the two widest
       damage: 8,
       /* 208 x BODY_SCALE = 150 drawn px, which is HALF the widest burst frame

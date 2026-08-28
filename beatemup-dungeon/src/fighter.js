@@ -650,6 +650,12 @@ class Fighter {
     /* ⚠️ THE SHUDDER COUNTS. It sits between the fall and the burst, so leaving
        it out here would reap the corpse mid-tremble -- the same trap the burst's
        own slowdown hit when it was added (see CONFIG.DEATH_BURST). */
+    /* ⚠️ AND WITH `hideBurst` THE DRAWING STOPS AT THE BLOW. The body is simply
+       gone from that moment (see `bodyHidden`) and the explosion is the boom, so
+       the death ROW ends here. What keeps the corpse alive for the blast is
+       `corpseGone`, which takes the max of this and the boom -- this function
+       must not lie about the picture to buy time. */
+    if (B.hideBurst) return B.from * (ms / 1000) + this._shudderS(B);
     let t = B.from * (ms / 1000) + this._shudderS(B);
     for (let i = B.from; i < n; i++) t += this._burstMs(B, i - B.from) / 1000;
     return t;
@@ -751,6 +757,66 @@ class Fighter {
     const startMs = (D.atFrame != null) ? this.deathFrameStartS(D.atFrame) * 1000
                                         : (D.startMs || 0);
     this.booms.arm(Object.assign({}, D, { startMs }), D.refPx || this.bodyHeight());
+  }
+
+  /**
+   * Has the drawn body gone? True from the blow onward for a kind whose own
+   * explosion frames are switched off (`DEATH_BURST[kind].hideBurst`).
+   *
+   * ⚠️ THIS IS ESPETO BLOWING UP LIKE THE BOMB. Asked for 2026-08-28: *"remove
+   * the character explosion frames... make him blow like the bomb"*. A bomb has
+   * no explosion drawings of its own -- it flickers, it goes red, and then it is
+   * simply not there any more while `boom.js` does the exploding. Espeto's
+   * four burst frames are now unused for exactly that reason, and the ONE thing
+   * that must stay true is that the body disappears on the same frame the boom
+   * fires: both are hung on `deathFrameStartS(B.from)`.
+   */
+  bodyHidden() {
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    if (!this.dead || !B || !B.hideBurst) return false;
+    return this.deathT >= this.deathFrameStartS(B.from);
+  }
+
+  /**
+   * The red, while he is about to go.
+   *
+   * ⚠️ ONE BEAT LIT IN THREE, WHICH IS THE BOMB'S PATTERN AND NOT A GUESS.
+   * `Prop._panic` does `(fuseT * 1000) % (ms * 3) < ms`, and the reason it is
+   * three and not two matters here: the tremble swaps drawing every `ms`, so a
+   * two-beat blink would light the SAME drawing every cycle and read as "one of
+   * his two poses is red" rather than as flashing. At three the red walks across
+   * both frames.
+   *
+   * ⚠️ AND IT IS DECIDED HERE, NOT IN draw(), for the reason prop.js records:
+   * this is a value read off a moving clock, and this game has been bitten by
+   * putting those inside the render pass.
+   */
+  _shudderTint(sheets) {
+    const sh = this._shudderNow(sheets);
+    if (!sh) return null;
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    const S = B.shudder;
+    if (!S.tint) return null;
+    const ms = S.tintMs || S.ms || 80;
+    const preS = B.from * (((CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110) / 1000);
+    const lit = ((this.deathT - preS) * 1000) % (ms * 3) < ms;
+    return lit ? { tint: S.tint, tintAlpha: S.tintAlpha != null ? S.tintAlpha : 0.85 } : null;
+  }
+
+  /** When the death boom is at its WIDEST frame, in seconds. 0 if none. */
+  deathBoomPeakS() {
+    const D = (CONFIG.DEATH_BOOM || {})[this.kind];
+    if (!D || !D.on) return 0;
+    const rects = CONFIG.BOOM_RECTS || [];
+    if (!rects.length) return 0;
+    /* ⚠️ ASKED, NOT TOLD -- the same rule `atFrame` follows. The widest frame is
+       a property of the SHEET, so reading it here means re-cutting the explosion
+       moves the damage with it instead of leaving a hand-computed offset behind. */
+    let pk = 0;
+    for (let i = 1; i < rects.length; i++) if (rects[i][2] > rects[pk][2]) pk = i;
+    const startMs = (D.atFrame != null) ? this.deathFrameStartS(D.atFrame) * 1000
+                                        : (D.startMs || 0);
+    return (startMs + pk * (CONFIG.boomMs || 71)) / 1000;
   }
 
   /** When the last blast of the death boom finishes, in seconds. 0 if none. */
@@ -1099,10 +1165,19 @@ class Fighter {
       rotate = dir * p * (Math.PI / 2) * 0.85;
     }
 
-    /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
-       method. An explosion goes OVER the body it is destroying. */
-    sheets.draw(ctx, this.kind, this.facing, this.pose(sheets), this.frameStep(sheets),
-                gx, gy, { alpha, rotate, flash: this.flash * 0.55, scale: this.depthScale() });
+    /* ⚠️ THE BODY MAY SIMPLY BE GONE, and then only the boom below draws. A kind
+       that blows up like the bomb has no explosion drawings of its own -- see
+       `bodyHidden`. Everything above this line still runs because it is all
+       cheap and none of it paints. */
+    if (!this.bodyHidden()) {
+      const t = this._shudderTint(sheets);
+      /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
+         method. An explosion goes OVER the body it is destroying. */
+      sheets.draw(ctx, this.kind, this.facing, this.pose(sheets), this.frameStep(sheets),
+                  gx, gy, { alpha, rotate, flash: this.flash * 0.55,
+                            scale: this.depthScale(),
+                            tint: t && t.tint, tintAlpha: t && t.tintAlpha });
+    }
 
     /* THE REAL EXPLOSION, OVER THE BODY IT IS DESTROYING. Last, so it is never
        painted under the sprite; and outside the `alpha` above, because a blast

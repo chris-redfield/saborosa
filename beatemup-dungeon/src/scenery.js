@@ -203,7 +203,9 @@ class Scenery {
        why the shipped values need none of this. Over 1.0 it is past the end, and
        without this the last stretch of a fast layer would simply be bare. */
     const camMax = Math.max(0, (room.endX || CONFIG.GAME_W) - CONFIG.GAME_W);
-    const pMax = Math.max(1, ...rate);
+    const blP = (S.backLayer && S.backLayer.on && S.backLayer.parallax != null)
+      ? S.backLayer.parallax : 1;
+    const pMax = Math.max(1, blP, ...rate);
     const x1 = Math.max((room.endX || CONFIG.GAME_W),
                         pMax * camMax + CONFIG.GAME_W) + margin;
 
@@ -240,29 +242,72 @@ class Scenery {
          the bottom of the screen is meant to. */
       const z = (S.zFrom + (S.zTo - S.zFrom) * f + drop[b]) * depth
               + (Scenery._h(r * 97 + 3) - 0.5) * (S.zJitter || 40);
-      let x = x0, i = 0;
-      while (x < x1) {
-        const k = Math.floor(Scenery._h(r * 911 + i * 57) * n) % n;
-        this.items.push({ x, z, k, p, s: sc });
-        /* SPACED BY THE MOUND'S OWN WIDTH, so a run of narrow ones packs tighter
-           than a run of wide ones and the field never reads as a grid. Under 1
-           they overlap, which is what covers the ground -- see CONFIG.SCENERY. */
-        /* ⚠️ BY THE DRAWN WIDTH, WHICH IS THE BAND'S SCALE TIMES THE FRAME'S.
-           `spacing` is a fraction of a mound's OWN width, so a band drawn 10%
-           bigger has to step 10% further or it packs 10% tighter as well as
-           growing -- and then "bigger" arrives as "denser", which is a different
-           change. Stepping with the scale keeps the band's composition exactly
-           as tuned and simply enlarges it: ~9% fewer mounds, each 21% more area. */
-        const w = defs.frames[k].w * sc;
-        x += w * (S.spacing || 0.65)
-           * (0.85 + 0.3 * Scenery._h(r * 17 + i * 13));
-        i++;
-        if (i > 4000) break;        // a spacing of 0 would otherwise never end
+      this._scatter(defs, n, x0, x1, z, p, sc, S.spacing || 0.65, r);
+    }
+
+    /* ⚠️ THE SIXTH LAYER, AND IT IS NOT A SIXTH BAND. Asked for 2026-08-28:
+       *"testar outra camada de cigarros (sexta, no fundo)... essa camada não vai
+       no belt normal do jogo, ela vai na área morta"*.
+
+       It is laid out SEPARATELY rather than by raising `bands` to 6, and that is
+       the whole reason it is safe to try. The five bands share one row ladder
+       running `zFrom -> zTo`: add a sixth band and `rows` has to go 10 -> 12 to
+       keep the split even, which re-spaces the ladder and MOVES ALL FIVE PLANES
+       the user already tuned by eye. An additive block leaves them at exactly
+       the z they are at today and can be switched off with one flag.
+
+       ⚠️ AND IT IS NOT GROUND COVER, WHICH IS WHY IT IS NOT ON THE BELT. Its
+       ground points sit at or above `Belt.topY` -- the dead area, where nothing
+       walks -- so it answers to none of the coverage rules the belt rows do. It
+       is scenery in the backdrop sense: the drift carries on up the back wall.
+
+       ⚠️ NEGATIVE z IS THE POINT, and nothing else in this file uses it. z is
+       measured DOWN from the belt's top edge, so a negative ground point is
+       above the belt entirely. A mound's ink sits above its ground point, so a
+       row placed slightly INSIDE the belt still spends most of itself in the
+       dead area -- which is what "uma parte na área morta e a outra no belt"
+       asks for, and why `zTo` is a small positive number rather than zero. */
+    const BL = S.backLayer;
+    if (BL && BL.on) {
+      const bn = Math.max(1, BL.rows || 2);
+      for (let r = 0; r < bn; r++) {
+        const f = bn > 1 ? r / (bn - 1) : 0.5;
+        const z = (BL.zFrom + (BL.zTo - BL.zFrom) * f) * depth
+                + (Scenery._h(r * 131 + 17) - 0.5) * (BL.zJitter || 0);
+        /* ⚠️ A SEED WELL CLEAR OF THE BELT ROWS'. The hash is keyed on the row
+           index, so reusing 0 and 1 here would lay this layer out in lockstep
+           with the two rows at the back of the belt -- the same drifts at the
+           same x, which reads as one band drawn twice rather than as depth. */
+        this._scatter(defs, n, x0, x1, z, BL.parallax != null ? BL.parallax : 1,
+                      BL.scale != null ? BL.scale : 1,
+                      BL.spacing || S.spacing || 0.65, 100 + r);
       }
     }
+
     // FAR FIRST, so a nearer drift overlaps the one behind it. Sorted once here
     // rather than per frame; nothing moves after this.
     this.items.sort((a, b) => a.z - b.z);
+  }
+
+  /**
+   * One row of drifts, from `x0` to `x1`. Shared by the belt's bands and by the
+   * dead-area layer so there is one piece of code deciding how a row is spaced.
+   *
+   * SPACED BY THE MOUND'S OWN DRAWN WIDTH, so a run of narrow ones packs tighter
+   * than a run of wide ones and the field never reads as a grid -- and by the
+   * DRAWN width, which is the band's scale times the frame's, or a band drawn
+   * bigger packs tighter as well as growing and "bigger" arrives as "denser".
+   */
+  _scatter(defs, n, x0, x1, z, p, sc, spacing, seed) {
+    let x = x0, i = 0;
+    while (x < x1) {
+      const k = Math.floor(Scenery._h(seed * 911 + i * 57) * n) % n;
+      this.items.push({ x, z, k, p, s: sc });
+      const w = defs.frames[k].w * sc;
+      x += w * spacing * (0.85 + 0.3 * Scenery._h(seed * 17 + i * 13));
+      i++;
+      if (i > 4000) break;          // a spacing of 0 would otherwise never end
+    }
   }
 
   clear() { this.items = []; }
