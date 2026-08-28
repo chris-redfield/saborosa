@@ -301,7 +301,14 @@ class Enemy extends Fighter {
   _deathBlast() {
     const B = (CONFIG.DEATH_BLAST || {})[this.kind];
     if (!B || this.blastDone) return;
-    const at = (B.atMs || 0) / 1000;
+    /* ⚠️ `atFrame` ASKS THE ANIMATION; `atMs` TELLS IT. The old hand-computed
+       920ms was 6 x POSE_MS.death + 140 -- right at the time, and silently wrong
+       the moment anything before frame 7 changed duration. The shudder added on
+       2026-08-28 is exactly that: it pushes the explosion 800ms later, and a
+       fixed `atMs` would have detonated him while he was still trembling. Prefer
+       `atFrame`; `atMs` is kept for anything that really does want a raw time. */
+    const at = (B.atFrame != null) ? this.deathFrameStartS(B.atFrame)
+                                   : (B.atMs || 0) / 1000;
     if (this.deathT < at) return;
     if (this.deathT >= at + (B.activeMs || 200) / 1000) {
       // Window closed. Clear it so nothing keeps a spent box around, and latch

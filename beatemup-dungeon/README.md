@@ -1749,8 +1749,63 @@ of spines scattering — so fading it as well is dimming an explosion.
 ### The burst has its own frame rate
 
 ```js
-DEATH_BURST: { espeto: { from: 6, ms: [140, 210, 294, 224] } },
+DEATH_BURST: {
+  espeto: {
+    from: 6, ms: [140, 210, 294, 224],
+    shudder: { pose: 'airPunch', from: 5, to: 6, ms: 80, holdMs: 800 },
+  },
+},
 ```
+
+**The shudder — o ouriço's tremidinha.** Before the burst, frames `from..to` loop
+at `ms` for `holdMs`, inserted between the fall and the explosion. Asked for as
+*"tem que repetir o frame, como se ele desse uma tremidinha, igual a bomba... esse
+frame fica muito rápido"* — the six fall frames played once at 130ms each and he
+was gone, so the moment he is visibly about to blow lasted a single frame.
+
+> ⚠️ **It loops a RANGE; it does not hold one frame.** "Repetir o frame"
+> describes the effect, not the mechanism — holding one drawing longer reads as
+> the animation *stalling*. What makes the bomb read as live (the *"igual a
+> bomba"*) is the picture changing while going nowhere: three drawings eight
+> pixels apart on their own fast clock, `Prop._frame`.
+
+> ⚠️ **`pose` lets the tremble BORROW a row, and it has to.** The right drawings
+> are **row 4, sprites 6 and 7 of `espeto-sprites-fim.png`** (rows and columns
+> counted from 1) — the hedgehog with its mouth wide open — and they are **not in
+> the death row at all.** Row 4 *is* `airPunch`: its seven master widths match
+> that anim to the pixel, so they ship as `airPunch` frames 5 and 6. **Reading
+> the packed row tells you what the cutter produced, not what the artist drew for
+> the moment** — a first pass picked death frames 3-5 and was wrong.
+
+> ⚠️ **Borrowing is the tremble only.** The fall and the burst are untouched and
+> `airPunch` as an attack is unaffected. No new art, no duplicated frames, no
+> re-cut, nothing rescaled. A pack without the named pose falls back to its death
+> row rather than drawing nothing.
+
+> ⚠️ **An `external` attack box never drives the frame.** `frameStep` has an
+> attack branch above its death branch, and the blast arms a box on the *corpse*
+> — so for its 300ms window a dead espeto was drawn as death frame 1 (him
+> writhing) between two explosion frames: *"another frame appears with him again,
+> and then he blows up AGAIN"*. `_updateAttack` already ignored external boxes
+> (somebody else owns that clock); `frameStep` does now too. **Older than the
+> shudder that exposed it** — the old `atMs: 920` did the same thing where the
+> burst's chaos hid it.
+
+> ⚠️ **The pose and the frame are one decision (`_shudderNow`).** `frameStep()`
+> opens by asking `pose()` and then branches on `p === 'airPunch'` for the jump
+> arc — so a corpse borrowing that row would otherwise be handed the *arc's*
+> frame index. Both halves come from one call.
+
+| phase | frames | ms |
+|---|---|---|
+| the fall | 0-5 once at `POSE_MS.death` | 0 – 783 |
+| **the shudder** | **`airPunch` 5-6 alternating, 80ms** | **783 – 1583** |
+| the burst | 6-9 at their own pacing | 1583 – 2448 |
+| the blast | `atFrame: 7`, 300ms window | 1720 – 2020 |
+
+> ⚠️ **Everything downstream moves with it.** `deathAnimS` counts the shudder, so
+> `corpseGone` keeps him alive the full 2.448s (it was 1.648s) — the same trap
+> the burst's own slowdown hit. `holdMs` is the knob.
 
 A death row may **change pace part way through**. Every animation otherwise runs
 at one rate (`POSE_MS[pose]`), which is right for eight frames of a body falling
@@ -1805,17 +1860,26 @@ bottom drops as it expands.
 
 ```js
 DEATH_BLAST: {
-  espeto: { atMs: 920, activeMs: 300, damage: 8, knockdown: true, radial: true,
+  espeto: { atFrame: 7, activeMs: 300, damage: 8, knockdown: true, radial: true,
             reachX: 187 * BODY_SCALE, reachZ: 63 * BODY_SCALE, knockback: 240 },
 }
 ```
 
-`atMs` 920 is **frame 7**, not frame 6. Frame 6 is the first burst frame but it
-is a tight starburst barely wider than the body — a hit landing on it reads as
-damage arriving *before* the explosion. **The rule is "when it reaches you", not
-"when it begins":** the 300ms window spans frames 7 and 8, the two widest
-drawings. Timed off `deathT`, the same clock the row is drawn from, so the box
-and the picture cannot drift.
+**Frame 7, not frame 6.** Frame 6 is the first burst frame but it is a tight
+starburst barely wider than the body — a hit landing on it reads as damage
+arriving *before* the explosion. **The rule is "when it reaches you", not "when
+it begins":** the 300ms window spans frames 7 and 8, the two widest drawings.
+Timed off `deathT`, the same clock the row is drawn from, so the box and the
+picture cannot drift.
+
+> ⚠️ **`atFrame` asks the animation; the old `atMs: 920` told it.** 920 was
+> 6 × `POSE_MS.death` + 140 — correct when written, and silently wrong the moment
+> anything before frame 7 changed duration. The shudder is exactly that change:
+> it pushes the explosion 800ms later, so a fixed 920 would have detonated him
+> mid-tremble, damage landing a full second before the picture. `atFrame` runs
+> through `Fighter.deathFrameStartS`, the same walk `_deathFrame` uses, so it
+> moves by itself. **A number derived from an animation's pacing should ask the
+> animation.** `atMs` still works for anything that wants a raw time.
 
 > ⚠️ **`radial: true`** — every other hitbox in the game extends forward from the
 > fighter only. An explosion that only went the way the corpse was facing would

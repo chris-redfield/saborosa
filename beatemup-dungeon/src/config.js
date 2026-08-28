@@ -4400,7 +4400,44 @@ const CONFIG = {
        200/300/420/320 (1240ms) and is now 868ms. Still well over the 520ms it
        had before the burst was given a clock of its own, which was the round
        before; the shape is kept and the whole thing plays quicker. */
-    espeto: { from: 6, ms: [140, 210, 294, 224] },
+    espeto: {
+      from: 6,
+      ms: [140, 210, 294, 224],
+      /* ⚠️ THE TREMBLE BEFORE HE GOES -- THE BOMB'S SPUTTER, ON A DEATH ROW.
+         Asked for 2026-08-28: *"o ouriço, quando ele vai explodir, tem que
+         repetir o frame, como se ele desse uma tremidinha, igual a bomba. Nesse
+         momento, ele só passa um frame agonizando e depois ele explode, mas esse
+         frame fica muito rápido."*
+
+         The fall's six frames played once at `POSE_MS.death` and he was gone --
+         so the moment he is visibly about to blow lasted 130ms. This LOOPS
+         frames `from..to` at `ms` for `holdMs`, inserted between the fall and
+         the burst, and everything downstream just happens later.
+
+         ⚠️ A RANGE, NOT ONE FRAME, AND THE WORD "repetir o frame" IS A
+         DESCRIPTION OF THE EFFECT RATHER THAN THE MECHANISM. Holding a single
+         drawing longer reads as the animation STALLING; what makes the bomb read
+         as live is that the picture keeps changing while going nowhere -- three
+         drawings eight pixels apart on their own fast clock (Prop._frame).
+         Espeto's frames 3-5 are the same writhe with the eyes and mouth
+         shifting, so looping them IS a tremble with no new art.
+
+         ⚠️ THE FRAMES ARE NOT IN THE DEATH ROW, AND THAT IS WHY `pose` EXISTS.
+         The drawings wanted are row 4 sprites 6 and 7 of `espeto-sprites-fim.png`
+         -- the hedgehog with its mouth wide open -- which the cutter packed as
+         `airPunch` frames 5 and 6 (row 4 IS airPunch: its seven widths match to
+         the pixel). They were pointed at by hand; my first guess used death
+         frames 3-5, which was wrong. **They are ONLY for the agonising state
+         before he blows** -- the fall and the burst are untouched, and nothing
+         about `airPunch` as an attack changes.
+
+         ⚠️ SO A DEATH CAN BORROW TWO FRAMES FROM ANOTHER ROW WITHOUT A RE-CUT.
+         No new art, no duplicated frames in the pack, and no wire-art rule
+         broken (nothing is rescaled -- see the one-scale-per-pack rule). If the
+         named pose is missing the tremble falls back to the death row rather
+         than drawing nothing. */
+      shudder: { pose: 'airPunch', from: 5, to: 6, ms: 80, holdMs: 800 },
+    },
   },
 
   /* =========================================================================
@@ -4442,25 +4479,27 @@ const CONFIG = {
      resolver, not a number here. */
   DEATH_BLAST: {
     espeto: {
-      /* ⚠️ 920, NOT 780, AND 780 WAS *TECHNICALLY* CORRECT. Frame 6 begins at
-         6 x `POSE_MS.death` = 780ms and that is genuinely the first frame of the
-         burst -- but it is the small one, a tight starburst barely wider than
-         the body, and a hit landing on it reads as damage arriving BEFORE the
-         explosion. Reported exactly that way: "the hit is hitting too early,
-         before the explosion even starts".
+      /* ⚠️ `atFrame`, NOT `atMs`, AND THE OLD 920 WAS *TECHNICALLY* CORRECT.
+         It was 6 x `POSE_MS.death` + 140 = the start of frame 7, hand-computed
+         and right at the time. It was also silently wrong the instant anything
+         before frame 7 changed duration -- and the shudder added on 2026-08-28
+         is exactly that change: it pushes the explosion 800ms later, so a fixed
+         920 would have detonated him while he was still trembling, with the
+         damage arriving a whole second before the picture.
 
-         ⚠️ SO THE RULE IS NOT "WHEN THE BURST BEGINS", IT IS "WHEN IT REACHES
-         YOU". 920ms is the start of frame 7 under the current
-         `DEATH_BURST.espeto.ms`, and the 300ms window then spans frames 7 and 8
-         -- the two widest drawings. That is where the picture looks like it is
-         arriving at the player, which is the only thing a hitbox on an
-         explosion has to agree with.
+         ⚠️ THE RULE THIS REPLACES IS "when the burst REACHES you", and frame 7
+         is still where that is. Frame 6 is a tight starburst barely wider than
+         the body -- a hit landing on it reads as damage arriving BEFORE the
+         explosion, which is how this was reported the first time: *"the hit is
+         hitting too early, before the explosion even starts"*. Frames 7 and 8
+         are the two widest drawings and the 300ms window spans them.
 
-         ⚠️ AND IT IS DERIVED FROM `DEATH_BURST`, SO THE TWO MOVE TOGETHER. With
-         the burst at 140/210/294/224 the frames start at 780 / 920 / 1130 /
-         1424. Re-time the burst and this number is wrong with no error --
-         re-read that table and pick the frame again. */
-      atMs: 920,
+         ⚠️ SO THE FRAME IS THE DESIGN DECISION AND THE MILLISECOND IS AN
+         IMPLEMENTATION DETAIL. `Fighter.deathFrameStartS` walks the same clock
+         the row is drawn from, so this now moves by itself whenever the shudder
+         or the burst pacing is retuned. `atMs` still works for anything that
+         genuinely wants a raw time. */
+      atFrame: 7,
       activeMs: 300,      // live across frames 7 and 8, the two widest
       damage: 8,
       /* 208 x BODY_SCALE = 150 drawn px, which is HALF the widest burst frame

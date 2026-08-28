@@ -3533,6 +3533,84 @@ a smaller spread; it is giving every *row* a rate lerped from far to near, one
 line in `scenery.js`. Three discrete layers is what was asked for, and it is also
 the version you can see working.
 
+## O ouriço trembles before he goes (2026-08-28)
+
+*"O ouriço, quando ele vai explodir, tem que repetir o frame, como se ele desse
+uma tremidinha, igual a bomba. Nesse momento, ele só passa um frame 'agonizando'
+e depois ele explode, mas esse frame fica muito rápido."*
+
+`CONFIG.DEATH_BURST.espeto.shudder` + `Fighter._deathFrame` / `deathAnimS` /
+`deathFrameStartS` + `Enemy._deathBlast`.
+
+⚠️ **"REPETIR O FRAME" DESCRIBES THE EFFECT, NOT THE MECHANISM, AND TAKING IT
+LITERALLY WOULD HAVE MISSED IT.** Holding one drawing longer reads as the
+animation STALLING. What makes the bomb read as live -- the thing being pointed
+at with *"igual a bomba"* -- is that the picture keeps CHANGING while going
+nowhere: three drawings eight pixels apart on their own fast clock
+(`Prop._frame`). So the shudder LOOPS a range.
+
+⚠️ **I PICKED THE FRAMES OFF THE DEATH ROW AND THEY WERE THE WRONG DRAWINGS.**
+First pass looped death frames 3-5, reasoned from the packed row: *"no, that is
+very bad."* The right ones were named by hand -- **row 4, sprites 6 and 7 of
+`espeto-sprites-fim.png`** (the user counts rows and columns from 1) -- and they
+are **not in the death row at all**. Row 4 is `airPunch`: its seven master widths
+match that anim to the pixel, so the two drawings ship as `airPunch` frames 5 and
+6. **Reading a packed row tells you what the cutter produced, not what the artist
+drew for the moment**; when the art has a master sheet, the master is the source
+of truth and the person who drew it is a faster lookup than any inference.
+
+⚠️ **SO A DEATH CAN BORROW TWO FRAMES FROM ANOTHER ROW.** `shudder.pose` names
+it, and the tremble is the ONLY thing that borrows -- *"these 2 sprites are just
+for the agonizing state before blowing"*; the fall and the burst are untouched
+and `airPunch` as an attack is unaffected. No new art, no duplicated frames in
+the pack, no re-cut, and nothing rescaled.
+
+⚠️ **THE POSE AND THE FRAME MUST BE ONE DECISION, AND THEY VERY NEARLY WERE NOT.**
+`frameStep()` opens with `const p = this.pose(sheets)` and then has a branch
+keyed on `p === 'airPunch'` for the jump arc -- so a corpse borrowing that row
+would have been handed the ARC's frame index. `_shudderNow()` is asked once by
+each and returns both halves together. **When two functions answer halves of the
+same question, the borrow has to be resolved above both of them.**
+
+⚠️ **The row had to be looked at before the numbers could be picked** -- the same
+lesson [[beatemup_espeto]] and the fire frames both taught, and it did not stop
+me guessing from the wrong sheet first.
+
+⚠️ **THE BLAST NOW HANGS OFF A FRAME INSTEAD OF A HAND-COMPUTED TIME, and that
+was not tidying -- it was the bug this change would otherwise have shipped.**
+`DEATH_BLAST.espeto.atMs: 920` was 6 x `POSE_MS.death` + 140, correct when it was
+written and **silently wrong the moment anything before frame 7 changed
+duration.** The shudder is exactly that: it pushes the explosion 800ms later, so
+a fixed 920 would have detonated him mid-tremble with the damage arriving a full
+second before the picture. `atFrame: 7` asks `Fighter.deathFrameStartS`, which
+walks the same clock the row is drawn from, so it moves by itself from now on.
+**A number derived from an animation's pacing should ask the animation.**
+
+⚠️ **`deathFrameStartS` TAKES NO `sheets`, DELIBERATELY.** The only thing the
+row's length would buy is one optional guard, against threading `sheets` through
+`Enemy.update` and `Crowd.update` -- churning a shared call site for a check
+every caller already satisfies.
+
+⚠️ **AND THE CORPSE HAD TO BE CHECKED AGAIN.** `corpseGone` waits on
+`deathAnimS`, which now includes the shudder, so he survives the whole 2.448s.
+That guard was added the last time this row got slower and it held -- but the
+COMMENT beside it still said "2.02s". Numbers in prose go stale; the rule is to
+read it off `deathAnimS`.
+
+**Measured timeline** (was 1648ms end to end, now 2448ms):
+
+| phase | frames | ms |
+|---|---|---|
+| the fall | death 0-5 once at `POSE_MS.death` | 0 - 783 |
+| **the shudder** | **`airPunch` 5-6 alternating, 80ms** | **783 - 1583** |
+| the burst | 6-9 at their own pacing | 1583 - 2448 |
+| the blast | `atFrame: 7`, 300ms window | 1720 - 2020 |
+
+The agony went from **one 130ms frame to 800ms of trembling** on the drawings
+meant for it, which is what "muito rápido" was about. `holdMs` is the knob.
+
+---
+
 ## Level 3 — the bookcase (2026-08-27)
 
 *"Time to add level 3, push the horse boss room to the end... this video is
@@ -3693,6 +3771,48 @@ with the two numbers, rather than shipped as if it had been done.
 0 frames with the player off screen, film gaps at the hand-overs 0.00s and 0.03s,
 still returns `'room'`. A switch to call the lift was floated for later and
 deliberately not built.
+
+### He was blowing up twice, and it was not the new code (2026-08-28)
+
+*"He does what we talked about, and that was great, so he blows up. but then,
+another frame appears with him again, and then he blows up AGAIN."*
+
+⚠️ **THE DESCRIPTION WAS LITERALLY THE FRAME LIST.** Reproduced exactly: death
+frame **6** (the starburst), then frame **1** (him writhing) for 300ms, then
+frame **8** (the explosion again). Not a loop, not a replay -- three drawings in
+that order, and the middle one had no business being there.
+
+⚠️ **`Fighter.frameStep` HAS AN ATTACK BRANCH ABOVE ITS DEATH BRANCH** (line 909
+against 967), and ESPETO's death blast arms an attack box **on the corpse**
+(`Enemy._deathBlast`). So for the blast's 300ms window that branch answered for a
+dead fighter and returned `Math.min(1, n - 1)` -- frame 1 of whatever row was
+current, which for a corpse is the death row, which is him writhing.
+
+⚠️ **THE FIX COMPLETES A CONTRACT THAT ALREADY EXISTED RATHER THAN ADDING A
+SPECIAL CASE.** `_updateAttack` already returns early on `a.external` -- *somebody
+else owns this box's clock* -- and the blast is the only external box in the
+game. It owns neither the fighter's state NOR its frame, so `frameStep` now skips
+external boxes too. One condition, and it generalises: any future box put on a
+fighter from outside cannot hijack the picture either.
+
+⚠️ **AND IT IS OLDER THAN THE CHANGE THAT EXPOSED IT.** At the old `atMs: 920`
+the blast replaced frames 7 and part of 8 in exactly the same way. What changed
+is that the death is now worth watching -- 800ms of tremble draws the eye to it
+-- so a 300ms interruption between two explosion frames is obvious where it used
+to be lost in a fast, chaotic burst. **A bug that only becomes visible once the
+thing around it gets better is still an old bug, and saying "my change did not
+cause this" is worth nothing next to fixing it** -- but it is worth knowing,
+because it means the same hazard was live for every corpse-mounted hitbox added
+since.
+
+⚠️ **WHAT MADE IT FINDABLE WAS ARMING THE BOX IN THE TRACE.** The first trace of
+this animation walked `pose()`/`frameStep()` with `atk` never set, and it printed
+a perfectly clean sequence -- which is why the GIF looked right while the game
+did not. **A trace that omits the state the bug lives in will confirm whatever
+you already believe.** The second one set `atk` exactly as `Enemy._deathBlast`
+does, and the wrong frame appeared on the first run.
+
+---
 
 ### The video
 

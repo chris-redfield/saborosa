@@ -646,9 +646,81 @@ class Fighter {
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
     const B = (CONFIG.DEATH_BURST || {})[this.kind];
     if (!B || B.from >= n) return n * (ms / 1000);
-    let t = B.from * (ms / 1000);
+    /* ⚠️ THE SHUDDER COUNTS. It sits between the fall and the burst, so leaving
+       it out here would reap the corpse mid-tremble -- the same trap the burst's
+       own slowdown hit when it was added (see CONFIG.DEATH_BURST). */
+    let t = B.from * (ms / 1000) + this._shudderS(B);
     for (let i = B.from; i < n; i++) t += this._burstMs(B, i - B.from) / 1000;
     return t;
+  }
+
+  /** How long the pre-burst tremble lasts, in seconds. 0 when there is none. */
+  _shudderS(B) {
+    const S = B && B.shudder;
+    return (S && S.holdMs > 0) ? S.holdMs / 1000 : 0;
+  }
+
+  /**
+   * When death frame `i` STARTS, in seconds. The one clock the row, the shudder
+   * and the burst all agree on.
+   *
+   * ⚠️ THIS EXISTS SO A HITBOX CAN BE HUNG ON A FRAME RATHER THAN ON A NUMBER.
+   * `DEATH_BLAST.espeto.atMs` used to be a hand-computed 920, which is 6 x
+   * POSE_MS.death + 140 -- correct, and silently wrong the moment anything
+   * before frame 7 changed its duration. Adding the shudder is exactly that
+   * change: it pushes the explosion 800ms later and the blast would have gone
+   * off while he was still trembling. `atFrame` asks instead of being told.
+   */
+  deathFrameStartS(i) {
+    const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    /* ⚠️ NO `sheets` ARGUMENT, DELIBERATELY. The only thing the row's LENGTH
+       would buy is a guard on `B.from`, and every caller already knows a burst
+       exists -- while taking it would mean threading `sheets` through
+       Enemy.update and Crowd.update, churning a shared call site for one
+       optional check. Frames at or before the burst are on the plain clock;
+       after it, walk the burst's own durations. */
+    if (!B || i <= B.from) return i * (ms / 1000);
+    let t = B.from * (ms / 1000) + this._shudderS(B);
+    for (let k = B.from; k < i; k++) t += this._burstMs(B, k - B.from) / 1000;
+    return t;
+  }
+
+  /**
+   * The pre-burst tremble: which ROW and which FRAME, or null when it is not
+   * running.
+   *
+   * ⚠️ ONE ANSWER FOR BOTH, AND THAT IS THE POINT OF THE METHOD. The pose and
+   * the frame index are two halves of the same question, and `frameStep` starts
+   * by asking `pose()` -- so computing them separately is how a row and an index
+   * drift apart. This is asked once by each and they cannot disagree.
+   *
+   * ⚠️ IT DRAWS FROM A DIFFERENT ROW THAN THE DEATH ANIMATION, which is the
+   * unusual part. The drawings the tremble wants are not in the death row at
+   * all: they are row 4 of `espeto-sprites-fim.png`, sprites 6 and 7 -- the
+   * hedgehog with its mouth wide open -- which the cutter packed as `airPunch`
+   * frames 5 and 6. They were pointed at by hand ("use the correct ones now")
+   * and they are ONLY for the agonising state before he blows; the fall and the
+   * burst are untouched. Naming a `pose` here is what lets a death borrow two
+   * frames from another row without re-cutting the pack or duplicating art.
+   */
+  _shudderNow(sheets) {
+    if (!this.dead || !sheets) return null;
+    const B = (CONFIG.DEATH_BURST || {})[this.kind];
+    const S = B && B.shudder;
+    if (!S || !(S.holdMs > 0)) return null;
+    const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
+    const preS = B.from * (ms / 1000);
+    if (this.deathT < preS || this.deathT >= preS + S.holdMs / 1000) return null;
+    /* Falls back to the death row if the named pose is missing, so a pack
+       without the borrowed row trembles on its own frames rather than drawing
+       nothing at all. */
+    const pose = (S.pose && sheets.has(this.kind, S.pose)) ? S.pose : 'death';
+    const n = Math.max(1, sheets.poseLength(this.kind, pose));
+    const lo = Math.max(0, Math.min(n - 1, S.from || 0));
+    const hi = Math.max(lo, Math.min(n - 1, S.to != null ? S.to : lo));
+    const k = Math.floor((this.deathT - preS) / Math.max(0.001, (S.ms || 80) / 1000));
+    return { pose, step: lo + (k % (hi - lo + 1)) };
   }
 
   /** The ms this burst frame is held. One number, or one per frame. */
@@ -675,7 +747,13 @@ class Fighter {
     if (!B || B.from >= n) return plain;
     const preS = B.from * (ms / 1000);
     if (this.deathT < preS) return plain;
-    let t = preS;
+    /* ⚠️ THE SHUDDER IS NOT DRAWN FROM HERE -- `_shudderNow` short-circuits both
+       `pose()` and `frameStep()` while it runs, because it borrows a different
+       ROW (see there). What this function still owes it is the TIME: the burst
+       begins `hold` later than it used to, and everything after it shifts with
+       it. Forgetting that would play the explosion underneath the tremble. */
+    const hold = this._shudderS(B);
+    let t = preS + hold;
     for (let i = B.from; i < n; i++) {
       t += this._burstMs(B, i - B.from) / 1000;
       if (this.deathT < t) return i;
@@ -696,7 +774,11 @@ class Fighter {
        fighter plays the death row rather than holding the knockdown pose and
        fading. The grid packs have neither, so they fall through to `down` and
        keep the old behaviour. */
-    if (this.dead && sheets && sheets.has(this.kind, 'death')) return 'death';
+    if (this.dead && sheets && sheets.has(this.kind, 'death')) {
+      // The pre-burst tremble may borrow another row -- see _shudderNow.
+      const sh = this._shudderNow(sheets);
+      return sh ? sh.pose : 'death';
+    }
     /* A KNOCKDOWN IS THREE POSES WHERE THE ART DRAWS THREE. The cigarette's
        row is a fall AND a stand-up, so which part of it plays is decided by
        the knockdown PHASE — the same rule as the attack poses, and for the
@@ -755,6 +837,13 @@ class Fighter {
    * branches collapse to frame 0 for them and nothing changes.
    */
   frameStep(sheets) {
+    /* ⚠️ THE TREMBLE IS ANSWERED FIRST AND FROM THE SAME PLACE `pose()` ASKS.
+       It borrows a row (`airPunch`) that has its own step logic below -- the
+       air-arc branch keys off `p === 'airPunch'` -- so falling through would
+       hand a corpse the jump arc's frame. Taking it here keeps the row and the
+       index one decision. */
+    const sh = this._shudderNow(sheets);
+    if (sh) return sh.step;
     const p = this.pose(sheets);
     const n = sheets.poseLength(this.kind, p);
     if (n <= 1) return 0;
@@ -817,7 +906,23 @@ class Fighter {
       return 1 + (Math.floor(this.animT * 1000 / ms) % Math.max(1, n - 1));
     }
 
-    if (this.atk) {
+    /* ⚠️ AN `external` BOX NEVER DRIVES THE PICTURE, and this is the same
+       contract `_updateAttack` already states -- somebody else owns that box's
+       clock, so it owns neither the fighter's state nor its frame. Completing it
+       here fixes a real double explosion: ESPETO's death blast arms an external
+       box on the CORPSE (Enemy._deathBlast), so for its 300ms window this branch
+       was answering for a dead fighter and returning frame 1 of the death row --
+       which is him WRITHING. Reported 2026-08-28 as *"another frame appears with
+       him again, and then he blows up AGAIN"*, and that is literally what it
+       drew: starburst (frame 6), him (frame 1), explosion (frame 8).
+
+       ⚠️ IT IS OLDER THAN THE SHUDDER THAT EXPOSED IT. The blast has always
+       landed mid-burst -- at the old `atMs: 920` it replaced frames 7 and part
+       of 8 the same way. What changed is that the death is now worth watching,
+       so a 300ms interruption between two explosion frames is obvious where it
+       used to be lost in the chaos. **A bug that only becomes visible when the
+       thing around it gets better is still an old bug.** */
+    if (this.atk && !this.atk.external) {
       const a = this.atk;
       return a.phase === 'startup' ? 0 : a.phase === 'active' ? Math.min(1, n - 1) : n - 1;
     }
@@ -1072,8 +1177,10 @@ class Fighter {
     /* ⚠️ AND NOT BEFORE THE DEATH ROW HAS FINISHED PLAYING. The fade clock and
        the death animation are two different lengths, and until ESPETO's burst
        was slowed down the fade was always the longer of the two, so nothing ever
-       noticed. His is 2.02s against the fade's 1.32s -- reaped on the fade alone
-       he is deleted mid-explosion.
+       noticed. His is 2.45s against the fade's 1.32s -- reaped on the fade alone
+       he is deleted mid-explosion. (2.02s when this note was written; the
+       pre-burst shudder added 0.8s. ⚠️ THE NUMBER GOES STALE, THE RULE DOES
+       NOT -- read it off `deathAnimS`, never from this comment.)
 
        ⚠️ FRAMES ONLY (`deathAnimS`), NOT `deathWatch`. The latter adds
        `deathHoldMs` (1000ms), which is the beat the game holds AFTER the
