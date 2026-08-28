@@ -3533,6 +3533,114 @@ a smaller spread; it is giving every *row* a rate lerped from far to near, one
 line in `scenery.js`. Three discrete layers is what was asked for, and it is also
 the version you can see working.
 
+### Three planes became five (2026-08-27)
+
+*"Instead of 3 planes of layers, I actually want 5 planes of layers, I don't know
+how that is a good idea, but we are being forced to do it, please give it your
+best try, if this sucks we roll back, if its good, we present it tomorrow."*
+
+`CONFIG.SCENERY.bands: 5`, `rows: 10`, `spacing: 1.25`, `zFrom: 0.12`, spread
+0.20 -> 0.25, and the three per-band blocks turned from `{far, mid, near}`
+objects into far -> near LISTS.
+
+⚠️ **THE REAL CHANGE IS THAT THE COUNT IS DATA NOW, AND ADDING TWO NAMES WOULD
+HAVE BEEN THE WRONG SHAPE OF FIX.** Three was hardwired as `const BANDS = 3` in
+`scenery.js` and spelled out three times over in the config. Writing `veryFar`
+and `veryNear` next to `far`/`mid`/`near` works exactly once and leaves the next
+ask in the same place. Each block is now a **curve sampled at `bands` points**
+(`Scenery._ramp`), so 3, 5 and 7 all read the same file.
+
+⚠️ **THE ROLLBACK THE USER ASKED ABOUT UP FRONT IS FIVE NUMBERS, AND `bands: 3`
+ALONE IS NOT IT** -- I nearly wrote that it was. The count did not arrive alone:
+the spread widened, the ladder re-graded and the density came back down with it,
+so dropping only the count leaves a THIRD configuration that nobody has measured
+or looked at, which is the worst of the three outcomes. It is written out
+verbatim in `CONFIG.SCENERY` and in the README so it is a paste rather than a
+reconstruction. **A feature offered with "if this sucks we roll back" owes an
+exact rollback, not a plausible one** -- and the check that caught it was running
+the promised rollback and printing what came out, not re-reading the sentence.
+
+⚠️ **AND THE RESAMPLING IS A CORRECTNESS THING, NOT A CONVENIENCE.** Indexing a
+3-long array with band 4 gives `undefined`, which becomes `NaN` in the z
+expression and draws nothing -- **two entire planes missing with no error
+anywhere in the console**. That is the failure mode a "just add more entries"
+version invites every time someone edits one list and not the other three.
+
+⚠️ **FIVE PLANES DIVIDE THE DEPTH BUDGET FIVE WAYS, WHICH IS THE ONE THING THE
+ASK DOES NOT ASK FOR AND THE MAIN REASON IT COULD HAVE SUCKED.** What the eye
+reads is the STEP between neighbouring planes, not the count. The spread has
+always been the dial (0.20 across three bands = a 0.10 step, which is what has
+been watched and liked); the same 0.20 across five is a 0.05 step, half of it.
+**Shipping the count alone would have been a more expensive way to look like
+three planes.** So the spread went to 0.25 -- the documented ceiling, above which
+the back of the belt visibly crawls backwards -- and the step is 0.0625. That is
+still smaller than what shipped this morning, and saying so is the honest version
+of the answer: five discrete planes are *necessarily* less individually distinct
+than three, and the ceiling is real. **"Make it 7" has no room left in it**; that
+one would be the per-row lerp, not more bands.
+
+⚠️ **THE FIRST WORKING VERSION WAS A TRAP AND THE INSTRUMENT CAUGHT IT.**
+Changing only `bands` and `rows` measures 91.4% average -- above target, looks
+done -- with the thirds at **95 / 90 / 89**, a 7-point spread against the
+three-plane 1.4. Ten rows on a ladder graded for nine piled ink into the FAR
+third at the near one's expense. **This is "read the thirds, not the average" for
+the FOURTH time in this one feature, and it is now predictable rather than
+unlucky: whenever the field's SHAPE changes, the average barely moves and one
+third quietly pays for it.** `zFrom` 0 -> 0.12 re-grades the whole ladder down
+and evens it to 90 / 92 / 88. A placement fix, again -- never a density one.
+
+⚠️ **AND THE COVERAGE TARGET WAS HELD AT 90 ACROSS THE CHANGE, DELIBERATELY.**
+`rows` had to go 9 -> 10 for a clean 2-per-band split, and ten rows at the old
+`spacing` measures 91.7% against the 90% the user picked by watching. Loosened to
+1.25 it is 90.1%. Same rule as the last time two live instructions collided:
+apply the new one, retune the standing number back, **say that you did**.
+
+⚠️ **`zTo` DID NOT MOVE, AND THAT WAS A CONSTRAINT ON THE SEARCH RATHER THAN AN
+OUTCOME OF IT.** `zTo + bandOffsetZ` = 1.30 puts the front row's ground point at
+z 494, which is the "20% down the screen" the user set earlier the same day.
+Several higher-scoring configs get to 90% by pulling `zTo` back, which would have
+silently undone it -- the same trap as the last pass, and it was pinned before
+the sweep rather than noticed after.
+
+⚠️ **THE PREDICTED FAILURE ARRIVED, MEASURED AND SMALL.** The last pass wrote
+down that pushing the field down again would make **the back of the belt go bare
+first**, the reverse of this feature's original near-edge bug. It did: the top
+QUARTER runs 83-95% across 13 camera stops against the three-plane 86-96%. Three
+points, behind everything, and the whole belt's worst camera actually improved
+(83% against 81%). Judged affordable and written down rather than smoothed over.
+
+⚠️ **`bandOffsetZ` WENT FLAT AND THAT IS A DELETION, NOT A LOSS.** It was
+0.20 / 0.30 / 0.20, and the 0.10 bump was a PATCH: it closed a 129px hole three
+coarse bands opened between the mid band's last row and the near band's first.
+Five bands, ten rows and the re-graded `zFrom` close that hole geometrically --
+the ground points land evenly 41px apart from z 122 to z 494 -- so carrying the
+patch forward would have put a bump back into an even ladder. **A number that
+existed to fix a problem should be re-derived when the problem is gone, not
+inherited.**
+
+⚠️ **`bandScale`'S ENDPOINTS WERE LEFT ALONE, AND THAT IS WHERE THE NEXT DIAL IS
+IF THIS READS FLAT.** 1.00 is the pack's own size and 1.10 is a user-set "10%
+bigger"; five planes only subdivides between them, so the new steps are 0.025 --
+near-invisible, meaning the depth cue is carried almost entirely by speed.
+Widening the ladder DOWNWARD (`[0.95, 0.99, 1.02, 1.06, 1.10]`, shrinking the far
+drifts rather than growing the near ones) is the one line that makes distance
+read as size. Not done, because shrinking the far end is a decision nobody asked
+for and it costs coverage in the far third -- but it is the first thing to try if
+"5 planes" doesn't land tomorrow.
+
+**Cost: 19-21 drawn a frame against 17-20.** Band count is free -- one multiply
+per item either way; the two extra draws are the tenth row.
+
+**What was verified, and how.** The coverage instrument (a python port of
+`scenery.js`) had been thrown away with the last session, so it was rebuilt and
+calibrated against the row it was about to replace -- the shipped three-plane
+config -- printing 90.3% | 90.9 / 90.4 / 89.5 | 17-20 against the recorded 90.3%
+| 90.9 / 90.6 / 89.5 | 17-20. **It has now been rebuilt twice; ask next time
+whether it should live in `tools/`.** Separately, `enterRoom` was run against the
+real `CONFIG` and the real defs to confirm the runtime path actually produces ten
+rows in five rate/scale pairs with nothing non-finite -- the config being right
+and the code reading it being right are two different claims.
+
 ---
 
 ## The day passes over the desert (2026-08-27)

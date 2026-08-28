@@ -854,28 +854,24 @@ reason, and hitting one of the three was the half that never worked.
 SCENERY: {
   on: true,
   sheet: 'v2:beatemup-dungeon/cigarros-fundo',
-  rows: 9,          // bands across the belt's depth  <- the coverage dial
-  spacing: 1.20,    // x step as a fraction of each mound's width; >1 = a gap
+  rows: 10,         // rows of drifts across the belt's depth <- the coverage dial
+  bands: 5,         // how many PLANES the rows are cut into. Keep rows a
+                    // multiple of it (10/5 = 2 rows each; 9/5 would be 2/2/2/2/1
+                    // and the near plane -- the one you walk through -- is thin)
+  spacing: 1.25,    // x step as a fraction of each mound's width; >1 = a gap
   zJitter: 60,
-  zFrom: 0.0,       // where the rows run, as fractions of the depth,
+  zFrom: 0.12,      // where the rows run, as fractions of the depth,
   zTo: 1.10,        // INCLUSIVE at both ends -- and zTo is past 1 on purpose
   marginPx: 1000,   // must clear the widest mound (995px)
-  parallax: {       // three depth bands, two rows each, each at its own rate
+  // The three per-band blocks are LISTS, far -> near, and each is read as a
+  // CURVE sampled at `bands` points -- so a list shorter than `bands` is legal
+  // and gets interpolated, and changing `bands` never leaves a knob unread.
+  parallax: {
     on: true,
-    near: 1.00,     // the rows the player walks through -- PINNED on purpose
-    mid:  0.90,
-    far:  0.80,
+    rates: [0.75, 0.81, 0.87, 0.94, 1.00],  // last entry PINNED at 1.00
   },
-  bandScale: {      // ...and how big each of those bands is DRAWN
-    near: 1.10,     // closer = faster AND bigger; the other half of the cue
-    mid:  1.05,
-    far:  1.00,
-  },
-  bandOffsetZ: {    // ...and where it sits, in fractions of the belt's DEPTH
-    near: 0.20,     // + is toward the viewer = DOWN the screen. 0.20 = 76px
-    mid:  0.30,     // read as 0.20 (all planes) + 0.10 (the ramp)
-    far:  0.20,
-  },
+  bandScale:   [1.00, 1.025, 1.05, 1.075, 1.10],  // endpoints are the tuned ones
+  bandOffsetZ: [0.20, 0.20, 0.20, 0.20, 0.20],    // fractions of the belt's DEPTH
 },
 // ...and per room, like `flies`:
 { name: 'desert', scenery: true, ... }
@@ -892,7 +888,9 @@ Re-cut them with `python3 tools/build-beat-fundo-defs.py`.
 the brim", softened in the same breath to "if 100% is unreasonable, try 90%".
 Each was a *new target*, not a complaint about the last one. It is a look, not a
 spec, and it is the user's look: don't defend the number that happens to be here
-— re-measure and move it. What ships is **90.7%**.
+— re-measure and move it. What ships is **90.1%**, held there deliberately across
+the move to five planes (`rows` 9 → 10 would have taken it to 91.7%; `spacing`
+1.20 → 1.25 gives the point and a half back).
 
 **100% was measured and declined on cost**, and the user made that call by
 offering 90 as the fallback. It is reachable — the art is porous, so a solid mat
@@ -911,16 +909,19 @@ is just a question of stacking enough porous layers — but the knee is sharp:
 > ⚠️ **If a true carpet is ever wanted, the answer is not more rows.** Ninety
 > mounds a frame to paint one belt is the scatter being used as a fill tool. Bake
 > the six drifts into one wide repeating strip at build time and the floor is two
-> or three blits — but a baked strip can't have three bands moving at three
+> or three blits — but a baked strip can't have five bands moving at five
 > speeds over it. **The parallax and the carpet are alternatives, not additions.**
 
 **Re-measuring it.** The numbers below come from a port of `scenery.js` that lays
 the scatter out with the same hash and math, blits the frames' alpha into the
 belt strip at seven camera positions and counts. **Its only claim to be trusted
-is that it reproduces a row of the table** — calibrated on the shipped `6 × 1.45`
-row, it prints 66.3% / 76.5 / 65.2 / 57.4 and 9–12 drawn against the 67% /
-77 / 66 / 57 and 9–12 recorded here (alpha > 63). It lives in the session
-scratchpad, not in `tools/` — ask if it should be kept.
+is that it reproduces a row of the table.** Built once for the 90% pass and
+calibrated then on `6 × 1.45`; rebuilt for the five-plane pass and calibrated on
+the three-plane row it was about to replace — it printed **90.3% | 90.9 / 90.4 /
+89.5 | 17–20 drawn** against the **90.3% | 90.9 / 90.6 / 89.5 | 17–20** recorded
+here (alpha > 63). Had it not landed there, every number after it would have been
+a fiction. It lives in the session scratchpad, not in `tools/` — **it has now
+been thrown away and rebuilt twice; ask whether to keep it the next time.**
 
 ⚠️ **Every number below is tied to the mounds' SIZE** (`SCALE` in the cutter,
 raised twice: 0.11 → 0.143 → 0.157). Roughly **+2 points of coverage per +10% of
@@ -958,9 +959,29 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 | 28 × 0.80, mid off .10 | 100.0% | 100 / 100 / 100 | 86–93 |
 | *all three planes down 20% — offsets .20 / .30 / .20* | | | |
 | 12 × 1.20 (the drop alone) | 95.0% | 96 / 92 / 97 | 23–27 |
-| **9 × 1.20** (ships) | **90.3%** | **91 / 91 / 90** | **17–20** |
+| 9 × 1.20 (the 3-plane ship) | 90.3% | 91 / 91 / 90 | 17–20 |
 | 12 × 1.35 | 90.5% | 92 / 85 / 94 | 19–25 |
 | 13 × 1.35 | 91.3% | 94 / 85 / 96 | 20–27 |
+| *five planes — `bands: 5`, offsets flat .20, spread 0.25, 2026-08-27* | | | |
+| 10 × 1.20, zFrom 0 (the naive port) | 91.4% | 95 / 90 / **89** | 19–22 |
+| 10 × 1.20, zFrom .10 | 91.8% | 92 / 93 / 90 | 19–22 |
+| 10 × 1.25, zFrom .10 | 90.4% | 92 / 92 / 88 | 18–22 |
+| **10 × 1.25, zFrom .12** (ships) | **90.1%** | **90 / 92 / 88** | **19–21** |
+| 15 × 1.60, zFrom .15 (3 rows a band) | 90.8% | 89 / 90 / 93 | 20–26 |
+| 10 × 1.30, zFrom .12 | 88.0% | 90 / 91 / 84 | 15–20 |
+
+> ⚠️ **The naive port is the row to look at.** Changing *only* the band count and
+> the row count — leaving the ladder where three planes left it — measures a fine
+> 91.4% average with a 7-point spread across the thirds, piling ink into the far
+> third at the near one's expense. **That is the reliable signature of this
+> feature: whenever the field's shape changes, the average barely moves and one
+> third quietly pays for it.** `zFrom` 0 → 0.12 is the fix.
+
+> ⚠️ **Five planes is less flat than three (3.9 points of spread against 1.4) and
+> more consistent per camera (86–93% against 83–95%).** Not in tension: more,
+> thinner bands even out what any one camera sees while making the depth profile
+> lumpier. **The per-camera number is the one to defend — a player sees camera
+> positions, never an average of thirds.**
 
 > ⚠️ **Moving the field DOWN raises coverage.** The same `12 × 1.20` went 90.7% →
 > 95.0% at an identical draw count: a mound's ink is entirely *above* its ground
@@ -968,10 +989,15 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 > back wall. That is why `rows` came back down 12 → 9 to hold 90% — same look,
 > 17–20 draws instead of 23–27.
 
-> ⚠️ **The far band is now the one to watch.** Its first row is at z 0.200 (screen
-> y 406), so the top 76px of belt has no ground point and is covered only by ink
-> hanging up from it. 90.9% and fine — but push the field down again and **the
-> back of the belt goes bare first**, the reverse of this feature's first bug.
+> ⚠️ **The far band is the one to watch, and the five-plane pass pushed it.** Its
+> first row moved from z 0.200 to 0.320 (122px), so more of the top of the belt is
+> covered only by ink hanging up from it. That prediction — "push the field down
+> again and **the back of the belt goes bare first**, the reverse of this
+> feature's first bug" — came true, measured and small: the top **quarter** runs
+> **83–95%** across 13 camera stops against the three-plane **86–96%**. Three
+> points, behind everything, while the whole belt's *worst* camera improved (83%
+> against 81%). Judged affordable; `zFrom` is the one knob if it ever reads bare,
+> and it trades against the near third point for point.
 
 > ⚠️ **The shipped row is the evenest, not the highest.** 86 / 78 / 80 is the
 > flattest spread anything measured, and per-camera it runs 72–85% against the old
@@ -1011,48 +1037,97 @@ coverage varies ~15 points across the room and a four-sample average hid it.
 > ⚠️ **Anything that must be stood on for real** — a height `z` or `jumpY`
 > answers to — is a PROP, not scenery, and belongs in `prop.js`.
 
-### The three speeds
+### The five speeds
 
-`parallax` cuts the six rows into three depth bands — two rows each — and scrolls
-each at its own rate, the same meaning `parallax` has on a backdrop layer. Walk
-1000px and the far band has drifted 200px against the sand. `on: false` puts
-every row back at 1.0.
+`parallax` cuts the rows into `bands` depth planes — two rows each at `rows: 10`,
+`bands: 5` — and scrolls each at its own rate, the same meaning `parallax` has on
+a backdrop layer. Walk 1000px and the far plane has drifted 250px against the
+sand. `on: false` puts every row back at 1.0.
+
+> ⚠️ **The count is data, and that was the work.** It was 3 planes, hardwired as
+> `const BANDS = 3` in `scenery.js` and as `{far, mid, near}` three times over in
+> the config. Adding two more names would have worked exactly once. Instead each
+> block is a **curve sampled at `bands` points** (`Scenery._ramp`), so 3, 5 and 7
+> all read the same file, and a list shorter than `bands` is a legal shorthand
+> rather than two silently missing planes (`undefined` → `NaN` → nothing drawn).
+
+> ⚠️ **The rollback is five numbers, and `bands: 3` alone is not it** — the count
+> came with a re-tune (spread widened, ladder re-graded, density brought back
+> down), and dropping the count without undoing those leaves a *third* config
+> that was never measured. Paste, don't reconstruct:
+>
+> ```js
+> bands: 3,  rows: 9,  spacing: 1.20,  zFrom: 0.0,
+> parallax: { on: true, rates: [0.80, 0.90, 1.00] },
+> bandScale:   [1.00, 1.05, 1.10],
+> bandOffsetZ: [0.20, 0.30, 0.20],
+> ```
+>
+> That is byte-for-byte what shipped at `4a5d788`: at three bands a three-entry
+> list is read literally, so the list form is exact, not an approximation.
 
 > ⚠️ **It breaks "they behave as the ground", on purpose.** A band under 1.0 no
 > longer sits on a fixed patch of sand — it slides against the plate (1.0) and
 > against the fighters (1.0). Affordable only because nothing ever asks a mound
 > where it is. Incompatible with ever standing on one for real.
 
-> ⚠️ **`near` is pinned at 1.0 — that is the choice, not the default.** Anchoring
-> the far plane instead (far 1.0 / mid 1.1 / near 1.25) makes the ground under
-> the player's feet outrun him, and he reads as skating rather than walking.
+> ⚠️ **The last entry is pinned at 1.0 — that is the choice, not the default.**
+> Anchoring the far plane instead (far 1.0 rising to near 1.25) makes the ground
+> under the player's feet outrun him, and he reads as skating rather than walking.
 
-> ⚠️ **The spread is the dial, not the three numbers.** 1.00/0.90/0.80 is 0.20.
-> Under ~0.06 it is invisible; much over 0.25 and the back of the belt crawls
-> backwards under a fast camera and reads as a bug. Halve it for a hint, double
-> it for the crazy version.
+> ⚠️ **The spread is the dial, not the individual numbers**, and it went 0.20 →
+> 0.25 *because* the count went 3 → 5. What the eye reads is the **step between
+> neighbouring planes**, so dividing one budget five ways instead of three halves
+> it (0.10 → 0.05) — at the old spread, five planes would have been a more
+> expensive way to look like three. Widening puts the step back to 0.0625.
 
-| spread | near / mid / far | reads as |
+> ⚠️ **0.25 is the documented ceiling and this now sits on it.** Much over it and
+> the back of the belt crawls backwards under a fast camera and reads as a bug.
+> **So "make it 7 planes" is an ask with no room left in it** — the answer there
+> is the per-row lerp below, not more discrete bands.
+
+| spread | far → near | reads as |
 |---|---|---|
-| 0.10 | 1.00 / 0.95 / 0.90 | a hint of depth |
-| **0.20** | **1.00 / 0.90 / 0.80** | ships |
-| 0.40 | 1.00 / 0.80 / 0.60 | the crazy version |
-| — | 1.00 / 1.10 / 1.25 (anchored far) | skating; don't |
+| 0.10 | 0.90 … 1.00 | a hint of depth |
+| 0.20 | 0.80 … 1.00 | the 3-plane ship, five ways — **the rollback if 0.25 crawls** |
+| **0.25** | **0.75 / 0.81 / 0.87 / 0.94 / 1.00** | ships |
+| 0.40 | 0.60 … 1.00 | over the ceiling; the back visibly slides |
+| — | 1.00 … 1.25 (anchored far) | skating; don't |
 
 > ⚠️ **Bands come off the row index, not the jittered `z`** — `zJitter` would
-> otherwise flip a mound's speed and tear the boundary. 2/2/2 at `rows: 6`.
+> otherwise flip a mound's speed and tear the boundary. That is also why `rows`
+> must stay a multiple of `bands`: 2/2/2/2/2 at `rows: 10`, but 2/2/2/2/**1** at 9.
 
 > ⚠️ **Over 1.0 costs scatter, under it costs nothing.** A lagging band is inside
 > the room and the field already over-covers; a fast one runs past `endX` and
-> `enterRoom` extends the layout to match. Per frame it is one multiply — the
-> 9–12 draws, the single atlas bind and the ~67% coverage are all unchanged.
+> `enterRoom` extends the layout to match. Every rate here is ≤ 1.0, so none of
+> that fires.
 
-> ⚠️ **Three bands means two seams.** If a boundary reads as a tear, the fix is a
-> per-*row* rate lerped far→near (one line in `scenery.js`), not a smaller spread.
+> ⚠️ **Adding planes costs nothing per frame; the rows do.** Band count is one
+> multiply per item either way. What five planes actually bought was `rows` 9 →
+> 10 to keep the split even: **19–21 drawn against 17–20**, one atlas bind,
+> unchanged.
 
-`bandScale` is the same three bands, drawn bigger or smaller — a multiplier on
-the pack's own scale, applied at draw time. `near: 1.10` because a closer thing
-is bigger as well as faster.
+> ⚠️ **N bands means N−1 seams** — four of them now, 41px apart in depth and
+> 0.0625 in speed. More planes is a smoother gradient *and* more places to tear;
+> the rows' ink overlaps ~200px, which is what hides them. If a boundary reads as
+> a tear, the fix is a per-*row* rate lerped far→near (`_ramp(…, rows, …)`
+> instead of `_ramp(…, BANDS, …)` and drop the band index), not a smaller spread.
+
+`bandScale` is the same planes, drawn bigger or smaller — a multiplier on the
+pack's own scale, applied at draw time. The last entry is 1.10 because a closer
+thing is bigger as well as faster.
+
+> ⚠️ **The endpoints are the tuned ones and five planes only subdivides between
+> them.** 1.00 is the pack's own size, 1.10 is the "10% bigger" that was asked
+> for; the back and front of the field are drawn exactly as before and the three
+> new steps are 0.025 apart. **If five planes don't read as depth, this is the
+> dial and not the parallax** — a 0.025 step is near-invisible, so the cue is
+> carried almost entirely by speed. Widening the ladder *downward*
+> (`[0.95, 0.99, 1.02, 1.06, 1.10]` — shrinking the far drifts rather than
+> growing the near ones) is the one line that makes distance visible as size. It
+> is left alone because 1.00 is the art's own size, shrinking it is a decision
+> nobody asked for, and it costs coverage in the far third.
 
 > ⚠️ **It is a band multiplier, not a re-cut.** The pack is cut once at one scale
 > (`SCALE` 0.157 in the cutter) and that stays the art's size — one scale per
@@ -1076,18 +1151,35 @@ is bigger as well as faster.
 > unchanged. **At 1.0 the scale is an exact no-op**, so the other bands and every
 > other room draw exactly what they did before.
 
-`bandOffsetZ` moves a whole band down (or up) the belt — again the same three
-bands, in fractions of the belt's **depth**, positive toward the viewer.
+`bandOffsetZ` moves a whole plane down (or up) the belt — in fractions of the
+belt's **depth**, positive toward the viewer. It is **flat at 0.20 now**: the
+"bring the planes down by 20%" that was asked for, and nothing else.
 
-> ⚠️ **`near: 0.20` is 20% of the belt's depth (76px of 380), not of the screen.**
+> ⚠️ **It used to be 0.20 / 0.30 / 0.20, and that bump was a patch, not a shape.**
+> The extra 0.10 closed a 129px hole three coarse bands opened between the mid
+> band's last row and the near band's first (middle third 45.9% against a 62.6%
+> average). Five bands, ten rows and the re-graded `zFrom` close that hole
+> geometrically — the ten ground points land evenly from z 122 to z 494, 41px
+> apart — so carrying the patch forward would put a bump back into an even ladder.
+
+> ⚠️ **0.20 is 20% of the belt's depth (76px of 380), not of the screen.**
 > The belt is the unit `zFrom`/`zTo` already use. For 20% of `GAME_H` — 144px,
 > which crops most of the front row — use `0.38`.
 
-> ⚠️ **It puts the band past the near edge of the belt, deliberately.** Ground
-> points go from z 334/418 to 410/494 (screen y 740/824, below the 720px frame).
-> A mound's ink is entirely *above* its ground point, so both rows still blanket
-> the near third (169–410 and 253–494) and only the front row's lower half is
-> cropped. Coverage was reasoned from those spans, not re-measured.
+> ⚠️ **The front planes sit past the near edge of the belt, deliberately.** Their
+> ground points reach z 411–494 (screen y 741–824, below the 720px frame). A
+> mound's ink is entirely *above* its ground point, so the drifts still blanket
+> the near third and only their lower halves are cropped.
+
+> ⚠️ **`zFrom` 0.0 → 0.12 is the knob that made five planes sit evenly**, and it
+> is a placement change, not a density one. Ten rows on the old ladder measure a
+> respectable 91.4% average while piling ink into the *far* third (95/90/89) —
+> "read the thirds, not the average" for the fourth time. **`zTo` did not move:
+> `zTo + bandOffsetZ` = 1.30 is the front row's ground point at z 494, which is a
+> user-set position and a constraint on any future search here.** The cost is 3
+> points at the very back — the top quarter runs 83–95% across 13 camera stops
+> against the three-plane 86–96% — which is the "the back goes bare first"
+> failure the last pass predicted, arriving, measured, and judged affordable.
 
 > ⚠️ **It does NOT make the band a foreground.** Scenery is one layer, drawn
 > before every fighter, so a mound at z 494 is still painted *behind* a player at
