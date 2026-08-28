@@ -1856,6 +1856,59 @@ bottom drops as it expands.
 > frame index, two files: the cutter decides which frames stop being a body, the
 > game decides which slow down.
 
+### A real explosion on top of the drawn one
+
+```js
+DEATH_BOOM: {
+  espeto: {
+    on: true, count: 1,
+    atFrame: 6,                                   // <- the sync
+    spreadXRel: 0, spreadYRel: 0, jitterRel: 0,   // one blast, dead centre
+    baseYRel: 0.5, refPx: 180,
+    sizePx: 208, sizeJitter: 0,
+  },
+}
+```
+
+The bosses' explosion (`boom.js`, `CONFIG.BOOM_SHEET`), **one of them**, going off
+on top of the drawn burst. Keyed by `kind` like `DEATH_BURST` and `DEATH_BLAST`,
+so anything not named here is untouched. Armed in `Fighter._armDeathBoom` at the
+moment of death and drawn at the tail of `Fighter.draw`, over the sprite and
+outside its alpha — a blast is not part of the corpse and must not fade with one.
+
+> ⚠️ **No new effect code.** `boom.js` was extracted from horse-boss.js when the
+> Mosca wanted the same death, with *how many / how far apart / how big* pushed
+> into config precisely so a third caller would be free. It was.
+
+> ⚠️ **"Sync" is `atFrame`, not a millisecond.** It hangs on death frame 6 — the
+> first drawn burst frame — through `Fighter.deathFrameStartS`, the same clock the
+> row is drawn from, so retiming the fall, the shudder or the burst moves the
+> explosion with them. Frame 7 would put it on the widest drawing instead, which
+> is where the *damage* lands but a beat after the picture says he has gone.
+
+> ⚠️ **`deathFrameStartS` had an off-by-one on exactly this frame.** The guard was
+> `i <= B.from`, so asking for the first burst frame took the plain-clock path and
+> answered 780ms instead of 1580 — the boom would have fired 800ms early, over the
+> tremble. Every *interior* frame was right, which is why it survived review; the
+> blast's `atFrame: 7` never touched the boundary. Caught by printing the start
+> time of all ten frames rather than checking one.
+
+> ⚠️ **The corpse is kept alive for it** — `corpseGone` waits on
+> `max(deathAnimS, deathBoomEndS)`. The boom ends at 2431ms against a row ending
+> at 2448: seventeen milliseconds is not a margin. Third time this rule has been
+> needed here, after the burst slowdown and the shudder.
+
+> ⚠️ **One blast wants zeros, and `||` was eating them.** `spreadXRel: 0` /
+> `spreadYRel: 0` silently became the seven-blast scatter. Fixed at the read site
+> in `boom.js` with `!= null`; the horse's non-zero values are unchanged to the
+> pixel. `baseYRel` was added so a single blast can sit on a torso instead of
+> hugging the feet.
+
+> ⚠️ **`refPx` is the DRAWN size (180), not `fighterSizePx` (136.8).** The latter
+> is a nominal body height for the hit resolver; a blast has to sit on the picture.
+
+**Timeline:** boom fires 1580ms · damage 1720ms · boom ends 2431ms · row ends 2448ms.
+
 ### The death blast
 
 ```js

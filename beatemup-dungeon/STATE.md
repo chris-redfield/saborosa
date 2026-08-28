@@ -3772,6 +3772,66 @@ with the two numbers, rather than shipped as if it had been done.
 still returns `'room'`. A switch to call the lift was floated for later and
 deliberately not built.
 
+### A real explosion on top of the drawn one (2026-08-28)
+
+*"Lets add an explosion to the last frames, at the same time the espeto blows up,
+the other explosion should appear as well, this explosion is the same that is
+used in the bosses, but lets use a single one. Try to sync both explosions."*
+
+`CONFIG.DEATH_BOOM.espeto` + `Fighter._armDeathBoom` / `deathBoomEndS` + a draw
+call at the tail of `Fighter.draw`. **No new effect code.**
+
+⚠️ **THE REFACTOR PAID OFF SIX DAYS LATER.** `boom.js` was lifted out of
+horse-boss.js on 2026-08-22 the day the Mosca was asked for the same death, and
+the note on it said the only things that differ are *how many, how far apart, and
+how big, which is why all of those are config and none of them are in here*. A
+third caller cost one config block and a two-line draw. **When a second caller
+forces an extraction, write the extraction so the third one is free.**
+
+⚠️ **"SYNC" MEANS `atFrame`, NOT A MILLISECOND.** The boom hangs on death frame 6
+-- the first drawn burst frame -- through `deathFrameStartS`, the same clock the
+row is drawn from. Written as a raw time it would be right today and wrong the
+next time the fall, the shudder or the burst is retimed. Second knob moved to
+`atFrame` after the blast, same day, same reason.
+
+⚠️ **AND THAT IS WHERE THE BUG WAS: `deathFrameStartS` GOT ITS OWN BOUNDARY
+FRAME WRONG.** The guard read `i <= B.from`, so asking for the FIRST BURST FRAME
+took the plain-clock path and answered **780ms instead of 1580** -- the time it
+would have started if the shudder did not exist. The boom would have gone off
+800ms early, on top of the tremble. Every other frame was right, which is exactly
+why it survived being written and read: `atFrame: 7` (the blast) was correct, and
+`atFrame: 6` was the first caller ever to ask about the boundary. **An off-by-one
+on a boundary hides behind every interior case being right.**
+
+⚠️ **IT WAS CAUGHT BY PRINTING THE WHOLE TABLE, NOT BY CHECKING THE ANSWER.**
+The trace printed the start time of all ten frames next to the boom's fire time;
+780 against a burst that visibly starts at 1580 is obvious in a column and
+invisible in a single assertion. **When a function answers "when does X happen",
+print its answer for every X.**
+
+⚠️ **THE CORPSE HAD TO BE KEPT ALIVE, FOR THE THIRD TIME.** `corpseGone` now
+waits on `max(deathAnimS, deathBoomEndS)`. At the shipped numbers the boom ends
+at 2431ms against a row ending at 2448 -- it fits by seventeen milliseconds,
+which is not a margin, it is a coincidence waiting for someone to raise `sizePx`
+or add a second blast. **Whatever the death plays, the body outlives.**
+
+⚠️ **ONE BLAST WANTS ZEROS, AND `||` WAS EATING THEM.** `boom.js` read
+`cfg.spreadXRel || 0.55` and `cfg.spreadYRel || 0.75`, so a single centred
+explosion asking for no spread silently got the seven-blast scatter. Fixed at the
+READ SITE with `!= null` -- the knob-set-to-zero-that-does-nothing trap this
+project already has a rule about. The horse's values are all non-zero, so its
+pattern is unchanged to the pixel. `baseYRel` was added at the same time so one
+blast can sit on a torso instead of hugging the feet.
+
+⚠️ **`refPx` IS THE DRAWN SIZE, NOT `fighterSizePx`.** The latter is 136.8 and is
+a nominal body height for the hit resolver; espeto is drawn about 180px tall, and
+a blast has to sit on the PICTURE rather than on the hitbox.
+
+**Timeline:** boom fires 1580ms (with the first burst frame), damage 1720ms,
+boom ends 2431ms, row ends 2448ms.
+
+---
+
 ### He was blowing up twice, and it was not the new code (2026-08-28)
 
 *"He does what we talked about, and that was great, so he blows up. but then,

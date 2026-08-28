@@ -284,6 +284,7 @@ class Fighter {
       if (back && Math.abs(this.vx) < back) this.vx = (dir || (this.facing === 'left' ? 1 : -1)) * back;
       this.dead = true;
       this.deathT = 0;
+      this._armDeathBoom();
       return true;
     }
 
@@ -680,7 +681,13 @@ class Fighter {
        Enemy.update and Crowd.update, churning a shared call site for one
        optional check. Frames at or before the burst are on the plain clock;
        after it, walk the burst's own durations. */
-    if (!B || i <= B.from) return i * (ms / 1000);
+    /* ⚠️ `<` AND NOT `<=`, AND THE BOUNDARY FRAME IS THE WHOLE POINT OF THIS
+       FUNCTION. `i === B.from` is the FIRST BURST FRAME -- it starts after the
+       shudder, not before it. With `<=` it took the plain-clock path and
+       returned 780ms instead of 1583, so the death boom hung on it fired 800ms
+       early, on top of the tremble. Every other frame was right, which is what
+       makes this the one worth a comment. */
+    if (!B || i < B.from) return i * (ms / 1000);
     let t = B.from * (ms / 1000) + this._shudderS(B);
     for (let k = B.from; k < i; k++) t += this._burstMs(B, k - B.from) / 1000;
     return t;
@@ -721,6 +728,38 @@ class Fighter {
     const hi = Math.max(lo, Math.min(n - 1, S.to != null ? S.to : lo));
     const k = Math.floor((this.deathT - preS) / Math.max(0.001, (S.ms || 80) / 1000));
     return { pose, step: lo + (k % (hi - lo + 1)) };
+  }
+
+  /**
+   * Arm the real explosion that goes off on top of the drawn one, if this kind
+   * has one. See CONFIG.DEATH_BOOM.
+   *
+   * ⚠️ THE PATTERN IS ROLLED HERE, AT THE MOMENT OF DEATH, because that is what
+   * boom.js is for -- rolling it in `draw` gives a different scatter sixty times
+   * a second, which is static rather than an explosion. With `count: 1` there is
+   * nothing to scatter, but the rule holds for whatever is added next.
+   *
+   * ⚠️ `startMs` IS DERIVED FROM `atFrame`, WHICH IS THE SYNC. The boom hangs on
+   * the frame the drawn burst begins, read off the same clock the row is drawn
+   * from -- so retiming the fall, the shudder or the burst moves the explosion
+   * with them instead of leaving it behind.
+   */
+  _armDeathBoom() {
+    const D = (CONFIG.DEATH_BOOM || {})[this.kind];
+    if (!D || !D.on || typeof Booms === 'undefined') return;
+    if (!this.booms) this.booms = new Booms();
+    const startMs = (D.atFrame != null) ? this.deathFrameStartS(D.atFrame) * 1000
+                                        : (D.startMs || 0);
+    this.booms.arm(Object.assign({}, D, { startMs }), D.refPx || this.bodyHeight());
+  }
+
+  /** When the last blast of the death boom finishes, in seconds. 0 if none. */
+  deathBoomEndS() {
+    const D = (CONFIG.DEATH_BOOM || {})[this.kind];
+    if (!D || !D.on || typeof Booms === 'undefined') return 0;
+    const startMs = (D.atFrame != null) ? this.deathFrameStartS(D.atFrame) * 1000
+                                        : (D.startMs || 0);
+    return Booms.spanMs(Object.assign({}, D, { startMs })) / 1000;
   }
 
   /** The ms this burst frame is held. One number, or one per frame. */
@@ -1060,8 +1099,24 @@ class Fighter {
       rotate = dir * p * (Math.PI / 2) * 0.85;
     }
 
+    /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
+       method. An explosion goes OVER the body it is destroying. */
     sheets.draw(ctx, this.kind, this.facing, this.pose(sheets), this.frameStep(sheets),
                 gx, gy, { alpha, rotate, flash: this.flash * 0.55, scale: this.depthScale() });
+
+    /* THE REAL EXPLOSION, OVER THE BODY IT IS DESTROYING. Last, so it is never
+       painted under the sprite; and outside the `alpha` above, because a blast
+       is not part of the corpse and must not fade with one.
+
+       ⚠️ THE SHEET COMES THROUGH `sheets.assets`, exactly as horse-boss.js takes
+       it -- `draw(ctx, sheets, camX)` is the interface every drawable in this
+       game answers to, and widening it for this would mean touching every
+       caller for something only one kind needs. A missing image draws nothing
+       rather than throwing: a death must never take the frame down with it. */
+    if (this.booms && this.booms.armed) {
+      this.booms.draw(ctx, sheets.assets && sheets.assets.getDrawable('boom'),
+                      gx, gy, this.deathT);
+    }
   }
 
   /**
@@ -1188,8 +1243,14 @@ class Fighter {
        corpse in the game lying around a second longer than it does today.
 
        `sheets` IS OPTIONAL so an older caller degrades to the old behaviour
-       rather than throwing; `deathAnimS` returns 0 without it. */
-    return this.deathT >= this.deathAnimS(sheets);
+       rather than throwing; `deathAnimS` returns 0 without it.
+
+       ⚠️ AND NOT BEFORE THE DEATH BOOM HAS FINISHED EITHER -- the same rule a
+       third time. At the shipped numbers espeto's boom ends at 2434ms against a
+       row ending at 2448: it fits by fourteen milliseconds, which is not a
+       margin, it is a coincidence waiting for someone to retune `sizePx` or add
+       a second blast. Whatever the death PLAYS, the body outlives. */
+    return this.deathT >= Math.max(this.deathAnimS(sheets), this.deathBoomEndS());
   }
 
   /** Does a hitbox overlap this fighter's body? */

@@ -54,10 +54,23 @@ class Booms {
       /* Spread ALONG the body first and jittered second, so the blasts cover
          all of it instead of clustering wherever the rolls happened to fall. */
       const spanX = (n === 1) ? 0 : ((i + 0.5) / n * 2 - 1);
+      /* ⚠️ `!= null` AND NOT `||`, BECAUSE 0 IS A REAL ANSWER HERE. A single
+         centred blast wants `spreadXRel: 0` / `spreadYRel: 0` / `jitterRel: 0`,
+         and under `||` every one of those silently became the seven-blast
+         default -- a knob set to zero that does nothing, which this project has
+         been caught by before. The horse's values are all non-zero, so its
+         pattern is unchanged to the pixel. */
+      const sx = cfg.spreadXRel != null ? cfg.spreadXRel : 0.55;
+      const sy = cfg.spreadYRel != null ? cfg.spreadYRel : 0.75;
+      const jx = cfg.jitterRel != null ? cfg.jitterRel : 0.16;
+      /* Where the string SITS up the body, before the spread above it. Pulled
+         out so a single blast can be centred on a torso instead of hugging the
+         feet; the horse's 0.18 is the default and it did not move. */
+      const base = cfg.baseYRel != null ? cfg.baseYRel : 0.18;
       this.list.push({
-        ox: (spanX * (cfg.spreadXRel || 0.55) + (Math.random() - 0.5) * 0.16) * refPx,
+        ox: (spanX * sx + (Math.random() - 0.5) * jx) * refPx,
         // Up from the ground point: never at floor level, never overhead.
-        oy: -(0.18 + Math.random() * (cfg.spreadYRel || 0.75)) * refPx,
+        oy: -(base + Math.random() * sy) * refPx,
         at: (cfg.startMs || 0) + order[i] * (cfg.everyMs || 180),
         size: (cfg.sizePx || 210) * (1 + (Math.random() * 2 - 1) * jit),
       });

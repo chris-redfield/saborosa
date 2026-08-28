@@ -4441,6 +4441,75 @@ const CONFIG = {
   },
 
   /* =========================================================================
+     A REAL EXPLOSION ON TOP OF THE DRAWN ONE
+     =========================================================================
+     ⚠️ THE SAME EFFECT THE BOSSES BLOW UP WITH, AND EXACTLY ONE OF THEM. Asked
+     for 2026-08-28: *"lets add an explosion to the last frames, at the same time
+     the espeto blows up, the other explosion should appear as well, this
+     explosion is the same that is used in the bosses, but lets use a single one.
+     Try to sync both explosions."*
+
+     `src/boom.js` already owned this -- it was lifted out of horse-boss.js the
+     day the Mosca was asked for the same death, precisely so that "how many, how
+     far apart, how big" would be config and not code. A third caller costs one
+     config block and no new effect code, which is the whole return on that
+     earlier refactor.
+
+     ⚠️ KEYED BY `kind`, LIKE DEATH_BURST AND DEATH_BLAST. Anything not named
+     here is untouched -- there is no fighter-wide behaviour being switched on.
+
+     ⚠️ `atFrame`, NOT `startMs`, AND THAT IS THE "SYNC" IN THE ASK. The boom is
+     hung on the frame the drawn burst BEGINS (death frame 6), read through
+     `Fighter.deathFrameStartS` -- the same clock the row is drawn from. Written
+     as a raw millisecond it would be right today and wrong the next time the
+     fall, the shudder or the burst is retimed. This is the second knob to move
+     to `atFrame` after the blast, and for the same reason.
+
+     ⚠️ AND THE CORPSE IS KEPT ALIVE FOR IT. `corpseGone` now waits for the boom
+     as well as the death row. At the shipped numbers the boom ends at 2434ms
+     against a row ending at 2448 -- a 14ms margin, which is not a margin. The
+     third time this feature has had to teach "the body has to live long enough
+     to play the thing you just added", after the burst slowdown and the shudder.
+
+     ⚠️ ONE BLAST WANTS `spreadXRel`/`spreadYRel` AT ZERO, and until 2026-08-28
+     boom.js read those with `||` -- so zero silently became the seven-blast
+     spread. Fixed at the read site; the horse's non-zero values are unchanged
+     to the pixel. See the note in boom.js. */
+  DEATH_BOOM: {
+    espeto: {
+      on: true,
+      /* ONE, as asked. With `count: 1` the string has no rhythm to it, so
+         `everyMs` is unused and the shuffle is a no-op. */
+      count: 1,
+      /* THE SYNC. Death frame 6 is the first drawn burst frame -- the small red
+         starburst -- so the two explosions start on the same frame and read as
+         one event. Frame 7 would put it on the widest drawing instead, which is
+         where the damage lands (`DEATH_BLAST.atFrame`) but a beat after the
+         picture says he has gone. */
+      atFrame: 6,
+      /* Dead centre on him: no spread, no jitter, one blast over the body. */
+      spreadXRel: 0,
+      spreadYRel: 0,
+      jitterRel: 0,
+      /* Up from his feet as a fraction of `refPx` below -- about the middle of
+         a body that is roughly 180px tall on screen. */
+      baseYRel: 0.5,
+      /* ⚠️ WHAT THE SPREAD AND OFFSET ARE MEASURED AGAINST, and it is NOT
+         `fighterSizePx` (136.8). That is a nominal body height for the hit
+         resolver; espeto is DRAWN about 180px tall, and the blast has to sit on
+         the picture rather than on the hitbox. */
+      refPx: 180,
+      /* Width of the peak frame on screen. ⚠️ 208 IS 260 x 0.8 -- "20% smaller",
+         asked for 2026-08-28 after watching it. His own drawn burst peaks at
+         302px wide, so the boom now sits well inside it and reads as a flash
+         going off INSIDE the sprite's explosion rather than as a second, bigger
+         one around it. Pure taste; move it freely. */
+      sizePx: 208,
+      sizeJitter: 0,
+    },
+  },
+
+  /* =========================================================================
      THE DEATH BLAST
      =========================================================================
      A HIT THAT COMES OUT OF A CORPSE. Asked for 2026-08-27 -- "when he dies,
