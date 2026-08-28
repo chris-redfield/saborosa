@@ -87,18 +87,24 @@ const CONFIG = {
        by playing to it is how a late room stops getting tested; this is the
        shortcut.
 
-           0  street        1  desert        2  boss room (HIPÓLITO)
+           0  street     1  desert     2  bookcase     3  boss room (HIPÓLITO)
 
        The NUMBER KEYS do the same thing live, and they are **one-based** --
-       `input.js` sets the jump to `n - 1`, so 1 is the street, **2 is the
-       desert** and 3 is the boss room. Both are dev-only and dead when `on` is
-       false.
+       `input.js` sets the jump to `n - 1`, so 1 is the street, 2 is the desert,
+       **3 is the bookcase** and **4 is the boss room**. Both are dev-only and
+       dead when `on` is false.
 
        ⚠️ THE KEYS FOLLOW THE ARRAY AND NOTHING ELSE, which is why inserting the
        desert at index 1 on 2026-08-27 moved 2 off the boss room and on to it
-       without a line of input code changing. Re-order ROOMS again and the keys
-       re-order with it -- so THIS COMMENT is the thing that goes stale, not the
-       behaviour. It already had, and said "1 the boss room". */
+       without a line of input code changing, and why inserting the bookcase at
+       index 2 later the same day moved the boss room from 3 to 4. Re-order
+       ROOMS again and the keys re-order with it -- so THIS COMMENT is the thing
+       that goes stale, not the behaviour.
+
+       ⚠️ IT HAS NOW GONE STALE TWICE, and both times it was predicting itself.
+       It said "1 the boss room" through the desert's insertion and "2 the boss
+       room" through the bookcase's. If a third room is inserted, this line is
+       the first thing to fix, not the last. */
     startRoom: 0,
   },
 
@@ -574,6 +580,42 @@ const CONFIG = {
       trackGain: 1.2,
       maxRate: 10,
       tint: '',
+    },
+
+    /* THE BOOKCASE — level 3's plate, and the only one in the game whose shot
+       does not travel in one direction.
+
+       ⚠️ `worldPxPerSecond` IS INERT FOR THIS ROOM AND IS KEPT ONLY SO THE
+       ROUND TRIP CANCELS. `_drawVideo` computes `filmTime = scrollX / pps`, and
+       level3.js hands it `progress * pps` in place of a camera position — so
+       whatever number is here divides straight back out. It is NOT a sync knob
+       for this plate; the sync lives in `CONFIG.LEVEL3.legs`, which ties film
+       SECONDS to camera pixels leg by leg. The value is the shot's average
+       (13530 screen px of pan over 74.0s) so that anything reading it for a
+       sanity check gets a truthful number rather than a magic one.
+
+       ⚠️ AND THAT IS WHY THE SWITCHBACK COSTS THE SHARED CODE NOTHING. backdrop.js
+       never learns that a room with its own clock exists; it is handed a
+       different number by one guarded line in game.js. See src/level3.js.
+
+       15.26MB -> 5.04MB (3.0x) at CRF 30, and the two levers were an AAC track
+       nothing plays (15% of the file) and the CRF ladder — see
+       tools/build-level-3-plate.py. ⚠️ IT WAS NOT RESCALED and must not be: the
+       master arrived already at 848x478, so the desert's "resolution is the
+       wrong knob" finding applies with nothing left to spend. */
+    level3Plate: {
+      kind: 'video',
+      src: 'v2:beatemup-dungeon/level-3-plate.mp4',
+      worldPxPerSecond: 182.8,
+      /* ⚠️ NEVER ACTUALLY EXERCISED, AND KEPT ANYWAY. `progress` is monotonic,
+         so the scroll value this plate sees can only rise and the reverse branch
+         in `_drawVideo` cannot fire. The clip still ships at GOP 12 like the
+         others: the cost is small, and the day someone gives this room a
+         checkpoint that walks the film back, the encoding is already right. */
+      allowReverse: true,
+      resyncS: 6.0,
+      trackGain: 1.2,
+      maxRate: 10,
     },
     // Declared but unused until there is art — see the LAYERS note.
     foreground: { kind: 'image', src: '', scale: 1 },
@@ -1086,6 +1128,62 @@ const CONFIG = {
     /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter
        of a screen, so the camera barely moves and mostly just breathes with the
        player. The fight is what the room is for, not the walk. */
+    /* =====================================================================
+       LEVEL 3 — THE BOOKCASE (2026-08-27)
+       =====================================================================
+       ⚠️ INSERTED ABOVE THE BOSS ROOM, WHICH IS HOW THE HORSE GOT PUSHED TO THE
+       END. A room's place in the game is its INDEX in this array and nothing
+       else reads a room number, so "put the boss last" is an insertion and not
+       a rename. The DEV number keys follow the array (`n - 1`), so they are now
+       1 = street, 2 = desert, 3 = bookcase, 4 = boss room -- and the stale thing
+       will be a COMMENT somewhere, never the behaviour.
+
+       ⚠️ THIS ROOM DOES NOT USE THE SEGMENT MACHINERY, AND THAT IS THE POINT.
+       `level3: true` hands it to src/level3.js at the top of `stage.update()`,
+       which owns its camera, its walls, its film clock and its lifts. The
+       `segments` list below is a single formality so that anything iterating
+       rooms finds a well-formed one; level3.js never reads it. Do not "fix" it
+       by adding scrolls and arenas -- the scroll branch completes on
+       `player.x >= toX`, which is exactly the rightward assumption shelf 2
+       breaks. Fights go in `CONFIG.LEVEL3.legs` when they arrive.
+
+       WHAT IT IS: a switchback climb of a comic-book bookcase, filmed. Walk
+       right along shelf 1, ride up, walk LEFT along shelf 2, ride up, walk
+       right along shelf 3. See CONFIG.LEVEL3 for the measured legs.
+
+       ⚠️ NO ENEMIES YET, DELIBERATELY. What was asked for was the level, the
+       reordering, a smaller video and a placeholder elevator to test -- so this
+       ships as a traversal. It is also the honest order to build it in: the
+       switchback and the lifts are the parts that could be wrong, and a fight
+       on top of them would only make that harder to see. */
+    {
+      name: 'level-3',
+      plate: 'level3Plate',
+      startX: 220,
+      level3: true,
+      /* ⚠️ SILENCE, LIKE THE DESERT'S. Leaving `music` out means *the level bed*,
+         which is the opposite of nothing: `playMusic(key)` opens with
+         `key || 'music'`, so a falsy key cannot express "none" and the decision
+         has to be made before the call. */
+      music: false,
+      /* THE BELT. The shelves are shallow -- a fighter stands on a plank, not in
+         a desert -- so this is nearer the street's 520/190 than the desert's
+         330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
+         changing one alone puts the near edge off the bottom of the canvas. */
+      belt: { topY: 470, depth: 210 },
+      /* ⚠️ NOT A REAL WALL, AND NOTHING READS IT. level3.js pens the player to
+         the current leg's band (`Level3.bounds`), so the room's own end is only
+         here so `stage.endX()` returns something sane if anything asks. It is
+         the far end of the last band; see the band layout in level3.js. */
+      endX: 24500,
+      /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
+         `progress` is monotonic by construction -- so the flag would claim a
+         capability the room does not use. The clip is still cut at GOP 12. */
+      segments: [
+        /* A formality; level3.js drives the room. See the note above. */
+        { kind: 'scroll', toX: 24000 },
+      ],
+    },
     {
       name: 'boss-room',
       plate: 'bossPlate',
@@ -3663,6 +3761,124 @@ const CONFIG = {
      rhythm the player stops reading and starts waiting out; a single jab that
      might be the start of a string is what makes them respect the wind-up. */
   /* =========================================================================
+     LEVEL 3 — THE BOOKCASE
+     =========================================================================
+     The one room in this game that runs its own logic, and it is deliberately
+     quarantined. Asked for 2026-08-27: *"please isolate this behavior to this
+     level, otherwise you will break other levels... Trying to make this logic
+     work alongside the other logic (the default one) will be our demise."*
+
+     ⚠️ EVERYTHING HERE IS READ BY src/level3.js AND BY NOTHING ELSE. There are
+     six hooks into shared code and every one is a single guarded early return;
+     turn `on: false` and the room falls back to being an ordinary (and broken)
+     scroll room, which is the switch to reach for if this is ever suspected of
+     something.
+
+     WHY IT NEEDS ITS OWN LOGIC. The shot climbs a bookcase in a switchback —
+     pan right along a shelf, rise, pan LEFT along the next, rise, pan right
+     along the last. The engine winds the plate with one ratio,
+     `filmTime = camX / worldPxPerSecond`, and that cannot express this shot:
+
+       * on shelf 2 the player walks LEFT, so camX falls — which under that
+         ratio means REWIND, i.e. back down the lift onto shelf 1; and
+       * it is not a sign flip, because a switchback visits the SAME camX three
+         times at three different heights, so no function of camX alone can say
+         which frame to show.
+
+     So the two ideas come apart: PROGRESS (monotonic, in film seconds, drives
+     the plate) and CAMERA X (right, then left, then right).
+
+     ⚠️ THE LEGS ARE MEASURED, NOT DESIGNED. tools/build-level-3-plate.py
+     phase-correlates the footage on BOTH axes — the other plate tools only ever
+     needed x — and prints exactly this table. Re-cut the clip and every number
+     moves; run it with `--measure` and paste the result.
+
+         leg  film (s)        screen px   what
+         0    0.00 - 18.98      +3647     shelf 1, pans right
+         1   18.98 - 32.65      -4868     the first rise
+         2   32.68 - 46.96      -5515     shelf 2, pans LEFT
+         3   46.99 - 55.20      -2329     the second rise
+         4   55.23 - 73.97      +3390     shelf 3, pans right
+
+     ⚠️ `px` IS CAMERA TRAVEL, AND IT IS THE SYNC. A walk leg's camera runs
+     exactly `px` — the leg's own pan converted to the 1280-wide canvas — so the
+     background moves 1:1 with the world, which is all `worldPxPerSecond` ever
+     bought the other rooms. Using the tool's SOURCE-pixel column instead would
+     run the shot about 1.5x fast and read as the player sliding.
+
+     ⚠️ AND THE THREE SHELVES PAN AT DIFFERENT SPEEDS — 192, 386 and 181 screen
+     px per second of film. That is why one ratio could never have covered this
+     room even if it went one way: shelf 2 pans twice as fast as the other two,
+     so the player has to cross twice as much ground for the same seconds of
+     film. Per-leg `px` handles it without anyone having to notice. */
+  LEVEL3: {
+    on: true,
+    /* Read for `worldPxPerSecond` in the round trip that hands the backdrop a
+       progress clock — see level3.js `filmScroll()` and the source's own note. */
+    plateSource: 'level3Plate',
+    /* HOW FAR APART THE LEGS' WORLD-X BANDS SIT. Each walk leg gets its own
+       non-overlapping stretch of world x and the player is teleported between
+       them mid-lift, which is invisible: the plate is drawn stationary and wound
+       by progress, so nothing on screen is a function of world x. Letting shelf
+       2 walk back over shelf 1's x would make world x ambiguous for anything
+       placed in this room later, which is a trap to leave for someone else. */
+    bandGapPx: 4000,
+    /* How far inside the near wall the player is dropped when a leg starts, so
+       he does not begin the shelf standing in the gate. */
+    startInsetPx: 200,
+    /* HOW FAR THE LIFT STANDS FROM THE SHELF'S END WALL, in screen px.
+       ⚠️ THIS IS BOUNDED ABOVE BY THE CAMERA, at about 367. The film has to
+       finish the shelf before the lift takes over, so the camera must already be
+       pinned at the end of its range when the player reaches the landing -- and
+       it pins at `focus + deadzone` (667.6) past its end walking right and
+       `focus - deadzone` (407.6) walking left. Measured from the end wall, 300
+       puts the lift at screen 940 rightward and 340 leftward: mirror images,
+       both safely past the pin. Push it past ~367 and the leftward landing falls
+       inside the pin point, `progress` is short of the leg's end when the ride
+       starts, and the shot jumps ~0.7s (~270px of pan) at the hand-over.
+       ⚠️ AND THIS IS WHY "the middle of the final frame" IS NOT WHAT SHIPPED:
+       640 is inside the pin point in BOTH directions. With a deadzone follow the
+       player is never at screen centre while the camera is still. */
+    landingInsetPx: 300,
+    legs: [
+      { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98] },
+      /* ⚠️ `sec` IS THE FILM'S OWN DURATION AND SHOULD STAY THAT WAY. A rise is
+         the shot going up; play it at anything other than 1x and it reads as
+         fast-forward, which is exactly what a filmed plate cannot do
+         convincingly. 13.7s is a long time to stand on a platform with nothing
+         to do — the answer to that is enemies riding up with you, not a faster
+         lift. */
+      { kind: 'lift', sec: 13.67, film: [18.98, 32.65] },
+      { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96] },
+      { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
+      { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97] },
+    ],
+    /* THE PLACEHOLDER ELEVATOR — drawn, not a sprite, because the real ones do
+       not exist yet ("create a drawed platform as a placeholder... try to
+       incorporate the perspective in it"). Sizes are in screen px and the depth
+       ones are fractions of the BELT, which is the unit every z in this game
+       uses. See level3.js `drawPlatform` for why the trapezoid and the
+       back-only rails are the parts that make it read as lying on the floor. */
+    platform: {
+      widthPx: 620,      // the FRONT edge; the back is `backRatio` of it
+      backRatio: 0.62,   // < 1 is the perspective — the belt converges going back
+      depthRel: 0.42,    // how much of the belt's depth the slab covers
+      zRel: 0.72,        // where its FRONT edge sits down the belt
+      offsetX: 0,
+      thickPx: 26,       // the front face, so it is a slab and not a decal
+      standHalfRel: 0.35,// how much of the front width he may stand on, each way
+      slats: 7,
+      rails: true,
+      railHeightPx: 96,
+      topColor: '#4a515e',
+      sideColor: '#2b2f38',
+      edgeColor: '#8b93a3',
+      lineColor: 'rgba(0,0,0,0.35)',
+      railColor: '#6b7280',
+    },
+  },
+
+  /* =========================================================================
      THE GROUND COVER
      =========================================================================
      SIX DRIFTS OF CIGARETTE BUTTS, scattered across the desert's belt so the
@@ -3799,14 +4015,43 @@ const CONFIG = {
         28 x 0.80  mid off .10 100.0%  100 /100 /100        86-93
      then all three planes down 20% (offsets .20 / .30 / .20):
         12 x 1.20              95.0%    96 / 92 / 97        23-27   the drop alone
-         9 x 1.20              90.3%    91 / 91 / 90        17-20   <- shipped
+         9 x 1.20              90.3%    91 / 91 / 90        17-20   <- 3-plane ship
         12 x 1.35              90.5%    92 / 85 / 94        19-25
         13 x 1.35              91.3%    94 / 85 / 96        20-27
+     and FIVE planes (bands 5, offsets flat .20, spread 0.25), 2026-08-27.
+     `zFrom` is the second column now, because at five bands it is the knob that
+     decides the shape and `spacing` only sets the level:
+        10 x 1.20  zFrom 0      91.4%    95 / 90 / 89        19-22   the naive port
+        10 x 1.20  zFrom .10    91.8%    92 / 93 / 90        19-22
+        10 x 1.25  zFrom .10    90.4%    92 / 92 / 88        18-22
+        10 x 1.25  zFrom .12    90.1%    90 / 92 / 88        19-21   <- ships
+        15 x 1.60  zFrom .15    90.8%    89 / 90 / 93        20-26   3 rows a band
+        10 x 1.30  zFrom .12    88.0%    90 / 91 / 84        15-20
 
-     ⚠️ THE SHIPPED ROW IS THE FLATTEST THIS FEATURE HAS EVER MEASURED --
-     90.9 / 90.6 / 89.5, a spread of 1.4 points across the thirds, against the
-     6.2 of the row before it. Nine rows land more evenly than twelve did because
-     the flat 0.20 stopped the top rows wasting their ink above the belt.
+     ⚠️ THE NAIVE PORT IS THE ROW TO LOOK AT. Changing ONLY the band count and
+     the rows -- leaving the ladder where three planes had left it -- measures a
+     perfectly respectable 91.4% average and a 7-point spread across the thirds,
+     piling ink into the FAR third at the expense of the near one. That is the
+     "read the thirds, not the average" trap for the FOURTH time, and it is now
+     the reliable signature of this feature: **whenever the field's shape
+     changes, the average barely moves and one third quietly pays for it.**
+     `zFrom` 0 -> 0.12 is the fix, and it is a placement change, not a density one.
+
+     ⚠️ THE FIVE-PLANE ROW IS LESS FLAT THAN THE THREE-PLANE ONE (3.9 points of
+     spread against 1.4) AND MORE CONSISTENT PER CAMERA (86-93% against 83-95%).
+     Those are not in tension: more, thinner bands even out what any one camera
+     position sees while making the depth profile slightly lumpier. If one number
+     has to be defended it is the per-camera one -- a player sees camera
+     positions, never the average of thirds.
+
+     ⚠️ AND THE BACK OF THE BELT IS 3 POINTS THINNER, which is the cost of
+     pushing the ladder down. The top QUARTER runs 83-95% across 13 camera stops
+     against the three-plane 86-96%. That is the failure the previous pass
+     predicted -- "push the field down again and the BACK of the belt goes bare
+     first" -- arriving, measured, and judged affordable at 83%: it is behind
+     everything, and the whole belt's worst camera actually improved (83% against
+     81%). If it ever reads bare, `zFrom` is the one knob, and it trades against
+     the near third point for point.
 
      ⚠️ THE SHIPPED ROW IS THE EVENEST, NOT THE HIGHEST, and that is deliberate --
      86.5 / 78.4 / 80.3 is the flattest spread anything measured, and per-camera it
@@ -3838,15 +4083,38 @@ const CONFIG = {
      between them.
 
      -------------------------------------------------------------------------
-     THE THREE SPEEDS (2026-08-27)
+     THE FIVE SPEEDS (2026-08-27)
      -------------------------------------------------------------------------
      Asked for as "one crazy feature": *"for the cigarrete bums mounts, we want
      to try to create a parallax effect on them, it should be 3 layers, a closer
      one, a mid one and a far away one, they should move in different speeds."*
+     Then, the same day: *"instead of 3 planes of layers, I actually want 5
+     planes of layers."*
 
-     The six rows are cut into three depth BANDS -- two rows each -- and each band
-     scrolls at its own rate. The far drifts lag, the near ones keep up, and the
-     belt reads as having thickness instead of as one flat decal.
+     The rows are cut into depth BANDS -- `bands` of them, two rows each -- and
+     each band scrolls at its own rate. The far drifts lag, the near ones keep up,
+     and the belt reads as having thickness instead of as one flat decal.
+
+     ⚠️ THE COUNT IS DATA NOW, AND MAKING IT SO WAS THE WHOLE JOB. Three was
+     hardwired in scenery.js as `const BANDS = 3` and three times over in the
+     config as `{far, mid, near}`. Going to five by adding two more names would
+     have worked exactly once; the fix is that each block is a CURVE that gets
+     SAMPLED at `bands` points, so 3, 5 and 7 all read the same file.
+
+     ⚠️ THE ROLLBACK IS FIVE NUMBERS, NOT ONE, AND `bands: 3` ALONE IS NOT IT.
+     The count came with a re-tune -- the spread widened, the ladder re-graded,
+     the density came back down -- and dropping the count without undoing those
+     leaves a THIRD configuration that was never measured or looked at. It is
+     spelled out verbatim below so it is a paste and not a reconstruction:
+
+         bands: 3,   rows: 9,   spacing: 1.20,   zFrom: 0.0,
+         parallax.rates: [0.80, 0.90, 1.00],
+         bandScale:      [1.00, 1.05, 1.10],
+         bandOffsetZ:    [0.20, 0.30, 0.20],
+
+     Those are exactly what shipped at 4a5d788, expressed as lists -- the reader
+     takes either shape and at three bands a three-entry list is read literally,
+     so this is byte-for-byte the old layout and not an approximation of it.
 
      ⚠️ THIS DELIBERATELY BREAKS "THEY BEHAVE AS THE GROUND". A band under 1.0 no
      longer sits on a fixed patch of sand -- it slides against the filmed plate,
@@ -3866,19 +4134,28 @@ const CONFIG = {
      behind him, which is where a player looks for it anyway. Both are one edit;
      the values below are the anchored-near version.
 
-     ⚠️ THE SPREAD IS THE DIAL, NOT THE INDIVIDUAL NUMBERS. 1.00/0.90/0.80 is a
-     0.20 spread: walk 1000px and the far band has drifted 200px against the
+     ⚠️ THE SPREAD IS THE DIAL, NOT THE INDIVIDUAL NUMBERS. 1.00 down to 0.75 is a
+     0.25 spread: walk 1000px and the far band has drifted 250px against the
      sand. Under about 0.06 total it stops being visible at all and only costs
      the coherence; much over 0.25 and the back of the belt visibly crawls
      backwards when the camera moves fast, which reads as a bug rather than as
-     distance. Halve it (1.00/0.95/0.90) for a hint of depth; double it for the
-     crazy version that was asked for.
+     distance -- so this now sits ON the ceiling rather than comfortably under it.
+
+     ⚠️ AND MORE PLANES SPEND THAT SPREAD THINNER, WHICH IS THE THING TO WATCH.
+     What the eye reads is the STEP between neighbouring planes, and dividing one
+     budget five ways instead of three halves it (0.10 -> 0.05). That is why the
+     total went 0.20 -> 0.25 with the count: at the old spread, five planes would
+     have been a more expensive way to look like three. The step is still smaller
+     than it was (0.0625), which is the honest cost of the ask -- five planes are
+     necessarily less individually distinct than three unless the ceiling moves,
+     and the ceiling is a real one.
 
      ⚠️ THE BANDS COME OFF THE ROW INDEX, NOT OFF THE JITTERED z. `zJitter` can
      move a row's ground point 30px, and a mound that changed SPEED because its
      scatter landed slightly forward would tear the boundary. Rows are what the
-     bands are made of. With `rows: 6` that is a clean 2/2/2; change `rows` and
-     the split follows it (rows 5 -> 2/2/1).
+     bands are made of. `rows: 10` over `bands: 5` is a clean 2 each; keep `rows`
+     a multiple of `bands` or the last plane -- the one the player walks through
+     -- is built out of fewer rows than the rest (9/5 would be 2/2/2/2/1).
 
      ⚠️ A BAND OVER 1.0 COSTS DRAWS AND SCATTER, a band under it costs nothing.
      Below 1.0 a layer lags, so the existing field already over-covers the far
@@ -3887,29 +4164,51 @@ const CONFIG = {
      and the same number on screen. Nothing else changes; the cull already uses
      each item's own rate.
 
-     ⚠️ THREE BANDS MEANS TWO SEAMS, and that is the cost of "3 layers" over a
-     smooth gradient. Rows 1 and 2 sit 84px apart in depth and now differ by 0.10
-     in speed, so if the boundary ever reads as a tear rather than as distance,
-     the fix is not a smaller spread -- it is giving every ROW its own rate
-     interpolated from far to near (one line in scenery.js, `layers` becomes a
-     lerp on `r / (rows - 1)`). Three discrete layers is what was asked for and
-     it is also the version you can actually see working.
+     ⚠️ N BANDS MEANS N-1 SEAMS, and five planes is four of them at 41px apart in
+     depth and 0.0625 in speed. That is the trade the count makes: more planes is
+     a smoother gradient AND more places for it to tear. Seams are cheaper here
+     than they sound, because the rows overlap in depth -- a mound in one band is
+     drawn over by mounds from the next -- but if a boundary ever reads as a tear
+     rather than as distance, the fix is not a smaller spread. It is giving every
+     ROW its own rate lerped from far to near, which at this point is deleting the
+     band index and calling `_ramp(..., rows, ...)` instead of `_ramp(..., BANDS,
+     ...)`: discrete planes are what was asked for twice, and five of them is
+     already most of the way to that gradient.
 
-     ⚠️ IT COSTS NOTHING PER FRAME. One multiply per item in the draw loop. The
-     9-12 mounds and the single atlas bind are exactly what they were. */
+     ⚠️ IT COSTS NOTHING PER FRAME TO ADD PLANES; THE ROWS ARE WHAT COST. Band
+     count is one multiply per item either way. What five planes actually bought
+     was `rows` 9 -> 10 to keep the split even, and that is +2 mounds a frame:
+     **19-21 drawn against 17-20**, one atlas bind, unchanged. */
   SCENERY: {
     on: true,
     /* The pack, cut by tools/build-beat-fundo-defs.py. Loaded under the asset
        key `scenery` -- see src/manifest.js, which spells that key twice. */
     sheet: 'v2:beatemup-dungeon/cigarros-fundo',
-    rows: 9,           // bands across the belt's depth -- the COVERAGE dial
+    rows: 10,          // rows of drifts across the belt's depth -- the COVERAGE dial
+    /* HOW MANY PLANES. Asked for 2026-08-27: *"instead of 3 planes of layers, I
+       actually want 5 planes of layers"*. It was hardwired at 3 in scenery.js
+       and is now one number, because the three curves below are SAMPLED at it
+       (see Scenery._ramp) rather than indexed by it -- so 3, 5 or 7 all read the
+       same config and nothing falls off the end of an array.
+
+       ⚠️ `rows` MUST STAY A MULTIPLE OF THIS or the last plane is short. The
+       split is `floor(r * bands / rows)`, so 9 rows over 5 bands is 2/2/2/2/1 --
+       a near plane made of one row, which is the plane the player walks through.
+       10/5 is a clean 2 each; 15 would be 3 each. */
+    bands: 5,
     /* X STEP AS A FRACTION OF EACH MOUND'S OWN WIDTH. Over 1 they do not touch.
        ⚠️ IT WAS 0.52 AND THAT WAS THE COMPLAINT: at half a width apart the
        mounds in a row merged into one continuous ridge -- "stuck together too
        much". At 1.05 each drift is its own thing with sand between it and the
        next, and the COVERAGE comes from the rows overlapping in depth instead,
        which is what `rows` is for. */
-    spacing: 1.20,
+    /* ⚠️ 1.20 -> 1.25 IS THE RETUNE THAT HOLDS 90%, NOT A LOOK CHANGE. Going 3
+       planes -> 5 took `rows` 9 -> 10 (see `bands`), and ten rows at the old
+       1.20 measures 91.7% against the 90% the user set by watching. Loosening
+       the x step gives the point and a half back: 90.1%. Same rule as the last
+       time two live instructions collided -- apply the new one, retune the
+       standing number back, say that you did. */
+    spacing: 1.25,
     zJitter: 60,       // px, so the rows do not read as stripes
     /* WHERE THE ROWS RUN, as fractions of the belt's depth, INCLUSIVE at both
        ends. A mound's ink sits entirely ABOVE its ground point, so a row at z
@@ -3917,7 +4216,19 @@ const CONFIG = {
        ground point sits just beyond the near edge so its drawing reaches it.
        See the note in scenery.js; getting this wrong left the front of the belt
        bare while a quarter of the field was painted up the wall. */
-    zFrom: 0.0,
+    /* ⚠️ `zFrom` 0.0 -> 0.12 IS WHAT FLATTENS FIVE PLANES ACROSS THE BELT, and it
+       is a placement fix rather than a density one -- the same class of change as
+       the very first bug in this feature. Ten rows spread over the old ladder
+       piled ink into the FAR third (95.4% far against 88.5% near, a 7-point
+       spread where three planes measured 1.4). Starting the ladder 12% of the
+       belt lower re-grades all ten rows down and evens it to 90.0 / 92.1 / 88.1.
+
+       ⚠️ AND `zTo` DID NOT MOVE, DELIBERATELY. `zTo + bandOffsetZ(near)` = 1.30
+       is where the front row's ground point lands (z 494), which is the "20% down
+       the screen" the user set two turns before this. It is a CONSTRAINT on any
+       future search here, not a free knob: several higher-scoring configs get
+       there by pulling `zTo` back, which would silently undo that ask. */
+    zFrom: 0.12,
     zTo: 1.10,
     /* How far outside the room the scatter runs. The player stands at `startX`
        with the camera at 0 and can see a screen of ground to his left, so a
@@ -3940,16 +4251,40 @@ const CONFIG = {
        was before this and what any room that is not the desert wants. */
     parallax: {
       on: true,
-      near: 1.00,      // the rows the player walks through -- PINNED, see above
-      mid:  0.90,
-      far:  0.80,      // the drifts at the back of the belt lag furthest
-    },
-    /* HOW BIG EACH BAND IS DRAWN, a multiplier on the pack's own scale. The
-       SAME three bands the parallax cuts -- rows 0-1 / 2-3 / 4-5 at `rows: 6`.
+      /* FAR -> NEAR, one entry per plane. A LIST, not `far`/`mid`/`near`, because
+         there are five of them now -- and it is read as a CURVE, so a shorter
+         list is legal and simply gets interpolated (`[0.75, 1.00]` is this exact
+         ramp written as two numbers). The old three names still read, for the
+         same reason.
 
-       ⚠️ NEAR IS 1.10 BECAUSE IT WAS ASKED FOR ("the cigarettes in the first
-       plan, closer to the screen, make them 10% bigger"), and it is also the
-       other half of the depth cue the parallax started: a closer thing moves
+         ⚠️ THE LAST ENTRY IS PINNED AT 1.00 AND THAT IS THE CHOICE. See the note
+         above: the ground under the player's feet holds still and the whole
+         effect is spent on the depth behind him.
+
+         ⚠️ THE SPREAD WENT 0.20 -> 0.25 BECAUSE FIVE PLANES SPLIT IT FIVE WAYS.
+         The dial has always been the TOTAL, and 0.20 across three bands was a
+         0.10 step between neighbours -- which is the difference you could
+         actually see. Five bands over that same 0.20 is a 0.05 step, half of
+         what was being watched, and "5 planes" would have shipped looking like
+         3. Widening to 0.25 puts the step back at 0.0625.
+
+         ⚠️ 0.25 IS THE DOCUMENTED CEILING AND THIS SITS ON IT. Much over it and
+         the back of the belt visibly crawls backwards on a fast camera move,
+         which reads as a bug rather than as distance. If it does that here, the
+         first thing to try is `[0.80, 0.85, 0.90, 0.95, 1.00]` -- the old 0.20
+         spread, five ways -- and NOT fewer planes.
+
+         Coverage cost of the widening: none. Measured both ways, 90.1% vs 90.3%
+         and the per-camera band is actually tighter (86-93 against 83-95). */
+      rates: [0.75, 0.81, 0.87, 0.94, 1.00],
+    },
+    /* HOW BIG EACH BAND IS DRAWN, a multiplier on the pack's own scale. The SAME
+       bands the parallax cuts -- rows 0-1 / 2-3 / 4-5 / 6-7 / 8-9 at `rows: 10`,
+       `bands: 5`.
+
+       ⚠️ THE LAST ENTRY IS 1.10 BECAUSE IT WAS ASKED FOR ("the cigarettes in the
+       first plan, closer to the screen, make them 10% bigger"), and it is also
+       the other half of the depth cue the parallax started: a closer thing moves
        faster AND is bigger, and doing only the first is what makes a parallax
        read as sliding rather than as distance.
 
@@ -3968,66 +4303,59 @@ const CONFIG = {
 
        ⚠️ COVERAGE: the near third gains ~2 points (the +2-per-+10% rule above --
        the mounds cover more DEPTH; x looks after itself via the spacing). Fill
-       is ~+10% on two of the six rows, so ~+3% overall, and the draw count is
-       unchanged to within a mound. Nothing here needed a retune. */
-    bandScale: {
-      near: 1.10,
-      mid:  1.05,      // +5%, 2026-08-27 -- a step between 1.10 and the far 1.00
-      far:  1.00,
-    },
+       is ~+10% on the front rows, so ~+3% overall, and the draw count is
+       unchanged to within a mound. Nothing here needed a retune.
+
+       FAR -> NEAR, AND THE ENDPOINTS ARE THE TUNED ONES: 1.00 is the pack's own
+       scale and 1.10 is the "make the closer cigarettes 10% bigger" that was
+       asked for. Going to five planes only subdivides between them -- the back
+       and the front of the field are drawn at exactly the size they were, and
+       the three new steps are 0.025 apart.
+
+       ⚠️ IF FIVE PLANES DO NOT READ AS DEPTH, THIS IS THE DIAL AND NOT THE
+       PARALLAX. A 0.025 size step between neighbours is near-invisible, so the
+       depth cue is carried almost entirely by the speed. Widening the ladder
+       DOWNWARD -- `[0.95, 0.99, 1.02, 1.06, 1.10]`, i.e. shrinking the far
+       drifts rather than growing the near ones -- is the one line that makes
+       distance visible as size. It is left alone here because 1.00 at the far
+       end is the art's own size and shrinking it is a decision nobody asked
+       for; it also costs coverage in the far third and would want a retune. */
+    bandScale: [1.00, 1.025, 1.05, 1.075, 1.10],
     /* WHERE EACH BAND SITS, as a fraction of the belt's DEPTH added to its rows'
        z -- positive is toward the viewer, i.e. DOWN the screen. The same unit
-       `zFrom`/`zTo` are already in, and the same three bands.
+       `zFrom`/`zTo` are already in, and the same bands.
 
-       ⚠️ `near: 0.20` IS 20% OF THE BELT'S DEPTH (76px of the 380), NOT 20% OF
-       THE SCREEN. Asked for as "bring the first plane 20% down on the screen",
-       and the belt is the unit every other z in this block uses, so that is the
-       reading taken. For 20% of GAME_H instead -- 144px, which crops most of the
-       front row away -- this is 0.38. One number either way.
+       FAR -> NEAR, AND FLAT ON PURPOSE. This is the "bring the planes down by 20%
+       of the belt" that was asked for, and with five planes it is now the ONLY
+       thing this block says: 0.20 for every one of them.
 
-       ⚠️ A BAND MAY BE PUSHED PAST THE NEAR EDGE OF THE BELT, AND THIS ONE IS.
-       The near rows' ground points move from z 334/418 to 410/494 against a belt
-       380 deep, so they now sit BELOW the walkable strip and their ground points
-       are off the bottom of the 720px screen (740 and 824). That is the point --
-       a mound's ink is entirely ABOVE its ground point, so the drift still
-       reaches back up into the belt (row 4 covers z 169-410, row 5 253-494) and
-       what falls off the bottom edge is meant to. The front row is roughly half
-       cropped; nothing is lost that the eye was reading as ground.
+       ⚠️ IT USED TO BE 0.20 / 0.30 / 0.20 AND THAT WAS A PATCH, NOT A SHAPE. The
+       extra 0.10 on the mid band existed to close a 129px hole that three coarse
+       bands opened between the mid band's last row and the near band's first --
+       the middle third had measured 45.9% against a 62.6% average, which is
+       "read the thirds, not the average" arriving for the third time. **Five
+       bands, ten rows and the re-graded `zFrom` close that hole geometrically**,
+       so the patch has nothing left to do and carrying it forward would put a
+       bump back into an otherwise even ladder. The ten ground points now land
+       evenly from z 122 to z 494, 41px apart.
 
-       ⚠️ IT DOES NOT MAKE THE BAND A FOREGROUND. Scenery is one layer, drawn
-       before every fighter (`CONFIG.LAYERS`), so a mound at z 494 is still
-       painted BEHIND a player standing at z 380 even though it is now nearer the
-       camera than he can ever get. It reads fine as ground sloping toward the
-       lens; it will NOT read as something he walks behind. Wanting that is a
-       draw-ORDER change -- a second scenery pass in the `foreground` layer slot,
-       which is already in LAYERS at parallax 1.25 and `on: false` -- and not a
-       number in here.
+       ⚠️ THE UNIT IS THE BELT'S DEPTH, NOT THE SCREEN. 0.20 is 76px of the
+       desert's 380, not 20% of GAME_H (which would be 144, and 0.38 here).
 
-       ⚠️ THE BELT'S COVERAGE WAS REASONED, NOT RE-MEASURED. Both near rows' ink
-       still spans the near third end to end, and row 3 still covers what row 4
-       vacated, so the numbers in the table above should stand. If the near third
-       looks thin in play, that table is how it was measured the first time. */
-    bandOffsetZ: {
-      /* ⚠️ ALL THREE ARE DOWN 20% OF THE BELT NOW, and the ramp is what is left
-         over the top of that. Asked 2026-08-27: "in the same way you pulled the
-         first plane down by 20%, do the same thing with the other planes, bring
-         them down by 20%". So far took its 0.20, mid took 0.20 ON TOP of the 0.10
-         ramp it already had, and near -- which had already had its 20% the turn
-         before -- did not move again. Read them as `0.20 + ramp`: 0 / 0.10 / 0
-         graded, plus a flat 0.20 that the whole field now sits on. */
-      near: 0.20,
-      /* ⚠️ 0.10 IS WHAT TURNS A STEP INTO A RAMP, and it is a COVERAGE fix as
-         much as a depth one. With near at 0.20 and mid at 0 the bands ran
-         0 / 0 / 0.20 -- and the 129px of belt between the mid band's last row and
-         the near band's first had nothing in it. Measured: the MIDDLE THIRD fell
-         to 45.9% while the average still read 62.6%, which is the "read the
-         thirds, not the average" trap from the first pass arriving a second time
-         from the opposite direction. Graded 0 / 0.10 / 0.20 it is 78.4%. It is
-         also simply more correct: a mid plane should sit between the other two,
-         not on top of the far one. */
-      mid:  0.30,
-      far:  0.20,
-    },
+       ⚠️ A BAND MAY BE PUSHED PAST THE NEAR EDGE OF THE BELT, AND THE LAST TWO
+       ARE. Their ground points sit at 411-494 against a belt 380 deep, off the
+       bottom of the 720px screen -- and that is the point, because a mound's ink
+       is entirely ABOVE its ground point, so the drift still reaches back up into
+       the belt and only its bottom edge is cropped.
+
+       ⚠️ IT DOES NOT MAKE THE FRONT PLANE A FOREGROUND. Scenery is ONE layer in
+       CONFIG.LAYERS, drawn before every fighter, so a mound at z 494 is still
+       painted BEHIND a player standing at z 380. It reads as ground sloping
+       toward the lens; it will NOT read as something he walks behind. That is a
+       draw-ORDER change -- a second scenery pass in the `foreground` slot, which
+       is already in LAYERS at parallax 1.25 and `on: false` -- and no number in
+       here reaches it. */
+    bandOffsetZ: [0.20, 0.20, 0.20, 0.20, 0.20],
   },
 
   /* =========================================================================

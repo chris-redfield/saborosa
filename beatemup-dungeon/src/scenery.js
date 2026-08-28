@@ -22,7 +22,7 @@
  * row and the index, so the same room always lays out the same way.
  *
  * ⚠️ AND IT IS A REAL PER-FRAME COST, unlike the flies. Measured at the shipped
- * density: **17-20 mounds drawn per frame**, each roughly 790x200 -- about four
+ * density: **19-21 mounds drawn per frame**, each roughly 790x200 -- about four
  * screens of overdraw on top of the plate's own. The coverage target has moved
  * three times (80 -> 60 -> 80 -> 90) and this is the expensive end of it.
  *
@@ -36,22 +36,36 @@
  * declined: 90.7% is 23-27 draws, a true 100.0% is 86-93. Four times the fill for
  * the last nine points. If a solid carpet is ever really wanted, the answer is to
  * BAKE the drifts into one repeating strip at build time (two or three blits) --
- * but a baked strip cannot have three bands moving at three speeds over it, so
+ * but a baked strip cannot have five bands moving at five speeds over it, so
  * the parallax and the carpet are alternatives, not additions.
  *
- * ⚠️ THE THREE SPEEDS ARE A LOOK, AND THEY BREAK THE ONE RULE ABOVE ON PURPOSE.
- * `CONFIG.SCENERY.parallax` splits the rows into three bands that scroll at
- * different rates, so the drifts at the back of the belt lag behind the ones the
- * player is walking over. **A layer under 1.0 no longer sits on a fixed patch of
- * sand** -- it slides against the filmed plate, which is at parallax 1.0. That is
- * the effect, not a bug, and it is affordable for exactly the reason the rest of
- * this file is: nothing asks a mound where it is. The near band is left at 1.0
- * so the ground the player's feet are actually on still holds still.
+ * ⚠️ THE SPEEDS ARE A LOOK, AND THEY BREAK THE ONE RULE ABOVE ON PURPOSE.
+ * `CONFIG.SCENERY.parallax` splits the rows into bands that scroll at different
+ * rates, so the drifts at the back of the belt lag behind the ones the player is
+ * walking over. **A layer under 1.0 no longer sits on a fixed patch of sand** --
+ * it slides against the filmed plate, which is at parallax 1.0. That is the
+ * effect, not a bug, and it is affordable for exactly the reason the rest of this
+ * file is: nothing asks a mound where it is. The near band is left at 1.0 so the
+ * ground the player's feet are actually on still holds still.
+ *
+ * ⚠️ HOW MANY BANDS IS DATA, AND THE ONLY REASON THAT IS TRUE IS _ramp.
+ * `CONFIG.SCENERY.bands` was 3 and is 5, and the three per-band blocks are read
+ * as CURVES sampled at that count rather than as one entry per band -- so the
+ * count is one number to change and a shorter list is a legal, interpolated
+ * shorthand rather than two silently missing planes. See _ramp; it is the piece
+ * to keep if any of this is ever rewritten.
  *
  * ⚠️ A BAND CARRIES THREE NUMBERS, and they are independent: how fast it scrolls
  * (`parallax`), how big it is drawn (`bandScale`) and where it sits down the belt
  * (`bandOffsetZ`). Together they are one depth cue -- the near drifts are 10%
- * larger, 10% faster and pushed 20% of the belt's depth toward the lens.
+ * larger, 25% faster and pushed 20% of the belt's depth toward the lens.
+ *
+ * ⚠️ AND SPLITTING THE FIELD FINER SPENDS THE DEPTH CUE THINNER. What reads is
+ * the STEP between neighbouring planes, so five bands over one budget is half the
+ * step three bands had. The total spread is the dial that compensates, and it is
+ * already at its documented ceiling (0.25) -- which means "make it 7 planes" is
+ * a request with no room left in it, and the answer would be the per-ROW lerp
+ * rather than more discrete bands.
  *
  * The SCALE is applied at DRAW time, not baked into the pack -- the six frames
  * are cut once at one scale (see wire-art: one scale per pack) and a band
@@ -91,6 +105,51 @@ class Scenery {
   }
 
   /**
+   * Read a band curve as a LIST, far -> near.
+   *
+   * ⚠️ THE OLD `{far, mid, near}` SHAPE STILL READS, and it is kept for exactly
+   * one reason: it is what a three-band config says, and the band count is now
+   * data (`CONFIG.SCENERY.bands`). A room that still spells three names gets
+   * three points of a curve, which _ramp then samples at however many bands the
+   * room actually asked for -- so changing the count can never leave a knob
+   * silently unread.
+   */
+  static _list(v) {
+    if (!v) return null;
+    if (Array.isArray(v)) return v.length ? v : null;
+    if (v.far == null && v.mid == null && v.near == null) return null;
+    return [v.far, v.mid, v.near];
+  }
+
+  /**
+   * Sample a far -> near curve at `n` band centres.
+   *
+   * ⚠️ THE LIST IS A CURVE, NOT ONE ENTRY PER BAND, and that is the whole reason
+   * "3 planes" could become "5 planes" by editing one number. Give it as many
+   * points as you want to control by hand and it is read literally; give it two
+   * and it is a straight ramp across however many bands exist; give it three
+   * against five bands and the two new planes are interpolated into the gaps
+   * rather than falling off the end of the array as `undefined`.
+   *
+   * ⚠️ A LENGTH MISMATCH IS THE FAILURE THIS EXISTS TO PREVENT. Indexing a
+   * 3-long array with band 4 yields `undefined`, which becomes NaN in the z
+   * expression and draws NOTHING -- two whole planes missing with no error
+   * anywhere. Resampling makes a mismatch mean something instead.
+   */
+  static _ramp(v, n, dflt) {
+    const src = (Scenery._list(v) || []).map(x => (x == null ? dflt : x));
+    if (!src.length) return new Array(n).fill(dflt);
+    if (src.length === 1 || n === 1) return new Array(n).fill(src[0]);
+    const out = [];
+    for (let b = 0; b < n; b++) {
+      const t = (b / (n - 1)) * (src.length - 1);
+      const i = Math.min(src.length - 2, Math.floor(t));
+      out.push(src[i] + (src[i + 1] - src[i]) * (t - i));
+    }
+    return out;
+  }
+
+  /**
    * Lay the mounds out for a room, or clear them for a room that wants none.
    *
    * ⚠️ OPT-IN PER ROOM (`ROOMS[n].scenery`), exactly like `flies`. The street is
@@ -115,25 +174,27 @@ class Scenery {
     const x0 = -margin;
     const depth = (room.belt && room.belt.depth) || CONFIG.beltDepth;
 
-    /* THE THREE DEPTH BANDS -- far, mid, near, in that order so `[b]` matches the
-       band index a row falls into. Two rows each at `rows: 6`.
+    /* THE DEPTH BANDS -- far first, near last, so `[b]` matches the band index a
+       row falls into. `bands` is DATA: it was 3, it is 5, and nothing in this
+       file counts on either number.
 
-       A band carries TWO numbers and they are independent: how fast it scrolls
-       (`parallax`) and how big it is drawn (`bandScale`). Either block may be
-       absent or off on its own and that band's number falls back to 1.0, which
-       is what this file did before there were bands at all -- and at 1.0 both
-       are exact no-ops rather than near-misses, so a room that wants neither
-       draws byte-for-byte what it used to. */
-    const BANDS = 3;
+       A band carries three numbers and they are independent: how fast it scrolls
+       (`parallax`), how big it is drawn (`bandScale`) and where it sits down the
+       belt (`bandOffsetZ`). Any block may be absent or off on its own and that
+       band's number falls back to the identity -- 1.0 for a rate or a scale, 0
+       for an offset -- which is what this file did before there were bands at
+       all, and they are exact no-ops rather than near-misses, so a room that
+       wants none draws byte-for-byte what it used to.
+
+       ⚠️ EACH BLOCK IS A CURVE SAMPLED AT `bands` POINTS, not one entry per band
+       -- see _ramp. That is what makes the count a single editable number: the
+       three tuned values of the old far/mid/near still describe the same shape,
+       and five bands read five samples off it instead of three. */
+    const BANDS = Math.max(1, Math.round(S.bands || 3));
     const P = S.parallax;
-    const rate = (P && P.on) ? [P.far, P.mid, P.near].map(v => (v == null ? 1 : v))
-                             : [1, 1, 1];
-    const BS = S.bandScale;
-    const size = BS ? [BS.far, BS.mid, BS.near].map(v => (v == null ? 1 : v))
-                    : [1, 1, 1];
-    const OZ = S.bandOffsetZ;
-    const drop = OZ ? [OZ.far, OZ.mid, OZ.near].map(v => (v == null ? 0 : v))
-                    : [0, 0, 0];
+    const rate = Scenery._ramp((P && P.on) ? (P.rates || P) : null, BANDS, 1);
+    const size = Scenery._ramp(S.bandScale, BANDS, 1);
+    const drop = Scenery._ramp(S.bandOffsetZ, BANDS, 0);
 
     /* ⚠️ A LAYER FASTER THAN THE CAMERA RUNS OUT OF SCATTER BEFORE THE ROOM DOES.
        A mound at world `x` is drawn at `x - camX * p`, so filling the screen at

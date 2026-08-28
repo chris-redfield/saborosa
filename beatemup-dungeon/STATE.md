@@ -3533,6 +3533,313 @@ a smaller spread; it is giving every *row* a rate lerped from far to near, one
 line in `scenery.js`. Three discrete layers is what was asked for, and it is also
 the version you can see working.
 
+## Level 3 — the bookcase (2026-08-27)
+
+*"Time to add level 3, push the horse boss room to the end... this video is
+possible to reduce its size... there is one dark detail about this level, it has
+vertical movement in 2 points."* Then, on being shown what the footage actually
+does: *"the player will come from the right (elevator) and then goes to the left
+(the final elevator)... the camera will move from right to left, and the player
+must follow."* And then the constraint that decided the whole shape of it:
+*"please isolate this behavior to this level, otherwise you will break other
+levels... Trying to make this logic work alongside the other logic (the default
+one) will be our demise. I am doing this for around 20 years now, I know a death
+loop when I see one."*
+
+`src/level3.js` (new) + `CONFIG.LEVEL3` + `ROOMS[2]` + `tools/build-level-3-plate.py`.
+
+⚠️ **THE FOOTAGE IS A COMIC-BOOK BOOKCASE AND THE "TIERS" ARE SHELVES.** It was
+worth extracting a contact sheet before designing anything: the shot pans right
+along a shelf, rises, pans **left** along the next, rises, pans right along the
+last. A switchback climb — which is exactly how you would traverse a bookcase,
+and exactly what the user then described from memory without having been told.
+
+⚠️ **"VERTICAL MOVEMENT IN 2 POINTS" WAS AN UNDERSTATEMENT OF THE PROBLEM, AND
+THE LEFTWARD SHELF WAS THE REAL ONE.** The two rises are easy — the film goes up
+while a man stands still in front of it. The middle shelf is what the engine
+could not express, and it is the LONGEST stretch in the room. Surfacing it before
+building was the right call; the user had a level design ready for it.
+
+⚠️ **THE PLATE IS WOUND BY ONE RATIO AND A SWITCHBACK BREAKS IT TWICE.**
+`_drawVideo` computes `filmTime = camX / worldPxPerSecond`, and:
+
+* on shelf 2 the player walks LEFT, so camX falls — under that ratio that means
+  REWIND, i.e. back down the lift onto shelf 1; and
+* **it is not a sign flip.** A switchback visits the SAME camX three times at
+  three different heights, so no function of camX alone can say which frame to
+  show. Both halves have to be said or the fix looks like a one-liner.
+
+So the two ideas come apart: **PROGRESS** (monotonic, in film seconds, drives the
+plate) and **CAMERA X** (right, then left, then right).
+
+⚠️ **ISOLATION WAS AN INSTRUCTION, NOT A PREFERENCE, AND IT MADE THE CODE
+BETTER.** The instinct was to generalise — give segments a direction, give the
+camera a forward vector, give the plate a piecewise path. That is the death loop
+the user named: every room in the game would then depend on machinery that exists
+for one. Instead level 3 REPLACES the stage for itself. **Six hooks, every one a
+single guarded early return** (`stage.reset/enterRoom/update/bounds`, and two
+lines in game.js's draw loop). Every other room reaches byte-for-byte the code it
+reached before.
+
+⚠️ **AND THE BEST HOOK IS THE ONE THAT CHANGED NOTHING.** `backdrop.js` was not
+touched at all. `game.js` hands it `Level3.filmScroll()` in place of `camX`, and
+`filmScroll()` multiplies by the very `worldPxPerSecond` that `_drawVideo` is
+about to divide out — a round trip that looks silly and is the point: the
+backdrop never learns that a room with its own clock exists. **When isolation is
+the requirement, look for the seam where the shared code takes a NUMBER rather
+than the one where it takes a decision.**
+
+⚠️ **EACH WALK LEG GETS ITS OWN NON-OVERLAPPING BAND OF WORLD X** and the player
+is teleported between them mid-lift. That sounds violent and is invisible: the
+plate is drawn stationary and wound by progress, so nothing on screen is a
+function of world x. Letting shelf 2 walk back over shelf 1's x would have made
+world x ambiguous for anything placed in the room later.
+
+⚠️ **`px` IS CAMERA TRAVEL AND IT IS THE SYNC** — a leg's camera runs exactly the
+leg's own pan, so the background moves 1:1 with the feet, which is all
+`worldPxPerSecond` ever bought the other rooms. **The three shelves pan at 192,
+386 and 181 screen px per second**, so one ratio could never have covered this
+room even if it went one way: shelf 2 pans twice as fast as the others.
+
+### The three bugs the user found, and what they had in common
+
+Reported from a build taken mid-session: *"the character vanishes and the
+elevator goes up by itself... it skips the part where the player goes left... at
+the end it's beating the game."* All three were already fixed by the time the
+report arrived, and **all three were the same class of mistake — a value read
+from the wrong place, not logic that was wrong.**
+
+⚠️ **`stage.bounds()` IS CALLED BEFORE `stage.update()`** (game.js:870 vs 890),
+which is deliberate — the walls the player just walked into, not the ones a
+segment change is about to install. It means **anything level3 reads off the
+stage inside `bounds()` is one frame stale**, and the bands are 4000px apart, so
+stale is not "slightly wrong", it is a different shelf:
+
+* **the vanishing player.** `bounds()` returned the platform rect RAW during a
+  lift — and the platform lives in SCREEN space, because it must hold still
+  while the film climbs past it. Screen coordinates used as world coordinates
+  put the walls at x 423–857 while the camera sat at 3867, so the player was
+  clamped to **screen x −3010**. He did not vanish; he was thrown three screens
+  to the left, and the lift carried on without him.
+* **the skipped left walk.** Reading `stage.camX` in `bounds()` on the frame a
+  lift hands over gave walls from the previous band and a player from the next,
+  so `minX` came out ABOVE `maxX`; the clamp resolves to `minX` and put him on
+  the far end of shelf 2, which the arrival test then read as "done". **Shelf 2
+  completed in one frame.**
+
+**The rule that came out of it: level3 is the source of truth for its own camera
+and the stage is the MIRROR, not the other way round.** `bounds()` reads
+`this._camX`. Anything added to this file follows that or gets the same bug.
+
+⚠️ **THE THIRD ONE WAS NOT A COORDINATE BUG, IT WAS A VOCABULARY BUG.**
+`Level3.update` returned `'clear'` when it ran out of legs — and game.js reads
+that with the same switch it reads the shared stage's: **`'room'` is a door and
+`'clear'` is the end of the whole game.** Finishing the bookcase rolled the
+ending card. It now asks `hasNextRoom()` rather than hard-coding either answer,
+so moving this room again cannot silently turn the credits on mid-game — which
+matters, because this room was itself INSERTED to push the horse to the end.
+
+⚠️ **THE HORSE WAS PUSHED TO THE END BY INSERTION, WHICH IS THE ONLY MECHANISM
+THERE IS.** A room's place in the game is its index in `CONFIG.ROOMS`; nothing
+reads a room number. Order is now street / desert / bookcase / boss room, and the
+DEV number keys followed the array without a line of input code changing —
+**1/2/3/4**. The stale thing was, again, the COMMENT: it had already gone stale
+once through the desert's insertion and has now done it twice, both times while
+containing a warning that it would.
+
+### The lift became a place instead of an event (2026-08-28)
+
+*"The elevator, it just appears out of nowhere, after the player hits the
+boundary... the player only goes up after he touches the border, he kinda gets
+pushed to the middle of the screen and goes up, I don't want that to happen, I
+want the elevator to already be there, and when the player steps like in the
+middle of the final frame, the elevator goes up."*
+
+⚠️ **TWO SYMPTOMS, ONE CAUSE, AND THE CAUSE WAS A COORDINATE SYSTEM.** The
+platform was drawn at a fixed SCREEN position -- which was defensible while it
+only existed during the ride, since a lift that holds still while the film climbs
+past it is the whole illusion. But **a thing pinned to the screen cannot be
+walked up to.** So it had to be conjured at the moment the far wall was hit, and
+the player had to be dragged onto it (a 0.35s `boardSec` ease). Give it a WORLD x
+and both complaints go at once: it stands at the end of the shelf, slides into
+view as the camera approaches, and stepping on it is the event. `boardSec` is
+deleted rather than tuned -- **the ease existed only to paper over the wrong
+coordinate system.**
+
+⚠️ **AND IT IS STILL MOTIONLESS ON SCREEN DURING THE RIDE -- FOR A REASON NOW
+RATHER THAN BY CONSTRUCTION.** The camera is pinned at the end of its range
+before the player can reach the landing, so `worldX - camX` stops changing on its
+own. That is also what makes the hand-over seamless: measured, the player moves
+**0px** on the frame the ride starts.
+
+⚠️ **WHERE THE LIFT MAY STAND IS DECIDED BY THE CAMERA, NOT CHOSEN.** The film
+has to FINISH the shelf before the lift takes over -- otherwise `progress` is
+short of the leg's end, the lift starts from its own `film[0]`, and the shot
+jumps ~0.7s (~270px of pan on shelf 2). The camera pins when the player is
+`focus + deadzone` past its end walking right (667.6px) and `focus - deadzone`
+walking left (407.6px), so the landing must sit at screen x >= 667.6 rightward
+and <= 407.6 leftward. Measured from the END WALL instead of the frame,
+`landingInsetPx: 300` gives 940 and 340 -- mirror images, and it reads as the
+lift being at the end of the shelf, which is what it is.
+
+⚠️ **SO "THE MIDDLE OF THE FINAL FRAME" WAS NOT DELIVERED, AND SAYING SO IS THE
+JOB.** 640 is inside the pin point in BOTH directions -- with a deadzone follow
+the player is never at screen centre while the camera is still. It is not a near
+miss to be quietly rounded to; it is a thing the camera makes impossible, and the
+user asked for it in good faith without that constraint in front of them. Told,
+with the two numbers, rather than shipped as if it had been done.
+
+**Verified in game.js's real order:** lift on screen 4.1s / 3.4s before boarding,
+0 frames with the player off screen, film gaps at the hand-overs 0.00s and 0.03s,
+still returns `'room'`. A switch to call the lift was floated for later and
+deliberately not built.
+
+### The video
+
+**15.26 MB → 5.04 MB (3.0x)**, same 848x478, same 74.006s, GOP 12.
+
+⚠️ **THIS "MASTER" WAS NOT A MASTER**, and that is why the desert's two big
+levers were already spent: it arrived at 848x478 h264 at 1.47 Mbps where the
+desert's tool started from 1920x1080 HEVC at 17.7 Mbps. What was left:
+
+* ⚠️ **A 256 kbps AAC TRACK ON A SILENT BACKDROP — 2.4 MB, 15% of the file, for
+  audio nothing ever plays.** `-an`. Free, and the first thing to check on any
+  clip that came off a phone.
+* CRF 30. Ladder measured against the master at the 1280x720 the player sees:
+  8.24 / 6.40 / **5.04** / 4.01 / 3.23 MB at CRF 26/28/30/32/34.
+
+⚠️ **THOSE SSIM NUMBERS ARE NOT COMPARABLE TO THE DESERT TOOL'S** and reading
+them as "much better than 0.867" would be wrong twice over — they score a second
+encode against a first one, not against clean footage. **And it was NOT
+rescaled**: the desert's "resolution is the wrong knob" finding applies harder
+here, with no oversampling left to spend.
+
+⚠️ **THE TOOL MEASURES BOTH AXES**, unlike the other three plate tools, and
+segments the shot into legs by *which axis is moving* rather than on a hard-coded
+frame list — so re-cutting the clip re-derives the table instead of silently
+desyncing it. `--measure` re-runs the analysis without the encode.
+
+### What is not there yet
+
+**No enemies, deliberately.** What was asked for was the level, the reorder, a
+smaller video and a placeholder lift to test. It is also the honest build order:
+the switchback and the lifts are the parts that could be wrong, and a fight on
+top of them would only make that harder to see. Fights go in
+`CONFIG.LEVEL3.legs` when they arrive — **and the obvious first one is enemies
+riding up with you**, which is also the answer to the 13.7s lift having nothing
+to do in it. Do NOT answer that by speeding the lift up; it plays at 1x because
+a filmed plate cannot fast-forward convincingly.
+
+---
+
+### Three planes became five (2026-08-27)
+
+*"Instead of 3 planes of layers, I actually want 5 planes of layers, I don't know
+how that is a good idea, but we are being forced to do it, please give it your
+best try, if this sucks we roll back, if its good, we present it tomorrow."*
+
+`CONFIG.SCENERY.bands: 5`, `rows: 10`, `spacing: 1.25`, `zFrom: 0.12`, spread
+0.20 -> 0.25, and the three per-band blocks turned from `{far, mid, near}`
+objects into far -> near LISTS.
+
+⚠️ **THE REAL CHANGE IS THAT THE COUNT IS DATA NOW, AND ADDING TWO NAMES WOULD
+HAVE BEEN THE WRONG SHAPE OF FIX.** Three was hardwired as `const BANDS = 3` in
+`scenery.js` and spelled out three times over in the config. Writing `veryFar`
+and `veryNear` next to `far`/`mid`/`near` works exactly once and leaves the next
+ask in the same place. Each block is now a **curve sampled at `bands` points**
+(`Scenery._ramp`), so 3, 5 and 7 all read the same file.
+
+⚠️ **THE ROLLBACK THE USER ASKED ABOUT UP FRONT IS FIVE NUMBERS, AND `bands: 3`
+ALONE IS NOT IT** -- I nearly wrote that it was. The count did not arrive alone:
+the spread widened, the ladder re-graded and the density came back down with it,
+so dropping only the count leaves a THIRD configuration that nobody has measured
+or looked at, which is the worst of the three outcomes. It is written out
+verbatim in `CONFIG.SCENERY` and in the README so it is a paste rather than a
+reconstruction. **A feature offered with "if this sucks we roll back" owes an
+exact rollback, not a plausible one** -- and the check that caught it was running
+the promised rollback and printing what came out, not re-reading the sentence.
+
+⚠️ **AND THE RESAMPLING IS A CORRECTNESS THING, NOT A CONVENIENCE.** Indexing a
+3-long array with band 4 gives `undefined`, which becomes `NaN` in the z
+expression and draws nothing -- **two entire planes missing with no error
+anywhere in the console**. That is the failure mode a "just add more entries"
+version invites every time someone edits one list and not the other three.
+
+⚠️ **FIVE PLANES DIVIDE THE DEPTH BUDGET FIVE WAYS, WHICH IS THE ONE THING THE
+ASK DOES NOT ASK FOR AND THE MAIN REASON IT COULD HAVE SUCKED.** What the eye
+reads is the STEP between neighbouring planes, not the count. The spread has
+always been the dial (0.20 across three bands = a 0.10 step, which is what has
+been watched and liked); the same 0.20 across five is a 0.05 step, half of it.
+**Shipping the count alone would have been a more expensive way to look like
+three planes.** So the spread went to 0.25 -- the documented ceiling, above which
+the back of the belt visibly crawls backwards -- and the step is 0.0625. That is
+still smaller than what shipped this morning, and saying so is the honest version
+of the answer: five discrete planes are *necessarily* less individually distinct
+than three, and the ceiling is real. **"Make it 7" has no room left in it**; that
+one would be the per-row lerp, not more bands.
+
+⚠️ **THE FIRST WORKING VERSION WAS A TRAP AND THE INSTRUMENT CAUGHT IT.**
+Changing only `bands` and `rows` measures 91.4% average -- above target, looks
+done -- with the thirds at **95 / 90 / 89**, a 7-point spread against the
+three-plane 1.4. Ten rows on a ladder graded for nine piled ink into the FAR
+third at the near one's expense. **This is "read the thirds, not the average" for
+the FOURTH time in this one feature, and it is now predictable rather than
+unlucky: whenever the field's SHAPE changes, the average barely moves and one
+third quietly pays for it.** `zFrom` 0 -> 0.12 re-grades the whole ladder down
+and evens it to 90 / 92 / 88. A placement fix, again -- never a density one.
+
+⚠️ **AND THE COVERAGE TARGET WAS HELD AT 90 ACROSS THE CHANGE, DELIBERATELY.**
+`rows` had to go 9 -> 10 for a clean 2-per-band split, and ten rows at the old
+`spacing` measures 91.7% against the 90% the user picked by watching. Loosened to
+1.25 it is 90.1%. Same rule as the last time two live instructions collided:
+apply the new one, retune the standing number back, **say that you did**.
+
+⚠️ **`zTo` DID NOT MOVE, AND THAT WAS A CONSTRAINT ON THE SEARCH RATHER THAN AN
+OUTCOME OF IT.** `zTo + bandOffsetZ` = 1.30 puts the front row's ground point at
+z 494, which is the "20% down the screen" the user set earlier the same day.
+Several higher-scoring configs get to 90% by pulling `zTo` back, which would have
+silently undone it -- the same trap as the last pass, and it was pinned before
+the sweep rather than noticed after.
+
+⚠️ **THE PREDICTED FAILURE ARRIVED, MEASURED AND SMALL.** The last pass wrote
+down that pushing the field down again would make **the back of the belt go bare
+first**, the reverse of this feature's original near-edge bug. It did: the top
+QUARTER runs 83-95% across 13 camera stops against the three-plane 86-96%. Three
+points, behind everything, and the whole belt's worst camera actually improved
+(83% against 81%). Judged affordable and written down rather than smoothed over.
+
+⚠️ **`bandOffsetZ` WENT FLAT AND THAT IS A DELETION, NOT A LOSS.** It was
+0.20 / 0.30 / 0.20, and the 0.10 bump was a PATCH: it closed a 129px hole three
+coarse bands opened between the mid band's last row and the near band's first.
+Five bands, ten rows and the re-graded `zFrom` close that hole geometrically --
+the ground points land evenly 41px apart from z 122 to z 494 -- so carrying the
+patch forward would have put a bump back into an even ladder. **A number that
+existed to fix a problem should be re-derived when the problem is gone, not
+inherited.**
+
+⚠️ **`bandScale`'S ENDPOINTS WERE LEFT ALONE, AND THAT IS WHERE THE NEXT DIAL IS
+IF THIS READS FLAT.** 1.00 is the pack's own size and 1.10 is a user-set "10%
+bigger"; five planes only subdivides between them, so the new steps are 0.025 --
+near-invisible, meaning the depth cue is carried almost entirely by speed.
+Widening the ladder DOWNWARD (`[0.95, 0.99, 1.02, 1.06, 1.10]`, shrinking the far
+drifts rather than growing the near ones) is the one line that makes distance
+read as size. Not done, because shrinking the far end is a decision nobody asked
+for and it costs coverage in the far third -- but it is the first thing to try if
+"5 planes" doesn't land tomorrow.
+
+**Cost: 19-21 drawn a frame against 17-20.** Band count is free -- one multiply
+per item either way; the two extra draws are the tenth row.
+
+**What was verified, and how.** The coverage instrument (a python port of
+`scenery.js`) had been thrown away with the last session, so it was rebuilt and
+calibrated against the row it was about to replace -- the shipped three-plane
+config -- printing 90.3% | 90.9 / 90.4 / 89.5 | 17-20 against the recorded 90.3%
+| 90.9 / 90.6 / 89.5 | 17-20. **It has now been rebuilt twice; ask next time
+whether it should live in `tools/`.** Separately, `enterRoom` was run against the
+real `CONFIG` and the real defs to confirm the runtime path actually produces ten
+rows in five rate/scale pairs with nothing non-finite -- the config being right
+and the code reading it being right are two different claims.
+
 ---
 
 ## The day passes over the desert (2026-08-27)

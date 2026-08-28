@@ -61,6 +61,10 @@ class Stage {
        back to the start of the level and the distance between the two is not a
        walk. See _followCamera. */
     this.lastPlayerX = null;
+    // LEVEL 3 HOOK 1/4 -- see src/level3.js. Unconditional because resetting a
+    // module that is not in play costs nothing and forgetting it would carry a
+    // half-climbed bookcase into a restart.
+    if (typeof Level3 !== 'undefined') Level3.reset();
   }
 
   /** The room being played, and the segment within it. */
@@ -108,6 +112,10 @@ class Stage {
       player.x = r.startX != null ? r.startX : 220;
       player.z = Belt.depth * CONFIG.playerStartZRel;
     }
+    /* LEVEL 3 HOOK 2/4. AFTER the player is placed, because level3.js lays out
+       its own world-x bands and moves him to the first one -- doing it earlier
+       would have this line put him straight back. */
+    if (Level3.owns(r)) Level3.enterRoom(r, player);
   }
   isArena() {
     const s = this.segment();
@@ -118,6 +126,8 @@ class Stage {
 
   /** The walls the player may not walk past, in world x. */
   bounds() {
+    // LEVEL 3 HOOK 4/4 -- per-leg walls, closing to the platform on a lift.
+    if (Level3.owns(this.room())) return Level3.bounds(this);
     const w = CONFIG.GAME_W;
     const s = this.segment();
     if (s && this.isArena() && s.lock !== false) {
@@ -139,6 +149,20 @@ class Stage {
    * finished, so game.js can run the win state without polling.
    */
   update(dt, player, crowd) {
+    /* LEVEL 3 HOOK 3/4, AND IT IS THE LOAD-BEARING ONE. The bookcase never
+       reaches the segment machinery below: its shot is a switchback, and the
+       scroll branch completes on `player.x >= toX` -- the rightward assumption
+       shelf 2 breaks. One early return rather than a direction threaded through
+       every branch; see the note at the top of src/level3.js for why that was
+       asked for in those terms. */
+    if (Level3.owns(this.room())) {
+      const r = Level3.update(dt, this, player, crowd);
+      // 'room' is a door and 'clear' is the end of the game -- level3 decides
+      // which off hasNextRoom(), exactly as _enter() does. Both mean this room
+      // is finished with.
+      if (r) this.done = true;
+      return r;
+    }
     if (this.banner > 0) this.banner -= dt;
     const s = this.segment();
     if (!s) { this.done = true; return null; }
