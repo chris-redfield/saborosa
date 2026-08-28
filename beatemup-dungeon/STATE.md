@@ -3533,6 +3533,205 @@ a smaller spread; it is giving every *row* a rate lerped from far to near, one
 line in `scenery.js`. Three discrete layers is what was asked for, and it is also
 the version you can see working.
 
+## Level 3 — the bookcase (2026-08-27)
+
+*"Time to add level 3, push the horse boss room to the end... this video is
+possible to reduce its size... there is one dark detail about this level, it has
+vertical movement in 2 points."* Then, on being shown what the footage actually
+does: *"the player will come from the right (elevator) and then goes to the left
+(the final elevator)... the camera will move from right to left, and the player
+must follow."* And then the constraint that decided the whole shape of it:
+*"please isolate this behavior to this level, otherwise you will break other
+levels... Trying to make this logic work alongside the other logic (the default
+one) will be our demise. I am doing this for around 20 years now, I know a death
+loop when I see one."*
+
+`src/level3.js` (new) + `CONFIG.LEVEL3` + `ROOMS[2]` + `tools/build-level-3-plate.py`.
+
+⚠️ **THE FOOTAGE IS A COMIC-BOOK BOOKCASE AND THE "TIERS" ARE SHELVES.** It was
+worth extracting a contact sheet before designing anything: the shot pans right
+along a shelf, rises, pans **left** along the next, rises, pans right along the
+last. A switchback climb — which is exactly how you would traverse a bookcase,
+and exactly what the user then described from memory without having been told.
+
+⚠️ **"VERTICAL MOVEMENT IN 2 POINTS" WAS AN UNDERSTATEMENT OF THE PROBLEM, AND
+THE LEFTWARD SHELF WAS THE REAL ONE.** The two rises are easy — the film goes up
+while a man stands still in front of it. The middle shelf is what the engine
+could not express, and it is the LONGEST stretch in the room. Surfacing it before
+building was the right call; the user had a level design ready for it.
+
+⚠️ **THE PLATE IS WOUND BY ONE RATIO AND A SWITCHBACK BREAKS IT TWICE.**
+`_drawVideo` computes `filmTime = camX / worldPxPerSecond`, and:
+
+* on shelf 2 the player walks LEFT, so camX falls — under that ratio that means
+  REWIND, i.e. back down the lift onto shelf 1; and
+* **it is not a sign flip.** A switchback visits the SAME camX three times at
+  three different heights, so no function of camX alone can say which frame to
+  show. Both halves have to be said or the fix looks like a one-liner.
+
+So the two ideas come apart: **PROGRESS** (monotonic, in film seconds, drives the
+plate) and **CAMERA X** (right, then left, then right).
+
+⚠️ **ISOLATION WAS AN INSTRUCTION, NOT A PREFERENCE, AND IT MADE THE CODE
+BETTER.** The instinct was to generalise — give segments a direction, give the
+camera a forward vector, give the plate a piecewise path. That is the death loop
+the user named: every room in the game would then depend on machinery that exists
+for one. Instead level 3 REPLACES the stage for itself. **Six hooks, every one a
+single guarded early return** (`stage.reset/enterRoom/update/bounds`, and two
+lines in game.js's draw loop). Every other room reaches byte-for-byte the code it
+reached before.
+
+⚠️ **AND THE BEST HOOK IS THE ONE THAT CHANGED NOTHING.** `backdrop.js` was not
+touched at all. `game.js` hands it `Level3.filmScroll()` in place of `camX`, and
+`filmScroll()` multiplies by the very `worldPxPerSecond` that `_drawVideo` is
+about to divide out — a round trip that looks silly and is the point: the
+backdrop never learns that a room with its own clock exists. **When isolation is
+the requirement, look for the seam where the shared code takes a NUMBER rather
+than the one where it takes a decision.**
+
+⚠️ **EACH WALK LEG GETS ITS OWN NON-OVERLAPPING BAND OF WORLD X** and the player
+is teleported between them mid-lift. That sounds violent and is invisible: the
+plate is drawn stationary and wound by progress, so nothing on screen is a
+function of world x. Letting shelf 2 walk back over shelf 1's x would have made
+world x ambiguous for anything placed in the room later.
+
+⚠️ **`px` IS CAMERA TRAVEL AND IT IS THE SYNC** — a leg's camera runs exactly the
+leg's own pan, so the background moves 1:1 with the feet, which is all
+`worldPxPerSecond` ever bought the other rooms. **The three shelves pan at 192,
+386 and 181 screen px per second**, so one ratio could never have covered this
+room even if it went one way: shelf 2 pans twice as fast as the others.
+
+### The three bugs the user found, and what they had in common
+
+Reported from a build taken mid-session: *"the character vanishes and the
+elevator goes up by itself... it skips the part where the player goes left... at
+the end it's beating the game."* All three were already fixed by the time the
+report arrived, and **all three were the same class of mistake — a value read
+from the wrong place, not logic that was wrong.**
+
+⚠️ **`stage.bounds()` IS CALLED BEFORE `stage.update()`** (game.js:870 vs 890),
+which is deliberate — the walls the player just walked into, not the ones a
+segment change is about to install. It means **anything level3 reads off the
+stage inside `bounds()` is one frame stale**, and the bands are 4000px apart, so
+stale is not "slightly wrong", it is a different shelf:
+
+* **the vanishing player.** `bounds()` returned the platform rect RAW during a
+  lift — and the platform lives in SCREEN space, because it must hold still
+  while the film climbs past it. Screen coordinates used as world coordinates
+  put the walls at x 423–857 while the camera sat at 3867, so the player was
+  clamped to **screen x −3010**. He did not vanish; he was thrown three screens
+  to the left, and the lift carried on without him.
+* **the skipped left walk.** Reading `stage.camX` in `bounds()` on the frame a
+  lift hands over gave walls from the previous band and a player from the next,
+  so `minX` came out ABOVE `maxX`; the clamp resolves to `minX` and put him on
+  the far end of shelf 2, which the arrival test then read as "done". **Shelf 2
+  completed in one frame.**
+
+**The rule that came out of it: level3 is the source of truth for its own camera
+and the stage is the MIRROR, not the other way round.** `bounds()` reads
+`this._camX`. Anything added to this file follows that or gets the same bug.
+
+⚠️ **THE THIRD ONE WAS NOT A COORDINATE BUG, IT WAS A VOCABULARY BUG.**
+`Level3.update` returned `'clear'` when it ran out of legs — and game.js reads
+that with the same switch it reads the shared stage's: **`'room'` is a door and
+`'clear'` is the end of the whole game.** Finishing the bookcase rolled the
+ending card. It now asks `hasNextRoom()` rather than hard-coding either answer,
+so moving this room again cannot silently turn the credits on mid-game — which
+matters, because this room was itself INSERTED to push the horse to the end.
+
+⚠️ **THE HORSE WAS PUSHED TO THE END BY INSERTION, WHICH IS THE ONLY MECHANISM
+THERE IS.** A room's place in the game is its index in `CONFIG.ROOMS`; nothing
+reads a room number. Order is now street / desert / bookcase / boss room, and the
+DEV number keys followed the array without a line of input code changing —
+**1/2/3/4**. The stale thing was, again, the COMMENT: it had already gone stale
+once through the desert's insertion and has now done it twice, both times while
+containing a warning that it would.
+
+### The lift became a place instead of an event (2026-08-28)
+
+*"The elevator, it just appears out of nowhere, after the player hits the
+boundary... the player only goes up after he touches the border, he kinda gets
+pushed to the middle of the screen and goes up, I don't want that to happen, I
+want the elevator to already be there, and when the player steps like in the
+middle of the final frame, the elevator goes up."*
+
+⚠️ **TWO SYMPTOMS, ONE CAUSE, AND THE CAUSE WAS A COORDINATE SYSTEM.** The
+platform was drawn at a fixed SCREEN position -- which was defensible while it
+only existed during the ride, since a lift that holds still while the film climbs
+past it is the whole illusion. But **a thing pinned to the screen cannot be
+walked up to.** So it had to be conjured at the moment the far wall was hit, and
+the player had to be dragged onto it (a 0.35s `boardSec` ease). Give it a WORLD x
+and both complaints go at once: it stands at the end of the shelf, slides into
+view as the camera approaches, and stepping on it is the event. `boardSec` is
+deleted rather than tuned -- **the ease existed only to paper over the wrong
+coordinate system.**
+
+⚠️ **AND IT IS STILL MOTIONLESS ON SCREEN DURING THE RIDE -- FOR A REASON NOW
+RATHER THAN BY CONSTRUCTION.** The camera is pinned at the end of its range
+before the player can reach the landing, so `worldX - camX` stops changing on its
+own. That is also what makes the hand-over seamless: measured, the player moves
+**0px** on the frame the ride starts.
+
+⚠️ **WHERE THE LIFT MAY STAND IS DECIDED BY THE CAMERA, NOT CHOSEN.** The film
+has to FINISH the shelf before the lift takes over -- otherwise `progress` is
+short of the leg's end, the lift starts from its own `film[0]`, and the shot
+jumps ~0.7s (~270px of pan on shelf 2). The camera pins when the player is
+`focus + deadzone` past its end walking right (667.6px) and `focus - deadzone`
+walking left (407.6px), so the landing must sit at screen x >= 667.6 rightward
+and <= 407.6 leftward. Measured from the END WALL instead of the frame,
+`landingInsetPx: 300` gives 940 and 340 -- mirror images, and it reads as the
+lift being at the end of the shelf, which is what it is.
+
+⚠️ **SO "THE MIDDLE OF THE FINAL FRAME" WAS NOT DELIVERED, AND SAYING SO IS THE
+JOB.** 640 is inside the pin point in BOTH directions -- with a deadzone follow
+the player is never at screen centre while the camera is still. It is not a near
+miss to be quietly rounded to; it is a thing the camera makes impossible, and the
+user asked for it in good faith without that constraint in front of them. Told,
+with the two numbers, rather than shipped as if it had been done.
+
+**Verified in game.js's real order:** lift on screen 4.1s / 3.4s before boarding,
+0 frames with the player off screen, film gaps at the hand-overs 0.00s and 0.03s,
+still returns `'room'`. A switch to call the lift was floated for later and
+deliberately not built.
+
+### The video
+
+**15.26 MB → 5.04 MB (3.0x)**, same 848x478, same 74.006s, GOP 12.
+
+⚠️ **THIS "MASTER" WAS NOT A MASTER**, and that is why the desert's two big
+levers were already spent: it arrived at 848x478 h264 at 1.47 Mbps where the
+desert's tool started from 1920x1080 HEVC at 17.7 Mbps. What was left:
+
+* ⚠️ **A 256 kbps AAC TRACK ON A SILENT BACKDROP — 2.4 MB, 15% of the file, for
+  audio nothing ever plays.** `-an`. Free, and the first thing to check on any
+  clip that came off a phone.
+* CRF 30. Ladder measured against the master at the 1280x720 the player sees:
+  8.24 / 6.40 / **5.04** / 4.01 / 3.23 MB at CRF 26/28/30/32/34.
+
+⚠️ **THOSE SSIM NUMBERS ARE NOT COMPARABLE TO THE DESERT TOOL'S** and reading
+them as "much better than 0.867" would be wrong twice over — they score a second
+encode against a first one, not against clean footage. **And it was NOT
+rescaled**: the desert's "resolution is the wrong knob" finding applies harder
+here, with no oversampling left to spend.
+
+⚠️ **THE TOOL MEASURES BOTH AXES**, unlike the other three plate tools, and
+segments the shot into legs by *which axis is moving* rather than on a hard-coded
+frame list — so re-cutting the clip re-derives the table instead of silently
+desyncing it. `--measure` re-runs the analysis without the encode.
+
+### What is not there yet
+
+**No enemies, deliberately.** What was asked for was the level, the reorder, a
+smaller video and a placeholder lift to test. It is also the honest build order:
+the switchback and the lifts are the parts that could be wrong, and a fight on
+top of them would only make that harder to see. Fights go in
+`CONFIG.LEVEL3.legs` when they arrive — **and the obvious first one is enemies
+riding up with you**, which is also the answer to the 13.7s lift having nothing
+to do in it. Do NOT answer that by speeding the lift up; it plays at 1x because
+a filmed plate cannot fast-forward convincingly.
+
+---
+
 ### Three planes became five (2026-08-27)
 
 *"Instead of 3 planes of layers, I actually want 5 planes of layers, I don't know

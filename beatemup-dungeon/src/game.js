@@ -1033,13 +1033,26 @@
     }
 
     const camX = stage.camX;
+    /* LEVEL 3 HOOKS 5 AND 6. The bookcase winds its plate by PROGRESS rather
+       than by the camera -- its shot is a switchback, so the same camX happens
+       three times at three heights and cannot say which frame to show. Handing
+       the backdrop a different number here is the whole of it: backdrop.js is
+       untouched and never learns that a room with its own clock exists.
+       Everything that is genuinely in world space still gets the real camX. */
+    const l3 = Level3.owns(stage.room());
+    const filmX = l3 ? Level3.filmScroll() : camX;
 
     for (const layer of CONFIG.LAYERS) {
       if (layer.on === false) continue;
-      if (layer.entities) { drawEntities(camX); continue; }
+      if (layer.entities) {
+        // The lift is drawn UNDER the fighters, like scenery: he stands on it.
+        if (l3) Level3.drawPlatform(ctx, stage);
+        drawEntities(camX);
+        continue;
+      }
       if (layer.scenery) { scenery.draw(ctx, camX); continue; }
       if (layer.flies) { flies.draw(ctx, camX); continue; }
-      backdrop.drawLayer(ctx, layer, camX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
+      backdrop.drawLayer(ctx, layer, filmX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
     }
 
     combat.drawFX(ctx, camX);

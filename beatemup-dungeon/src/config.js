@@ -87,18 +87,24 @@ const CONFIG = {
        by playing to it is how a late room stops getting tested; this is the
        shortcut.
 
-           0  street        1  desert        2  boss room (HIPÓLITO)
+           0  street     1  desert     2  bookcase     3  boss room (HIPÓLITO)
 
        The NUMBER KEYS do the same thing live, and they are **one-based** --
-       `input.js` sets the jump to `n - 1`, so 1 is the street, **2 is the
-       desert** and 3 is the boss room. Both are dev-only and dead when `on` is
-       false.
+       `input.js` sets the jump to `n - 1`, so 1 is the street, 2 is the desert,
+       **3 is the bookcase** and **4 is the boss room**. Both are dev-only and
+       dead when `on` is false.
 
        ⚠️ THE KEYS FOLLOW THE ARRAY AND NOTHING ELSE, which is why inserting the
        desert at index 1 on 2026-08-27 moved 2 off the boss room and on to it
-       without a line of input code changing. Re-order ROOMS again and the keys
-       re-order with it -- so THIS COMMENT is the thing that goes stale, not the
-       behaviour. It already had, and said "1 the boss room". */
+       without a line of input code changing, and why inserting the bookcase at
+       index 2 later the same day moved the boss room from 3 to 4. Re-order
+       ROOMS again and the keys re-order with it -- so THIS COMMENT is the thing
+       that goes stale, not the behaviour.
+
+       ⚠️ IT HAS NOW GONE STALE TWICE, and both times it was predicting itself.
+       It said "1 the boss room" through the desert's insertion and "2 the boss
+       room" through the bookcase's. If a third room is inserted, this line is
+       the first thing to fix, not the last. */
     startRoom: 0,
   },
 
@@ -574,6 +580,42 @@ const CONFIG = {
       trackGain: 1.2,
       maxRate: 10,
       tint: '',
+    },
+
+    /* THE BOOKCASE — level 3's plate, and the only one in the game whose shot
+       does not travel in one direction.
+
+       ⚠️ `worldPxPerSecond` IS INERT FOR THIS ROOM AND IS KEPT ONLY SO THE
+       ROUND TRIP CANCELS. `_drawVideo` computes `filmTime = scrollX / pps`, and
+       level3.js hands it `progress * pps` in place of a camera position — so
+       whatever number is here divides straight back out. It is NOT a sync knob
+       for this plate; the sync lives in `CONFIG.LEVEL3.legs`, which ties film
+       SECONDS to camera pixels leg by leg. The value is the shot's average
+       (13530 screen px of pan over 74.0s) so that anything reading it for a
+       sanity check gets a truthful number rather than a magic one.
+
+       ⚠️ AND THAT IS WHY THE SWITCHBACK COSTS THE SHARED CODE NOTHING. backdrop.js
+       never learns that a room with its own clock exists; it is handed a
+       different number by one guarded line in game.js. See src/level3.js.
+
+       15.26MB -> 5.04MB (3.0x) at CRF 30, and the two levers were an AAC track
+       nothing plays (15% of the file) and the CRF ladder — see
+       tools/build-level-3-plate.py. ⚠️ IT WAS NOT RESCALED and must not be: the
+       master arrived already at 848x478, so the desert's "resolution is the
+       wrong knob" finding applies with nothing left to spend. */
+    level3Plate: {
+      kind: 'video',
+      src: 'v2:beatemup-dungeon/level-3-plate.mp4',
+      worldPxPerSecond: 182.8,
+      /* ⚠️ NEVER ACTUALLY EXERCISED, AND KEPT ANYWAY. `progress` is monotonic,
+         so the scroll value this plate sees can only rise and the reverse branch
+         in `_drawVideo` cannot fire. The clip still ships at GOP 12 like the
+         others: the cost is small, and the day someone gives this room a
+         checkpoint that walks the film back, the encoding is already right. */
+      allowReverse: true,
+      resyncS: 6.0,
+      trackGain: 1.2,
+      maxRate: 10,
     },
     // Declared but unused until there is art — see the LAYERS note.
     foreground: { kind: 'image', src: '', scale: 1 },
@@ -1086,6 +1128,62 @@ const CONFIG = {
     /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter
        of a screen, so the camera barely moves and mostly just breathes with the
        player. The fight is what the room is for, not the walk. */
+    /* =====================================================================
+       LEVEL 3 — THE BOOKCASE (2026-08-27)
+       =====================================================================
+       ⚠️ INSERTED ABOVE THE BOSS ROOM, WHICH IS HOW THE HORSE GOT PUSHED TO THE
+       END. A room's place in the game is its INDEX in this array and nothing
+       else reads a room number, so "put the boss last" is an insertion and not
+       a rename. The DEV number keys follow the array (`n - 1`), so they are now
+       1 = street, 2 = desert, 3 = bookcase, 4 = boss room -- and the stale thing
+       will be a COMMENT somewhere, never the behaviour.
+
+       ⚠️ THIS ROOM DOES NOT USE THE SEGMENT MACHINERY, AND THAT IS THE POINT.
+       `level3: true` hands it to src/level3.js at the top of `stage.update()`,
+       which owns its camera, its walls, its film clock and its lifts. The
+       `segments` list below is a single formality so that anything iterating
+       rooms finds a well-formed one; level3.js never reads it. Do not "fix" it
+       by adding scrolls and arenas -- the scroll branch completes on
+       `player.x >= toX`, which is exactly the rightward assumption shelf 2
+       breaks. Fights go in `CONFIG.LEVEL3.legs` when they arrive.
+
+       WHAT IT IS: a switchback climb of a comic-book bookcase, filmed. Walk
+       right along shelf 1, ride up, walk LEFT along shelf 2, ride up, walk
+       right along shelf 3. See CONFIG.LEVEL3 for the measured legs.
+
+       ⚠️ NO ENEMIES YET, DELIBERATELY. What was asked for was the level, the
+       reordering, a smaller video and a placeholder elevator to test -- so this
+       ships as a traversal. It is also the honest order to build it in: the
+       switchback and the lifts are the parts that could be wrong, and a fight
+       on top of them would only make that harder to see. */
+    {
+      name: 'level-3',
+      plate: 'level3Plate',
+      startX: 220,
+      level3: true,
+      /* ⚠️ SILENCE, LIKE THE DESERT'S. Leaving `music` out means *the level bed*,
+         which is the opposite of nothing: `playMusic(key)` opens with
+         `key || 'music'`, so a falsy key cannot express "none" and the decision
+         has to be made before the call. */
+      music: false,
+      /* THE BELT. The shelves are shallow -- a fighter stands on a plank, not in
+         a desert -- so this is nearer the street's 520/190 than the desert's
+         330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
+         changing one alone puts the near edge off the bottom of the canvas. */
+      belt: { topY: 470, depth: 210 },
+      /* ⚠️ NOT A REAL WALL, AND NOTHING READS IT. level3.js pens the player to
+         the current leg's band (`Level3.bounds`), so the room's own end is only
+         here so `stage.endX()` returns something sane if anything asks. It is
+         the far end of the last band; see the band layout in level3.js. */
+      endX: 24500,
+      /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
+         `progress` is monotonic by construction -- so the flag would claim a
+         capability the room does not use. The clip is still cut at GOP 12. */
+      segments: [
+        /* A formality; level3.js drives the room. See the note above. */
+        { kind: 'scroll', toX: 24000 },
+      ],
+    },
     {
       name: 'boss-room',
       plate: 'bossPlate',
@@ -3662,6 +3760,124 @@ const CONFIG = {
      WEIGHTED TOWARD THE SHORT ONE ON PURPOSE. Three hits every time is a
      rhythm the player stops reading and starts waiting out; a single jab that
      might be the start of a string is what makes them respect the wind-up. */
+  /* =========================================================================
+     LEVEL 3 — THE BOOKCASE
+     =========================================================================
+     The one room in this game that runs its own logic, and it is deliberately
+     quarantined. Asked for 2026-08-27: *"please isolate this behavior to this
+     level, otherwise you will break other levels... Trying to make this logic
+     work alongside the other logic (the default one) will be our demise."*
+
+     ⚠️ EVERYTHING HERE IS READ BY src/level3.js AND BY NOTHING ELSE. There are
+     six hooks into shared code and every one is a single guarded early return;
+     turn `on: false` and the room falls back to being an ordinary (and broken)
+     scroll room, which is the switch to reach for if this is ever suspected of
+     something.
+
+     WHY IT NEEDS ITS OWN LOGIC. The shot climbs a bookcase in a switchback —
+     pan right along a shelf, rise, pan LEFT along the next, rise, pan right
+     along the last. The engine winds the plate with one ratio,
+     `filmTime = camX / worldPxPerSecond`, and that cannot express this shot:
+
+       * on shelf 2 the player walks LEFT, so camX falls — which under that
+         ratio means REWIND, i.e. back down the lift onto shelf 1; and
+       * it is not a sign flip, because a switchback visits the SAME camX three
+         times at three different heights, so no function of camX alone can say
+         which frame to show.
+
+     So the two ideas come apart: PROGRESS (monotonic, in film seconds, drives
+     the plate) and CAMERA X (right, then left, then right).
+
+     ⚠️ THE LEGS ARE MEASURED, NOT DESIGNED. tools/build-level-3-plate.py
+     phase-correlates the footage on BOTH axes — the other plate tools only ever
+     needed x — and prints exactly this table. Re-cut the clip and every number
+     moves; run it with `--measure` and paste the result.
+
+         leg  film (s)        screen px   what
+         0    0.00 - 18.98      +3647     shelf 1, pans right
+         1   18.98 - 32.65      -4868     the first rise
+         2   32.68 - 46.96      -5515     shelf 2, pans LEFT
+         3   46.99 - 55.20      -2329     the second rise
+         4   55.23 - 73.97      +3390     shelf 3, pans right
+
+     ⚠️ `px` IS CAMERA TRAVEL, AND IT IS THE SYNC. A walk leg's camera runs
+     exactly `px` — the leg's own pan converted to the 1280-wide canvas — so the
+     background moves 1:1 with the world, which is all `worldPxPerSecond` ever
+     bought the other rooms. Using the tool's SOURCE-pixel column instead would
+     run the shot about 1.5x fast and read as the player sliding.
+
+     ⚠️ AND THE THREE SHELVES PAN AT DIFFERENT SPEEDS — 192, 386 and 181 screen
+     px per second of film. That is why one ratio could never have covered this
+     room even if it went one way: shelf 2 pans twice as fast as the other two,
+     so the player has to cross twice as much ground for the same seconds of
+     film. Per-leg `px` handles it without anyone having to notice. */
+  LEVEL3: {
+    on: true,
+    /* Read for `worldPxPerSecond` in the round trip that hands the backdrop a
+       progress clock — see level3.js `filmScroll()` and the source's own note. */
+    plateSource: 'level3Plate',
+    /* HOW FAR APART THE LEGS' WORLD-X BANDS SIT. Each walk leg gets its own
+       non-overlapping stretch of world x and the player is teleported between
+       them mid-lift, which is invisible: the plate is drawn stationary and wound
+       by progress, so nothing on screen is a function of world x. Letting shelf
+       2 walk back over shelf 1's x would make world x ambiguous for anything
+       placed in this room later, which is a trap to leave for someone else. */
+    bandGapPx: 4000,
+    /* How far inside the near wall the player is dropped when a leg starts, so
+       he does not begin the shelf standing in the gate. */
+    startInsetPx: 200,
+    /* HOW FAR THE LIFT STANDS FROM THE SHELF'S END WALL, in screen px.
+       ⚠️ THIS IS BOUNDED ABOVE BY THE CAMERA, at about 367. The film has to
+       finish the shelf before the lift takes over, so the camera must already be
+       pinned at the end of its range when the player reaches the landing -- and
+       it pins at `focus + deadzone` (667.6) past its end walking right and
+       `focus - deadzone` (407.6) walking left. Measured from the end wall, 300
+       puts the lift at screen 940 rightward and 340 leftward: mirror images,
+       both safely past the pin. Push it past ~367 and the leftward landing falls
+       inside the pin point, `progress` is short of the leg's end when the ride
+       starts, and the shot jumps ~0.7s (~270px of pan) at the hand-over.
+       ⚠️ AND THIS IS WHY "the middle of the final frame" IS NOT WHAT SHIPPED:
+       640 is inside the pin point in BOTH directions. With a deadzone follow the
+       player is never at screen centre while the camera is still. */
+    landingInsetPx: 300,
+    legs: [
+      { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98] },
+      /* ⚠️ `sec` IS THE FILM'S OWN DURATION AND SHOULD STAY THAT WAY. A rise is
+         the shot going up; play it at anything other than 1x and it reads as
+         fast-forward, which is exactly what a filmed plate cannot do
+         convincingly. 13.7s is a long time to stand on a platform with nothing
+         to do — the answer to that is enemies riding up with you, not a faster
+         lift. */
+      { kind: 'lift', sec: 13.67, film: [18.98, 32.65] },
+      { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96] },
+      { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
+      { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97] },
+    ],
+    /* THE PLACEHOLDER ELEVATOR — drawn, not a sprite, because the real ones do
+       not exist yet ("create a drawed platform as a placeholder... try to
+       incorporate the perspective in it"). Sizes are in screen px and the depth
+       ones are fractions of the BELT, which is the unit every z in this game
+       uses. See level3.js `drawPlatform` for why the trapezoid and the
+       back-only rails are the parts that make it read as lying on the floor. */
+    platform: {
+      widthPx: 620,      // the FRONT edge; the back is `backRatio` of it
+      backRatio: 0.62,   // < 1 is the perspective — the belt converges going back
+      depthRel: 0.42,    // how much of the belt's depth the slab covers
+      zRel: 0.72,        // where its FRONT edge sits down the belt
+      offsetX: 0,
+      thickPx: 26,       // the front face, so it is a slab and not a decal
+      standHalfRel: 0.35,// how much of the front width he may stand on, each way
+      slats: 7,
+      rails: true,
+      railHeightPx: 96,
+      topColor: '#4a515e',
+      sideColor: '#2b2f38',
+      edgeColor: '#8b93a3',
+      lineColor: 'rgba(0,0,0,0.35)',
+      railColor: '#6b7280',
+    },
+  },
+
   /* =========================================================================
      THE GROUND COVER
      =========================================================================

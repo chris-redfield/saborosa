@@ -848,6 +848,157 @@ reason, and hitting one of the three was the half that never worked.
 
 ---
 
+## Level 3 — the bookcase (the room with its own logic)
+
+```js
+// CONFIG.ROOMS[2]
+{ name: 'level-3', plate: 'level3Plate', level3: true, music: false,
+  belt: { topY: 470, depth: 210 }, endX: 24500,
+  segments: [ { kind: 'scroll', toX: 24000 } ] }   // a formality; unread
+
+// CONFIG.LEVEL3 — read by src/level3.js and by nothing else
+{ on: true, plateSource: 'level3Plate', bandGapPx: 4000,
+  startInsetPx: 200, landingInsetPx: 300,   // <- bounded by the camera, see below
+  legs: [                                     // MEASURED, not designed
+    { kind: 'walk', dir: +1, px: 3647, film: [ 0.00, 18.98] },   // shelf 1
+    { kind: 'lift',          sec: 13.67, film: [18.98, 32.65] }, // rise
+    { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96] },   // shelf 2, LEFT
+    { kind: 'lift',          sec:  8.21, film: [46.99, 55.20] }, // rise
+    { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97] },   // shelf 3
+  ],
+  platform: { widthPx: 620, backRatio: 0.62, depthRel: 0.42, zRel: 0.72, ... } }
+```
+
+A switchback climb of a filmed comic-book bookcase: walk right along shelf 1,
+ride up, **walk left** along shelf 2, ride up, walk right along shelf 3.
+
+> ⚠️ **This is the one room that runs its own logic, and the isolation is a
+> requirement rather than a style.** Asked for in those terms — *"Trying to make
+> this logic work alongside the other logic (the default one) will be our
+> demise."* Level 3 does not generalise the stage, the camera or the backdrop; it
+> **replaces** them for itself. **Six hooks, every one a single guarded early
+> return** — `stage.reset/enterRoom/update/bounds` plus two lines in `game.js`'s
+> draw loop. `CONFIG.LEVEL3.on = false` is the switch if this is ever suspected
+> of anything.
+
+**Why it needs its own logic.** The plate is wound by one ratio,
+`filmTime = camX / worldPxPerSecond`, and a switchback breaks it twice:
+
+1. on shelf 2 the player walks **left**, so `camX` falls — which under that ratio
+   means *rewind*, back down the lift onto shelf 1; and
+2. **it is not a sign flip** — a switchback visits the *same* `camX` three times
+   at three different heights, so no function of `camX` alone can say which frame
+   to show.
+
+So the two ideas come apart: **progress** (monotonic, in film seconds, drives the
+plate) and **camera x** (right, then left, then right).
+
+> ⚠️ **`backdrop.js` was not touched at all**, and that is the trick worth
+> stealing. `game.js` hands it `Level3.filmScroll()` in place of `camX`, and that
+> multiplies by the very `worldPxPerSecond` `_drawVideo` is about to divide out.
+> The round trip looks silly and is the point — the backdrop never learns a room
+> with its own clock exists. **When isolation is the requirement, find the seam
+> where shared code takes a NUMBER, not the one where it takes a decision.**
+
+> ⚠️ **`px` is CAMERA travel, and it is the sync.** A leg's camera runs exactly
+> the leg's own pan, so the background moves 1:1 with the feet. The three shelves
+> pan at **192 / 386 / 181** screen px per second of film — shelf 2 twice as fast
+> as the others — so one ratio could never have covered this room even if it went
+> one way.
+
+> ⚠️ **Each walk leg owns a non-overlapping band of world x**, and the player is
+> teleported between them mid-lift. Invisible: the plate is drawn stationary and
+> wound by progress, so nothing on screen is a function of world x. Letting shelf
+> 2 walk back over shelf 1's x would make world x ambiguous for anything placed
+> here later.
+
+> ⚠️ **`bounds()` must read `Level3._camX`, never `stage.camX`.** `stage.bounds()`
+> is called *before* `stage.update()` (game.js:870 vs 890), so anything read off
+> the stage is one frame stale — and the bands are 4000px apart, so stale is not
+> "slightly wrong", it is a different shelf. **Level3 is the source of truth for
+> its own camera; the stage is the mirror.** Two of the three bugs in this room's
+> first build were this.
+
+> ⚠️ **The lift's walls are in SCREEN space and must be put back into world
+> space.** The platform holds a fixed screen position while the film climbs past
+> it — that *is* the illusion — so returning its rect raw as world bounds threw
+> the player to screen x −3010 and the lift rode up without him.
+
+> ⚠️ **Out of legs returns `'room'`, not `'clear'`.** `game.js` reads it with the
+> same switch as the shared stage: `'room'` is a door, **`'clear'` is the end of
+> the whole game**. It asks `hasNextRoom()` rather than hard-coding either, so
+> re-ordering rooms cannot turn the credits on mid-game.
+
+**The lifts.** The film pans up while the player holds his screen position — the
+world scrolls down past a man standing still, and that is the whole illusion. He
+is never given a `y`; his feet stay on the belt, so nothing in `combat.js` or
+`fighter.js` has to know a lift exists. Input is **not** disabled (a rider who
+cannot turn round reads as a hang); the walls simply close to the platform.
+
+**A lift is a WORLD object standing at the end of its shelf**, and stepping onto
+it is what ends the walk leg — there is no "walked into the boundary" event. It
+comes into view on its own as the camera nears the end (~4s of approach on shelf
+1, ~3.4s on shelf 2) and is boarded with no movement at all on the hand-over
+frame.
+
+> ⚠️ **It used to be drawn at a fixed SCREEN position, and that one choice caused
+> both halves of what was reported** — *"it just appears out of nowhere"* and
+> *"the player only goes up after he touches the border, he kinda gets pushed to
+> the middle"*. A thing pinned to the screen cannot be walked up to, so it had to
+> be conjured when the far wall was hit and the player dragged aboard (a 0.35s
+> `boardSec` ease, now deleted). **Give it a world x and both symptoms go at
+> once.** It still ends up motionless on screen during the ride — but for a
+> reason now rather than by construction: the camera is already pinned.
+
+> ⚠️ **`landingInsetPx` is bounded above by the camera, at about 367.** The film
+> must *finish* the shelf before the lift takes over, so the camera has to be
+> pinned at the end of its range when the player reaches the landing. It pins at
+> `focus + deadzone` (667.6px) past its end walking right and `focus - deadzone`
+> (407.6px) walking left, so the landing must sit at screen x ≥ 667.6 rightward
+> and ≤ 407.6 leftward. Measured from the end wall, **300 gives screen 940
+> rightward and 340 leftward** — mirror images. Past ~367 the leftward landing
+> falls inside the pin point and the shot jumps ~0.7s (~270px of pan) at the
+> hand-over.
+
+> ⚠️ **Which is why the lift is NOT in the middle of the frame, though that is
+> what was asked for.** 640 is inside the pin point in *both* directions: with a
+> deadzone follow the player is never at screen centre while the camera is still
+> — he is at 667.6 or 407.6 and nowhere between. Measured: film gaps at the two
+> hand-overs are **0.00s and 0.03s**, i.e. the shelf completes exactly.
+
+> ⚠️ **`sec` is the film's own duration and should stay that way.** 13.7s is a
+> long time to stand there — the answer is enemies riding up with you, **not a
+> faster lift**. A filmed plate cannot fast-forward convincingly.
+
+**The platform is drawn, not a sprite** — a placeholder for elevators that do not
+exist yet. A trapezoid on the belt's own perspective (narrower at the back, the
+same cue every shadow uses), a front face for thickness, grating that runs
+back-to-front so it converges with the slab, and **rails on the back corners
+only** — a rail at the front would stand between the camera and the fighter.
+
+**No enemies yet, deliberately** — the switchback and the lifts are the parts
+that could be wrong, and a fight on top would make that harder to see.
+
+**Re-measuring the legs:** `python3 tools/build-level-3-plate.py --measure <master>`
+prints the table without re-encoding. It phase-correlates on **both** axes
+(the other plate tools only ever needed x) and segments on *which axis is moving*
+rather than a hard-coded frame list, so re-cutting the clip re-derives the legs
+instead of silently desyncing them.
+
+**The video: 15.26 MB → 5.04 MB (3.0x)**, same 848x478, same duration, GOP 12.
+
+> ⚠️ **This master was not a master** — it arrived already at 848x478 h264 at
+> 1.47 Mbps, so the desert's two big levers were spent before we started. What
+> was left was **a 256 kbps AAC track on a silent backdrop (2.4 MB, 15% of the
+> file, nothing ever plays it)** and the CRF ladder: 8.24 / 6.40 / **5.04** /
+> 4.01 / 3.23 MB at CRF 26/28/30/32/34, measured at the 1280x720 the player sees.
+
+> ⚠️ **Those SSIM figures are not comparable to the desert tool's** — they score a
+> second encode against a first, not against clean footage. And **do not rescale
+> it**: "resolution is the wrong knob" applies harder with no oversampling left.
+
+---
+
 ## The ground cover (the desert's cigarette floor)
 
 ```js
