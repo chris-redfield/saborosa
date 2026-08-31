@@ -1385,6 +1385,150 @@ belt's **depth**, positive toward the viewer. It is **flat at 0.20 now**: the
 
 ---
 
+## Coming up out of the ground
+
+An enemy can arrive by **digging its way out of the desert floor** instead of
+walking on from the side. One word in the wave data turns it on:
+
+```js
+{ kind: 'cigarro', x: 2600, z: 220, from: 'ground' }
+```
+
+`from` is the same slot `from: 'behind'` already uses, read in `Stage._spawn`.
+**All three desert arenas** say it now — the mook of each wave, its espeto and its
+first charutobi. It started as the first arena alone, with the other two left as
+walk-ins for comparison; the comparison was made (*"make all the enemies in this
+stage spawn like this (for now)"*, 2026-08-31). Nowhere else in the game says it.
+
+**The exception is the walk-in charutobi.** One in the first arena, **three** in
+the second, all deliberately *not* diggers — a room where every arrival is a hole
+in the ground has no contrast left in it, and the point of these is that a rusher
+can still come at you from off the screen.
+
+> ⚠️ **Four charutobi in the second arena is a deliberate override of "one per
+> arena, never two."** That rule is real: he is outside the attack token
+> (`CONFIG.SUICIDE_RUSH`), so **nothing in the crowd can stagger a pair** — two due
+> on the same frame both run at the player at once. `delayMs` is the only tool,
+> and it does all the work. Measured arrival times for that wave, from the arena
+> opening: **0.9s / 1.8s / 2.7s** (the diggers) then **4.4s / 5.3s / 6.2s** (the
+> runners, allowing ~1.6s for the run in from the screen edge). Tune the fight
+> there; no AI knob will do it.
+
+> ⚠️ **Each charutobi is 30 HP and does 12 damage *plus a knockdown* when he goes
+> (`DEATH_BLAST.charutobi`), against `playerHealth` 110.** All four landing is 48
+> — getting on for half a bar — and four knockdowns, where a knockdown is the
+> state the next one reaches you in. Judge that wave before judging the room.
+
+> ⚠️ **A rusher's `x` is unread.** He never takes a mark — he is running from the
+> moment he is due — so the `x` on those entries is documentation of where he is
+> aimed and nothing more. His `z` **is** read, which is why the three runners sit
+> at 250 / 330 / 190: three rushers on one z run the same line and read as one
+> thick enemy.
+
+**There is no art for this.** It is two things:
+
+| piece | what it actually is |
+|---|---|
+| the hole in the floor | a dark ellipse, `ctx.ellipse` — the same shape and idea as the ground shadow |
+| the body half-buried | the sprite drawn *below* its ground point with everything under the floor line **clipped off** (`Fighter.draw`) |
+
+> ⚠️ **It was three things.** A **rim** cut from the desert's floor pack sat over
+> his feet to hide the clip line, and **debris** — the same drifts shrunk and
+> thrown in the air — came out with him. Both were refused on sight 2026-08-31
+> (*"I don't like these effects with the tiny cigarettes being thrown in the air.
+> Also the small cigarettes that appear in the feet of the enemy are not good as
+> well."*) and **deleted, not switched off**. Do not re-propose either. The
+> deletion also removed a dependency nobody asked for: the effect used to borrow
+> the floor pack, which quietly tied it to `SCENERY.on`. It needs no art now.
+
+### He comes up from behind the cigarettes
+
+While he is climbing he is drawn **between two of the scenery's five bands**, and
+rejoins the crowd's own z-sort the instant he is out — so the floor covers him on
+the way up and never once he is fighting. Which two planes is **dealt** per
+enemy, so a wave of three shows three different depths.
+
+The scenery is still **one layer** in `LAYERS`. `drawScenery()` in `game.js`
+splits that one pass in two around the fighters being injected, so nothing else
+in the render stack knows about it, and a room with no scenery lays out no bands,
+injects nobody, and draws byte-for-byte what it always did.
+
+### The knobs — `CONFIG.EMERGE`
+
+```js
+on: true,            // MASTER SWITCH — off, a digger is an ordinary walk-in
+heaveMs: 380,        // the hole opens, nothing coming out of it yet
+riseMs:  560,        // he climbs; he is UNTOUCHABLE for this and the heave
+settleMs: 420,       // the hole closes — he is already fighting through this
+holeW: 31.2, holeH: 10.2, holeAlpha: 0.62, holeColor: '#241609',
+spawnBehindScenery: true,   // draw him inside the floor while he climbs
+minBandsInFront: 1,         // how many planes of floor cover him — dealt
+maxBandsInFront: 3,         //   per enemy between these two, inclusive
+```
+
+**Two rollbacks, both one word:**
+
+| set | what you get back |
+|---|---|
+| `spawnBehindScenery: false` | diggers on the ordinary fighter plane, single-pass floor. The climb stays. |
+| `on: false` | no digging at all. `from: 'ground'` reverts to a normal walk-in — **the gate is in `Stage._spawn` as well as in `Enemy`**, or an enemy would be spawned on its mark with neither a walk-in nor a climb and would just appear standing. |
+
+> ⚠️ **`maxBandsInFront` is the pop dial.** The hand-off back to the fighters'
+> plane is instant, so whatever still covers him at the end of the climb is
+> revealed in one frame. Rendered at 4 planes in front, the frame before release
+> showed only his head and the hand-off read as him *appearing* rather than
+> arriving. 3 — which is also the number originally asked for — keeps it small.
+
+> ⚠️ **The planes are DEALT, not rolled, and that was a bug fix.** Over a range of
+> three, a per-enemy position hash put all three of the first arena on the *same*
+> plane — the one outcome that makes the feature look absent. The index steps
+> through the range and a hash of the **wave's** seed decides where the deal
+> starts. A per-*enemy* seed breaks the stepping and two of three collide again.
+
+> ⚠️ **The dealt plane is floored at 1 in code, not just by config.** Plane 0
+> would split the floor between the dead-area sixth layer and band 0, and those
+> two *do* interleave in z (back layer at 95/171, band 0 at 129/187) — the only
+> split that changes the floor's own draw order. Measured: every other plane
+> leaves it byte-for-byte identical. `minBandsInFront: 1` keeps 0 out of range
+> anyway, but a config is not a guarantee.
+
+> ⚠️ **`holeW`/`holeH` are 40% down** from the 52 × 17 they shipped at
+> (2026-08-31). For scale, the ordinary ground shadow is 44 × 13, so the hole is
+> now smaller than a fighter's own shadow rather than half again as big.
+
+**`heaveMs` is the beat that replaces the walk-in.** A walk-in exists so that
+nobody materialises in front of the player; this spends the same moment in place
+instead of sideways. If a digger ever reads as popping into existence, that is
+the number — nothing in `stage.js`.
+
+> ⚠️ **`holeAlpha: 0` leaves nothing to see.** The hole is now the whole of the
+> arrival. The desert floor is a carpet of pale butts at 90% coverage, so nothing
+> drawn *on* it in that same art reads at all — which is what the rim was, and why
+> it was invisible before it was disliked. A dark gap is what the eye catches.
+
+> ⚠️ **A pack whose frame is much taller than its body climbs "late".** The sink
+> is the frame's full reach, so what clears the floor first is whatever is drawn
+> highest. Measured: cigarro reaches **378px** above his ground point against a
+> **203px** body — so for the first ~46% of his rise the only thing above the sand
+> is his plume of smoke, and the body follows. It reads well for a cigarette and
+> it is worth knowing before wondering why he seems to appear late. Espeto is
+> 148/125 and charutobi 122/102, so neither of them does it.
+
+> ⚠️ **He cannot be hit for `heaveMs + riseMs`** — 940ms as set. `buried` on
+> `Fighter` is what does it (`vulnerable()` reads it), and it is a separate flag
+> from the `state === 'enter'` next to it, which belongs to the player. Making
+> the climb longer makes the window in which the player can stand on him and hit
+> nothing longer with it.
+
+> ⚠️ **An effect that has not STARTED is not an effect that is OVER**, and the
+> sink test in `Fighter.draw` must not read `started`. It did, and it was the
+> "enemies are already there, then the animation plays" bug: `delayMs` holds the
+> climb off (900ms for the espeto, 1800ms for charutobi) and for all of that time
+> the guard fell through to a sink of 0 and drew him standing on his mark in full
+> view. `sunk` already answers **1** before the clock runs.
+
+---
+
 ## Rooms
 
 ```js

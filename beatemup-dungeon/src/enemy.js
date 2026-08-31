@@ -112,6 +112,24 @@ class Enemy extends Fighter {
        300ms wide, and a corpse that could arm a second one would explode twice
        on its way out. See _deathBlast(). */
     this.blastDone = false;
+    /* ARRIVING FROM UNDERNEATH. Set by the wave data (`from: 'ground'`, read in
+       Stage._spawn) for the desert's diggers and null for everybody else, so
+       every other entrance in the game is byte-for-byte the walk-in it was.
+       The effect owns the clock; this file only asks it two questions -- am I
+       out yet, and is it finished. See emerge.js.
+
+       ⚠️ `buried` IS THE ONE THAT MATTERS TO THE REST OF THE GAME, not this.
+       It lives on Fighter, `vulnerable()` reads it, and it is what makes a body
+       with its head through the sand un-punchable. */
+    this.emerge = (o.emerge && CONFIG.EMERGE && CONFIG.EMERGE.on)
+      ? new Emerge(CONFIG.EMERGE, o.emergeIndex || 0, o.emergeSeed || 0) : null;
+    this.buried = !!this.emerge;
+    /* NO SHADOW WHILE HE IS IN THE GROUND. `game.js`'s shadow pass reads this
+       flag off any fighter (the horse sets it permanently). An ellipse under a
+       body that is still under the floor is a shadow cast by nothing, and it
+       announces the arrival a full second before the hole does. Cleared at the
+       same moment the body is released. */
+    this.noShadow = !!this.emerge;
     /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
        from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
        from the shared knobs. The two are the same shape — a list of attack
@@ -320,6 +338,20 @@ class Enemy extends Fighter {
     if (this.showBarT > 0) this.showBarT -= dt;
     this.aiT += dt;
 
+    /* ⚠️ THE HOLE IS TICKED HERE, NOT IN THE `enter` BRANCH THAT WAITS ON IT.
+       It keeps closing for a few hundred ms AFTER the body is out and fighting,
+       and by then `_think` is nowhere near that branch -- ticking it there would
+       freeze the gap wide open the instant he was released and leave it in the
+       sand for the rest of the room.
+
+       That is this codebase's oldest bug family, from the other side: anything
+       with its own clock decides when it is finished. So the effect is ticked
+       unconditionally while it exists, and it is dropped on its OWN `done`. */
+    if (this.emerge) {
+      this.emerge.update(dt);
+      if (this.emerge.done) this.emerge = null;
+    }
+
     if (!this.dead && this.state !== 'hurt' && this.state !== 'down') {
       this._think(dt, player, bounds);
     }
@@ -396,6 +428,43 @@ class Enemy extends Fighter {
          subject to the walls the moment it starts fighting. */
       this.enterT -= dt;
       if (this.enterT > 0) return;
+      /* CLIMBING OUT OF THE FLOOR INSTEAD OF WALKING ON. This sits above every
+         other entrance because it REPLACES the walk-in rather than modifying it:
+         a digger is already standing on its mark (Stage._spawn puts it there
+         instead of off the edge of the screen), so there is nothing to walk to,
+         no side to come from and no `entryX` to steer at.
+
+         ⚠️ THE STAGGER IS SPENT BEFORE THE MOUND STARTS, WHICH IS WHY `start()`
+         IS HERE AND NOT IN THE CONSTRUCTOR. `delayMs` is what makes a wave
+         arrive as a trickle rather than as a wall, and a pile that began heaving
+         at spawn would give away all three arrivals in the first frame -- the
+         group would be announced at once and only then arrive one at a time,
+         which is the stagger doing the opposite of its job.
+
+         ⚠️ HE ANIMATES WHILE HE CLIMBS. `state = 'walk'` is what puts the walk
+         cycle on him (pose() reads state, and `animT` free-runs), so he hauls
+         himself up rather than sliding out of the sand on a held idle frame. It
+         is the drawing only: `ai` is still 'enter', so the crowd's token, its
+         understudy and its targeting all continue to pass over him exactly as
+         they do for anyone walking in.
+
+         ⚠️ AND HE IS FACED ON RELEASE, NOT ON SPAWN. Which way he came up is
+         decided by where the player is standing when he gets there, and that is
+         a second and a half after the wave was authored. */
+      if (this.emerge) {
+        if (!this.emerge.started) this.emerge.start(this.x, this.z);
+        if (!this.emerge.released) {
+          this.buried = true;
+          this.state = 'walk';            // the drawing only -- see above
+          return;
+        }
+        this.buried = false;
+        this.noShadow = false;
+        this.ai = this.rush ? 'rush' : 'approach';
+        this.aiT = 0;
+        this._face(player);
+        return;
+      }
       /* ⚠️ A RUSHER HAS NO MARK, AND WALKING TO ONE WAS A BUG YOU COULD WATCH.
          Reported 2026-08-28: *"he just passes through the player and walks to
          the left by himself, then he suddenly comes running from the left."*

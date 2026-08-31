@@ -1050,7 +1050,7 @@
         drawEntities(camX);
         continue;
       }
-      if (layer.scenery) { scenery.draw(ctx, camX); continue; }
+      if (layer.scenery) { drawScenery(camX); continue; }
       if (layer.flies) { flies.draw(ctx, camX); continue; }
       backdrop.drawLayer(ctx, layer, filmX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
     }
@@ -1145,6 +1145,57 @@
     }
   }
 
+  /**
+   * THE FLOOR, WITH THE ENEMIES WHO ARE STILL CLIMBING OUT OF IT PAINTED INSIDE
+   * IT. Asked for 2026-08-31: *"make them be part of the background during the
+   * spawn animation, and right after it finishes, bring them back to the front
+   * plane... as if they are leaving from behind the pile of cigarettes"*, then
+   * relaxed from a fixed three planes to *"spawn between some layers randomly"*.
+   *
+   * A digger is drawn between two of the scenery's bands while he is buried and
+   * with the crowd the instant he is out. Which two is his own roll -- see
+   * `Emerge.pickPlane`.
+   *
+   * ⚠️ ONE FUNCTION DECIDES WHO IS INJECTED, AND `drawEntities` ASKS THE SAME
+   * ONE. If the two lists could ever disagree a fighter is drawn twice or not at
+   * all, and "not at all" is an enemy that is invisible until he swings. That is
+   * why this is `emergingBehind()` rather than a condition written out twice.
+   *
+   * ⚠️ AND IT DEGRADES TO THE OLD SINGLE PASS. A room with no scenery lays out
+   * no bands, `pickPlane` answers null, nobody is injected and this is
+   * `scenery.draw` with extra steps -- so the street and the boss room draw
+   * byte-for-byte what they always did.
+   */
+  function emergingBehind() {
+    const E = CONFIG.EMERGE;
+    if (!E || !E.on || E.spawnBehindScenery === false) return null;
+    if (!scenery.bands) return null;
+    let out = null;
+    for (const e of crowd.list) {
+      const em = e.emerge;
+      if (!em) continue;
+      if (!em.planeSet) em.pickPlane(scenery.bands);
+      if (!em.behindScenery()) continue;
+      (out || (out = [])).push(e);
+    }
+    /* Deepest plane first, so the injections come out in the order the bands are
+       painted and each one only ever needs the range since the last. */
+    if (out) out.sort((a, b) => a.emerge.plane - b.emerge.plane);
+    return out;
+  }
+
+  function drawScenery(camX) {
+    const inject = emergingBehind();
+    if (!inject) { scenery.draw(ctx, camX); return; }
+    let lo = -Infinity;
+    for (const f of inject) {
+      scenery.drawBands(ctx, camX, lo, f.emerge.plane);
+      lo = f.emerge.plane;
+      f.draw(ctx, sheets, camX);
+    }
+    scenery.drawBands(ctx, camX, lo, Infinity);
+  }
+
   function drawEntities(camX) {
     /* SORTED BY z, AND THIS IS THE WHOLE ILLUSION. Bigger z is nearer the
        camera, so it is drawn later and therefore in front. Sorting by anything
@@ -1173,7 +1224,13 @@
        boss `assets`, which would have drawn the horse as nothing at all.
        Either way it is sorted into the same z order, which is what matters:
        the player must be able to walk in front of it. */
+    /* ⚠️ ANYONE THE SCENERY PASS ALREADY PAINTED IS SKIPPED HERE, and the two
+       passes ask the SAME function so they cannot disagree. Drawing him again
+       would put a second copy of him in front of the mounds that are supposed to
+       be covering him, which is the whole effect undone. */
+    const behind = emergingBehind();
     for (const f of all) {
+      if (behind && behind.indexOf(f) >= 0) continue;
       if (f === stage.boss) f.draw(ctx, f.usesSheets ? sheets : assets, camX);
       else f.draw(ctx, sheets, camX);
     }

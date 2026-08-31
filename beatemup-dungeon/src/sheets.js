@@ -312,6 +312,38 @@ class Sheets {
   }
 
   /**
+   * How far the tallest frame of a pose reaches ABOVE the ground point, drawn px.
+   *
+   * ⚠️ THIS IS THE FRAME'S REACH, NOT `size()`'s BODY HEIGHT, and the difference
+   * is the whole reason it is a second method. `size()` deliberately returns
+   * `bh` -- the BODY -- because a health bar floated over the cigarette's frame
+   * height would hover a third of a screen above his smoke. The one caller here
+   * wants the opposite: emerge.js sinks a fighter far enough that NOTHING of him
+   * shows above the floor, and a sink measured on the body leaves the plume
+   * hanging in the air over an empty patch of sand.
+   *
+   * ⚠️ THE MAX ACROSS THE POSE, not the current frame. The sink is a distance
+   * held for the length of a rise while the walk cycle plays underneath it;
+   * measured per frame it would breathe, and the shortest frame of the cycle
+   * would poke through the floor.
+   */
+  topPx(kind, pose) {
+    const pack = this.packs[kind];
+    if (!pack) return 0;
+    const n = Math.max(1, this.poseLength(kind, pose));
+    let top = 0;
+    for (let i = 0; i < n; i++) {
+      const f = this.rect(kind, pose, i);
+      if (!f) continue;
+      // A grid pack has no anchor and is drawn bottom-aligned, so its whole
+      // height is above the ground point -- which is what the fallback says.
+      const t = (f.ay != null ? f.ay : f.h) * pack.scale;
+      if (t > top) top = t;
+    }
+    return top;
+  }
+
+  /**
    * Drawn size of a pose, for the health bar and the debug boxes.
    *
    * THE HEIGHT IS THE BODY'S WHERE THE DEFS KNOW IT (`bh`), not the frame's.

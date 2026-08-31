@@ -3890,6 +3890,245 @@ as **6** — the knob-set-to-zero trap this project already has a rule about.
 
 ---
 
+## They come up out of the ground (2026-08-31)
+
+*"next task for the desert is: make the enemies come out of the pile of
+cigarettes, like make them come out of the ground. we didn't plan for this
+animation, so lets try to improvise. this will only happen in the desert stage,
+make the first enemies come out from the ground so we can test them."*
+
+The improvisation was **named in the ask**, which mattered: there is no burrow
+row, no dig pose, nothing in any pack that draws a body half-buried, and none was
+going to be drawn for this. So the arrival is assembled out of things the game
+already owns. `README.md` has the knobs; this is the shape of it and what the
+building taught.
+
+### It is a CLIP, not an animation
+
+The fighter is drawn **below its own ground point** and everything under the
+floor line is scissored off (`ctx.clip` in `Fighter.draw`). The body is revealed
+head-first as the sink runs to zero, which is the picture a dig-out row would
+have drawn. Nothing in the simulation knows: `groundY()` is untouched, so the
+hurtbox, the reaches, the z-sort and `depthScale` all still say he is standing
+exactly where he is standing. **The drawing moved and the fighter did not.**
+
+⚠️ **The sink is the FRAME's reach, not the body's height** — `sheets.topPx()`,
+added for this, rather than `size().h`. `size()` deliberately returns the *body*
+(`bh`) because a health bar floated over the cigarette's frame height would hover
+a third of a screen above his smoke. Here the opposite is wanted: measured on the
+body, his plume of smoke hangs in the air over a patch of empty sand while he is
+still entirely underground. Max across the pose, too, or the sink breathes with
+the walk cycle and the shortest frame pokes through the floor.
+
+### The two pieces made of cigarettes were both wrong, and the reasons differ
+
+The first build had three parts: the clip, a **rim** — one drift out of the
+desert's own floor pack drawn over his feet, to hide the dead-straight scissor
+line — and **debris**, the same drifts shrunk and thrown in the air. Both of the
+cigarette parts are now **deleted**.
+
+They failed twice over, and the order matters because the first failure was mine
+and the second was the verdict.
+
+**First, rendered against the real desert floor, the rim was nearly invisible.**
+It is a drift out of the pack **the floor is made of**, at roughly the floor's own
+scale, on a carpet at 90% coverage. A floor tile on a floor. ⚠️ **An effect made
+of the scenery it happens in disappears into it.** The instinct to cut the rim
+from the floor pack was the obvious one — it is the only art that could possibly
+match — and *matching* is exactly what made it read as nothing. So the **hole**
+was added to carry the effect: a filled ellipse, deliberately the same shape and
+visual language as the ground shadow `game.js` already draws under every fighter,
+drawn under the sprite so he climbs out of it.
+
+**Then both cigarette parts were refused on sight** (2026-08-31): *"I don't like
+these effects with the tiny cigarettes being thrown in the air. Also the small
+cigarettes that appear in the feet of the enemy are not good as well."* Deleted
+rather than switched off — the same thing this project did to the film filter
+([[no_film_filter]]). What is left is the hole and the clip, which is the version
+that was carrying it anyway.
+
+⚠️ **And the deletion removed a dependency nobody had asked for.** Borrowing the
+floor pack quietly tied the whole arrival to `SCENERY.on` — a global switch, not
+the per-room `scenery: true`. The effect now draws one ellipse and needs no art,
+so a digger works in any room on any floor. **Cutting the disliked half made the
+remaining half less coupled, which is worth noticing: the two cigarette pieces
+were the only reason this file ever touched an asset.**
+
+### A knob that lied, found by rendering it
+
+Now moot — it was in the debris — but the lesson is not. `upPx` and `outPx` began
+as launch **velocities** with comments calling them a height and a distance.
+`upPx: 210` against `gravity: 1500` is an apex of **26px**, on a floor whose own
+drifts are 34px tall: debris that never leaves the pile, which is precisely what
+the render showed.
+
+Second time on this game that a number was right and the thing it named was
+wrong. Both were caught by looking at a picture; neither would have been caught by
+reading the file.
+
+### The bug: "the enemies are already there, then the animation plays"
+
+Reported on first play, 2026-08-31, and it is one clause in `Fighter.draw`:
+
+```js
+const sunk = (em && em.started && !em.released) ? em.sunk : 0;   // WRONG
+const sunk = (em && !em.released) ? em.sunk : 0;                 // right
+```
+
+An enemy is spawned when the arena opens but does not `start()` its climb until
+its own `delayMs` has run — **900ms for the espeto, 1800ms for CHARUTOBI**. For
+all of that time the guard read `started === false`, fell through to a sink of
+zero, and drew him standing on his mark in full view. Then the ground opened under
+a fighter the player had been looking at for the best part of two seconds and
+swallowed him so he could climb back out.
+
+⚠️ **AN EFFECT THAT HAS NOT STARTED IS NOT AN EFFECT THAT IS OVER**, and one
+ternary cannot mean both. `sunk` already answered **1** before the clock ran — he
+is under the floor from the moment he exists until he digs out — and the guard was
+reading the clock to decide whether to believe the state. That is the same family
+as everything else in this file's bug list, in its quietest form: not a thing left
+running, but a thing not yet running being treated as a thing finished.
+
+⚠️ **The preview could not have caught it, because the preview zeroed `delayMs`.**
+The bug lived *entirely* inside the stagger, and the instrument was built with the
+stagger removed as "not the effect". That is exactly the failure written down in
+[[preview_before_playing]] — *reproduce the STATE, not just the clock* — repeated
+on the very next feature. The instrument now runs the wave's real delays, and with
+the fix in place the espeto's arena is pixel-for-pixel unchanged for the whole
+900ms before his hole opens.
+
+### The wiring, and the two flags that are not the same flag
+
+* `from: 'ground'` in the wave data, the same slot `from: 'behind'` already uses.
+  **So "only in the desert" is a fact about which waves say it**, not a room
+  setting and not a branch — putting a digger in the street costs no code.
+* A digger is **spawned on its mark**, not off the edge of the screen, and its
+  `entryX` is null: there is nothing to walk to. The heave is the beat the
+  walk-in used to buy, spent in place instead of sideways.
+* ⚠️ **`buried` on `Fighter` is what makes him untouchable, and it is NOT the
+  `state === 'enter'` clause sitting next to it in `vulnerable()`.** The two look
+  interchangeable and are not: `state === 'enter'` is *the player* walking on at
+  the start of a room — `player.js` is the only thing in the game that ever sets
+  it. An enemy walking in has `ai === 'enter'` and `state === 'walk'`, which is
+  harmless because it is off-screen; one climbing out of the floor is standing in
+  the middle of the arena on camera. Without the new flag he can be punched,
+  knocked down and killed while he is still a hole in the ground.
+* `state = 'walk'` while he climbs, so the walk cycle plays and he *hauls* himself
+  up rather than sliding out on a held idle frame. `ai` stays `'enter'`
+  throughout, so the crowd's attack token, its understudy and its targeting all
+  pass over him exactly as they do for anyone walking in — **no code in
+  `Crowd.update` was touched**.
+* ⚠️ **The effect is ticked in `Enemy.update`, not in the AI branch that waits on
+  it.** The rim keeps closing for 420ms *after* he is out and fighting, and by
+  then `_think` is nowhere near that branch — ticking it there freezes the pile
+  at full size and leaves it in the sand for the rest of the room. That is this
+  codebase's oldest bug family from the other side: **anything with its own clock
+  decides when it is finished**, so it is ticked unconditionally and dropped on
+  its own `done`.
+
+### And then he came up from behind the pile (same day)
+
+Two follow-ups after the first play, and the second one changed shape mid-ask:
+*"make them, during the spawn, appear as if they were behind the 3 first layers
+of the level background... right after it finishes, bring them back to the front
+plane"* — then, before it was built — *"maybe we don't have to hard code it, just
+make them spawn between some layers randomly"*. Plus: the hole **40% smaller**.
+
+**The scenery is still one layer, and that is the whole trick.** `CONFIG.LAYERS`
+is untouched; `drawScenery()` in `game.js` splits the single scenery pass in two
+around the fighters being injected. Nothing else in the render stack learns that
+a fighter can live inside the floor.
+
+⚠️ **`drawBands` filters, it does not re-sort.** `items` stays in z order, so a
+two-pass draw is the one-pass draw with a gap in the middle and every mound keeps
+its overlaps. That holds **because the bands do not interleave in z** — measured
+on the desert: bands 0–1 run z 129–226, band 2 271–308, band 3 373–434, band 4
+483–511. If a future `bandOffsetZ` ever makes them interleave, this is what would
+quietly change the look of the floor, and it would not look like this feature.
+
+⚠️ **ONE FUNCTION DECIDES WHO IS INJECTED AND BOTH PASSES ASK IT.**
+`emergingBehind()` is called by `drawScenery` and again by `drawEntities`, which
+skips whoever it names. Written as a condition in two places instead, any drift
+between them draws a fighter twice or **not at all** — and "not at all" is an
+enemy who is invisible until he swings.
+
+⚠️ **The planes are DEALT, not rolled, and that is a bug fix rather than a
+preference.** The first version hashed the spawn position, and over a range of
+three that collided: all three enemies of the first arena — the wave actually
+under test — came up behind the *same* plane, which is the one outcome that makes
+the feature look like it is not there. The wave index now steps through the
+range, and a hash of the **wave's** seed decides where the deal starts. ⚠️ The
+seed has to belong to the wave: a per-enemy one breaks the stepping and two of
+three collide again. It is still not `Math.random` — same rule the orbit
+direction follows, and "did that look right?" stops being answerable when the
+thing you saw cannot be seen again.
+
+⚠️ **AND ONE PLANE WAS MADE UNREACHABLE RATHER THAN DOCUMENTED.** Plane 0 —
+behind every belt band — splits the floor between the dead-area sixth layer
+(band −1) and band 0, and those two *do* interleave in z (back layer at 95/171,
+band 0 at 129/187), so inserting there reorders the floor itself while a digger
+climbs. Every other plane leaves the draw order byte-for-byte identical; that was
+measured across three camera positions before it was believed. `minBandsInFront:
+1` already kept 0 out of range, and `pickPlane` floors at 1 as well — **prefer
+removing the possibility to patching the instance**, which is this codebase's own
+standing rule about its worst bug family.
+
+⚠️ **The hand-off is instant, so `maxBandsInFront` is a POP DIAL.** Whatever still
+covers him when the climb ends is revealed in one frame. Rendered at 4 planes in
+front, the frame before release showed **only his head** — the hand-off read as
+him appearing rather than arriving. Capped at 3, which is also the number
+originally asked for before the ask was relaxed.
+
+⚠️ **THE MASTER SWITCH HAD TO BE GATED IN TWO PLACES TO BE A ROLLBACK.**
+`EMERGE.on: false` originally only stopped `Enemy` building the effect — and the
+wave data still said `from: 'ground'`, so the enemy was spawned **on its mark**
+with neither a walk-in nor a climb and simply appeared standing in the arena.
+Worse than either version. `Stage._spawn` reads the flag too, so off means an
+ordinary walk-in. **A flag that leaves the data pointing at a path it has just
+deleted is not an off switch.**
+
+### Where it is, and what has not been judged
+
+**All three desert arenas**, as of the third round of the same day: the mook, the
+espeto and the first charutobi of each wave. It shipped as the first arena alone
+with the other two left as walk-ins for comparison, which is what the comparison
+was for — *"make all the enemies in this stage spawn like this (for now)"*. The
+"for now" is the user's own word, and it is why this stayed **wave data**: taking
+it off is one word per enemy in three places.
+
+**And then the contrast was put back deliberately.** One charutobi in the first
+arena and **three** in the second walk in from off the screen instead. A room
+where every single arrival is a hole in the ground has nothing left to be
+surprising against, and a rusher coming from the edge is a different threat from
+one coming up under your feet.
+
+⚠️ **FOUR CHARUTOBI IN ONE ARENA IS AN OVERRIDE OF A RULE THAT IS STILL TRUE.**
+"One per arena, never two" was written because he is outside the attack token —
+nothing in the crowd can hold one back while another commits, so two due on the
+same frame both run at once. `delayMs` is the only stagger there is, and it now
+carries the whole wave. Arrival times measured off the config rather than
+guessed, from the arena opening: **0.9 / 1.8 / 2.7s** for the diggers, then
+**4.4 / 5.3 / 6.2s** for the runners once the ~1.6s run in from the screen edge
+is counted. The 1.6s gap after the last digger is the wave's one breath.
+
+⚠️ **AND IT IS THE ROOM'S HARDEST MOMENT BY SOME WAY.** Each charutobi is 30 HP
+and does 12 damage *plus a knockdown* on detonation, against `playerHealth` 110:
+four landing is 48 and four knockdowns, and a knockdown is the state the next one
+reaches you in. This wave is the thing to judge before judging the desert.
+
+⚠️ **The rusher digging is the one combination worth watching.** CHARUTOBI's
+entrance normally *drops* his mark — he is running at the player from the moment
+he is due — so digging gives him a mark back and the run starts from the hole
+instead of from off-screen. That is a shorter run than the one that was tuned.
+
+**Played on the day it was built** — which produced the deletion, the bug and the
+depth pass above. The user's word on the state after the first round was *"this is
+a serious improvement"*. The plane work and the smaller hole have not been played
+yet, and both are one flag away from off: `spawnBehindScenery` for the depth,
+`EMERGE.on` for the whole thing.
+
+---
+
 ## Level 3 — the bookcase (2026-08-27)
 
 *"Time to add level 3, push the horse boss room to the end... this video is

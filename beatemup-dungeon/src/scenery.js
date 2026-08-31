@@ -89,7 +89,12 @@
 class Scenery {
   constructor(assets) {
     this.assets = assets;
-    this.items = [];       // {x,z,k,p,s} world pos + scroll rate + draw scale
+    /* {x,z,k,p,s,b} -- world pos, frame, scroll rate, draw scale, and the BAND
+       it belongs to. The band is carried per item purely so the field can be
+       drawn in two halves with something painted between them; nothing about
+       the layout reads it. See `drawBands`. */
+    this.items = [];
+    this.bands = 0;        // how many belt bands this room laid out
     this.defs = null;
   }
 
@@ -158,6 +163,7 @@ class Scenery {
    */
   enterRoom(room) {
     this.items = [];
+    this.bands = 0;
     const S = CONFIG.SCENERY;
     if (!S || !S.on || !room || !room.scenery) return;
     const defs = this.assets.getJSON ? this.assets.getJSON('scenery') : null;
@@ -191,6 +197,7 @@ class Scenery {
        three tuned values of the old far/mid/near still describe the same shape,
        and five bands read five samples off it instead of three. */
     const BANDS = Math.max(1, Math.round(S.bands || 3));
+    this.bands = BANDS;
     const P = S.parallax;
     const rate = Scenery._ramp((P && P.on) ? (P.rates || P) : null, BANDS, 1);
     const size = Scenery._ramp(S.bandScale, BANDS, 1);
@@ -242,7 +249,7 @@ class Scenery {
          the bottom of the screen is meant to. */
       const z = (S.zFrom + (S.zTo - S.zFrom) * f + drop[b]) * depth
               + (Scenery._h(r * 97 + 3) - 0.5) * (S.zJitter || 40);
-      this._scatter(defs, n, x0, x1, z, p, sc, S.spacing || 0.65, r);
+      this._scatter(defs, n, x0, x1, z, p, sc, S.spacing || 0.65, r, b);
     }
 
     /* ⚠️ THE SIXTH LAYER, AND IT IS NOT A SIXTH BAND. Asked for 2026-08-28:
@@ -278,9 +285,13 @@ class Scenery {
            index, so reusing 0 and 1 here would lay this layer out in lockstep
            with the two rows at the back of the belt -- the same drifts at the
            same x, which reads as one band drawn twice rather than as depth. */
+        /* ⚠️ BAND -1, WHICH IS NOT A BAND. The dead-area layer is behind every
+           belt band by construction, so it is given an index below all of them
+           -- `drawBands(-1, k)` then means "everything behind band k" with no
+           special case for it. */
         this._scatter(defs, n, x0, x1, z, BL.parallax != null ? BL.parallax : 1,
                       BL.scale != null ? BL.scale : 1,
-                      BL.spacing || S.spacing || 0.65, 100 + r);
+                      BL.spacing || S.spacing || 0.65, 100 + r, -1);
       }
     }
 
@@ -298,11 +309,11 @@ class Scenery {
    * DRAWN width, which is the band's scale times the frame's, or a band drawn
    * bigger packs tighter as well as growing and "bigger" arrives as "denser".
    */
-  _scatter(defs, n, x0, x1, z, p, sc, spacing, seed) {
+  _scatter(defs, n, x0, x1, z, p, sc, spacing, seed, band) {
     let x = x0, i = 0;
     while (x < x1) {
       const k = Math.floor(Scenery._h(seed * 911 + i * 57) * n) % n;
-      this.items.push({ x, z, k, p, s: sc });
+      this.items.push({ x, z, k, p, s: sc, b: band });
       const w = defs.frames[k].w * sc;
       x += w * spacing * (0.85 + 0.3 * Scenery._h(seed * 17 + i * 13));
       i++;
@@ -320,13 +331,33 @@ class Scenery {
    * draws on the narrowest, and one big enough for the narrowest pops the widest
    * in at the edge of the screen.
    */
-  draw(ctx, camX) {
+  draw(ctx, camX) { this.drawBands(ctx, camX, -Infinity, Infinity); }
+
+  /**
+   * Draw only the bands in `[lo, hi)`, so a fighter can be painted BETWEEN two
+   * planes of the floor -- which is what makes a spawning enemy look like it is
+   * coming out from behind the cigarettes rather than on top of them. Added
+   * 2026-08-31; see CONFIG.EMERGE and the scenery branch in game.js.
+   *
+   * ⚠️ IT FILTERS, IT DOES NOT RE-SORT. `items` is in z order and stays in it,
+   * so a two-pass draw is the one-pass draw with a gap in the middle -- the
+   * mounds keep their overlaps exactly. That holds because the bands do not
+   * interleave in z (measured on the desert: band 0-1 run z 129..226, band 2
+   * 271..308, band 3 373..434, band 4 483..511), and if a future `bandOffsetZ`
+   * ever makes them interleave, THIS is what would quietly change the floor.
+   *
+   * ⚠️ AND THE DEAD-AREA LAYER IS BAND -1, so `lo` must be -Infinity (or -1) to
+   * include it, never 0.
+   */
+  drawBands(ctx, camX, lo, hi) {
     if (!this.items.length) return;
     const img = this.assets.getDrawable('scenery');
     const defs = this.defs;
     if (!img || !defs) return;
     const topY = Belt.topY;
     for (const it of this.items) {
+      const b = it.b != null ? it.b : 0;
+      if (b < lo || b >= hi) continue;
       const f = defs.frames[it.k];
       /* ⚠️ EACH ITEM CARRIES ITS OWN SCROLL RATE, and the CULL below has to use
          the same number or a lagging layer pops in and out at the screen edge. */

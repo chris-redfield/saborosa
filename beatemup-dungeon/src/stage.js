@@ -468,7 +468,16 @@ class Stage {
        deleted bodies from the previous wave that were still visibly on screen.
        See Crowd.clearLiving(). */
     crowd.clearLiving();
+    /* ⚠️ THE INDEX IS PASSED DOWN, and it is used for exactly one thing: the
+       diggers of a wave are DEALT different scenery planes to come up behind
+       rather than each hashing its own. Three enemies hashing over a
+       three-value range collided on the first arena. See Emerge.pickPlane. */
+    let idx = -1;
+    /* ONE SEED FOR THE WHOLE WAVE, so the deal above steps cleanly through the
+       range. Per-enemy seeds put two of three back on the same plane. */
+    const waveSeed = (seg.enemies && seg.enemies.length) ? seg.enemies[0].x : 0;
     for (const e of seg.enemies || []) {
+      idx++;
       /* ENEMIES ARE PLACED OFF SCREEN AND WALK IN, rather than appearing at the
          spot they will fight from. A fighter that materialises in front of the
          player reads as a bug even when it is the design, and the walk-in also
@@ -484,6 +493,32 @@ class Stage {
          without a special case. Only its starting side and its first-frame
          facing are set here. */
       const behind = e.from === 'behind';
+      /* `from: 'ground'` COMES UP THROUGH THE FLOOR, and it is the one entrance
+         that is not a walk-in at all -- see emerge.js and Enemy's `enter` branch.
+         Asked for 2026-08-31 for the desert, whose floor is a sea of cigarette
+         butts: *"make the enemies come out of the pile of cigarettes, like make
+         them come out of the ground"*.
+
+         ⚠️ IT IS SPAWNED ON ITS MARK, NOT PAST THE EDGE OF THE SCREEN, and that
+         is the whole of the difference here. Everything below this exists to put
+         a body somewhere it cannot be seen and steer it in; a digger is already
+         where it is going to fight, so `entryX` is null (there is nothing to walk
+         to) and the margin, the overhang and the side are all irrelevant to it.
+
+         ⚠️ AND THE REASON IT MAY MATERIALISE IN FRONT OF THE PLAYER -- which the
+         walk-in exists to prevent -- is that it does not materialise. The mound
+         heaves for the best part of half a second before any of it is visible,
+         which is the same beat the walk-in buys, spent in place instead of
+         sideways. If that ever stops reading, `heaveMs` is the number, not this. */
+      /* ⚠️ GATED ON `EMERGE.on` HERE, NOT ONLY IN THE ENEMY, AND THAT IS WHAT
+         MAKES THE FLAG A REAL ROLLBACK. Without this, turning the effect off
+         left the wave data still saying `from: 'ground'`: the enemy would be
+         spawned ON its mark with no walk-in and no climb, so it would simply
+         appear standing in the arena -- worse than either version. Off, a
+         digger is an ordinary walk-in and the level plays exactly as it did
+         before any of this existed. */
+      const ground = e.from === 'ground'
+                  && !!(CONFIG.EMERGE && CONFIG.EMERGE.on);
       /* ⚠️ THE MARGIN IS MEASURED OFF THE DRAWING, NOT PICKED. It used to be a
          flat 70px past the edge, and that quietly stopped working the moment
          the roaches were scaled up: a barata's sprite reaches 169px from its
@@ -502,12 +537,20 @@ class Stage {
                                : { left: 0, right: 0 };
       const pad = (CONFIG.spawnMarginPx != null ? CONFIG.spawnMarginPx : 70)
                 + Math.max(over.left, over.right);
-      const fromX = behind ? this.camX - pad
+      const fromX = ground ? e.x
+                  : behind ? this.camX - pad
                            : this.camX + CONFIG.GAME_W + pad;
       const en = new Enemy(e.kind, fromX, e.z, {
         delayMs: e.delayMs || 0,
-        entryX: e.x,          // the spot it walks IN to before it starts fighting
+        // The spot it walks IN to before it starts fighting. A digger has none:
+        // it came up standing on it.
+        entryX: ground ? null : e.x,
+        /* A digger's first-frame facing is thrown away -- it is faced at the
+           player the moment it is out, and until then it is under the sand. */
         facing: behind ? 'right' : 'left',
+        emerge: ground,
+        emergeIndex: idx,
+        emergeSeed: waveSeed,
       });
       crowd.add(en);
     }

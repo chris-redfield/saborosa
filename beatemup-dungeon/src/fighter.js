@@ -46,6 +46,14 @@ class Fighter {
     this.hurtVariant = 0;
 
     this.facing = o.facing || 'left';
+    /* STILL UNDER THE FLOOR. Set by an enemy that arrives by digging its way out
+       (see emerge.js and Enemy's `enter` branch); false for everybody else and
+       for the same fighter one second later. It is declared HERE rather than
+       left to spring into existence on the Enemy, because `vulnerable()` reads
+       it on every fighter in the game on every frame of every hitbox test, and a
+       query whose answer depends on whether a property has been invented yet is
+       the shape of bug this file's history is made of. */
+    this.buried = false;
     this.state = 'idle';
     this.stateT = 0;
 
@@ -117,7 +125,16 @@ class Fighter {
       including getting up — a fighter picking itself off the floor that could
       be hit again would never get up at all. */
   vulnerable() {
-    return !this.dead && this.hurtT <= 0 && this.state !== 'down' && this.state !== 'enter';
+    /* ⚠️ `buried` IS NOT COVERED BY THE `enter` CLAUSE NEXT TO IT, and the two
+       look interchangeable. `state === 'enter'` is the PLAYER walking on at the
+       start of a room -- player.js is the only thing that ever sets it. An enemy
+       walking in has `ai === 'enter'` and `state === 'walk'`, which is fine
+       because it is off-screen; one climbing out of the floor is standing in the
+       middle of the arena, on camera, with its head through the sand. Without
+       this it can be punched, knocked down and killed while it is still a hole
+       in the ground. */
+    return !this.dead && !this.buried
+      && this.hurtT <= 0 && this.state !== 'down' && this.state !== 'enter';
   }
 
   /** Half-extents of the hurtbox, in world units. */
@@ -1240,14 +1257,68 @@ class Fighter {
        that blows up like the bomb has no explosion drawings of its own -- see
        `bodyHidden`. Everything above this line still runs because it is all
        cheap and none of it paints. */
+    /* STILL COMING UP OUT OF THE FLOOR -- and this is the whole of the hole.
+       There is no burrow art anywhere in this game (see emerge.js), so the body
+       is simply drawn BELOW where it stands and everything under the ground line
+       is scissored off. The sprite is revealed head-first as `sunk` runs 1 -> 0,
+       which is the same picture a dig-out row would have drawn.
+
+       ⚠️ THE SINK IS THE FRAME'S REACH, NOT THE BODY'S HEIGHT -- `topPx` rather
+       than `size().h`, and the note on it says why: measured on the body, a
+       cigarette's plume of smoke hangs in the air over a patch of empty sand
+       while he is still entirely underground. The few px on top are slack, so a
+       pack whose anchor sits a hair low does not leave a scalp showing.
+
+       ⚠️ AND IT MOVES THE PICTURE ONLY. `groundY()` is untouched, so the hurtbox,
+       the reaches, the z-sort and `depthScale` all still say he is standing
+       exactly where he is standing. Nothing in the simulation knows about this;
+       `buried` is what keeps him out of the fight, and it is a separate flag on
+       purpose -- see vulnerable(). */
+    const pose = this.pose(sheets);
+    const em = this.emerge;
+    /* ⚠️ `em.started` IS NOT PART OF THIS TEST, AND PUTTING IT HERE WAS THE BUG.
+       Reported 2026-08-31: *"when I reach the first arena, the enemies are
+       already there, then the appearing animation plays"*. An enemy is spawned
+       when the arena opens but does not `start()` its climb until its `delayMs`
+       has run -- 900ms for the espeto, 1800ms for CHARUTOBI -- and for all of
+       that time this read `started === false`, fell to a sink of 0, and drew him
+       standing on his mark in full view. Then the ground opened under a fighter
+       the player had been looking at for nearly two seconds and swallowed him so
+       he could climb back out.
+
+       AN EFFECT THAT HAS NOT STARTED IS NOT AN EFFECT THAT IS OVER. `sunk`
+       already answers 1 before `start()`, which is exactly right: he is under
+       the floor from the moment he exists until he digs his way out. The guard
+       was reading the clock to decide whether to believe the state. */
+    const sunk = (em && !em.released) ? em.sunk : 0;
+    const sinkPx = sunk > 0
+      ? (sheets.topPx(this.kind, pose) * this.depthScale() + 8) * sunk
+      : 0;
+
+    /* THE HOLE, BEFORE THE BODY -- the ground opens UNDER him, so he comes up out
+       of it. Drawn after the sprite instead, it paints the gap on top of the
+       fighter climbing through it. */
+    if (em && em.started) em.draw(ctx, camX, this.depthScale());
+
     if (!this.bodyHidden(sheets)) {
       const t = this._shudderTint(sheets);
+      if (sinkPx > 0) {
+        ctx.save();
+        ctx.beginPath();
+        /* Everything ABOVE the ground point survives. The rect starts well off
+           the top of the canvas rather than at 0 so this is one shape whatever
+           the fighter's z, and it is torn down again immediately -- a clip left
+           standing would take the rest of the frame with it. */
+        ctx.rect(0, -4000, CONFIG.GAME_W, gy + 4000);
+        ctx.clip();
+      }
       /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
          method. An explosion goes OVER the body it is destroying. */
-      sheets.draw(ctx, this.kind, this.facing, this.pose(sheets), this.frameStep(sheets),
-                  gx, gy, { alpha, rotate, flash: this.flash * 0.55,
+      sheets.draw(ctx, this.kind, this.facing, pose, this.frameStep(sheets),
+                  gx, gy + sinkPx, { alpha, rotate, flash: this.flash * 0.55,
                             scale: this.depthScale(),
                             tint: t && t.tint, tintAlpha: t && t.tintAlpha });
+      if (sinkPx > 0) ctx.restore();
     }
 
     /* THE REAL EXPLOSION, OVER THE BODY IT IS DESTROYING. Last, so it is never

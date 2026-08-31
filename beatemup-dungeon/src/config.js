@@ -1046,10 +1046,32 @@ const CONFIG = {
            190 -- the same 58% across the band the street's enemies sit at, and a
            step in front of where the player walks on (228). A z copied from a
            street wave would land at half the depth it means. */
+        /* ⚠️ EVERY WAVE IN THIS ROOM NOW COMES UP OUT OF THE FLOOR. It started
+           as this arena alone (*"make the first enemies come out from the ground
+           so we can test them"*, 2026-08-31) with the other two left as ordinary
+           walk-ins for comparison; the comparison was made and the answer was
+           *"make all the enemies in this stage spawn like this (for now)"*. So
+           `from: 'ground'` is on all three arenas.
+
+           ⚠️ "FOR NOW" IS THE USER'S OWN WORD AND IT IS WHY THIS IS STILL WAVE
+           DATA rather than a room flag. Taking it off is one word per enemy, in
+           three places, and nothing else moves.
+
+           ⚠️ THE EXCEPTION IS THE WALK-IN CHARUTOBI -- one here, three in the
+           second arena. Those are deliberately NOT diggers: the point of them is
+           that a rusher can also come at the player from off the screen, and a
+           room where every single arrival is a hole in the ground has no
+           contrast left in it. See their own notes below.
+
+           ⚠️ THEIR `x` NOW MEANS WHERE THEY COME UP, NOT WHERE THEY WALK TO. It
+           is the same number and the same spot -- a digger is spawned standing on
+           its mark rather than off the edge of the screen (Stage._spawn) -- but
+           it is on camera from the first frame of the heave, so a mark that used
+           to be merely sensible is now framing. See CONFIG.EMERGE. */
         {
           kind: 'arena',
           enemies: [
-            { kind: 'cigarro', x: 2600, z: 220 },
+            { kind: 'cigarro', x: 2600, z: 220, from: 'ground' },
             /* ⚠️ ONE ESPETO IN EACH OF THE THREE ARENAS, asked for 2026-08-27
                the moment his sheet was cut. He comes in AFTER the cigarette
                (900ms) and on the NEAR side of the belt where DUDU is mid-band,
@@ -1058,7 +1080,7 @@ const CONFIG = {
 
                z 300 is 79% across this room's 380-deep belt. Written against
                THAT, not against the street's 190 -- see the room's `belt`. */
-            { kind: 'espeto',  x: 2750, z: 300, delayMs: 900 },
+            { kind: 'espeto',  x: 2750, z: 300, delayMs: 900, from: 'ground' },
             /* ⚠️ ONE CHARUTOBI IN EACH OF THE THREE ARENAS, placed the way the
                espetos were and for the same reason -- a new enemy that is not in
                the room is a new enemy nobody has watched. ONE, never two: he is
@@ -1073,7 +1095,37 @@ const CONFIG = {
                the FAR half of the belt (39% across this room's 380-deep band)
                where neither of the other two is, so the diagonal he takes across
                the floor is visible from the moment he sets off. */
-            { kind: 'charutobi', x: 2900, z: 150, delayMs: 1800 },
+            /* ⚠️ AND THE RUSHER DIGS TOO, WHICH IS THE ONE COMBINATION WORTH
+               WATCHING FOR. His entrance normally drops the mark entirely -- he
+               is running at the player from the moment he is due (see the note in
+               Enemy's `enter` branch) -- so digging gives him a mark back, and
+               the run starts from the hole rather than from off-screen. That is a
+               shorter run than the one that was tuned, and this is the wave to
+               judge it on. */
+            { kind: 'charutobi', x: 2900, z: 150, delayMs: 1800, from: 'ground' },
+            /* ⚠️ A SECOND CHARUTOBI, AND HE WALKS IN. Asked for 2026-08-31:
+               *"at the first arena, add 1 more charutobi that spawns outside of
+               the screen"*. No `from`, so he is the ordinary off-screen entrance
+               every other wave in the game uses.
+
+               ⚠️ THIS IS A DELIBERATE OVERRIDE OF "ONE PER ARENA, NEVER TWO."
+               That rule is real and the reason still stands -- he is outside the
+               attack token (CONFIG.SUICIDE_RUSH), so nothing in the crowd can
+               stagger a pair; two due on the same frame both run at the player
+               at once. The ONLY tool left is `delayMs`, so it does all the work
+               here: 2600 against the digger's 1800, and the digger does not
+               actually set off until his climb ends at 1800 + 940 = 2740. They
+               are therefore a beat apart on purpose, and if they ever arrive
+               together THIS number is the fix, not the AI.
+
+               THE CONTRAST IS THE POINT of putting the two entrances side by
+               side: one comes up out of the floor in front of the player, the
+               other comes at him from off the right edge. z 260 keeps him well
+               clear of the digger's 150 so the two runs are separate diagonals.
+               ⚠️ HIS `x` IS UNREAD. A rusher never takes a mark -- he is running
+               from the moment he is due -- so this is documentation of where he
+               is aimed, nothing more. His `z` IS read. */
+            { kind: 'charutobi', x: 2900, z: 260, delayMs: 2600 },
           ],
         },
         { kind: 'scroll', toX: 4000 },   // camera 1732 -> 3332 (film 67%)
@@ -1082,11 +1134,44 @@ const CONFIG = {
         {
           kind: 'arena',
           enemies: [
-            { kind: 'cigarro', x: 4200, z: 220 },
-            { kind: 'espeto',  x: 4350, z: 300, delayMs: 900 },
+            { kind: 'cigarro', x: 4200, z: 220, from: 'ground' },
+            { kind: 'espeto',  x: 4350, z: 300, delayMs: 900, from: 'ground' },
             // Same three-in-a-row staggering as the first arena; see the note
             // on the charutobi there for why he comes in a second behind.
-            { kind: 'charutobi', x: 4500, z: 150, delayMs: 1800 },
+            { kind: 'charutobi', x: 4500, z: 150, delayMs: 1800, from: 'ground' },
+            /* ===== AND THEN THREE MORE CHARUTOBI, FROM OFF THE SCREEN ========
+               Asked for 2026-08-31: *"at the second enemy wave, create like 3
+               more of the charutobi enemy (red and explosive) that also come
+               from outside the screen, instead of spawning from the ground"*.
+               No `from`, so they take the ordinary right-edge walk-in.
+
+               ⚠️ THIS IS THE ROOM'S HARDEST MOMENT BY A LONG WAY AND IT IS NOT
+               ACCIDENTAL. Four charutobi in one arena, each 30 HP, each doing
+               12 damage AND a knockdown when he goes off
+               (`DEATH_BLAST.charutobi`) against `playerHealth` 110. If all four
+               land that is 48 -- getting on for half a bar -- plus four
+               knockdowns, and a knockdown is the state in which the next one
+               reaches you. **Judge this wave before judging the room.**
+
+               ⚠️ NOTHING STAGGERS THEM BUT `delayMs`. He is outside the attack
+               token (CONFIG.SUICIDE_RUSH), so the crowd has no way to hold one
+               back while another commits -- the standing rule was ONE per arena
+               for exactly this reason, and four is a deliberate override of it.
+               900ms apart, the same spacing every other wave in this room uses,
+               and the run itself takes about a second from the screen edge. Tune
+               the fight HERE; there is no AI knob that will do it.
+
+               ⚠️ AND THEY ARRIVE AFTER THE DIGGER, not with him. His climb ends
+               at 1800 + 940 = 2740, so 2800 is the first frame at which a second
+               one is a second one rather than a pair. See the first arena.
+
+               THREE DEPTHS, DELIBERATELY: 250 / 330 / 190 across a 380-deep
+               belt, none of them on the digger's 150. Three rushers on one z
+               would run the same line and read as one thick enemy. ⚠️ Their `x`
+               is unread -- a rusher never takes a mark. */
+            { kind: 'charutobi', x: 4500, z: 250, delayMs: 2800 },
+            { kind: 'charutobi', x: 4500, z: 330, delayMs: 3700 },
+            { kind: 'charutobi', x: 4500, z: 190, delayMs: 4600 },
           ],
         },
         /* THE LAST WALK, and it lands the camera on the final frame of the shot
@@ -1134,13 +1219,13 @@ const CONFIG = {
         {
           kind: 'arena',
           enemies: [
-            { kind: 'cigarro3', x: 5900, z: 220 },
+            { kind: 'cigarro3', x: 5900, z: 220, from: 'ground' },
             /* The third one, and this is the BOSS arena -- so until a boss
                exists it is the room's hardest fight by having two in it. */
-            { kind: 'espeto',   x: 6050, z: 300, delayMs: 900 },
+            { kind: 'espeto',   x: 6050, z: 300, delayMs: 900, from: 'ground' },
             // ...and the third, so the room's hardest fight is the one that has
             // all three of its enemies in it. See the first arena's note.
-            { kind: 'charutobi', x: 6200, z: 150, delayMs: 1800 },
+            { kind: 'charutobi', x: 6200, z: 150, delayMs: 1800, from: 'ground' },
           ],
         },
       ],
@@ -4553,6 +4638,139 @@ const CONFIG = {
          the dead area can be tuned without touching the belt. */
       spacing: 1.25,
     },
+  },
+
+  /* =========================================================================
+     COMING UP OUT OF THE GROUND (2026-08-31)
+     =========================================================================
+     Asked for on 2026-08-31: *"make the enemies come out of the pile of
+     cigarettes, like make them come out of the ground"*, for the desert and
+     nowhere else, and with the improvisation named in the same message --
+     *"we didn't plan for this animation, so lets try to improvise"*.
+
+     THERE IS NO ART. Not a burrow row, not a dig pose, nothing in any pack that
+     draws a body half-buried. So the arrival is two things, and src/emerge.js
+     explains both:
+
+       the HOLE   a dark ellipse in the floor, drawn UNDER the body.
+       the BODY   drawn below its own ground point with everything under the
+                  floor line SCISSORED OFF (Fighter.draw), so it is revealed
+                  head-first -- the picture a dig-out row would have drawn.
+
+     ⚠️ IT WAS THREE THINGS. A RIM cut from the desert's floor pack sat over his
+     feet to hide the scissor line, and DEBRIS -- the same drifts shrunk and
+     thrown in the air -- came out with him. Both were refused on sight:
+     *"I don't like these effects with the tiny cigarettes being thrown in the
+     air. Also the small cigarettes that appear in the feet of the enemy are not
+     good as well."* Deleted rather than switched off. **Do not re-propose
+     either.** It also removed a dependency nobody had asked for: the effect
+     borrowed the floor pack, which quietly tied it to `SCENERY.on`. It now needs
+     no art at all.
+
+     ⚠️ IT IS PER-ENEMY WAVE DATA, NOT A ROOM SETTING. An enemy digs because its
+     entry in a segment says `from: 'ground'` -- the same slot `from: 'behind'`
+     already uses, read in Stage._spawn. So "only in the desert" is a fact about
+     which waves say it, and putting one in the street costs no code.
+
+     THE THREE DURATIONS ARE THE WHOLE FEEL and they are read in that order:
+     the ground opens with nothing coming out of it, the body climbs, the hole
+     closes. Only the first two are in the player's way -- `settleMs` runs while
+     he is already fighting. */
+  EMERGE: {
+    on: true,
+    /* THE GROUND OPENS BEFORE ANYTHING COMES OUT OF IT, and this is the beat
+       that replaces the walk-in. A walk-in exists so that nobody MATERIALISES in
+       front of the player: it buys them a moment to see how many are coming and
+       from where. This spends the same moment in place instead of sideways -- so
+       if a digger ever reads as popping into existence, THIS is the number, not
+       anything in stage.js. */
+    heaveMs: 380,
+    /* THE CLIMB. He plays his walk cycle while he does it (Enemy's `enter`
+       branch sets `state = 'walk'` for exactly that), so he hauls himself up
+       rather than sliding out of the sand on a held idle frame.
+
+       ⚠️ HE IS UNTOUCHABLE FOR ALL OF THIS AND FOR `heaveMs` BEFORE IT -- see
+       `buried` in fighter.js. Lengthening this lengthens the window in which the
+       player can stand on top of him and hit nothing, which is the cost the
+       effect has to earn. */
+    riseMs: 560,
+    /* THE HOLE CLOSING, and it runs AFTER he is released -- he is walking and
+       swinging while this plays out. Ticked on the effect's own clock in
+       Enemy.update rather than in the AI branch that waited on it, for the
+       reason the note there gives. */
+    settleMs: 420,
+    /* THE HOLE ITSELF -- a dark ellipse under the body, drawn before the sprite
+       so he climbs up out of it. The radii are canvas px at the NEAR edge of the
+       belt and shrink with depth, exactly like `shadowW`/`shadowH` (44 x 13),
+       which this is deliberately a bigger, darker version of.
+
+       ⚠️ THIS IS THE WHOLE OF WHAT MAKES THE ARRIVAL VISIBLE, now that the rim
+       and the debris are gone, and it was added only after the effect was
+       rendered against the real desert floor. That floor is a carpet of pale
+       butts at 90% coverage, and anything drawn on it in the same art is a floor
+       tile on a floor. What the eye catches is a DARK GAP, and then a body
+       coming up out of it. At `holeAlpha: 0` there is no arrival left to see --
+       just a cigarette growing out of the sand. */
+    /* ⚠️ 40% SMALLER THAN IT WAS, asked for 2026-08-31 ("decrease the size of the
+       shadow on the ground that appears when they are spawning, make it 40%
+       smaller"). It was 52 x 17; these are exactly 0.6 of that, written out
+       rather than rounded so the instruction is still readable in the numbers.
+       For scale, the ordinary ground shadow is 44 x 13 -- so the hole is now
+       SMALLER than a fighter's own shadow rather than half again as big. */
+    holeW: 31.2,
+    holeH: 10.2,
+    holeAlpha: 0.62,
+    /* Not black. The floor is warm and the shot is graded orange, so a true
+       black gap reads as a hole cut in the picture rather than as dirt under the
+       butts. */
+    holeColor: '#241609',
+
+    /* ===== HE COMES UP FROM BEHIND THE CIGARETTES =========================
+       Asked for 2026-08-31: *"can you make them, during the spawn, appear as if
+       they were behind the 3 first layers of the level background? right after
+       spawn, we make them go back to the first visual draw... The idea is to
+       give the effect as if they are leaving from behind the pile of
+       cigarettes"* -- and then, in the same breath, *"maybe we don't have to
+       hard code it, just make them spawn between some layers randomly"*.
+
+       So a digger is drawn BETWEEN two of the scenery's five bands while he is
+       climbing, and rejoins the crowd's own z-sort the instant he is out. Which
+       two is rolled per enemy. See `Emerge.pickPlane` and `drawScenery` in
+       game.js.
+
+       ⚠️ THE SCENERY IS ONE LAYER IN `LAYERS` AND STILL IS. This does not add a
+       second scenery pass to the level's layer list -- it splits the one pass in
+       two around the fighters being injected, which is why nothing else in the
+       render stack knows about it. A room with no scenery lays out no bands,
+       nobody is injected, and the draw is byte-for-byte the old one.
+
+       ⚠️ IT ENDS AT `released`, NOT AT `done`. An enemy still occluded by a mound
+       while he is walking and swinging reads as a draw bug, not as depth.
+
+       ⚠️ ROLLBACK IS ONE FLAG. `spawnBehindScenery: false` puts every digger back
+       on the ordinary fighter plane and restores the single-pass floor; nothing
+       else has to be touched. */
+    spawnBehindScenery: true,
+    /* HOW MANY PLANES OF THE FLOOR COVER HIM, rolled per enemy between these
+       two inclusive. `3` is the number that was asked for before the ask was
+       relaxed, and it sits inside this range.
+
+       ⚠️ THE MINIMUM IS 1, NOT 0. At 0 he is in front of the whole floor, which
+       is the plane he was already on -- an enemy who rolled it would look like
+       the feature had failed for him. The maximum is clamped to however many
+       bands the room actually laid out (5 in the desert), so a bigger number
+       here is a no-op rather than an error.
+
+       ⚠️ THE MAXIMUM IS 3 AND IT IS THE POP DIAL. The hand-off back to the
+       fighters' plane is instant, so whatever is still covering him at the end
+       of the climb is revealed in one frame. At 4 and 5 the near bands hide most
+       of his body right up to the last frame and the hand-off reads as him
+       appearing rather than as him arriving -- rendered and checked: at 4 in
+       front, the frame before release shows only his head. 3 is also the number
+       that was asked for before the ask was relaxed to a range. Raise it for
+       more variety and a bigger pop; they are the same number. */
+    minBandsInFront: 1,
+    maxBandsInFront: 3,
   },
 
   /* =========================================================================
