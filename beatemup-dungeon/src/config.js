@@ -1059,6 +1059,21 @@ const CONFIG = {
                z 300 is 79% across this room's 380-deep belt. Written against
                THAT, not against the street's 190 -- see the room's `belt`. */
             { kind: 'espeto',  x: 2750, z: 300, delayMs: 900 },
+            /* ⚠️ ONE CHARUTOBI IN EACH OF THE THREE ARENAS, placed the way the
+               espetos were and for the same reason -- a new enemy that is not in
+               the room is a new enemy nobody has watched. ONE, never two: he is
+               outside the attack token (see CONFIG.SUICIDE_RUSH), so a pair
+               would both run at the player on the same frame and there is no
+               system left to stagger them.
+
+               HE ARRIVES LAST (1800ms), which is a full second after the espeto.
+               The run is the thing that has to be READ, and it reads as a run
+               only against a fight that is already happening -- coming in with
+               the others he is just a third body walking on. z 150 puts him on
+               the FAR half of the belt (39% across this room's 380-deep band)
+               where neither of the other two is, so the diagonal he takes across
+               the floor is visible from the moment he sets off. */
+            { kind: 'charutobi', x: 2900, z: 150, delayMs: 1800 },
           ],
         },
         { kind: 'scroll', toX: 4000 },   // camera 1732 -> 3332 (film 67%)
@@ -1069,6 +1084,9 @@ const CONFIG = {
           enemies: [
             { kind: 'cigarro', x: 4200, z: 220 },
             { kind: 'espeto',  x: 4350, z: 300, delayMs: 900 },
+            // Same three-in-a-row staggering as the first arena; see the note
+            // on the charutobi there for why he comes in a second behind.
+            { kind: 'charutobi', x: 4500, z: 150, delayMs: 1800 },
           ],
         },
         /* THE LAST WALK, and it lands the camera on the final frame of the shot
@@ -1120,6 +1138,9 @@ const CONFIG = {
             /* The third one, and this is the BOSS arena -- so until a boss
                exists it is the room's hardest fight by having two in it. */
             { kind: 'espeto',   x: 6050, z: 300, delayMs: 900 },
+            // ...and the third, so the room's hardest fight is the one that has
+            // all three of its enemies in it. See the first arena's note.
+            { kind: 'charutobi', x: 6200, z: 150, delayMs: 1800 },
           ],
         },
       ],
@@ -1842,6 +1863,93 @@ const CONFIG = {
                   downLand: { anim: 'knockdown', from: 0, to: 3 },
                   downLie:  { anim: 'knockdown', from: 3, to: 4 },
                   downRise: { anim: 'knockdown', from: 4, to: 6 },
+                } },
+
+    /* CHARUTOBI — THE SUICIDE BOMBER. Added 2026-08-28, off
+       `espeto2-sprites-fim.png`, so he is espeto's red cousin: same master size,
+       same spikes, same yellow gloves, same burst at the end of his death row.
+
+       ⚠️ HE HAS NO PUNCH, AND THAT IS THE CHARACTER RATHER THAN A GAP IN THE
+       ART. His sheet is SIX rows against espeto's nine and the three that are
+       missing are both combo rows and the air punch: *"this enemy will be an
+       explosive suicide enemy, that doesn't hit you with punches, it just blows
+       when it gets near you. it comes running in the player's direction."* So
+       there is no `ENEMY_COMBOS.charutobi`, no `enemyComboWeights` entry and no
+       `enemyLeapChance` -- and none of them are omissions to be filled in later.
+       His only move is CONFIG.SUICIDE_RUSH and his only damage is
+       CONFIG.DEATH_BLAST.
+
+       ⚠️ AND HIS DEATH ROW OPENS WITH THE KNOCKDOWN ROW, DRAWING FOR DRAWING.
+       Measured, not assumed: the six knockdown tiles and the death row's first
+       six are byte-identical, so the cutter's dedupe folds them and both rows
+       index the same six tiles. That is the illustrator's plan (espeto's rows 5
+       and 6 share eight drawings the same way) and it means his death reads as
+       "knocked down, gets up, swells, detonates" -- which is the right shape for
+       a bomb that goes off standing up.
+
+       `drawScale` 0.9 IS ESPETO's NUMBER, so the pair stand the same height and
+       read as one species. It costs nothing to copy here that it cost espeto,
+       because there are no measured reaches on this character to drag along with
+       it -- his one hitbox is the blast, and that one IS measured off the art
+       (see DEATH_BLAST.charutobi), so shrinking him again means moving that.
+
+       ⚠️ NO `groundNudge`, AND IT WAS CHECKED RATHER THAN LEFT OFF. Espeto needed
+       9px because his ground line still sat 21px under his feet on the idle
+       frame after the cutter's `bodyMinRun`. Charutobi's gloves land within
+       ±2.5px of the line on every standing frame of every row, measured off the
+       packed atlas -- so the second half of that fix has nothing to correct.
+
+       ⚠️ `corpseFade: false` IS NOT COPIED FROM ESPETO -- IT IS LOAD-BEARING,
+       AND LEAVING IT ON WOULD HAVE DELETED THE FEATURE THAT WAS ASKED FOR. The
+       fade runs on `stateT` from the moment the body settles, so it reaches
+       alpha 0 at 1320ms after death: `downLandMs` (520) + `corpseFadeDelayS` +
+       `corpseFadeS` (800). His tremble begins at 910ms and his first drawn burst
+       frame at 1710ms -- so with the fade on, the red flashing would dim out
+       mid-blink and the three explosion drawings, the whole of *"keep the frames
+       from the spritesheet"*, would be painted at alpha 0. Only the boom would
+       have shown, which is espeto's death, which is the one thing this was asked
+       NOT to be.
+
+       ⚠️ AND IT IS AN OLDER TRAP THAN IT LOOKS. Espeto's flag was asked for on
+       looks ("trust the sprites, don't touch the opacity") and it has been
+       hiding this arithmetic ever since: ANY fighter whose death row plays past
+       1320ms needs it. Found by printing `deathFrameStartS` for every frame
+       against the fade clock, not by watching. The opacity only -- `corpseGone`
+       does not read the flag, so he is still reaped on the same clock as
+       everyone else (2561ms here, the boom being the last thing to finish). */
+    charutobi: { sheet: 'v2:beatemup-dungeon/charutobi-beat', pack: 'ragged',
+                name: 'CHARUTOBI',
+                /* ⚠️ 0.6885 = 0.9 x 0.85 x 0.9 -- SHRUNK TWICE ON 2026-08-28
+                   ("15% smaller", then "10% smaller"), AND FOUR MEASURED NUMBERS
+                   CAME WITH IT BOTH TIMES. `drawScale` is DRAWN
+                   SIZE ONLY, so every number read off his picture had to be
+                   multiplied by the same 0.85 or he would explode further than
+                   he looks -- the exact trap espeto's entry above spends a
+                   paragraph on, and the one both cigarettes fell into:
+
+                       DEATH_BLAST reachX   228 -> 194 -> 174
+                       DEATH_BLAST reachZ    77 ->  65 ->  59
+                       DEATH_BOOM  refPx    150 -> 127 -> 115  (drawn frame height)
+                       DEATH_BOOM  sizePx   252 -> 214 -> 193
+
+                   ⚠️ `baseYRel` DID NOT MOVE EITHER TIME, and that is the CHECK
+                   that the rest was done right: it is a FRACTION of `refPx`, so
+                   0.46 x 115 = 52.9 lands on the burst's new centre (52.4) by
+                   itself, exactly as 0.46 x 127 landed on the old one. **A ratio
+                   follows a rescale; an absolute number does not** -- which is
+                   the cheapest test for whether a size change was finished.
+                   Change this number again and the same four follow it. */
+                drawScale: 0.6885,
+                corpseFade: false,
+                /* Row 5 is "takes 2 hits, knockdown, and then gets up", named by
+                   the illustrator when the sheet arrived — so the six frames are
+                   two hits, one flat, three getting up, and the three slices
+                   below are that sentence. Espeto's are 3/1/2 because his row
+                   spends longer going over. */
+                poses: {
+                  downLand: { anim: 'knockdown', from: 0, to: 2 },
+                  downLie:  { anim: 'knockdown', from: 2, to: 3 },
+                  downRise: { anim: 'knockdown', from: 3, to: 6 },
                 } },
   },
 
@@ -2781,8 +2889,16 @@ const CONFIG = {
      not also be the hardest body in the game before anyone has watched him
      fight. Move this first if he reads wrong -- it is the number the whole
      encounter turns on. */
+  /* ⚠️ CHARUTOBI IS 30, THE LOWEST IN THE GAME, AND THAT IS THE FIGHT HE MAKES.
+     He is answered by killing him BEFORE he arrives, so his health is the length
+     of the window the player gets to do it in -- and a bomb that soaks damage
+     like a cigarette turns "read the run and hit it" into "there was nothing you
+     could do". Killing him still detonates him where he stands (the blast comes
+     out of the death row, see DEATH_BLAST), so this buys distance, not safety.
+     ⚠️ IT IS THE NUMBER TO MOVE FIRST IF THE RUN READS UNFAIR -- before the
+     speed, which is what makes the move read as a run at all. */
   enemyHealth: { cigarro2: 40, cigarro: 34, cigarro3: 55, barata: 50, barata2: 66,
-                 espeto: 60 },
+                 espeto: 60, charutobi: 30 },
 
   /* =========================================================================
      COMBAT
@@ -3409,7 +3525,14 @@ const CONFIG = {
                      // belt. Under the tan roach, over every cigarette: he
                      // should close the distance rather than trudge into it,
                      // because a spiky ball that plods is a pillow.
-                     espeto: 0.95 },
+                     espeto: 0.95,
+                     /* ⚠️ THIS IS HIS WALK-IN ONLY, NOT HIS RUN. The suicide run
+                        carries its own absolute speed (SUICIDE_RUSH.speed), the
+                        way the barata's charge does, so this number is spent
+                        entirely on the few seconds he spends entering the arena
+                        from off-screen. Matched to espeto's so the two arrive
+                        together when they are placed together. */
+                     charutobi: 0.95 },
   /* IGNORED FOR A KIND THAT HAS A COMBO — its hits carry their own damage, in
      ENEMY_COMBOS below. The cigarette's entry is kept as the number his string
      was balanced against (JUIXY's old swing), and because dropping him out of
@@ -3421,6 +3544,18 @@ const CONFIG = {
                     string was balanced against, and a kind missing from this
                     table reads as one nobody thought about. */
                  espeto: 7 },
+  /* ⚠️ CHARUTOBI IS DELIBERATELY ABSENT FROM ALL THREE TABLES ABOVE EXCEPT
+     `enemyHealth` AND `enemySpeedScale`, AND HE IS THE FIRST KIND THAT SHOULD BE.
+     The others are missing from `enemyDamage` only in spirit -- their strings
+     override it -- and the table keeps their entry so nobody reads a gap as an
+     oversight. He has NO ATTACK AT ALL: `Enemy` still builds the shared one-swing
+     combo out of these knobs for him, because it does that for every kind, but
+     his branch in `_think` returns above the wind-up and the swing is never
+     thrown. A number here would be a knob that looks tunable and is not.
+     ⚠️ AND WRITING `charutobi: 0` WOULD BE WORSE THAN LEAVING HIM OUT: the read
+     site is `CONFIG.enemyDamage[kind] || 6`, so the zero would come back as 6 --
+     the knob-set-to-zero trap this file has been caught by before (see the note
+     in boom.js). Everything he can do to the player is DEATH_BLAST.charutobi. */
   enemyReachX: 92 * BODY_SCALE,
   enemyReachZ: 48 * BODY_SCALE,
   enemyStartupMs: 200,
@@ -4557,6 +4692,103 @@ const CONFIG = {
         tintAlpha: 0.85,
       },
     },
+
+    /* CHARUTOBI, AND HE KEEPS HIS DRAWN EXPLOSION -- which is the one place he
+       deliberately differs from espeto. Asked for 2026-08-28: *"use the same
+       behavior as the espeto has, but keep the frames from the spritesheet, so
+       it will be like 2 explosions at the same time."*
+
+       ⚠️ SO `hideBurst` IS ABSENT, AND ABSENT IS THE ANSWER. Espeto's is `true`
+       because he was asked to blow up like the bomb -- no drawings of his own,
+       just the boom. This one is the state espeto was in the day before that
+       change: the sheet's burst plays AND `DEATH_BOOM.charutobi` goes off inside
+       it on the same frame. Two explosions, one event.
+
+       ⚠️ `from` IS 7 AND ESPETO's IS 6, AND THE EXTRA FRAME IS THE SWELL. His
+       burst is his last FOUR drawings; charutobi's is his last THREE, because
+       death frame 6 is him puffing up into a ball of spikes -- still a body,
+       still standing on the floor, and the single best drawing in the row to
+       tremble on. It must agree with `centreFrom` in the cutter's row table
+       (tools/build-beat-enemy-defs.py), which is what anchors those three tiles
+       on their own centre instead of on the belt. */
+    charutobi: {
+      from: 7,
+      /* THREE FRAMES, AND THE WIDEST IS THE LAST. Espeto's burst peaks in the
+         middle and settles, so his `ms` holds frame 3 of 4; charutobi's expands
+         all the way to the end (172 / 215 / 251 drawn px at his current
+         `drawScale`), so the hold goes on the final drawing.
+
+         ⚠️ CUT TWICE ON 2026-08-28, AND THE SECOND CUT WAS THE BIGGER ONE.
+         [140, 210, 320] (670ms) -> x0.7 -> [98, 147, 224] (469ms) -> *"the last
+         3 frames of the explosion are still slow... can you make them even
+         faster"* -> [60, 80, 110] (250ms). That is **63% off the original**, and
+         it puts the burst at ~83ms a frame, which is the same order as the boom
+         playing underneath it (`boomMs` 71) -- so the drawn spines and the real
+         explosion now come apart at one rate instead of two.
+
+         ⚠️ THE TAIL-WEIGHTING SURVIVED BOTH CUTS ON PURPOSE. The widest drawing
+         still holds longest (110 against 60), because that is what stops a burst
+         reading as three equal flashes; at these speeds it is 50ms of difference
+         rather than 180, which is as far as the shape can be squeezed before it
+         is gone. Below about 200ms total the three drawings stop being legible
+         as separate pictures at all -- that is the floor, not a preference.
+
+         ⚠️ NOTHING DOWNSTREAM HAD TO BE CHASED, EITHER TIME: `DEATH_BLAST.atFrame`
+         and `corpseGone` both ask `deathFrameStartS`, so they moved by
+         themselves -- which is the whole return on those two knobs being
+         questions rather than milliseconds.
+
+         ⚠️ THE BOOM DID NOT SPEED UP WITH IT and cannot here. Its rate is
+         `CONFIG.boomMs`, which is global and shared with both bosses, so it now
+         outlives the drawn spines by ~380ms and finishes as smoke. Espeto's does
+         the same thing; it is the established look, not an oversight. */
+      ms: [60, 80, 110],
+      /* ⚠️ THE SPINES GO WHEN THE ROW ENDS, AND THIS IS THE FIX TO *"the last
+         frames are like staying on screen"* (2026-08-28). It was NOT a pacing
+         problem: his final burst drawing was measured at **733ms on screen**
+         against the 110ms this `ms` array asks for. `_deathFrame` clamps to the
+         last frame once the row has played, and `corpseGone` holds the body until
+         the BOOM finishes at 2561ms -- so it froze on the widest drawing for the
+         601ms difference. See `Fighter.bodyHidden`.
+
+         ⚠️ ESPETO DOES NOT NEED IT because `hideBurst` already takes his body
+         away, and no other kind needs it because the corpse FADE takes theirs.
+         It is for exactly this shape: a death row that ends in an explosion, a
+         fade switched off so the explosion is not dimmed, and a boom that
+         outlasts the drawings. ⚠️ SO IT PAIRS WITH `corpseFade: false` -- turning
+         the fade back on and leaving this set would hide a body that was already
+         being faded, which is harmless but means one of them is doing nothing. */
+      hideAfterRow: true,
+      /* THE TREMBLE, ON HIS OWN DEATH ROW. Espeto's borrows two drawings from
+         `airPunch` because the frames his tremble wanted were not in his death
+         row at all; charutobi has no airPunch row -- he has no punches of any
+         kind -- and the two drawings this wants ARE in the death row, so there
+         is nothing to borrow. `pose` is left off and `_shudderNow` falls back to
+         `death`, which is exactly right here rather than a fallback being
+         relied on by accident.
+
+         ⚠️ FRAMES 5-6 ARE A PAIR ON PURPOSE. Frame 5 is him upright and
+         wide-eyed and frame 6 is the SWELL -- so the loop reads as a body
+         pumping up and dropping back, going nowhere, which is what makes the
+         bomb read as live (see espeto's note: "repetir o frame" describes the
+         effect, not the mechanism). ⚠️ AND IT MUST BE TWO DRAWINGS AND NOT
+         THREE: `_shudderTint` lights one beat in three, so a three-frame loop
+         would light the SAME drawing every cycle and read as "one of his poses
+         is red" instead of as flashing. Two is what lets the red walk.
+
+         `ms` 40 and `holdMs` 800 are espeto's, which are the BOMB's panic rate
+         and the length that was tuned against it. Copied, not shared -- same
+         reasoning as the tint below. */
+      shudder: {
+        from: 5, to: 6, ms: 40, holdMs: 800,
+        /* The bomb's red, the same filter string, copied for the reason espeto's
+           is: two objects that want the same colour today, and aliasing would
+           tie this death to a future retune of the bomb's panic. */
+        tint: 'brightness(0) invert(24%) sepia(100%) saturate(4000%) ' +
+              'hue-rotate(-8deg) brightness(110%)',
+        tintAlpha: 0.85,
+      },
+    },
   },
 
   /* =========================================================================
@@ -4624,6 +4856,47 @@ const CONFIG = {
          going off INSIDE the sprite's explosion rather than as a second, bigger
          one around it. Pure taste; move it freely. */
       sizePx: 208,
+      sizeJitter: 0,
+    },
+
+    /* CHARUTOBI's, AND IT HAS TO SIT INSIDE A DRAWN EXPLOSION RATHER THAN
+       REPLACE ONE. This is the case espeto was in for exactly one day, and the
+       number that came out of watching it then is the number copied here: his
+       boom was cut to 80% of its first size *specifically* so it read as a flash
+       going off INSIDE the sprite's own burst instead of as a second, bigger
+       explosion around it. Same ratio, his art. */
+    charutobi: {
+      on: true,
+      count: 1,
+      /* THE SYNC, and it is the same frame `DEATH_BURST.charutobi.from` names --
+         the first drawn burst frame. Both explosions therefore start on one
+         frame and read as one event, which is the whole of *"it will be like 2
+         explosions at the same time"*. ⚠️ IT IS 7 AND ESPETO's IS 6 for the same
+         reason `from` is: the swell is a frame of body, not of burst. */
+      atFrame: 7,
+      spreadXRel: 0,
+      spreadYRel: 0,
+      jitterRel: 0,
+      /* ⚠️ THESE TWO ARE ONE MEASUREMENT AND NOT TWO TASTE CALLS. With `count: 1`
+         and no spread, the blast centre lands exactly `baseYRel * refPx` above
+         his ground point -- and the point it has to land on is where the cutter
+         pinned his own burst: 68.5 drawn px up, the centre of the swell frame,
+         which is the height those three tiles expand around (`centreFrom` in
+         tools/build-beat-enemy-defs.py). 0.46 x 150 = 69. Move either one and
+         the two explosions stop being concentric, which is the thing that makes
+         them read as one.
+         ⚠️ AND `refPx` IS THE DRAWN FRAME HEIGHT (150), NOT `fighterSizePx`
+         (136.8), which is a hit-resolver nominal -- the same trap espeto's
+         carries a warning about. */
+      baseYRel: 0.46,
+      refPx: 115,
+      /* 193 IS 77% OF HIS WIDEST DRAWN BURST FRAME (251 px on screen), which is
+         the ratio espeto's 208 has against his 271. Pure taste, inherited rather
+         than re-judged; move it freely, and move it if the two explosions ever
+         stop reading as one. ⚠️ IT FOLLOWED `drawScale` DOWN 15% on 2026-08-28 --
+         left at 252 the boom would have grown from 77% of his burst to 90% and
+         swallowed it, and the same again at the second shrink. */
+      sizePx: 193,
       sizeJitter: 0,
     },
   },
@@ -4704,6 +4977,59 @@ const CONFIG = {
       reachZ: 63 * BODY_SCALE,
       knockback: 240,
       knockdown: true,
+      radial: true,
+    },
+
+    /* CHARUTOBI's, AND FOR HIM IT IS NOT A CONSEQUENCE -- IT IS THE MOVE. Espeto
+       has a blast because he happens to end by exploding; this enemy exists in
+       order to. So the same block does a different job, and the numbers are the
+       ones that job wants: bigger box, more damage, and the same knockdown.
+
+       ⚠️ IT IS THE ONLY DAMAGE HE CAN DO. There is no `ENEMY_COMBOS.charutobi`
+       and his `enemyDamage` entry is deliberately absent -- see the note there.
+       If he ever feels harmless, this is the block, not a punch that does not
+       exist. */
+    charutobi: {
+      /* ⚠️ `atFrame`, AND IT IS 8 RATHER THAN espeto's `atBoomPeak`. His moved
+         onto the boom the day his own burst frames were switched off, and his
+         note says in as many words: *"set `hideBurst` false and this wants to go
+         back to `atFrame`."* Charutobi never had them switched off, so the rule
+         is served by the drawing again -- and the rule has not changed: the hit
+         lands WHEN THE EXPLOSION REACHES YOU. Frame 7 is the first burst frame
+         and barely wider than the swell it comes out of; a hit on it reads as
+         damage arriving before the explosion, which is how this was reported the
+         first time on espeto. Frames 8 and 9 are the two widest drawings and the
+         window spans them. */
+      atFrame: 8,
+      /* ⚠️ 200, DOWN FROM 300, AND IT FOLLOWED THE BURST RATHER THAN BEING
+         RETUNED. The window is documented as "frames 8 and 9, the two widest
+         drawings" and those two now last 190ms between them; left at 300 it
+         would have gone on being live for a beat after the explosion had
+         finished drawing -- a hitbox outliving its own picture, which is the
+         thing `atFrame` exists to prevent at the other end. A faster explosion
+         has a shorter dangerous moment; that is the trade the speed-up buys the
+         player, and it is deliberate rather than a side effect. */
+      activeMs: 200,
+      /* 12 AGAINST ESPETO's 8, AND THE 50% IS THE WHOLE CHARACTER. His blast is
+         a parting shot from a fighter who was already beaten; being caught by
+         this one means a bomb ran the length of the arena at you and you did
+         nothing about it. It still does not kill outright from full health
+         (playerHealth 110). */
+      damage: 12,
+      /* MEASURED OFF THE ART, exactly as espeto's is: the box is HALF the widest
+         burst frame, which is 251 drawn px for him against espeto's 271. So
+         174 x BODY_SCALE = 125 drawn px, and `reachZ` keeps his 0.337 ratio of
+         it. ⚠️ THESE ARE ONLY TRUE AT `CHARACTERS.charutobi.drawScale` 0.6885 --
+         they were 228/77 at 0.9 and followed him down through both shrinks on
+         2026-08-28. Change that number again and both follow it, which is the
+         discipline espeto's file-length note exists to enforce. */
+      reachX: 174 * BODY_SCALE,
+      reachZ: 59 * BODY_SCALE,
+      knockback: 280,
+      knockdown: true,
+      /* Radial for espeto's reason: an explosion you could beat by standing
+         behind it is the wrong lesson, and here it would be a worse one -- he
+         runs at you from either side. */
       radial: true,
     },
   },
@@ -4812,6 +5138,76 @@ const CONFIG = {
        player left several seconds ago. */
     minX:        150,
     maxX:        620,
+  },
+
+  /* =========================================================================
+     THE SUICIDE RUN
+     =========================================================================
+     CHARUTOBI's ENTIRE MOVESET, and the shortest block of behaviour in this
+     file. Asked for 2026-08-28: *"this enemy will be an explosive suicide enemy,
+     that doesn't hit you with punches, it just blows when it gets near you. it
+     comes running in the player's direction."*
+
+     ⚠️ THERE IS NO ATTACK HERE, AND THAT IS THE STRUCTURE RATHER THAN AN
+     OMISSION. Every other move in this file is an attack def -- startup, active,
+     recover, a reach and a damage -- because every other move is a fighter
+     deciding to swing. This one is a fighter deciding to STOP EXISTING: he runs
+     until he is near, and then he dies. The damage is `DEATH_BLAST.charutobi`,
+     which comes out of the corpse on the death clock, so a charutobi the player
+     KILLS explodes exactly like one who arrives. That is the trade the whole
+     enemy is: you can stop him reaching you, you cannot stop him going off.
+
+     ⚠️ KEYED BY `kind`, LIKE DEATH_BURST / DEATH_BOOM / DEATH_BLAST. Anything not
+     named here is null in `Enemy` and can never take the branch -- no test for
+     the kind exists anywhere in enemy.js, which is the same bargain
+     BARATA_CHARGE makes.
+
+     ⚠️ HE IS OUTSIDE THE ATTACK TOKEN. See `ignoresToken` in enemy.js: he
+     neither holds one nor counts against `maxAttackers`, because he has no swing
+     to release it and a token handed to him would stall the crowd. THE PRICE OF
+     THAT IS THAT TWO CHARUTOBIS BOTH RUN AT ONCE, which is a swarm and is
+     deliberate -- but it is also why the placements below put ONE in a room. */
+  SUICIDE_RUSH: {
+    charutobi: {
+      /* × `walkSpeedX`, ABSOLUTE, not scaled by `enemySpeedScale` -- the same
+         arrangement `BARATA_CHARGE.speed` has, and for the same reason: a run
+         that inherited the mook walk multiplier would be one knob hiding behind
+         another.
+
+         ⚠️ 1.25 IS 375px/s AGAINST THE PLAYER'S 300, AND THE GAP IS THE DESIGN.
+         Faster, so walking away does not work and he is a thing that must be
+         dealt with; only 25% faster, so the room to deal with him is real. The
+         roach's roll is 3.4 because it crosses the screen and leaves; this is a
+         chase and it has to stay one. */
+      /* ⚠️ 1.7 (510px/s) SINCE 2026-08-28 -- *"make charutobi run faster"*. It
+         was 1.25, which was chosen to leave room to deal with him and read as a
+         jog rather than a run. At 1.7 he is 70% quicker than the player, so
+         stepping away no longer buys any distance at all and the answer is
+         entirely "kill him or get out of the blast". His 30 HP is what keeps
+         that answerable; move THAT before moving this again. */
+      speed: 1.7,
+      /* HOW NEAR IS NEAR. A proximity test between the two GROUND POINTS, so it
+         owes nothing to reach, facing or the target's half-width -- unlike every
+         actual attack in this game (see the note on `enemyReachX`). He goes off
+         from any side.
+
+         ⚠️ 24 / 34 SINCE 2026-08-28, DOWN FROM 80 / 46, AND THE OLD NUMBERS WERE
+         THE BUG: *"when he throws himself into the player, make him really throw
+         himself in the position the player is, right now he is kinda stopping in
+         front of the player."* He was already SEEKING the player's own spot --
+         the stopping was entirely this trigger firing a body-width out (80
+         against a half-width of 26.6), so he detonated at arm's length and read
+         as braking.
+
+         24 is inside the two half-widths added together (53), so the sprites
+         genuinely overlap when he goes: he is ON the player, not in front of
+         them. 34 across the belt is a shade over one body depth (`bodyZ` 21.6)
+         and stays LOOSER than x on purpose -- depth is the axis a player dodges
+         in, and a z trigger as tight as the x one would let a circling player
+         hold him at a hair's distance forever without ever setting him off. */
+      triggerX: 24,
+      triggerZ: 34,
+    },
   },
 
   // Enemies spawn by WALKING IN from the nearest side of the screen rather

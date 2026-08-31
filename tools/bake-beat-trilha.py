@@ -104,18 +104,34 @@ PASS_EPS = 0.030
 def js_literal(text):
     """Turn a JS object/array literal of plain data into Python.
 
-    Deliberately narrow: comments, unquoted keys, trailing commas. Anything
-    beyond that is not something DEFAULT_MIX is allowed to contain anyway, and
-    a parser that accepted more would fail later and less clearly.
+    Deliberately narrow: comments, unquoted keys, trailing commas, single-quoted
+    strings. Anything beyond that is not something the SETS table is allowed to
+    contain anyway, and a parser that accepted more would fail later and less
+    clearly.
+
+    ⚠️ SINGLE QUOTES WERE ADDED 2026-08-28 AND THE OLD PARSER WAS NOT WRONG
+    BEFORE. It only ever read DEFAULT_MIX, which is numbers, booleans and empty
+    arrays -- there was no string in it to convert. Reading the whole SETS table
+    brings in filenames, labels, colours and tap keys, so the narrowness had to
+    widen by exactly one rule.
+
+    ⚠️ COMMENTS ARE STRIPPED FIRST AND THAT ORDER MATTERS: a `//` inside a
+    string would eat the rest of the line, and a colour like '#53d8fb' would be
+    safe but a URL would not. Nothing in SETS contains either, and this is the
+    line to look at first if that ever stops being true.
     """
     text = re.sub(r'/\*.*?\*/', '', text, flags=re.S)      # block comments
     text = re.sub(r'//[^\n]*', '', text)                   # line comments
+    # 'single' -> "double". No escape handling: these are filenames, names,
+    # hex colours and one-character keys, and a quote inside one would be a
+    # filename nobody should ship.
+    text = re.sub(r"'([^'\n]*)'", r'"\1"', text)
     text = re.sub(r'([{,]\s*)([A-Za-z_]\w*)\s*:', r'\1"\2":', text)   # keys
     text = re.sub(r',(\s*[}\]])', r'\1', text)             # trailing commas
     return json.loads(text)
 
 
-def read_mix():
+def read_mix(set_name='street'):
     if not os.path.isfile(LAB):
         sys.exit(f'ERROR: {LAB} not found — the mix lives in the tool')
     src = open(LAB, encoding='utf-8').read()
@@ -154,14 +170,32 @@ def read_mix():
             j += 1
         sys.exit(f'ERROR: {name} is not closed')
 
-    layers = js_literal(grab('DEFAULT_MIX', '[', ']'))
-    master = js_literal(grab('DEFAULT_MASTER', '{', '}'))
-
-    files = re.findall(r"file:\s*'([^']+)'", src)
-    if len(files) < len(layers):
-        sys.exit('ERROR: LAYERS and DEFAULT_MIX disagree about how many layers there are')
-    for i, L in enumerate(layers):
-        L['file'] = files[i]
+    # ⚠️ THE LAB HOLDS MORE THAN ONE SONG SINCE 2026-08-28, so this reads the
+    # named SET rather than the file's first `DEFAULT_MIX`. Two reasons it had to
+    # change in the same commit as the lab, and the second is the real one:
+    #
+    #   1. `DEFAULT_MIX` is no longer a top-level literal -- it is an alias for
+    #      the ACTIVE set, chosen from a query string that does not exist here.
+    #   2. The old file scan was `re.findall(r"file: '...'")` over the WHOLE
+    #      SOURCE, taking the first N matches. With a second song in the table
+    #      that still returns the right answer -- but only because the street set
+    #      happens to be written first, and it would have silently baked one
+    #      song's mix against another song's FILES the day somebody reordered the
+    #      table. Reading the set as one structure removes the ordering
+    #      dependency instead of documenting it.
+    sets = js_literal(grab('SETS', '{', '}'))
+    if set_name not in sets:
+        sys.exit(f'ERROR: no set {set_name!r} in beat-music-lab.html; '
+                 f'have {", ".join(sets)}')
+    S = sets[set_name]
+    layers, master = S['mix'], S['master']
+    if len(S['layers']) != len(layers):
+        sys.exit(f'ERROR: set {set_name!r}: {len(S["layers"])} layers but '
+                 f'{len(layers)} mix entries -- they must line up index for index')
+    # The set owns its folder; `file` stays a bare filename everywhere it is
+    # shown, exported or read. Same bargain the lab's loader makes.
+    for L, spec in zip(layers, S['layers']):
+        L['file'] = S.get('dir', '') + spec['file']
     return layers, master
 
 
@@ -194,7 +228,7 @@ def encode(audio, path, bitrate):
 
 # --- the render -------------------------------------------------------------
 
-def place(out, src, at_sample, src_start, rate, gain):
+def place(out, src, at_sample, src_start, rate, gain, src_len=0):
     """Write one pass of a layer into the mix.
 
     `rate` resamples, it does not time-stretch — slowing a layer lowers its
@@ -212,6 +246,13 @@ def place(out, src, at_sample, src_start, rate, gain):
     if src_start >= n_src - 1:
         return
     room = int(np.floor((n_src - 1 - src_start) / rate))
+    # ⚠️ THE OUT-POINT, IN SOURCE SAMPLES. `src_len` bounds how much of the take
+    # this pass may read; 0 means to the end, the behaviour before `lenMs`.
+    # ⚠️ IT IS DIVIDED BY `rate` BECAUSE `n` COUNTS OUTPUT SAMPLES -- the same
+    # source/output distinction the tool's `srcDur` note describes, and the one
+    # place a chop at rate != 1 would come out the wrong length.
+    if src_len > 0:
+        room = min(room, int(np.floor(src_len / rate)))
     n = min(room, n_out - at_sample)
     if n <= 0:
         return
@@ -248,7 +289,15 @@ def bake(layers, master, args):
         dur = src.shape[0] / SR
         trim = min(max(L.get('trimMs', 0) / 1000.0, 0.0), dur)
         rate = min(max(L.get('rate', 1.0), 0.25), 4.0)
-        clip = (dur - trim) / rate
+        # ⚠️ `lenMs` — THE OUT-POINT, ADDED 2026-08-28 WITH THE TOOL'S `piece
+        # length`. 0 means "to the end of the file", which is what every layer
+        # did before it existed. It MUST agree with `pieceSec()` in
+        # beat-music-lab.html: the tool and this script are two renderers of one
+        # arrangement, and a chop that only one of them honours is a bake that
+        # does not sound like what was approved.
+        avail = max(0.0, dur - trim)
+        length = min(L.get('lenMs', 0) / 1000.0, avail) if L.get('lenMs', 0) > 0 else avail
+        clip = length / rate
         if clip <= 0.001:
             continue
         gain = db_to_gain(L.get('db', 0))
@@ -273,10 +322,12 @@ def bake(layers, master, args):
             ats = [ms / 1000.0 for ms in L.get('drops', []) if ms / 1000.0 < loop]
 
         for at in ats:
-            spans.append((L['file'], src, at, trim, rate, gain))
+            spans.append((L['file'], src, at, trim, rate, gain, length))
             plays.append(at + clip)
         print(f'  + {L["file"]:<24} {dur:6.3f}s  rate {rate:.3f}  '
-              f'trim {L.get("trimMs", 0):4d}ms  offset {L.get("offsetMs", 0):+5d}ms  '
+              f'trim {L.get("trimMs", 0):4d}ms  '
+              f'piece {("%dms" % L["lenMs"]) if L.get("lenMs", 0) > 0 else "all":>7}  '
+              f'offset {L.get("offsetMs", 0):+5d}ms  '
               f'-> {len(ats)} pass{"es" if len(ats) != 1 else ""}')
 
     # Rendered PAST the loop end by however much the last event still needs, so
@@ -284,8 +335,8 @@ def bake(layers, master, args):
     tail = min(loop, max(0.0, max(plays) - loop)) if plays else 0.0
     total = int(np.ceil((loop + tail) * SR))
     out = np.zeros((total, 2), dtype=np.float32)
-    for _f, src, at, trim, rate, gain in spans:
-        place(out, src, int(round(at * SR)), trim * SR, rate, gain)
+    for _f, src, at, trim, rate, gain, length in spans:
+        place(out, src, int(round(at * SR)), trim * SR, rate, gain, length * SR)
 
     out *= db_to_gain(master.get('db', 0))
 
@@ -327,6 +378,10 @@ def main():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     # NOT 'trilha-mix': that is the shipped file and it came from the lab's
     # export, not from here. See the warning at the top.
+    # ⚠️ WHICH SONG. Defaults to the street bed so every existing invocation and
+    # habit bakes exactly what it always did. See read_mix().
+    p.add_argument('--set', default='street',
+                   help="which song in beat-music-lab.html's SETS table")
     p.add_argument('--out-name', default='trilha-mix-baked')
     p.add_argument('--bitrate', default=BITRATE)
     p.add_argument('--ceiling', type=float, default=PEAK_CEILING_DB,
@@ -337,7 +392,7 @@ def main():
         if subprocess.run(['which', tool], capture_output=True).returncode:
             sys.exit(f'ERROR: {tool} not on PATH')
 
-    layers, master = read_mix()
+    layers, master = read_mix(args.set)
     print(f'mix read from {os.path.relpath(LAB, ROOT)}')
     final = bake(layers, master, args)
 

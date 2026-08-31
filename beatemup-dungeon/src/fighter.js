@@ -265,26 +265,7 @@ class Fighter {
     this._driftAcc = 0;
 
     if (this.hp <= 0) {
-      this.hp = 0;
-      // Death is a knockdown that never gets up, so it runs the same arc and
-      // there is one piece of code deciding how a body falls.
-      this.state = 'down';
-      this.downPhase = 'land';
-      this.stateT = 0;
-      /* ⚠️ A DEATH IS THROWN, WHATEVER LANDED IT. Both of these are FLOORS, not
-         replacements: a finisher that already lifts 137 and shoves 320 is
-         unchanged, and a jab worth 45 of knockback still puts a body on the
-         floor rather than tipping it over on the spot. The vertical floor has
-         always been here as a bare 140; the horizontal one is new on
-         2026-08-24, and it is what "um pouco launched" asked for.
-         See CONFIG.DEATH_THROW. */
-      const D = CONFIG.DEATH_THROW || {};
-      this.launch = Math.max(lift || 0, D.up != null ? D.up : 140);
-      const back = D.back != null ? D.back : 0;
-      if (back && Math.abs(this.vx) < back) this.vx = (dir || (this.facing === 'left' ? 1 : -1)) * back;
-      this.dead = true;
-      this.deathT = 0;
-      this._armDeathBoom();
+      this.die(dir, lift);
       return true;
     }
 
@@ -303,6 +284,53 @@ class Fighter {
       this.hurtVariant++;
     }
     return true;
+  }
+
+  /**
+   * PUT THIS FIGHTER DOWN FOR GOOD. Everything that makes a body dead, in the
+   * one place, whatever killed it.
+   *
+   * ⚠️ SPLIT OUT OF `hurt()` ON 2026-08-28 BECAUSE CHARUTOBI KILLS HIMSELF. He
+   * is a bomb that runs at the player and goes off; nothing hits him to do it,
+   * so there is no blow for `hurt()` to be handed and faking one (`hurt(hp, 0,
+   * 0, 0)`) would still drag `DEATH_THROW` in behind it. It is an extraction and
+   * not a change: the punched path passes the same two arguments it always had.
+   *
+   * ⚠️ `thrown === false` IS THE WHOLE POINT OF THE ARGUMENT, AND IT IS NOT
+   * COSMETIC. `CONFIG.DEATH_THROW` puts a FLOOR under both the launch and the
+   * shove, so any body that dies leaves the ground and slides -- right for a
+   * killing blow, wrong for a suicide, who has to go off WHERE HE IS STANDING
+   * rather than sail 440px away from the player he spent the fight reaching.
+   * Everything downstream (the death row, the shudder, the boom, the blast) is
+   * hung on `deathT` and does not care which way he got here.
+   */
+  die(dir, lift, thrown) {
+    this.hp = 0;
+    // Death is a knockdown that never gets up, so it runs the same arc and
+    // there is one piece of code deciding how a body falls.
+    this.state = 'down';
+    this.downPhase = 'land';
+    this.stateT = 0;
+    this.atk = null;
+    if (thrown === false) {
+      this.launch = lift || 0;
+      this.vx = 0;
+    } else {
+      /* ⚠️ A DEATH IS THROWN, WHATEVER LANDED IT. Both of these are FLOORS, not
+         replacements: a finisher that already lifts 137 and shoves 320 is
+         unchanged, and a jab worth 45 of knockback still puts a body on the
+         floor rather than tipping it over on the spot. The vertical floor has
+         always been here as a bare 140; the horizontal one is new on
+         2026-08-24, and it is what "um pouco launched" asked for.
+         See CONFIG.DEATH_THROW. */
+      const D = CONFIG.DEATH_THROW || {};
+      this.launch = Math.max(lift || 0, D.up != null ? D.up : 140);
+      const back = D.back != null ? D.back : 0;
+      if (back && Math.abs(this.vx) < back) this.vx = (dir || (this.facing === 'left' ? 1 : -1)) * back;
+    }
+    this.dead = true;
+    this.deathT = 0;
+    this._armDeathBoom();
   }
 
   // --- Per-frame -----------------------------------------------------------
@@ -550,7 +578,17 @@ class Fighter {
 
     if (this.downPhase === 'land') {
       const p = Math.min(1, this.stateT / land);
-      this.jumpY = Math.sin(Math.PI * p) * (this.launch || 150);
+      /* ⚠️ `!= null` AND NOT `||`, BECAUSE ZERO IS A REAL ANSWER HERE -- the
+         knob-set-to-zero trap this project already has a rule about (see the
+         note in boom.js). `Fighter.die(..., thrown = false)` asks for NO arc,
+         which is the whole point of that path: a suicide bomber has to go off
+         where he is standing. Under `||` the 0 became 150 and he popped a
+         body-height into the air on detonating. Nothing else can reach this
+         with a zero -- both other writers floor it (`lift || 150`,
+         `Math.max(lift || 0, 140)`) and `launch` is initialised to 0 only while
+         `state` is not `down` -- so the horse, the cigarettes and every punched
+         corpse are unchanged to the pixel. */
+      this.jumpY = Math.sin(Math.PI * p) * (this.launch != null ? this.launch : 150);
       if (p >= 1) {
         this.jumpY = 0;
         this.downPhase = 'lie';
@@ -771,10 +809,43 @@ class Fighter {
    * that must stay true is that the body disappears on the same frame the boom
    * fires: both are hung on `deathFrameStartS(B.from)`.
    */
-  bodyHidden() {
+  bodyHidden(sheets) {
     const B = (CONFIG.DEATH_BURST || {})[this.kind];
-    if (!this.dead || !B || !B.hideBurst) return false;
-    return this.deathT >= this.deathFrameStartS(B.from);
+    if (!this.dead || !B) return false;
+    if (B.hideBurst) return this.deathT >= this.deathFrameStartS(B.from);
+    /* ⚠️ `hideAfterRow` -- THE BODY GOES WHEN ITS DEATH ROW ENDS, AND WITHOUT IT
+       THE LAST DRAWING SITS ON SCREEN LONG AFTER ITS OWN PACING SAYS IT SHOULD.
+       Reported 2026-08-28 on CHARUTOBI: *"the last frames are like staying on
+       screen, they must vanish faster"* -- and MEASURED, his final burst drawing
+       was held 733ms against the 110ms his `ms` array asks for.
+
+       ⚠️ THE CAUSE IS TWO CORRECT RULES MEETING. `_deathFrame` clamps to the last
+       frame once the row has played (right: a corpse has to be drawn as
+       something), and `corpseGone` keeps the body alive until the death BOOM
+       finishes (right: the body must outlive whatever the death plays). Between
+       them, a kind whose boom outlasts its drawings freezes on the last one for
+       the difference -- 601ms here. **Nothing was slow; something was being held
+       past its end.** Speeding `ms` a third time would have moved 110ms of a
+       733ms problem, which is why this is a flag and not a smaller number.
+
+       ⚠️ IT IS THE DRAWING ONLY, exactly like `hideBurst` and for the same
+       reason: `corpseGone` still waits for the boom, so the explosion is never
+       cut short -- only the spines stop being painted underneath it. Normally
+       the corpse FADE takes a body away on its own; this is for the kinds that
+       switch the fade off because their death row ends in an explosion
+       (`CHARACTERS[kind].corpseFade === false`), which leaves nothing else to.
+
+       ⚠️ AND IT LANDS INSIDE THE BOOM'S BRIGHTEST FRAME, which is why it reads as
+       the explosion consuming them rather than as a pop: the row ends at 1960ms
+       and the boom peaks at 1994. If a kind is ever given this flag with a boom
+       that has already finished, expect to see the pop. */
+    /* ⚠️ `sheets` IS REQUIRED AND THE GUARD IS NOT DEFENSIVE NOISE. `deathAnimS`
+       returns 0 when it cannot ask the pack how long the row is -- so without
+       this, a caller that forgot the argument would get `deathT >= 0`, which is
+       TRUE on the first frame of every death: the corpse would never be drawn at
+       all, silently, for one kind. Degrade to "draw it", never to "hide it". */
+    if (B.hideAfterRow && sheets) return this.deathT >= this.deathAnimS(sheets);
+    return false;
   }
 
   /**
@@ -1169,7 +1240,7 @@ class Fighter {
        that blows up like the bomb has no explosion drawings of its own -- see
        `bodyHidden`. Everything above this line still runs because it is all
        cheap and none of it paints. */
-    if (!this.bodyHidden()) {
+    if (!this.bodyHidden(sheets)) {
       const t = this._shudderTint(sheets);
       /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
          method. An explosion goes OVER the body it is destroying. */

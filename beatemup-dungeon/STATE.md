@@ -3611,6 +3611,285 @@ meant for it, which is what "muito rápido" was about. `holdMs` is the knob.
 
 ---
 
+## CHARUTOBI, the enemy who is his own attack (2026-08-28)
+
+*"I want you to create the new enemy 'charutobi': this enemy will be an
+explosive suicide enemy, that doesn't hit you with punches, it just blows when
+it gets near you. it comes running in the player's direction... use the same
+behavior as the espeto has, but keep the frames from the spritesheet, so it will
+be like 2 explosions at the same time."*
+
+The sheet is `espeto2-sprites-fim.png`, so he is **espeto's red cousin** — same
+6974x8557 master, same spikes, same yellow gloves, same burst at the end. What
+makes him a new enemy is what the sheet does **not** have.
+
+### The art said "no punches" before the brief did
+
+**Six rows against espeto's nine, and the three missing ones are both combo rows
+and the air punch.** The row list, given by the illustrator:
+
+| row | frames | meaning |
+|---|---|---|
+| 1 | 3 | idle |
+| 2 | 6 | walk — a ping-pong cycle |
+| 3 | 6 | jump |
+| 4 | 2 | hurt, both frames cycling |
+| 5 | 6 | two hits, knockdown, gets up |
+| 6 | 10 | the same six again, then the swell, then three burst frames |
+
+⚠️ **The master has a 4200px hole in the middle of it** — the space the three
+deleted rows used to occupy (jump ends at y2297, hurt starts at y6540). It costs
+nothing: bands are found on BODIES, so an empty band is not a band.
+
+⚠️ **Row 6 opens with row 5, drawing for drawing, and that was MEASURED rather
+than assumed.** The six tiles score **0.0 mean absolute difference** — the artist
+copy-pasted them — so the cutter's dedupe folds them and both rows index the same
+six tiles. That is the same bargain espeto's rows 5/6 and the baratas' hurt/death
+rows already make, and it decides the shape of his death: **knocked down, gets
+up, swells, detonates.** The last thing he does is stand up.
+
+⚠️ **`centreFrom` is 7 here and 6 on espeto**, because death frame 6 is the
+**swell** — he puffs into a ball of radiating spikes and is still a body standing
+on the floor. Only the last three are the burst, and only those three are
+anchored on their own centre.
+
+**No `groundNudge`, and that was checked rather than left off.** His gloves land
+within **±2.5px** of the ground line on every standing frame of every row,
+measured off the packed atlas. Espeto needed 9px because his sat 21px low on idle
+after the cutter's `bodyMinRun`; charutobi's does not.
+
+### The brain: he does not take a turn, he takes a run
+
+`CONFIG.SUICIDE_RUSH.charutobi`, and it is the shortest behaviour block in the
+file. He seeks the **player's own spot** — not the stand-off beside it, because
+he is not trying to fight — and when he is inside `triggerX` 80 / `triggerZ` 46
+he calls `_detonate()`, which kills him. That is the whole move.
+
+⚠️ **There is no hitbox in the run.** The damage is `DEATH_BLAST.charutobi`,
+armed off the death clock exactly as espeto's is — so **a charutobi the player
+kills explodes the same way a charutobi who arrives does.** One explosion, one
+hitbox, one code path, whichever end he came to it from. That is the trade the
+enemy is: you can stop him reaching you, you cannot stop him going off.
+
+⚠️ **He is the first enemy outside the attack token, and that is a bug fix and
+not a preference.** A token is a reservation on the right to be attacking, and it
+is released by the branch that ends a swing. He has no swing, so a token handed
+to him would sit unspendable while the rest of the crowd waited for a turn that
+was not coming — which is exactly what `Crowd.update` already skips `gone`
+roaches for. `ignoresToken` keeps him out of the count, out of the grant and out
+of the understudy slot. **The price is that two charutobis both run at once**,
+which is why the placements put one in a room.
+
+⚠️ **`Fighter.die()` is new, split out of `hurt()`.** Nothing hits him, so there
+is no blow for `hurt()` to be handed — and faking one would drag
+`CONFIG.DEATH_THROW` in behind it and launch him 440px back from the player he
+spent the fight reaching. `die(dir, lift, thrown)` with `thrown === false` skips
+the launch and the shove; the punched path passes the same two arguments it
+always had.
+
+### Two explosions, and the flag that would have deleted one
+
+`hideBurst` is **absent** for him. Espeto's is `true` because he was asked to blow
+up like the bomb — no drawings, just the boom. This is espeto as he was the day
+before that change: the sheet's burst plays **and** `DEATH_BOOM.charutobi` goes
+off inside it on the same frame.
+
+⚠️ **`corpseFade: false` IS LOAD-BEARING HERE, AND LEAVING IT ON WOULD HAVE
+DELETED THE FEATURE THAT WAS ASKED FOR.** The fade runs on `stateT` from the
+moment the body settles and reaches alpha 0 at **1320ms** — `downLandMs` (520) +
+`corpseFadeDelayS` + `corpseFadeS` (800). His tremble begins at **910ms** and his
+first burst frame at **1710ms**. With the fade on, the red flashing would have
+dimmed out mid-blink and all three explosion drawings would have been painted at
+alpha 0: only the boom would have shown, which is espeto's death, which is the
+one thing this was asked not to be.
+
+⚠️ **It is an older trap than it looks.** Espeto's flag was asked for on looks
+(*"trust the sprites, don't touch the opacity"*) and has been hiding this
+arithmetic ever since: **any fighter whose death row plays past 1320ms needs it.**
+Found by printing `deathFrameStartS` for every frame against the fade clock —
+never by watching, because the thing to notice is a sprite that is not there.
+
+**Measured timeline**, read out of `Fighter`'s own methods:
+
+| phase | frames | ms |
+|---|---|---|
+| the fall | death 0-6 once at `POSE_MS.death` | 0 - 910 |
+| the shudder | death 5-6 alternating, 40ms, red one beat in three | 910 - 1710 |
+| the drawn burst | 7-9 at `ms: [60, 80, 110]` | 1710 - 1960 |
+| the boom | `atFrame: 7`, one blast, 214px | 1710 - 2561 |
+| the blast (damage) | `atFrame: 8`, 200ms window | 1770 - 1970 |
+| corpse reaped | `max(deathAnimS, deathBoomEndS)` | 2561 |
+
+⚠️ **The burst was cut TWICE on the day it shipped, and the second cut was the
+bigger one.** 670ms → ×0.7 → 469ms (*"the last 3 frames... 30% faster"*) → 250ms
+(*"the last 3 frames of the explosion are still slow... make them even faster"*).
+That is **63% off the original**, and it puts the burst at ~83ms a frame — the
+same order as the boom playing underneath it (`boomMs` 71), so the drawn spines
+and the real explosion now come apart at one rate instead of two.
+
+⚠️ **The tail-weighting survived both cuts on purpose.** The widest drawing still
+holds longest (110 against 60), because equal holds read as three flashes rather
+than one thing expanding. At these speeds that is 50ms of difference instead of
+180, which is about as far as the shape can be squeezed before it is gone —
+**below roughly 200ms total the three drawings stop being legible as separate
+pictures at all.** That is the floor, not a preference.
+
+⚠️ **`activeMs` FOLLOWED IT DOWN, 300 → 200, and that is not a rebalance.** The
+window is documented as "frames 8 and 9, the two widest drawings"; those two now
+last 190ms between them, so 300 would have left a hitbox live for a beat after
+the explosion had finished drawing — a box outliving its own picture, which is
+exactly what `atFrame` exists to prevent at the other end. **A faster explosion
+has a shorter dangerous moment.**
+
+⚠️ **The boom did NOT speed up and cannot** — the user confirmed the ask was
+about *"the character explosion, not the bomb one"*, which is the right call
+anyway: its rate is `CONFIG.boomMs`, global and shared with both bosses. It now
+runs ~600ms past the drawn spines and finishes as smoke. Espeto's does the same;
+it is the established look.
+
+### "The last frames are like staying on screen" — nothing was slow (2026-08-28)
+
+The third complaint about the tail, and **it was not a pacing problem at all.**
+Measured: his final burst drawing was on screen for **733ms** against the 110ms
+his `ms` array asks for. A fourth speed-up would have moved 110ms of a 733ms
+problem and he would have come back a fourth time.
+
+⚠️ **THE CAUSE IS TWO CORRECT RULES MEETING.** `_deathFrame` clamps to the last
+frame once the row has played (right — a corpse has to be drawn as *something*),
+and `corpseGone` keeps the body alive until the death **boom** finishes at 2561ms
+(right — the body must outlive whatever the death plays). Between them, a kind
+whose boom outlasts its drawings freezes on the last one for the difference:
+601ms, at full opacity, because `corpseFade` is off.
+
+**`DEATH_BURST[kind].hideAfterRow`** — the drawn body stops being painted once
+its death row ends, exactly like `hideBurst` but one row later. `corpseGone` is
+untouched, so the boom is never cut short; only the spines stop being drawn
+underneath it.
+
+⚠️ **It lands INSIDE the boom's brightest frame** — the row ends at 1960ms and the
+boom peaks at 1994 — so it reads as the explosion consuming the spines rather
+than as a pop. A kind given this flag with a boom that has already finished would
+see the pop.
+
+⚠️ **Nobody else needs it, and that is the shape to check for**: espeto's body is
+already gone (`hideBurst`), and every other corpse is taken away by the FADE.
+This is for the one combination — a death row that ends in an explosion, a fade
+switched off so the explosion is not dimmed, and a boom that outlasts the
+drawings.
+
+⚠️ **`sheets` is required and the guard is not noise.** `deathAnimS` returns 0
+without it, so a caller that forgot the argument would get `deathT >= 0` — true
+on the first frame of every death, and the corpse would silently never be drawn.
+**Degrade to "draw it", never to "hide it".**
+
+### He walked through the player to reach a mark (2026-08-28)
+
+*"he just passes through the player and walks to the left by himself, then he
+suddenly comes running from the left, so there is something wrong."*
+
+**That was the `enter` branch, exactly as written, and it had nothing to do with
+the rush.** The walk-in spawns an enemy off the **right** edge and steers it to
+`entryX` — a fixed spot chosen when the wave was authored — and it does not look
+at the player at all. His mark is x 2900; a player who has chased the first two
+enemies right of that is standing **in his path**, so he trudged through them,
+arrived at an empty spot, and only then turned round and charged back. Three
+seconds of a suicide bomber ignoring the person he exists to run at.
+
+⚠️ **The fix is that he never takes the mark, not that the mark moves.** A
+walk-in exists so nobody materialises in front of the player; for everyone else
+it *also* puts them somewhere sensible to start fighting from, and **a rusher has
+no such place — the only spot he wants is the player's.** The delay and the
+off-screen spawn are kept (both still do their job); the mark is dropped.
+
+⚠️ **And the other half: `bounds` is withheld until he is inside them.** He starts
+outside the arena walls, and `clamp()` would put him on the near wall on his
+first rushing frame — the materialising bug the walk-in exists to prevent,
+reintroduced by the fix for it. This is why the `enter` branch passes `null`
+too; the rush now does the same until he has crossed in.
+
+⚠️ **`this.launch || 150` WAS EATING A ZERO** (`_updateDown`), so `die(..., thrown
+= false)` — which asks for *no* arc, the whole point of that path — popped him a
+body-height into the air on detonating instead of blowing up where he stood.
+Fixed at the read site with `!= null`. **Third instance of this trap in this
+project**, after `boom.js`'s spread and `enemyDamage`. Nothing else can reach it
+with a zero: both other writers floor it (`lift || 150`, `Math.max(lift || 0,
+140)`), so every punched corpse is unchanged to the pixel.
+
+⚠️ **The tremble is TWO drawings and not three, and the reason is the tint.**
+`_shudderTint` lights one beat in three, so a three-frame loop lights the *same*
+drawing every cycle and reads as "one of his poses is red" instead of as
+flashing. Two is what lets the red walk across both. Frame 5 is him upright and
+wide-eyed, frame 6 is the swell — so the loop is a body pumping up and dropping
+back, going nowhere, which is what makes the bomb read as live.
+
+⚠️ **The boom's position is a MEASUREMENT and not two taste calls.**
+`baseYRel: 0.46` x `refPx: 150` = 69 drawn px up, which is where the cutter
+pinned his own burst — the centre of the swell frame, the height those three
+tiles expand around. Move either and the two explosions stop being concentric,
+which is the thing that makes them read as one. `sizePx: 252` is 77% of his
+widest drawn burst frame (328px on screen), the same ratio espeto's 208 has
+against his 271 — inherited from the day *his* boom was cut 20% for exactly this
+reason.
+
+### The numbers, and which to move first
+
+| knob | value | why |
+|---|---|---|
+| `enemyHealth.charutobi` | **30**, the lowest in the game | his health is the length of the window you get to stop him in. **Move this first if the run reads unfair** — it is now the *only* thing that keeps him answerable. |
+| `SUICIDE_RUSH.speed` | **1.7** (510px/s), was 1.25 | the player walks 300. At 70% over, stepping away buys nothing at all: the answer is kill him or leave the blast. |
+| `SUICIDE_RUSH.triggerX/Z` | **24 / 34**, was 80 / 46 | see below — the old 80 is what made him stop in front of the player. |
+| `DEATH_BLAST.damage` | 12 against espeto's 8 | his blast is the move, not a parting shot. Still not a kill from full health (110). |
+| `DEATH_BLAST.reachX/Z` | 194 / 65 x `BODY_SCALE` | **measured off the art**: half his widest burst frame, 140 drawn px. ⚠️ only true at `drawScale` 0.765. |
+
+### He was stopping in front of the player, and it was not the seek (2026-08-28)
+
+*"make him really throw himself in the position the player is, right now he is
+kinda stopping in front of the player."*
+
+⚠️ **He was already seeking the player's own spot. The braking was entirely the
+TRIGGER.** At `triggerX: 80` he detonated a full body-width out — the two
+half-widths add up to 53 — so he stopped at arm's length and read as pulling up
+short. Nothing about the approach was wrong, and rewriting it would have chased a
+bug that was one number away. **24 puts him inside the overlap: he goes off ON
+the player, not in front of them.**
+
+⚠️ **`triggerZ` stays LOOSER than `triggerX` (34 against 24), on purpose.** Depth
+is the axis a player dodges in; a z trigger as tight as the x one would let a
+circling player hold him a hair out of range indefinitely — a suicide bomber who
+never explodes.
+
+### Shrunk twice, and the four numbers that had to follow each time
+
+`drawScale` 0.9 → **0.765** ("15% smaller") → **0.6885** ("10% smaller").
+`drawScale` is drawn size only, so everything read off his picture was multiplied
+by the same factor both times:
+
+| | 0.9 | 0.765 | 0.6885 |
+|---|---|---|---|
+| `DEATH_BLAST.reachX` | 228 | 194 | **174** |
+| `DEATH_BLAST.reachZ` | 77 | 65 | **59** |
+| `DEATH_BOOM.refPx` | 150 | 127 | **115** |
+| `DEATH_BOOM.sizePx` | 252 | 214 | **193** |
+
+⚠️ **`baseYRel` did NOT move either time, and that is the check that the rest was
+done right.** It is a *fraction* of `refPx`, so 0.46 × 115 = 52.9 lands on the
+burst's new centre (52.4) by itself, exactly as 0.46 × 127 landed on the old one.
+**A ratio follows a rescale; an absolute number does not** — which is the
+cheapest test for whether a size change was finished.
+
+He is placed **one per arena in all three desert fights**, 150px deeper than the
+espeto and **1800ms behind him** — the run has to be read, and it reads as a run
+only against a fight that is already happening.
+
+⚠️ **`enemyDamage` has no entry for him, deliberately, and he is the first kind
+that should not.** The others are ignored only in spirit — their strings override
+them — and the table keeps their entry so nobody reads a gap as an oversight. He
+has **no attack at all**. And writing `charutobi: 0` would be worse than leaving
+him out: the read site is `CONFIG.enemyDamage[kind] || 6`, so the zero comes back
+as **6** — the knob-set-to-zero trap this project already has a rule about.
+
+---
+
 ## Level 3 — the bookcase (2026-08-27)
 
 *"Time to add level 3, push the horse boss room to the end... this video is

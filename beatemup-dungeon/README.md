@@ -91,6 +91,7 @@ section warns about is now roughly 17% of a roach.
 | CLAUDINHO & ZIDANE (baratas) | 302px (~224px of animal) |
 | HIPÓLITO (horse) | 304px — **and his hurtbox and reaches grew with him** |
 | ESPETO (espeto) | **123px** — `drawScale` 0.9, the same as LEBRON |
+| CHARUTOBI (charutobi) | **94px** — `drawScale` 0.6885, the smallest in the game |
 
 > ⚠️ **Shrinking ESPETO moves five other numbers.** `drawScale` is drawn size
 > only, so his three string `reachX` values, the death blast's `reachX`/`reachZ`
@@ -2006,6 +2007,112 @@ picture cannot drift.
 > tax; one that puts you down is a thing you step away from. `false` makes it a
 > tax again.
 
+### CHARUTOBI — the same three blocks, with the burst left ON
+
+The suicide bomber (2026-08-28) reuses every mechanism above and changes one
+thing: *"keep the frames from the spritesheet, so it will be like 2 explosions at
+the same time."* So `hideBurst` is **absent** — this is espeto as he was the day
+before he was asked to blow up like the bomb.
+
+```js
+CHARACTERS.charutobi: { drawScale: 0.6885, corpseFade: false, ... }
+
+SUICIDE_RUSH.charutobi: { speed: 1.7, triggerX: 24, triggerZ: 34 }
+
+DEATH_BURST.charutobi: { from: 7, ms: [60, 80, 110], hideAfterRow: true,
+                         shudder: { from: 5, to: 6, ms: 40, holdMs: 800, tint: ... } }
+DEATH_BOOM.charutobi:  { on: true, count: 1, atFrame: 7,
+                         spreadXRel: 0, spreadYRel: 0, jitterRel: 0,
+                         baseYRel: 0.46, refPx: 115, sizePx: 193 }
+DEATH_BLAST.charutobi: { atFrame: 8, activeMs: 200, damage: 12, knockdown: true,
+                         radial: true, reachX: 174 * BODY_SCALE,
+                         reachZ: 59 * BODY_SCALE, knockback: 280 }
+```
+
+| phase | frames | ms |
+|---|---|---|
+| the fall | death 0-6 at `POSE_MS.death` | 0 - 910 |
+| the shudder | death 5-6 alternating, red one beat in three | 910 - 1710 |
+| the drawn burst | 7-9 at `ms` | 1710 - 1960 |
+| the boom | one blast, 214px | 1710 - 2561 |
+| the damage | `atFrame: 8`, 200ms | 1770 - 1970 |
+| corpse reaped | | 2561 |
+
+> ⚠️ **The burst was cut twice on 2026-08-28**: 670ms → 469 (×0.7) → **250ms**,
+> 63% off the original, ~83ms a frame. That is the same order as the boom under
+> it (`boomMs` 71), so the two come apart at one rate. **Below about 200ms total
+> the three drawings stop being legible as separate pictures** — that is the
+> floor. The tail-weighting (110 against 60) survives on purpose: equal holds
+> read as three flashes rather than one thing expanding.
+
+> ⚠️ **`activeMs` followed it down, 300 → 200, and it is not a rebalance.** Frames
+> 8 and 9 now last 190ms between them; 300 would leave a hitbox live after the
+> explosion had finished drawing. **A faster explosion has a shorter dangerous
+> moment.**
+
+> ⚠️ **The boom cannot follow, and the ask was not about it** — *"the character
+> explosion, not the bomb one"*. Its rate is the global `CONFIG.boomMs`, shared
+> with both bosses, so it runs ~600ms past the drawn spines and finishes as smoke.
+
+> ⚠️ **Nothing downstream needed chasing, either time** — the damage window and the
+> reaper both moved by themselves, because `atFrame` and `corpseGone` ask
+> `deathFrameStartS` instead of carrying a millisecond.
+
+> ⚠️ **He was shrunk twice (0.9 → 0.765 → 0.6885) and four measured numbers
+> followed each time**: `reachX` 228→194→174, `reachZ` 77→65→59, `refPx`
+> 150→127→115, `sizePx` 252→214→193. **`baseYRel` did not move either time, and
+> that is the check the rest was done right** — it is a fraction of `refPx`, so it
+> lands on the burst's new centre by itself. A ratio follows a rescale; an
+> absolute number does not.
+
+> ⚠️ **`hideAfterRow: true` — the drawn body goes when its row ends.** Without it
+> the last burst drawing sat on screen for **733ms** against the 110ms `ms` asks
+> for: `_deathFrame` clamps to the last frame, `corpseGone` holds the body for the
+> boom, and `corpseFade` is off, so it froze at full opacity for the difference.
+> **Nothing was slow — something was being held past its end.** It only affects a
+> kind with this exact shape (death row ends in an explosion + fade off + a boom
+> that outlasts the drawings); espeto's body is already gone via `hideBurst`, and
+> every other corpse is taken away by the fade.
+
+> ⚠️ **`triggerX: 24`, and the old 80 is what made him "stop in front of the
+> player".** He was already seeking the player's own spot — the braking was
+> entirely the trigger firing a body-width out (the two half-widths add to 53).
+> 24 puts him inside the overlap. `triggerZ` stays looser at 34: depth is the axis
+> a player dodges in, and a z trigger as tight as x would let a circling player
+> hold him a hair out of range forever — a suicide bomber who never explodes.
+
+> ⚠️ **`corpseFade: false` is LOAD-BEARING, not copied.** The fade reaches alpha 0
+> at **1320ms** (`downLandMs` 520 + `corpseFadeDelayS` + `corpseFadeS`). His
+> tremble starts at 910 and his first burst frame at 1710 — with the fade on, the
+> red flashing dims out mid-blink and all three explosion drawings are painted at
+> alpha 0. **Only the boom would have shown, which is espeto's death, which is the
+> one thing this was asked not to be.** Any death row that plays past 1320ms needs
+> this flag.
+
+> ⚠️ **`from: 7`, not espeto's 6, and the extra frame is the SWELL.** Death frame 6
+> is him puffing into a ball of spikes — still a body standing on the floor, and
+> the best drawing in the row to tremble on. It must agree with `centreFrom: 7` in
+> the cutter's row table.
+
+> ⚠️ **The shudder is TWO drawings and the reason is the tint.** `_shudderTint`
+> lights one beat in three, so a three-frame loop lights the *same* drawing every
+> cycle and reads as "one of his poses is red". Two lets the red walk across both.
+> He needs no borrowed row: unlike espeto, the drawings his tremble wants are in
+> his own death row, so `pose` is left off and `_shudderNow` falls through to
+> `death`.
+
+> ⚠️ **`baseYRel` x `refPx` is a MEASUREMENT.** 0.46 x 150 = 69 drawn px up, which
+> is where the cutter pinned his own burst — the centre of the swell frame, the
+> point those three tiles expand around. Move either and the two explosions stop
+> being concentric, which is what makes them read as one. `sizePx: 252` is 77% of
+> his widest burst frame (328 drawn px), the ratio espeto's 208 has to his 271.
+
+> ⚠️ **`atFrame: 8`, not `atBoomPeak`.** Espeto's damage moved onto the boom the
+> day his own burst frames were switched off, and his note says in as many words
+> that turning `hideBurst` off wants `atFrame` back. The rule has not changed:
+> the hit lands **when the explosion reaches you**, and frames 8 and 9 are the two
+> widest drawings.
+
 ## How hard everyone hits
 
 ```
@@ -2022,7 +2129,17 @@ CLAUDINHO (barata)   50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/tu
 ZIDANE    (barata2)  66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
 ESPETO    (espeto)   60   0.95    3+3+5+3+7  = 21         8%*       -   (the desert)
                                   * five hits, not three -- P(all five) is 1 in 12
+CHARUTOBI (charutobi) 30  0.95*   NO PUNCH -- 12 on the death blast (the desert)
+                                  * the walk-in only; his RUN is 1.7, absolute
 ```
+
+**CHARUTOBI does not appear in that table properly because he does not fit it.**
+He has no string, no weights and no `enemyDamage` entry: he runs at the player
+and kills himself, and everything he can do is `DEATH_BLAST.charutobi` — 12
+damage, a knockdown, radial, and it goes off whether he arrived or you killed
+him. **30 HP is the lowest in the game and it is the fight**: his health is the
+length of the window you get to stop him in. Move it before you move his speed.
+See *Corpses, fading, and the one that explodes*.
 
 **ESPETO throws the only FIVE-hit string in the game**, because his punch row is
 ten drawings where every cigarette's is six. It is not five times the damage: 21
@@ -3289,6 +3406,20 @@ The full checklist: `CONFIG.CHARACTERS` (+ `poses` if the sheet differs),
 `enemyHealth`, `enemySpeedScale`, `enemyDamage`, `ENEMY_COMBOS`,
 `enemyComboWeights`, and a wave to put it in. `assetManifest()` walks
 `CHARACTERS`, so the build follows on its own.
+
+**⚠️ A kind with NO attack skips half of that, and CHARUTOBI is the one.** He has
+no `ENEMY_COMBOS`, no `enemyComboWeights` and — deliberately — **no `enemyDamage`
+entry at all**, because his only damage is `DEATH_BLAST.charutobi`. Writing
+`charutobi: 0` there would be worse than leaving him out: the read site is
+`CONFIG.enemyDamage[kind] || 6`, so the zero comes back as **6**. What he needs
+instead is `CONFIG.SUICIDE_RUSH`, and `Enemy` gives `this.rush = null` to every
+kind that is not in it, so no test for the kind exists anywhere in `enemy.js`.
+
+**⚠️ And if the new kind's death row plays past 1320ms, it needs
+`corpseFade: false`.** The fade reaches alpha 0 there — `downLandMs` 520 +
+`corpseFadeDelayS` + `corpseFadeS` — and anything the death draws after that is
+painted at alpha 0 with nothing to say so. Both exploding enemies carry the flag;
+espeto's was asked for on looks and has been hiding the arithmetic ever since.
 
 
 ## The coconut's sprites

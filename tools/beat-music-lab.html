@@ -68,7 +68,11 @@
 <body>
 <div id="top">
   <b>BEAT MUSIC LAB</b>
-  <span class="hint">beatemup-dungeon &middot; every take loops against the bed &middot; space play/stop &middot; 1-4 drop &middot; backspace undo &middot; g snap &middot; r re-render &middot; e export wav</span>
+  <!-- ⚠️ WHICH SONG IS LOADED, ON SCREEN. The tool holds more than one now and
+       they look identical once loaded -- five lanes and a mix. Editing the wrong
+       one for ten minutes is the failure this line exists to prevent. -->
+  <b id="setname" style="color:#e9a145"></b>
+  <span class="hint">beatemup-dungeon &middot; every take loops against the bed &middot; space play/stop &middot; 1-5 drop &middot; backspace undo &middot; g snap &middot; r re-render &middot; e export wav</span>
   <span id="state">booting...</span>
 </div>
 <div id="main">
@@ -134,6 +138,33 @@
    land anyway. `wrapFadeMs` fades the overhang as it wraps and is 0 by default;
    reach for it only if a tail is piling up somewhere it should not.
 
+   CHOPPING A PIECE OUT OF A TAKE, AND LOOPING THAT (2026-08-28). A lane has an
+   in-point (`trim front`) and now an OUT-POINT (`piece length`, `lenMs`): 0 is
+   to the end of the file, which is what every lane did before, and any other
+   value takes that much and stops. Chop and loop are TWO settings and the tool
+   does not fuse them -- `piece length` cuts the piece, `repeat` tiles it. A
+   short piece with repeat ON is a chopped riff looping across the loop; the same
+   piece with repeat OFF plays once wherever its drop is.
+
+   ⚠️ IT NEEDED A THIRD ARGUMENT TO `start()`, AND THE OLD CODE WAS ONLY
+   ACCIDENTALLY RIGHT. Both the live scheduler and the offline render called
+   `start(when, offset)` with no length, so a pass always ran to the end of the
+   file -- consistent with the drawing only because `dur` also meant "to the
+   end". The moment a lane could be shorter than its material, the picture and
+   the sound would have disagreed with nothing to say so.
+
+   ⚠️ AND `srcDur` IS SOURCE SECONDS WHILE `dur` IS OUTPUT SECONDS. Web Audio
+   measures that third argument on the BUFFER's timeline, so it is `dur * rate`.
+   At rate 1 they are the same number, which is exactly why getting it wrong
+   would have survived every test that did not touch `rate`. tools/
+   bake-beat-trilha.py carries the same distinction in `place()`.
+
+   ⚠️ FIVE PLACES WERE COMPUTING "how much of this take plays" SEPARATELY --
+   events(), the lane's ghost draw, the `bed length` button, the layer panel's
+   pass arithmetic and the audition tap. They all go through `pieceSec()` now.
+   Adding an out-point to four of five is how a lane comes to sound different
+   from the way it is drawn.
+
    WHAT A BAD LOOP SOUNDS LIKE. The bed repeats to fill the master loop. If the
    loop is not a whole number of bed passes, the last pass is cut mid-phrase and
    its remainder wraps onto the head, doubling with the first pass. That is
@@ -154,16 +185,48 @@
 
 const BASE = '../assets-v2/beatemup-dungeon/audio/';
 
+/* ===========================================================================
+   THE LAB HOLDS MORE THAN ONE SONG NOW (2026-08-28).
+
+   It opened on the street bed and nothing else, and the humming song could not
+   simply be pointed at it: `LAYERS` / `DEFAULT_MIX` / `DEFAULT_MASTER` are the
+   SINGLE SOURCE OF TRUTH for the shipped bed -- `tools/bake-beat-trilha.py`
+   parses them straight out of this file -- so retargeting them would have
+   thrown away the dialled-in arrangement of a track that is in the game. That
+   is the same trap that made this tool a sibling of music-lab.html rather than
+   an edit to it, one level down, and the answer is the same shape: keep both.
+
+   ⚠️ SO A SET IS ADDED, NEVER SUBSTITUTED. `?set=humming` opens the humming
+   song; no query opens the street bed exactly as before, and `reset` still
+   returns to its dialled-in mix. Adding a third song is a block in SETS.
+
+   ⚠️ AND `bake-beat-trilha.py` HAD TO LEARN ABOUT THIS IN THE SAME CHANGE. It
+   used to scan the WHOLE FILE with `re.findall(r"file: '...'")` and take the
+   first N -- which would still have worked here, purely because the street set
+   is written first, and would have silently baked the wrong song the day
+   somebody reordered this table. It now reads `SETS` and takes `--set`.
+   =========================================================================== */
+
+const SETS = {
+
+  /* ---- the STREET BED, unchanged and still the game's `music` track ------ */
+  street: {
+    label: 'street bed',
+    dir: '',
+    /* The layers, in draw order. `key` is the tap key -- press it while the loop
+       is running and the sample lands at the playhead AND is heard immediately.
+       The bed has no tap key because it is not dropped, it repeats. */
+    layers: [
+
 /* The layers, in draw order. `key` is the tap key -- press it while the loop is
    running and the sample lands at the playhead AND is heard immediately. The
    bed has no tap key because it is not dropped, it repeats. */
-const LAYERS = [
-  { file: 'tchum-tchap-tchap-1.ogg', name: 'tchum 1  (bed)', color: '#53d8fb', key: null },
-  { file: 'tchum-tchap-tchap-2.ogg', name: 'tchum 2',        color: '#e9a145', key: '1' },
-  { file: 'tchum-tchap-tchap-3.ogg', name: 'tchum 3',        color: '#a97be9', key: '2' },
-  { file: 'tchum-tchap-tchap-4.ogg', name: 'tchum 4',        color: '#8fce8f', key: '3' },
-  { file: 'mug-ring.ogg',            name: 'mug ring',       color: '#e94560', key: '4' },
-];
+      { file: 'tchum-tchap-tchap-1.ogg', name: 'tchum 1  (bed)', color: '#53d8fb', key: null },
+      { file: 'tchum-tchap-tchap-2.ogg', name: 'tchum 2',        color: '#e9a145', key: '1' },
+      { file: 'tchum-tchap-tchap-3.ogg', name: 'tchum 3',        color: '#a97be9', key: '2' },
+      { file: 'tchum-tchap-tchap-4.ogg', name: 'tchum 4',        color: '#8fce8f', key: '3' },
+      { file: 'mug-ring.ogg',            name: 'mug ring',       color: '#e94560', key: '4' },
+    ],
 
 /* Per-layer mix state. This is what `export json` writes and what a bake script
    would read back.
@@ -206,15 +269,15 @@ const LAYERS = [
    things to try, not rejects, and leaving them dialled in means turning one on
    is a click rather than a search. `on: false` is honoured by the bake, so they
    cost the game nothing while they sit there. */
-const DEFAULT_MIX = [
-  { on: true,  solo: false, db: 0, trimMs: 0,   rate: 1, repeat: true, offsetMs: 0,   gapMs: 0, drops: [] },
-  { on: false, solo: false, db: 0, trimMs: 220, rate: 1, repeat: true, offsetMs: 250, gapMs: 0, drops: [] },
-  { on: true,  solo: false, db: 0, trimMs: 0,   rate: 1, repeat: true, offsetMs: 100, gapMs: 0, drops: [] },
-  { on: true,  solo: false, db: 0, trimMs: 70,  rate: 1, repeat: true, offsetMs: 10,  gapMs: 0, drops: [] },
-  { on: false, solo: false, db: 0, trimMs: 130, rate: 1, repeat: true, offsetMs: 140, gapMs: 0, drops: [] },
-];
+    mix: [
+      { on: true,  solo: false, db: 0, trimMs: 0, lenMs: 0,   rate: 1, repeat: true, offsetMs: 0,   gapMs: 0, drops: [] },
+      { on: false, solo: false, db: 0, trimMs: 220, lenMs: 0, rate: 1, repeat: true, offsetMs: 250, gapMs: 0, drops: [] },
+      { on: true,  solo: false, db: 0, trimMs: 0, lenMs: 0,   rate: 1, repeat: true, offsetMs: 100, gapMs: 0, drops: [] },
+      { on: true,  solo: false, db: 0, trimMs: 70, lenMs: 0,  rate: 1, repeat: true, offsetMs: 10,  gapMs: 0, drops: [] },
+      { on: false, solo: false, db: 0, trimMs: 130, lenMs: 0, rate: 1, repeat: true, offsetMs: 140, gapMs: 0, drops: [] },
+    ],
 
-const DEFAULT_MASTER = {
+    master: {
   /* 6146 is tchum 1's own length, measured off the file (6.1465s, rounded down
      to the millisecond). So the tool opens on exactly one pass of the bed with
      nothing cut -- the only loop length that is certainly not wrong before
@@ -253,8 +316,184 @@ const DEFAULT_MASTER = {
      them. Drawn honestly that is a flat line with a few spikes in it, which
      tells you nothing about where the hits fall. This is a DISPLAY setting and
      changes no audio -- turn it off to compare true levels between layers. */
-  viewNorm: true,
+      viewNorm: true,
+    },
+  },
+
+  /* ---- the HUMMING SONG, delivered 2026-08-28 --------------------------- */
+  /* Five takes in `humming-song/`: one struck BEAT and four hummed melodies.
+     Everything below was measured off the files before a line of it was
+     written -- the project's rule is to envelope every raw file before wiring
+     it, and it has never once been wasted. What it found:
+
+     ⚠️ THE FIRST DELIVERY HAD SIX FILES AND TWO OF THEM WERE THE SAME FILE
+     (humming-01 and humming-02, byte-identical, md5 24a15c0f...). Reported and
+     re-delivered as five, renumbered 01-04 + beat. Recorded here only because
+     it is WHY the numbering is what it is -- and because a duplicate is
+     invisible in a waveform and obvious in an md5, which is the cheap check to
+     keep making.
+
+     ⚠️ AND THE RE-DELIVERY RENAMED WITHOUT RE-RECORDING: the same five takes
+     shifted down one number (old 03 -> 02, 04 -> 03, 05 -> 04). The trims below
+     were re-measured rather than remapped, because a trim belongs to the AUDIO
+     and would otherwise have been silently attached to the wrong take by name.
+
+     ⚠️ `humming-beat.ogg` CLIPS -- 139 samples over full scale, peak +3.6 dBFS
+     (1.505 linear), spread through 5.43..12.07s and so NOT in the lead-in this
+     trims off. It is the only take that does. Its `db` opens at -4 for that
+     reason and NOT as a mix decision: the fix for a hot file is a ceiling,
+     never a re-render. Judge its LEVEL against the others after that, not
+     before.
+
+     ⚠️ EVERY TAKE HAS PHONE DEAD AIR AT THE HEAD, which the tchum takes did not
+     -- so the note above about build-sound.py not being in this pipeline is
+     true of the street bed and FALSE here. The trims below are the measured
+     lead-ins (20ms hop, -40dB floor) so the tool opens with all five starting
+     on their first sound instead of 1-2.5 seconds of nothing. They are a
+     STARTING POINT, not a finding: nudge them by ear.
+
+     WHAT IS NOT KNOWN YET: the tempo. Onset flux gives humming-beat a clear
+     83.3 BPM (2.880s bar) because it is struck, and gives the four hummed takes
+     a useless answer -- they pin at the top of the search band because a hum
+     has no transients to find. So `loopMs` opens at the BEAT take's length and
+     the melodies get aligned against it by ear, which is what this tool is for.
+     Do not trust a tempo number printed for a hum. */
+  humming: {
+    label: 'humming song',
+    dir: 'humming-song/',
+    layers: [
+      { file: 'humming-beat.ogg', name: 'beat  (bed)', color: '#53d8fb', key: null },
+      { file: 'humming-01.ogg',   name: 'humming 1',   color: '#e9a145', key: '1' },
+      { file: 'humming-02.ogg',   name: 'humming 2',   color: '#a97be9', key: '2' },
+      { file: 'humming-03.ogg',   name: 'humming 3',   color: '#8fce8f', key: '3' },
+      { file: 'humming-04.ogg',   name: 'humming 4',   color: '#e94560', key: '4' },
+      /* ⚠️ SIX LANES OVER FIVE RECORDINGS: this is `humming-01.ogg` a SECOND
+         time, asked for 2026-08-28. Not a mistake and not the delivery
+         duplicate that was fixed earlier -- that was two copies of one file
+         pretending to be two takes, and this is one take deliberately played
+         twice, so it can sit at two different offsets (a canon against itself,
+         or a thickening). The colour is a pale shade of humming 1's orange so
+         the pair read as siblings rather than as unrelated lanes.
+         ⚠️ IT COSTS A SECOND FETCH AND DECODE of the same file, because
+         `buffers` is index-aligned with this list. That is cheap here (36KB) and
+         is the honest cost of lanes being the unit; do not "optimise" it into a
+         shared buffer without checking that trim/rate stay per-lane. */
+      { file: 'humming-01.ogg',   name: 'humming 1 (dupped)', color: '#f7d08a', key: '5' },
+    ],
+    /* OPENS WITH THE BED ON AND THE FOUR MELODIES OFF, which is the opposite of
+       a neutral start and is deliberate: five hummed takes playing at once on
+       the first frame is a wall, and there is no way to hear what any single one
+       is doing. Turn them up one at a time against the beat.
+       `trimMs` = the measured lead-in. `db` on the beat is the clipping ceiling
+       described above. Nothing else is a decision yet -- that is the job. */
+    /* ⚠️ `repeat: false` ON EVERY LANE, AND THE STREET BED HAS IT TRUE ON EVERY
+       LANE. That is the difference between the two songs and it is the whole
+       reason this set doubled on its first outing.
+
+       `repeat` means TILE: `events()` pushes a pass and keeps pushing them
+       until it reaches the loop end (`do { push } while (at < L - PASS_EPS)`).
+       That is right for the street bed, whose takes are 2.1-2.3s phrases meant
+       to fill a 6.1s loop. It is wrong for THESE, which are five recordings of
+       the same ~13s tune: after their lead-ins are trimmed all four melodies are
+       SHORTER than the loop (12.37 / 11.13 / 12.05 / 13.09s against 13.966), so
+       every one of them started a second partial pass whose overhang wrapped
+       onto the head and doubled against itself.
+
+       Reported 2026-08-28: *"each channel is duplicated... they look like they
+       are being looped or doubled... each channel has only one loop running at
+       the same time."*
+
+       ⚠️ THE BEAT LANE HID IT AT FIRST, WHICH IS WHY IT WAS WORTH TRACING RATHER
+       THAN EYEBALLING. Its material is exactly `loopMs` (14.046s take less its
+       80ms lead-in), so it tiled to precisely one pass and looked correct --
+       until the front was trimmed any further, at which point it doubled too.
+       *"if I put only the beat channel, and trim its front, it duplicates."*
+       A setting that is wrong everywhere can still look right on the one lane
+       whose numbers happen to cancel.
+
+       So each lane plays ONCE, which is `repeat: false` plus a single drop --
+       the lab's own documented other mode ("off, it plays once per entry in
+       `drops` and nowhere else. Any layer can be either"), not a new feature.
+       ⚠️ ALIGNMENT IS NOW THE DROP, NOT `offsetMs`: drag the take on its lane or
+       type the ms. `offsetMs`/`gapMs` are dead for a non-repeating layer and are
+       left at 0 rather than removed, so flipping `repeat` back is one word.
+
+       trimMs = each take's own measured lead-in, so they line up by CONTENT and
+       not by position in this list:  beat 0.080s · 01 2.520s · 02 1.120s ·
+       03 1.280s · 04 1.000s. */
+    mix: [
+      /* ⚠️ 1750, SET BY EAR 2026-08-28, AND IT REPLACES A MEASURED 80. The
+         auto-measured lead-in was RIGHT ABOUT THE FILE AND WRONG ABOUT THE
+         MUSIC: the first thing above the -40dB floor is handling noise at 80ms,
+         and everything up to 1750ms peaks at -35.5 dBFS -- inaudible ticks, not
+         playing. The first real hit is at 1750, where the level jumps to -26.6
+         and then to -12. **An envelope floor finds the first SOUND; only ears
+         find the first BEAT.** Treat the other four trims below with the same
+         suspicion -- they were measured the same way. */
+      { on: true,  solo: false, db: -4, trimMs: 1750, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+      { on: false, solo: false, db: 0,  trimMs: 2520, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+      { on: false, solo: false, db: 0,  trimMs: 1120, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+      { on: false, solo: false, db: 0,  trimMs: 1280, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+      { on: false, solo: false, db: 0,  trimMs: 1000, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+      /* humming 1 again -- same trim as the lane it copies, so the two open
+         perfectly on top of each other and any offset you give it is a
+         difference you chose rather than one you inherited. */
+      { on: false, solo: false, db: 0,  trimMs: 2520, lenMs: 0, rate: 1, repeat: false, offsetMs: 0, gapMs: 0, drops: [0] },
+    ],
+    master: {
+      /* 13966 = humming-beat's 14.0465s LESS its 80ms lead-in: one pass of the
+         bed with its dead head removed and nothing else cut. The only loop
+         length that is certainly not wrong before anyone has listened -- exactly
+         the reasoning behind the street bed's 6146, and just as much a starting
+         point. ⚠️ IF IT WANTS CROPPING TO A DOWNBEAT, THAT IS A SECOND STAGE
+         (tools/crop-beat-trilha.py), not a smaller number here: shortening this
+         takes away the material the crop reads. */
+      /* ⚠️ AND WITH EVERY LANE PLAYING ONCE, THIS IS A CEILING RATHER THAN A
+         TILE COUNT: it must be at least the longest take so nothing is cut, and
+         the shorter ones simply have air after them until they are aligned.
+         ⚠️ 12040, SET BY EAR 2026-08-28, AND IT IS NO LONGER DERIVED FROM THE
+         BED. It opened at 13966 -- the beat's own length less its lead-in --
+         which was a starting point chosen because it could not be wrong before
+         anyone had listened. This is the listening.
+
+         ⚠️ IT IS SHORTER THAN FOUR OF THE SIX LANES, AND THAT IS NOT FREE.
+         Against their current trims: beat overhangs by 244ms, humming 1 by 334,
+         humming 3 by 14, humming 4 by 1054; humming 2 falls 906ms short and has
+         air after it. An overhang is not dropped -- the render is made longer
+         and the tail is summed back onto the HEAD (see the note on the wrap at
+         the top of this file), which is exactly what a note ringing over the
+         turnaround should do, and is also how a whole second of humming 4 ends
+         up playing under the first second of the loop. If something sounds
+         doubled at the top of the loop, that is where it comes from, and the
+         fix is that lane's trim or `master.wrapFadeMs` -- not `repeat`, which
+         is already off everywhere here. */
+      loopMs: 12040,
+      db: 0,
+      wrapFadeMs: 0,
+      grid: 8,
+      snap: false,
+      viewNorm: true,
+    },
+  },
 };
+
+/* WHICH SONG THIS TAB IS EDITING. No query opens the street bed, so every old
+   link and habit still lands where it did. */
+const SET_NAME = new URLSearchParams(location.search).get('set') || 'street';
+if (!SETS[SET_NAME]) {
+  document.getElementById('loadmsg').textContent =
+    'unknown set ' + SET_NAME + ' -- have: ' + Object.keys(SETS).join(', ');
+  throw new Error('unknown set ' + SET_NAME);
+}
+const SET = SETS[SET_NAME];
+document.getElementById('setname').textContent = '\u00b7 ' + SET.label;
+document.title = 'Saborosa \u2014 Beat Music Lab \u00b7 ' + SET.label;
+/* ⚠️ THE OLD NAMES ARE KEPT AS THE ACTIVE SET so the 11 places that read
+   `LAYERS` and the two that read the defaults did not have to change, and the
+   diff stays about the table rather than about the tool. */
+const LAYERS = SET.layers;
+const DEFAULT_MIX = SET.mix;
+const DEFAULT_MASTER = SET.master;
 
 const SR = 48000;                 // every source is 48k; render at their rate
 
@@ -326,6 +565,26 @@ function audible(m) {
  * already part way into its own material, because that is the same sound and
  * a source cannot be started in the past.
  */
+/* THE PIECE A LANE PLAYS: where it starts in the source and how much of it.
+   ⚠️ ONE FUNCTION BECAUSE FIVE PLACES WERE ANSWERING IT SEPARATELY -- events(),
+   the lane's own draw, the `bed length` button, the layer panel's pass
+   arithmetic and the audition tap all computed `buf.duration - trim` inline.
+   Adding an out-point to four of them and missing the fifth is the way a lane
+   sounds different from the way it is drawn, so the question is resolved once
+   and asked by everyone.
+
+   `lenMs` IS 0 FOR "TO THE END OF THE FILE", which is what every lane did before
+   it existed -- so 0 is not a magic number, it is the old behaviour spelled out.
+   It is CLAMPED to what is actually left after the trim: a piece length longer
+   than the take is not an error worth stopping for, it just means the whole
+   tail. */
+function pieceSec(m, buf) {
+  const trim = clamp(m.trimMs / 1000, 0, buf.duration);
+  const avail = Math.max(0, buf.duration - trim);
+  const len = m.lenMs > 0 ? Math.min(m.lenMs / 1000, avail) : avail;
+  return { trim, len };
+}
+
 function events(all) {
   const L = loopSec();
   const out = [];
@@ -338,21 +597,27 @@ function events(all) {
        comparing. Playback and the render never pass it. */
     const on = audible(m);
     if (!all && !on) return;
-    const trim = clamp(m.trimMs / 1000, 0, buf.duration);
     const rate = clamp(m.rate, 0.25, 4);
-    const clip = (buf.duration - trim) / rate;      // one pass, in output time
+    const { trim, len } = pieceSec(m, buf);
+    const clip = len / rate;                        // one pass, in output time
     if (clip <= 0.001) return;
     const gain = dbToGain(m.db);
     if (!all && gain <= 0) return;
 
+    /* ⚠️ `srcDur` IS IN SOURCE SECONDS AND `dur` IS IN OUTPUT SECONDS, and at any
+       `rate` other than 1 they are different numbers. Web Audio's
+       `start(when, offset, duration)` measures its third argument on the
+       BUFFER's timeline, so it wants `dur * rate`. Getting this backwards is
+       silent at rate 1 and wrong everywhere else. */
     const push = at => {
-      if (at >= 0) { out.push({ i, at, into: trim, rate, dur: clip, gain, on }); return; }
+      if (at >= 0) { out.push({ i, at, into: trim, rate, dur: clip, srcDur: clip * rate, gain, on }); return; }
       /* Started before t=0: play it from the point it has already reached.
          `at * rate` because the source offset is in SOURCE seconds while `at`
          is in output seconds -- at rate 1.5 a pass pulled 100ms early is 150ms
          further into its own material. */
       const into = trim - at * rate;
-      if (into < buf.duration) out.push({ i, at: 0, into, rate, dur: clip + at, gain, on });
+      if (into < buf.duration)
+        out.push({ i, at: 0, into, rate, dur: clip + at, srcDur: (clip + at) * rate, gain, on });
     };
 
     if (m.repeat) {
@@ -412,7 +677,13 @@ async function render() {
     s.buffer = buffers[e.i];
     s.playbackRate.value = e.rate;
     s.connect(g);
-    s.start(e.at, e.into);
+    /* ⚠️ THE THIRD ARGUMENT IS NEW AND IT IS WHAT MAKES A CHOP AUDIBLE. Until
+       2026-08-28 this was `start(at, into)` with no length, so a pass always ran
+       to the END of the file however it was drawn -- consistent only because
+       `dur` also meant "to the end". With `lenMs` set they are different numbers,
+       and without this the render would sound like the whole take while the lane
+       drew a slice of it. */
+    if (e.srcDur > 0) s.start(e.at, e.into, e.srcDur); else s.start(e.at, e.into);
   });
 
   const body = await oc.startRendering();
@@ -500,7 +771,9 @@ function playOne(e, when) {
   s.buffer = buffers[e.i];
   s.playbackRate.value = e.rate;
   s.connect(g);
-  s.start(when, e.into);
+  // Same bound as the offline render -- see the note there. `srcDur` absent or 0
+  // plays to the end of the file, which is what a bare tap wants.
+  if (e.srcDur > 0) s.start(when, e.into, e.srcDur); else s.start(when, e.into);
   scheduled.push({ when, src: s });
   return s;
 }
@@ -618,9 +891,13 @@ function drop(layer, atMs) {
   tapLog.push({ layer, ms: t });
   sel = { layer, index: m.drops.indexOf(t) };
   if (ctx && audible(m)) {
-    const trim = clamp(m.trimMs / 1000, 0, buffers[layer].duration);
-    playOne({ i: layer, at: 0, into: trim, rate: clamp(m.rate, 0.25, 4),
-              dur: 0, gain: dbToGain(m.db) }, ctx.currentTime + 0.005);
+    // The tap auditions the PIECE, so what you hear when you drop it is what
+    // the loop will play. Before `lenMs` these were the same thing.
+    const tp = pieceSec(m, buffers[layer]);
+    const trate = clamp(m.rate, 0.25, 4);
+    playOne({ i: layer, at: 0, into: tp.trim, rate: trate,
+              dur: tp.len / trate, srcDur: tp.len, gain: dbToGain(m.db) },
+            ctx.currentTime + 0.005);
   }
   touch();
 }
@@ -787,10 +1064,14 @@ function draw() {
     /* A one-shot layer with nothing dropped yet still shows the take, ghosted
        at the top of the loop, so you can see what it is before placing it. */
     if (!m.repeat && !m.drops.length) {
-      const trim = clamp(m.trimMs / 1000, 0, buf.duration);
-      const dur = (buf.duration - trim) / clamp(m.rate, 0.25, 4);
+      const pc = pieceSec(m, buf);
+      const trim = pc.trim;
+      const dur = pc.len / clamp(m.rate, 0.25, 4);
       g.globalAlpha = 0.22;
-      drawEnv(g, envs[i], buf.duration, trim, buf.duration,
+      // ⚠️ `trim + pc.len`, NOT `buf.duration`: the ghost behind an unplaced lane
+      // has to show the PIECE, or a chopped lane is drawn as the whole take and
+      // the picture stops agreeing with the sound.
+      drawEnv(g, envs[i], buf.duration, trim, trim + pc.len,
               tToX(0), Math.max(tToX(0) + 1, tToX(dur * 1000)), mid, amp, col);
       g.globalAlpha = 1;
       g.fillStyle = '#6d7e9e';
@@ -919,8 +1200,10 @@ function buildSide() {
   bedB.onclick = () => {
     const b = buffers[0]; if (!b) return;
     const m = mix[0];
-    master.loopMs = Math.round((b.duration - clamp(m.trimMs / 1000, 0, b.duration))
-                               / clamp(m.rate, 0.25, 4) * 1000) + Math.max(0, m.gapMs);
+    // Honours the lane's PIECE, so `bed length` on a chopped lane sets the loop
+    // to the chop rather than to the whole recording.
+    master.loopMs = Math.round(pieceSec(m, b).len / clamp(m.rate, 0.25, 4) * 1000)
+                    + Math.max(0, m.gapMs);
     touch();
   };
   const resetB = document.createElement('button');
@@ -971,12 +1254,33 @@ function buildSide() {
 
     numField(gp, 'level', 'dB', () => m.db, v => { m.db = clamp(v, -60, 12); touch(); }, 0.5, 3);
     numField(gp, 'trim front', 'ms', () => m.trimMs, v => { m.trimMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
+    /* THE OUT-POINT. `trim front` says where the piece starts; this says how
+       much of it to take. 0 means to the end of the file, which is what every
+       lane did before this existed.
+
+       ⚠️ CHOP AND LOOP ARE TWO SETTINGS, NOT ONE. This cuts the piece; `repeat`
+       is what tiles it across the loop. A lane with a short `piece` and repeat
+       ON is a chopped riff looping; the same lane with repeat OFF plays that
+       piece once wherever its drop is. Neither is the other's default and the
+       tool does not guess. */
+    numField(gp, 'piece length', 'ms', () => m.lenMs,
+             v => { m.lenMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
+    if (buf) {
+      const av = Math.round((buf.duration - clamp(m.trimMs / 1000, 0, buf.duration)) * 1000);
+      const pn = document.createElement('p');
+      pn.className = 'note';
+      pn.textContent = m.lenMs > 0
+        ? 'piece ' + Math.min(m.lenMs, av) + 'ms of ' + av + 'ms available'
+          + (m.lenMs > av ? '  (clamped)' : '')
+        : '0 = to the end (' + av + 'ms after the trim)';
+      gp.appendChild(pn);
+    }
     numField(gp, 'rate', 'x', () => m.rate, v => { m.rate = clamp(+v.toFixed(3), 0.25, 4); touch(); }, 0.005, 0.05);
 
     if (m.repeat) {
       numField(gp, 'offset', 'ms', () => m.offsetMs, v => { m.offsetMs = Math.round(v); touch(); }, 10, 100);
       numField(gp, 'gap between', 'ms', () => m.gapMs, v => { m.gapMs = Math.max(0, Math.round(v)); touch(); }, 10, 100);
-      const body = buf ? (buf.duration - clamp(m.trimMs / 1000, 0, buf.duration)) * 1000 : 0;
+      const body = buf ? pieceSec(m, buf).len * 1000 : 0;
       const one = body / clamp(m.rate, 0.25, 4) + Math.max(0, m.gapMs);
       const passes = one > 0 ? master.loopMs / one : 0;
       const clean = Math.abs(passes - Math.round(passes)) < 0.004;
@@ -1148,7 +1452,11 @@ window.addEventListener('resize', () => { layout(); draw(); });
   ensureCtx();
   try {
     buffers = await Promise.all(LAYERS.map(async t => {
-      const res = await fetch(BASE + t.file);
+      /* ⚠️ `SET.dir` AND NOT A PATH IN THE FILENAME. The humming takes live in
+         their own folder; putting `humming-song/x.ogg` in `file` would have put
+         the folder into every place a filename is shown, exported or parsed --
+         including `export json` and the bake. The set owns the directory. */
+      const res = await fetch(BASE + (SET.dir || '') + t.file);
       if (!res.ok) throw new Error(t.file + ': ' + res.status);
       return ctx.decodeAudioData(await res.arrayBuffer());
     }));

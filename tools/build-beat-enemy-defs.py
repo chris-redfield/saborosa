@@ -353,6 +353,71 @@ SHEETS = {
         ],
     },
 
+    # CHARUTOBI -- THE SUICIDE BOMBER, drawn on `espeto2-sprites-fim.png` and
+    # therefore a SECOND HEDGEHOG: red where espeto is black, same 6974x8557
+    # master, same spikes, same burst at the end of his death row.
+    #
+    # ⚠️ SIX ROWS AGAINST ESPETO's NINE, AND THE MISSING THREE ARE THE PUNCHES.
+    # He has no combo rows and no air punch, because he does not punch anything:
+    # he runs at the player and detonates (CONFIG.SUICIDE_RUSH). The row list is
+    # the illustrator's, given when the sheet arrived, and it lines up with the
+    # cigarettes' plan minus those three:
+    #
+    #     idle / walk / jump / hurt / knockdown / death
+    #
+    # ⚠️ THE MASTER HAS A 4200px HOLE IN IT, between the jump row (ends y2297)
+    # and the hurt row (starts y6540) -- the space the three deleted rows used to
+    # occupy. It costs nothing here: bands are found on BODIES, so an empty band
+    # is not a band. Do not "fix" it by re-exporting the sheet tighter unless the
+    # numbers below are re-derived with it.
+    #
+    # ⚠️ `bodyArea` IS 50000 LIKE ESPETO's, and the margin is thinner than his.
+    # The smallest real body is 64333 and the biggest burst fragment 41846 -- a
+    # gap of 1.5x, where his was 3.9x. `bodies` (31) is what actually guards it:
+    # 23 in the five body-cut rows plus the 8 the death row's column cut owns.
+    #
+    # ⚠️ ROW 6 IS COLUMN-CUT for espeto's reason -- it ends in an explosion, and
+    # the last two frames are loose spines with no body in them at all. His last
+    # THREE frames are the burst (615/769/898px wide, expanding all the way to
+    # the end), so `centreFrom` is 7 here and 6 there. It must agree with
+    # CONFIG.DEATH_BURST.charutobi.from.
+    #
+    # `native` IS RIGHT: the yellow gloves sit right of centre on the walk and
+    # the fall, exactly as espeto's fists do.
+    #
+    # `baseWhite` IS FALSE: he is red, black and yellow. Same as espeto and the
+    # horse -- the white base centroid has nothing to find on him.
+    #
+    # `bodyMinRun` IS 80, ESPETO's NUMBER AND FOR ESPETO's REASON: he is a ball
+    # of spikes and the lowest one hangs well below his feet, so at the shared 6
+    # the ground line lands on a spike tip and he is drawn hanging off it.
+    'charutobi': {
+        'src': 'assets-v2/beatemup-dungeon/espeto2-sprites-fim.png',
+        'base': 'charutobi-beat',
+        'native': 'right',
+        'scale': 0.38,
+        'baseWhite': False,
+        'bodyMinRun': 80,
+        'bodyArea': 50000,
+        'bodies': 31,
+        'rows': [
+            ('idle',      1,  3),   # parado
+            ('walk',      2,  6),   # andando
+            ('jump',      3,  6),   # pulando
+            ('hurt',      4,  2),   # apanhando; both frames cycle
+            ('knockdown', 5,  6),   # leva dois, cai e levanta
+            # ⚠️ `centreFrom: 7` -- frames 7..9 are the explosion and are anchored
+            # on their own CENTRE rather than on the ground. See espeto's note and
+            # the one where `centre_tiles` is built: a burst has no feet, and
+            # pinning its bbox bottom to the belt walks the whole thing across the
+            # floor as it grows. Frame 6 is the SWELL -- he puffs up into a ball
+            # of spikes and is still a body standing on the floor -- so it stays
+            # on the ground anchor and the burst starts one frame later than
+            # espeto's.
+            ('death',     6, 10, {'cut': 'columns', 'centreFrom': 7}),
+        ],
+    },
+
     # THE HORSE BOSS, and the first thing through this cutter that is not a
     # cigarette. Five rows, 55 frames, named by the illustrator in one line.
     #

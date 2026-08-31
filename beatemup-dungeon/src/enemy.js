@@ -21,6 +21,9 @@
  *     curl       a barata tucking into a ball -- the tell before a charge
  *     charge     rolling across the screen and off it; also MOVES mid-attack
  *     gone       off-screen after a charge, waiting to walk back in
+ *     rush       CHARUTOBI running straight at the player -- the suicide run
+ *     blow       he has reached them and killed himself; the death row is the
+ *                explosion, and nothing here runs again
  *     attack     Fighter's own attack state does the work
  *
  * TWO OF THEM THROW COMBOS NOW. Both cigarettes have three punches drawn for
@@ -37,6 +40,18 @@
  * `gone` -> back to `enter`, which is the spawn walk-in reused. While he is
  * `gone` he is not in the crowd's reckoning at all, and that absence is the
  * move's real cost to him. See CONFIG.BARATA_CHARGE.
+ *
+ * CHARUTOBI IS THE SECOND, AND HE LEAVES MORE OF THE LOOP BEHIND THAN THE ROACH
+ * DOES. He is a bomb with legs: he does not punch, does not wind up, does not
+ * circle and does not wait his turn -- he runs at the player and KILLS HIMSELF
+ * when he arrives, and the explosion is his death animation. So his branch runs
+ * before all of that and returns, and the pieces the rest of the file spends its
+ * length on (the stand-off, the string, the orbit, the stroll) are simply not
+ * reached for him. See CONFIG.SUICIDE_RUSH.
+ *
+ * ⚠️ AND HE IS THE FIRST ENEMY OUTSIDE THE ATTACK TOKEN. See `ignoresToken` in
+ * the constructor: an enemy who never swings can never release a token, so
+ * handing him one would stall the crowd.
  */
 class Enemy extends Fighter {
   constructor(kind, x, z, opts) {
@@ -138,6 +153,20 @@ class Enemy extends Fighter {
       damage: cd, reachX: C.reachX, reachZ: C.reachZ,
       knockback: C.knockback, lift: 0, knockdown: !!C.knockdown,
     };
+    /* THE SUICIDE RUN. CHARUTOBI's whole brain, and the second enemy after the
+       baratas that does not fit the one loop -- see the class header. A kind
+       with no `SUICIDE_RUSH` entry gets null and can never take that branch,
+       which is how every other fighter is kept out of it without a test for the
+       kind anywhere below. */
+    this.rush = (CONFIG.SUICIDE_RUSH || {})[kind] || null;
+    /* ⚠️ AND HE IS OUT OF THE TOKEN SYSTEM ENTIRELY, WHICH IS A REAL BUG AND NOT
+       A PREFERENCE. The token is a reservation on the right to be ATTACKING, and
+       it is released by the branch that ends a swing; a rusher has no swing to
+       end, so a token handed to him would sit there unspendable while the
+       enemies still fighting wait for a turn that is not coming. That is exactly
+       what `Crowd.update` already skips `gone` roaches for. He does not need one
+       either: running at you is what he does, not a turn he takes. */
+    this.ignoresToken = !!this.rush;
     this.wantsCharge = false;
     this.chargeIx = 1;
     this.wantsLeap = false;
@@ -239,6 +268,28 @@ class Enemy extends Fighter {
     this.ai = 'charge';
     this.aiT = 0;
     this.attack([this.charge], 0);
+  }
+
+  /**
+   * GO OFF. CHARUTOBI has reached the player, and reaching them is the whole
+   * attack -- so he simply dies, and his death row is the explosion.
+   *
+   * ⚠️ THERE IS NO HITBOX HERE, AND THAT IS THE DESIGN. The damage is
+   * `CONFIG.DEATH_BLAST.charutobi`, armed off the death clock by `_deathBlast()`
+   * exactly as espeto's is, so a charutobi the player KILLS explodes the same
+   * way a charutobi who arrives does. One explosion, one hitbox, one code path,
+   * whichever end he came to it from.
+   *
+   * ⚠️ `die(..., thrown = false)` AND NOT `hurt()`. Nothing hit him, so there is
+   * no blow to pass -- and faking one would drag `CONFIG.DEATH_THROW` in behind
+   * it and launch him 440px back from the player he just spent the fight
+   * reaching. See Fighter.die().
+   */
+  _detonate() {
+    this.hasToken = false;
+    this.ai = 'blow';
+    this.aiT = 0;
+    this.die(0, 0, false);
   }
 
   /**
@@ -345,6 +396,25 @@ class Enemy extends Fighter {
          subject to the walls the moment it starts fighting. */
       this.enterT -= dt;
       if (this.enterT > 0) return;
+      /* ⚠️ A RUSHER HAS NO MARK, AND WALKING TO ONE WAS A BUG YOU COULD WATCH.
+         Reported 2026-08-28: *"he just passes through the player and walks to
+         the left by himself, then he suddenly comes running from the left."*
+         That is this branch, exactly as written. The walk-in spawns him off the
+         RIGHT edge and steers him to `entryX` -- a fixed spot chosen when the
+         wave was authored -- and it does not look at the player at all. His mark
+         is at 2900; a player who has chased the first two enemies right of that
+         is standing IN his path, so he trudged through them, arrived at an empty
+         spot, and only then turned round and charged back. Three seconds of a
+         suicide bomber ignoring the person he exists to run at.
+
+         ⚠️ THE FIX IS THAT HE NEVER TAKES THE MARK, not that the mark moves. A
+         walk-in exists so nobody MATERIALISES in front of the player; for
+         everyone else it also puts them somewhere sensible to start fighting
+         from, and a rusher has no such place -- the only spot he wants is the
+         player's. So the delay and the off-screen spawn are kept (both still do
+         their job) and the mark is dropped: the moment he is due, he is running.
+         See the `bounds` note in the rush branch for the other half of this. */
+      if (this.rush) { this.ai = 'rush'; this.aiT = 0; this._face(player); return; }
       const target = this.entryX;
       if (target == null || Math.abs(this.x - target) < 12) {
         this.ai = 'approach';
@@ -451,6 +521,58 @@ class Enemy extends Fighter {
       this.enterT = 0;
       this.ai = 'enter';
       this.aiT = 0;
+      return;
+    }
+
+    /* ===== THE SUICIDE RUN ===================================================
+       CHARUTOBI's whole brain, and it sits ABOVE the mid-swing return for the
+       same reason the leap and the charge do: it is the one thing he does, and
+       it keeps moving. Everything below this line -- the stand-off, the
+       wind-up, the string, the orbit, the stroll -- is code he never reaches.
+
+       ⚠️ HE SEEKS THE PLAYER'S OWN SPOT, NOT A STAND-OFF BESIDE IT. Every other
+       enemy aims at `player.x ± enemyStandoffX` because two fighters in one
+       pixel is a shoving match rather than a fight. He is not trying to fight:
+       he is trying to be where the player is when he goes off, so the thing
+       that stops him is the trigger below and nothing else.
+
+       ⚠️ THE TRIGGER IS A PROXIMITY TEST, NOT A HITBOX. It is measured between
+       the two ground points, so it owes nothing to reach, facing or the
+       target's half-width -- which is the arithmetic every attack in this game
+       does owe (see CONFIG.enemyReachX). He blows up when he is NEAR, from any
+       side, whether or not the player could be punched from there.
+
+       ⚠️ AND HE IS INTERRUPTIBLE ALL THE WAY IN. Being hit puts every enemy in
+       `hurt`/`down`, which `update` refuses to think through at all, so a
+       player who reads the run gets the same answer the barata's charge has:
+       hit him before he arrives. Killing him still detonates him -- the blast
+       comes out of the death row and not out of this branch -- which is the
+       trade: you can stop him reaching you, you cannot stop him going off. */
+    if (this.rush) {
+      const R = this.rush;
+      const rdx = player.x - this.x, rdz = player.z - this.z;
+      if (Math.abs(rdx) <= (R.triggerX || 80)
+          && Math.abs(rdz) <= (R.triggerZ || 46)) {
+        this._detonate();
+        return;
+      }
+      this.ai = 'rush';
+      /* `_seek` and not `walk`, so he closes on the last few px at the speed
+         that actually reaches them rather than jittering across the target --
+         see the note on `_seek`. `speed` is absolute (x `walkSpeedX`) like the
+         barata's charge, NOT scaled by `speedScale`: a rush that inherited a
+         mook's walk multiplier would be a knob hiding behind another knob. */
+      /* ⚠️ `bounds` ONLY ONCE HE IS INSIDE THEM, AND THIS IS THE OTHER HALF OF
+         DROPPING THE WALK-IN MARK. He starts OUTSIDE the arena walls, and
+         `clamp()` would put him ON the near wall on his first frame -- the
+         fighter materialising in front of the player that the `enter` walk was
+         written to prevent, which is why THAT branch passes null too. Once he
+         has crossed in, the walls apply to him like everybody else. */
+      const inside = !bounds || (this.x > bounds.minX && this.x < bounds.maxX);
+      this._seek(dt, player.x, player.z, inside ? bounds : null, R.speed || 1.25);
+      // Facing the player rather than the way he is walking, exactly as the
+      // orbit does -- he is looking at what he is about to do.
+      this._face(player);
       return;
     }
 
@@ -837,6 +959,14 @@ class Crowd {
     let committed = 0;
     for (const e of this.list) {
       if (e.dead) { e.hasToken = false; continue; }
+      /* ⚠️ THE SUICIDE RUNNER IS NOT IN THIS SYSTEM AT ALL -- he neither holds a
+         token nor counts against the cap. See `ignoresToken` in the Enemy
+         constructor: he has no swing, so he has no branch that RELEASES a token,
+         and one handed to him would sit unspendable while the rest of the crowd
+         waits for a turn that is not coming. Counting him against
+         `maxAttackers` would be the same mistake from the other side: it would
+         let a pair of charutobis silently mute every cigarette on the screen. */
+      if (e.ignoresToken) { e.hasToken = false; continue; }
       /* `combo` counts as busy for the same reason `wind` does: between two
          hits of a string `atk` is momentarily null, and an enemy that stopped
          counting for that one frame could have its turn handed to somebody
@@ -858,6 +988,7 @@ class Crowd {
            his branch only counts down -- while the enemies still in the fight
            wait for a turn that is not coming. */
         if (e.dead || e.hasToken || e.ai === 'enter' || e.ai === 'gone') continue;
+        if (e.ignoresToken) continue;          // see the note in the count above
         if (e.state === 'hurt' || e.state === 'down' || e.atk) continue;
         const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
         if (d < bestD) { bestD = d; best = e; }
@@ -894,7 +1025,12 @@ class Crowd {
 
        ⚠️ AND IT IS SET BEFORE `update`, so an enemy reads the flag on the same
        frame it is decided rather than acting on last frame's answer. */
-    const eligible = (e) => !e.dead && !e.hasToken
+    /* ⚠️ `ignoresToken` IS EXCLUDED HERE TOO. The understudy is the enemy
+       WAITING for a turn, and it changes only one thing about him -- the radius
+       he orbits at. A rusher never orbits, so the flag would be spent on a
+       fighter it cannot move, and the enemy who would actually step in when a
+       slot freed would be standing at the back. */
+    const eligible = (e) => !e.dead && !e.hasToken && !e.ignoresToken
       && e.ai !== 'enter' && e.ai !== 'gone'
       && e.state !== 'hurt' && e.state !== 'down';
     let ready = null;
