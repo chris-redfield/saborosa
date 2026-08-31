@@ -2773,6 +2773,68 @@ over panel off does not take the front door's backdrop with it.
 
 ## The title screen
 
+### The fruit select
+
+The title screen runs the character select as **stages of itself**, not as a
+second screen — there is no cut, the photograph is held throughout, and the walk
+at the end is the walk the title has always had, now carrying whoever was chosen.
+
+```
+name    the title falls in and waits to be pressed      (unchanged)
+lift    the name accelerates up and off the top          SELECT.liftMs
+        …a beat of empty screen…                         SELECT.gapMs
+ask     ESCOLHA SUA FRUTA falls in, the picture fades
+        up, left/right pick                              titleDropMs / SELECT.artFadeMs
+chosen  the choice is held, then the prompt lifts and
+        the picture fades                                SELECT.chosenHoldMs + liftMs
+walk    the chosen hero crosses                          (unchanged)
+```
+
+**Controls:** ← / → highlight, any other button confirms. **The left one
+(LEBRON) is highlighted when the screen opens** — `SELECT.defaultPick: 0`.
+
+**Three pictures, `CONFIG.SELECT`:** one per hero plus one with nobody
+highlighted, keyed **by pack** (`PICKED.coconut`, `PICKED.coconutStrong`) rather
+than by slot.
+
+> ⚠️ **The COLOURED coconut is the selected one; the flat yellow one is the
+> reject.** The wash is *brighter* than the character's own colours, which reads
+> as a highlight and is not one — it was got backwards once already. If the
+> pictures ever look inverted in play, this pair of lines in `SELECT.PICKED` is
+> the whole of it.
+
+> ⚠️ **`NONE` is no longer reached in normal play.** It is kept as the fallback
+> when a hero's own picture fails to load — a missing highlight must cost the
+> highlight, never the ability to choose — and `defaultPick: -1` brings it back
+> as the opening state. At -1 a confirm does nothing, because an unanswered
+> select must never quietly mean "the first one".
+
+> ⚠️ **The art decides the layout.** LEBRON is drawn on the left of the picture
+> and IPANEIMA on the right, so ← and → mean the ends of `CONFIG.PLAYER_PACKS`
+> and **the two must agree**. Reorder that list without redrawing the art and the
+> highlight points at the wrong figure — which looks like an input bug, not a
+> list one. A third hero needs a fourth picture, not a code change.
+
+> ⚠️ **A direction edge beats an any-press on the same frame, and that is the
+> only thing that makes this usable on a pad.** On a keyboard the arrows return
+> out of `input.js`'s keydown handler before `_anyPress` is set, so they can't
+> confirm. On a **gamepad every button sets it, d-pad included** — deliberately,
+> so a player hunting for "press anything" doesn't have to find the right button.
+> Without the rule, nudging the d-pad would move the highlight *and* commit it in
+> one frame.
+
+> ⚠️ **Re-cutting the pictures needs `--no-crop`.** The masters are 7249×4924 /
+> 3.1 MB; the `-game.png` copies are 1600×1087 / 0.62 MB, cut with
+> `tools/shrink-master.py --max-dim 1600 --no-crop`. The tool crops to the opaque
+> bounding box by default and **the three have different bounding boxes**
+> (6821 / 6885 / 6886 px wide — the highlighted body reaches further), so cropped
+> they each land on their own geometry and the coconuts **jump** every time the
+> selection moves. Uncropped they are all 1600×1087 and cannot disagree.
+
+**Rollback:** `SELECT.on: false` gives the old screen to the frame — a press
+sends the Tab-chosen hero walking and the game begins. It also drops the three
+pictures from the manifest, so nothing is downloaded for a feature that is off.
+
 A photograph of a wall. The name **falls in from off the top of the frame** on
 the first frame, and once it has landed **LEBRON walks across the picture**, in
 from the left and out to the right. Any button starts the fight — from the first

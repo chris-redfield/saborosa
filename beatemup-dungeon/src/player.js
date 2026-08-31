@@ -38,6 +38,17 @@ const PlayerPick = {
     this.i = (this.i + 1) % this.list().length;
     return this.kind();
   },
+  /**
+   * Choose by index -- what the fruit select screen calls when the player
+   * commits. Out-of-range is ignored rather than clamped: a select that has not
+   * been answered must not silently mean "the first one", and every caller here
+   * already knows whether it has a choice to spend.
+   */
+  set(i) {
+    const l = this.list();
+    if (i >= 0 && i < l.length) this.i = i;
+    return this.kind();
+  },
 };
 
 class Player extends Fighter {

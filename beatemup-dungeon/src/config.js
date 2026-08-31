@@ -6406,6 +6406,114 @@ const CONFIG = {
      ever stops being a walk-and-go. */
   titleWalkRepeatMs: 0,
 
+  /* =========================================================================
+     THE FRUIT SELECT (2026-08-31)
+     =========================================================================
+     Asked for on 2026-08-31, and the sequence was described exactly: *"the
+     letters of the name of the game go up back, leave the screen, then new
+     letters go down, written 'ESCOLHA SUA FRUTA', and the 3 images are used,
+     one image has no one selected, and the two others represent each coconut
+     selected. After selecting the coconut, the selectd coconut appears walking
+     on screen like it used to do before."*
+
+     ⚠️ IT IS PART OF THE TITLE SCREEN, NOT A SCREEN OF ITS OWN, and that is not
+     an implementation shortcut -- it is what was described. There is no cut: the
+     same photograph is held throughout, the name leaves the way it arrived, the
+     prompt arrives the same way, and the walk-across at the end is the walk this
+     screen has always had, now carrying whoever was chosen. A second phase would
+     mean a second copy of the cover-fit plate and a hand-off between two screens
+     drawing the same picture -- a seam where the design has none. See
+     `src/title.js`, which runs it as stages off one clock.
+
+     ⚠️ THE ART DECIDES THE LAYOUT, NOT THIS FILE. The two coconuts are drawn
+     into one picture, LEBRON on the LEFT and IPANEIMA on the RIGHT, so left and
+     right here mean the order of `PLAYER_PACKS` and the two MUST agree.
+     Reordering that list without redrawing these images points the highlight at
+     the wrong figure -- and it would look like a bug in the input, not in a
+     list. Adding a third hero needs a fourth image, not a code change.
+
+     ⚠️ THREE FULL PICTURES FOR TWO BITS OF STATE, and that is the right trade
+     here. The difference between them is a repaint of one body, and the obvious
+     saving -- one base image plus a tinted overlay -- would mean re-colouring
+     the artist's drawing at runtime. The masters are 7249x4924 / 3.1MB each; the
+     `-game.png` copies the game loads are 1600x1087 / 0.62MB, cut by
+     `tools/shrink-master.py --max-dim 1600 --no-crop`.
+
+     ⚠️ `--no-crop` IS NOT OPTIONAL AND IT IS EASY TO MISS. The tool crops to the
+     opaque bounding box by default, and the three pictures have DIFFERENT
+     bounding boxes (6821 / 6885 / 6886 px wide) because the highlighted body
+     reaches a little further. Cropped, each one lands on its own geometry and
+     the two coconuts JUMP every time the selection moves -- which reads as a
+     bug in the select and is a bug in the asset pipeline. Uncropped they are all
+     1600x1087 and can never disagree. */
+  SELECT: {
+    /* false = the old screen exactly: a press sends the chosen-by-Tab hero
+       walking and the game begins. The whole feature is behind this. */
+    on: true,
+    PROMPT: 'ESCOLHA SUA FRUTA',
+    /* ⚠️ NOBODY HIGHLIGHTED -- AND THE SCREEN NO LONGER OPENS ON IT. It is kept
+       for two reasons: it is the fallback if a hero's own picture fails to load
+       (a missing highlight must cost the highlight, never the ability to
+       choose), and `defaultPick: -1` brings it back as the opening state in one
+       number. In normal play it is not reached. */
+    NONE: 'v2:beatemup-dungeon/batidao-player-select-003-game.png',
+    /* ⚠️ THE COLOURED ONE IS THE SELECTED ONE, AND I HAD IT THE WRONG WAY ROUND.
+       Corrected by the user on 2026-08-31: *"the all yellow is not the selected,
+       the selected is the colored one."* The flat yellow is a WASH over the
+       coconut you did NOT pick -- it is brighter than its own colours, which is
+       what made it read as a highlight to me and is exactly why this is written
+       down rather than left to be re-derived off the pixels.
+
+       So: 001 has the LEFT coconut in its own colours (LEBRON chosen), 002 has
+       the RIGHT one (IPANEIMA chosen), and 003 has both, which is nobody.
+
+       KEYED BY PACK, NOT BY POSITION. A picture belongs to a character, and
+       naming it by the slot it happens to sit in is the copied-value bug this
+       codebase keeps re-finding: the day the list is reordered, the names still
+       read correctly and the pictures do not. */
+    PICKED: {
+      coconut:       'v2:beatemup-dungeon/batidao-player-select-001-game.png',
+      coconutStrong: 'v2:beatemup-dungeon/batidao-player-select-002-game.png',
+    },
+    /* WHO IS HIGHLIGHTED WHEN THE SCREEN OPENS -- an index into PLAYER_PACKS.
+       Asked for 2026-08-31: *"make the left one already selected by default when
+       the player enters this screen."* 0 is the left of the picture, which is
+       the first of `PLAYER_PACKS`; the two agree by construction, see the note
+       above about the art deciding the layout.
+
+       ⚠️ IT ALSO MEANS THE CONFIRM ALWAYS HAS AN ANSWER. With nobody selected a
+       press did nothing, which is correct but is a screen that can be pressed at
+       and not respond. Now the first press commits LEBRON, and moving first
+       commits whoever you moved to. -1 restores the opening question and the
+       picture that goes with it. */
+    defaultPick: 0,
+    /* THE NAME LEAVING. It accelerates out (p squared) where the arrival eases
+       to a stop, because the two are opposite moves: a thing landing decelerates
+       into place, a thing leaving picks up speed as it goes. Matching easings
+       would make the exit read as the fall played backwards. */
+    liftMs: 520,
+    // A beat of empty screen between the name leaving and the prompt arriving.
+    // Without it the two moves overlap and read as one lump of type passing
+    // another going the other way.
+    gapMs: 140,
+    artFadeMs: 320,
+    /* THE BEAT AFTER THE CHOICE, before anything moves. The highlight IS the
+       feedback for the press, and it needs a moment on screen or the player
+       never sees the picture they picked -- the screen would answer a press by
+       throwing everything off the top. */
+    chosenHoldMs: 500,
+    /* WHERE THE PROMPT SITS, and it is HIGHER than the title's 0.30 because it
+       shares the screen with two large figures where the title had it to
+       itself. Everything below is a fraction of the canvas. */
+    promptYRel: 0.11,
+    promptSize: 58,
+    /* THE PICTURE: how much of the canvas height it fills and where its middle
+       sits. Its width follows from the art's own 7249x4924 -- never set
+       separately, or the coconuts stretch. */
+    artHRel: 0.80,
+    artYRel: 0.60,
+  },
+
   /* --- THE VERMIN, and BOTH screens that crawl on them ----------------------
      Three photographed frames, read IN PLACE out of `assets-v2/flying-dungeon/`
      rather than copied -- two copies of a picture drift the moment one is recut

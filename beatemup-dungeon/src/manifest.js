@@ -48,6 +48,22 @@ function assetManifest() {
     out.push({ key: 'titleBg', src: CONFIG.TITLE_BG, how: 'big' });
   }
 
+  /* THE FRUIT SELECT'S THREE PICTURES: nobody highlighted, and one per hero.
+     ⚠️ KEYED BY PACK (`select:<kind>`) RATHER THAN BY SLOT, exactly as
+     CONFIG.SELECT.PICKED is written -- the screen asks for the picture belonging
+     to the character it is showing, never for "the second image".
+
+     ⚠️ GATED ON BOTH FLAGS. It is part of the title screen, so `title: false`
+     takes it as well; and `SELECT.on: false` restores the old screen without
+     paying for three pictures nothing draws. */
+  if (CONFIG.title && CONFIG.SELECT && CONFIG.SELECT.on) {
+    const S = CONFIG.SELECT;
+    if (S.NONE) out.push({ key: 'select:none', src: S.NONE, how: 'big' });
+    for (const kind of Object.keys(S.PICKED || {})) {
+      out.push({ key: 'select:' + kind, src: S.PICKED[kind], how: 'big' });
+    }
+  }
+
   /* THE CRAWLING VERMIN: three frames read IN PLACE out of the flying dungeon's
      folder, and loaded ONCE for the TWO screens that use them -- the logo screen
      at the front and the game over panel at the end. `big` because they are

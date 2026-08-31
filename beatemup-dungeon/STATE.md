@@ -547,6 +547,69 @@ thing to turn down at that point is `musicVolume`.
 
 ### The title screen
 
+### The fruit select (2026-08-31)
+
+*"the letters of the name of the game go up back, leave the screen, then new
+letters go down, written 'ESCOLHA SUA FRUTA', and the 3 images are used, one
+image has no one selected, and the two others represent each coconut selected.
+After selecting the coconut, the selectd coconut appears walking on screen like
+it used to do before."*
+
+**It is the title screen, not a screen after it**, and that is what was
+described rather than a shortcut: there is no cut anywhere in that sentence. The
+same photograph is held throughout, the name leaves the way it arrived, the
+question arrives the same way, and the walk-across at the end is the one this
+file has always had — now carrying whoever was chosen. A second phase would have
+meant a third copy of the cover-fit plate and a hand-off between two screens
+drawing the same picture: a seam where the design has none. So `title.js` runs
+five stages off one clock, and `SELECT.on: false` skips the middle three and is
+the old screen to the frame.
+
+⚠️ **THE EXITS ACCELERATE WHERE THE ARRIVALS DECELERATE.** Every block of type
+on this screen falls in eased-out and leaves eased-in (`p²`). They are opposite
+moves — a thing landing slows into place, a thing leaving picks up speed — and
+matching the easings would make the exit read as the fall played backwards.
+
+⚠️ **A DIRECTION EDGE HAS TO BEAT AN ANY-PRESS ON THE SAME FRAME, OR THE SCREEN
+IS UNUSABLE ON A PAD.** On a keyboard the arrows return out of the keydown
+handler before `_anyPress` is ever set. On a gamepad **every** button sets it,
+d-pad included, and `input.js` says why in as many words: *"a player hunting for
+the button to dismiss a screen should not have to find the right one."* That is
+right for an end screen and exactly wrong for a select, so the screen — not the
+input layer — carries the rule. The press is still *taken* either way:
+`takeAnyPress` is a queue, and leaving it unread only spends it one frame later.
+
+⚠️ **THE COLOURED COCONUT IS THE SELECTED ONE, AND I READ IT BACKWARDS.**
+Corrected on sight: *"the all yellow is not the selected, the selected is the
+colored one."* The flat yellow is a WASH over the character you did not pick —
+and it is **brighter** than that character's own colours, which is exactly why it
+read as a highlight. **A treatment is not a highlight because it is louder.** The
+mapping is two lines of `SELECT.PICKED` and nothing else moved.
+
+⚠️ **AND IT OPENS ON THE LEFT ONE** (*"make the left one already selected by
+default"*), so `NONE` — both coconuts in their own colours, nobody washed out —
+is no longer reached in normal play. It is kept as the fallback when a hero's own
+picture fails to load, and `defaultPick: -1` brings it back as the opening state.
+At -1 a confirm does nothing: `PlayerPick.set(i)` ignores an out-of-range index
+rather than clamping, because an unanswered select must never quietly mean "the
+first one". With a default there is always an answer, so the first press commits
+LEBRON and moving first commits whoever you moved to.
+
+⚠️ **THE ASSET TRAP: `shrink-master.py` CROPS BY DEFAULT AND THE THREE PICTURES
+CROP DIFFERENTLY.** Their opaque bounding boxes are 6821 / 6885 / 6886 px wide,
+because a highlighted body reaches further than a dull one. Cropped, each lands
+on its own geometry and the two coconuts jump every time the selection moves —
+which presents as a bug in the select and is a bug in the asset pipeline.
+`--no-crop` gives all three the same 1600×1087 and the jump is unconstructable.
+9.1 MB of masters became 1.87 MB of `-game.png`, and the masters are left on disk
+untouched: `package.sh` builds from the manifest, so they cost repo weight and
+nothing in the download.
+
+**One thing chosen rather than asked:** after the choice, the screen is left
+BARE for the crossing — no title, no prompt. Bringing the name back would be a
+third type move nobody asked for, and the question has been answered. If those
+seven seconds want something on them, that is the line to add.
+
 `src/title.js`. The flying dungeon's three crawling-vermin frames as a
 full-bleed backdrop with the SABOROSA logo over the middle; any button, keyboard
 mouse or pad, fades to black over 600ms and hands off to the fight.
