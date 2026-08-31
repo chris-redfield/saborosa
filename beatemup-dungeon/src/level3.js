@@ -58,7 +58,7 @@
  *
  * THE HOOKS. Six of them, all one line, all guarded by `Level3.owns(room)`:
  *   stage.js   reset()        -> Level3.reset()
- *   stage.js   enterRoom()    -> Level3.enterRoom(room, player)
+ *   stage.js   enterRoom()    -> Level3.enterRoom(room, player, stage)
  *   stage.js   update()       -> returns Level3.update(...)   (before anything)
  *   stage.js   bounds()       -> returns Level3.bounds(...)
  *   game.js    the draw loop  -> the backdrop gets filmScroll() in place of camX
@@ -97,7 +97,7 @@ const Level3 = {
    * 1280-wide canvas by the tool; using the source-pixel figure here would run
    * the shot about 1.5x fast and read as the player sliding.
    */
-  enterRoom(room, player) {
+  enterRoom(room, player, stage) {
     this.reset();
     const legs = this.legs();
     const C = this.cfg() || {};
@@ -178,7 +178,23 @@ const Level3 = {
       this._bands.push({ lo, hi, from, to, camLo, camHi, landing, arrival });
       cursor = hi + gap;
     }
-    this._place(player);
+    /* ⚠️ `stage` IS PASSED SO THE CAMERA MOVES WITH HIM, AND LEAVING IT OFF WAS A
+       BUG YOU COULD WATCH. Reported 2026-08-31: *"the player character is already
+       at the room, but then vanishes and appears walking from the left"*.
+
+       `Stage.enterRoom` sets `camX = 0` and then hands over to this; without the
+       stage, `_place` set only OUR `_camX` and the stage's stayed at 0 until the
+       first frame of `play`. And the room swap happens at the blackest point of
+       a fade, during which `game.js` ticks NOTHING but the flies -- so the whole
+       fade-in was drawn with the camera 220px behind where this room's camera
+       actually starts. He stood, in view, at screen x 100; the first play frame
+       snapped the camera to 220, put him at -120 (off the left edge), and only
+       then did his walk-in start. Two entrances, one after the other.
+
+       ⚠️ IT IS ONLY THIS ROOM BECAUSE IT IS THE ONLY ROOM WHOSE CAMERA DOES NOT
+       START AT 0. Everywhere else `camX = 0` is already the right answer, so
+       nothing was ever placed wrongly and nothing had to be corrected. */
+    this._place(player, stage);
   },
 
   /**

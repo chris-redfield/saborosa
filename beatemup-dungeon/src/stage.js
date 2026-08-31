@@ -114,8 +114,14 @@ class Stage {
     }
     /* LEVEL 3 HOOK 2/4. AFTER the player is placed, because level3.js lays out
        its own world-x bands and moves him to the first one -- doing it earlier
-       would have this line put him straight back. */
-    if (Level3.owns(r)) Level3.enterRoom(r, player);
+       would have this line put him straight back.
+
+       ⚠️ AND IT TAKES THE STAGE, so it can move the CAMERA at the same time. The
+       `camX = 0` above is right for every room whose shot starts at its origin
+       and wrong for this one, whose first band's camera starts at 220 -- and
+       nothing corrected it until the first frame of play, which is after the
+       fade has finished. See the note in Level3.enterRoom. */
+    if (Level3.owns(r)) Level3.enterRoom(r, player, this);
   }
   isArena() {
     const s = this.segment();

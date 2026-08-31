@@ -4142,6 +4142,39 @@ yet, and both are one flag away from off: `spawnBehindScenery` for the depth,
 
 ## Level 3 — the bookcase (2026-08-27)
 
+### The double entrance, fixed 2026-08-31
+
+*"when we enter stage 3... the player character is already at the room, but then
+vanishes and appears walking from the left."* Two entrances, one after the other.
+
+**`Level3.enterRoom` was not given the stage, so it placed the player and not the
+camera.** `Stage.enterRoom` sets `camX = 0` — right for every room whose shot
+starts at its origin, wrong for this one, whose first band's camera starts at
+**220**. `_place` already knew how to mirror its `_camX` onto the stage; it was
+simply called without one.
+
+⚠️ **AND THE PHASE MACHINE IS WHY IT WAS VISIBLE RATHER THAN A ONE-FRAME
+GLITCH.** The room swap happens at the blackest point of the fade, and during
+`phase === 'fade'` `game.js` ticks **nothing but the flies** — `update(dt)` runs
+only in `play`. So the wrong camera was not corrected on the next frame; it was
+held for the entire fade-in. Measured: he stood in view at screen x **100** for
+the whole fade, then the first `play` frame snapped the camera to 220, dropped
+him to **−120** — off the left edge — and only then did his walk-in begin.
+
+⚠️ **THIS IS A NEW SHAPE OF THE FAMILY THIS FILE'S BUG LIST IS MADE OF, AND IT IS
+WORTH NAMING.** The usual one is *something was still moving when the thing
+driving it changed*. This is its mirror: **a value that was going to be corrected
+by the next tick, in a phase that does not tick.** Anything set at a room swap has
+to be RIGHT at the swap, because the next several hundred ms are painted from it
+and nothing runs. Look for it wherever a default is written and a hook is expected
+to overwrite it.
+
+The fix is one argument in two places. Verified after it: the camera is 220 from
+the moment of the swap, so his screen x is −120 through the whole fade-in and does
+not move when play begins — and both playable packs clear the edge with room to
+spare (the coconut's rightmost pixel lands at −45, IPANEIMA's at −51), so no
+sliver of him shows before he walks on.
+
 *"Time to add level 3, push the horse boss room to the end... this video is
 possible to reduce its size... there is one dark detail about this level, it has
 vertical movement in 2 points."* Then, on being shown what the footage actually

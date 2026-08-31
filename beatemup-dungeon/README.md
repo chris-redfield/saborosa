@@ -851,6 +851,14 @@ reason, and hitting one of the three was the half that never worked.
 
 ## Level 3 — the bookcase (the room with its own logic)
 
+> ⚠️ **`Level3.enterRoom(room, player, stage)` needs the stage, and the third
+> argument is not optional.** It places the camera as well as the player.
+> `Stage.enterRoom` sets `camX = 0`, which is right for every other room and
+> wrong for this one — its first band's camera starts at **220**. Drop the
+> argument and you get the bug from 2026-08-31 back: the player stands in view
+> for the whole fade-in and then jumps off the left edge to walk in again, because
+> `phase === 'fade'` ticks nothing and cannot correct it.
+
 ```js
 // CONFIG.ROOMS[2]
 { name: 'level-3', plate: 'level3Plate', level3: true, music: false,
