@@ -1405,14 +1405,31 @@ the second, all deliberately *not* diggers — a room where every arrival is a h
 in the ground has no contrast left in it, and the point of these is that a rusher
 can still come at you from off the screen.
 
+**Two of the second arena's three runners come from the LEFT** (`from: 'behind'`
+— the street's roaches already use it), and it is the **last two** on purpose: the
+first runner still arrives from the right, where the diggers and every other enemy
+in the game have taught the player to look, and the two behind him break that.
+Reversed, the wave teaches nothing and then confirms it.
+
 > ⚠️ **Four charutobi in the second arena is a deliberate override of "one per
 > arena, never two."** That rule is real: he is outside the attack token
 > (`CONFIG.SUICIDE_RUSH`), so **nothing in the crowd can stagger a pair** — two due
 > on the same frame both run at the player at once. `delayMs` is the only tool,
 > and it does all the work. Measured arrival times for that wave, from the arena
-> opening: **0.9s / 1.8s / 2.7s** (the diggers) then **4.4s / 5.3s / 6.2s** (the
-> runners, allowing ~1.6s for the run in from the screen edge). Tune the fight
-> there; no AI knob will do it.
+> opening:
+>
+> ```
+>  0.9s  cigarro    z220  GROUND
+>  1.8s  espeto     z300  GROUND
+>  2.7s  charutobi  z150  GROUND
+>  4.4s  charutobi  z250  from the right  (~802px of run, ~1.6s)
+>  5.4s  charutobi  z330  from the LEFT   (~858px of run, ~1.7s)
+>  6.3s  charutobi  z190  from the LEFT
+> ```
+>
+> Coming from the left costs about **110ms** more run than the right — the two
+> sides are near enough symmetrical around the locked camera — so switching sides
+> does not re-time the wave. Tune the fight there; no AI knob will do it.
 
 > ⚠️ **Each charutobi is 30 HP and does 12 damage *plus a knockdown* when he goes
 > (`DEATH_BLAST.charutobi`), against `playerHealth` 110.** All four landing is 48

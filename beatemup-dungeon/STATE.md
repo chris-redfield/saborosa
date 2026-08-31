@@ -4111,6 +4111,17 @@ guessed, from the arena opening: **0.9 / 1.8 / 2.7s** for the diggers, then
 **4.4 / 5.3 / 6.2s** for the runners once the ~1.6s run in from the screen edge
 is counted. The 1.6s gap after the last digger is the wave's one breath.
 
+⚠️ **AND TWO OF THE THREE RUNNERS COME FROM THE LEFT** (*"make 2 of them come
+from the left, instead of the right"*, same day). `from: 'behind'` — the entrance
+the street's roaches already use. **Which two is the whole reading:** it is the
+LAST two, so the first runner still comes from the right where the diggers and
+every other enemy in the game have taught the player to look, and the two after
+him break that. Left first teaches nothing and then confirms it. It cost no code:
+`Stage._spawn` already knew the side, and the rush branch takes its direction from
+the player every frame, so he turns and runs the right way with no special case.
+It costs about 110ms of extra run (858px against 802px), which is inside the
+noise of where the player is actually standing.
+
 ⚠️ **AND IT IS THE ROOM'S HARDEST MOMENT BY SOME WAY.** Each charutobi is 30 HP
 and does 12 damage *plus a knockdown* on detonation, against `playerHealth` 110:
 four landing is 48 and four knockdowns, and a knockdown is the state the next one

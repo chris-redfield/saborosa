@@ -1142,8 +1142,10 @@ const CONFIG = {
             /* ===== AND THEN THREE MORE CHARUTOBI, FROM OFF THE SCREEN ========
                Asked for 2026-08-31: *"at the second enemy wave, create like 3
                more of the charutobi enemy (red and explosive) that also come
-               from outside the screen, instead of spawning from the ground"*.
-               No `from`, so they take the ordinary right-edge walk-in.
+               from outside the screen, instead of spawning from the ground"* --
+               and then, the same day, *"make 2 of them come from the left"*. So
+               it is one off the right edge and two `from: 'behind'`; see the
+               note on those two for why they are the LAST two.
 
                ⚠️ THIS IS THE ROOM'S HARDEST MOMENT BY A LONG WAY AND IT IS NOT
                ACCIDENTAL. Four charutobi in one arena, each 30 HP, each doing
@@ -1170,8 +1172,31 @@ const CONFIG = {
                would run the same line and read as one thick enemy. ⚠️ Their `x`
                is unread -- a rusher never takes a mark. */
             { kind: 'charutobi', x: 4500, z: 250, delayMs: 2800 },
-            { kind: 'charutobi', x: 4500, z: 330, delayMs: 3700 },
-            { kind: 'charutobi', x: 4500, z: 190, delayMs: 4600 },
+            /* ⚠️ THE LAST TWO COME FROM THE LEFT. Asked for 2026-08-31: *"when
+               the charutobis come, make 2 of them come from the left, instead of
+               the right"*. `from: 'behind'` is the entrance the street's roaches
+               already use -- out of the ground the player has just cleared,
+               which is the one direction they are not watching.
+
+               ⚠️ WHICH TWO IS THE WHOLE READING, and it is the LAST two on
+               purpose. The first runner still comes from the right, where the
+               three diggers and every other enemy in the game have taught the
+               player to look; the two behind him then break that. Reversed --
+               left first -- the wave teaches nothing and then confirms it.
+
+               IT COSTS NO TIME. The spawn is `camX - pad` against
+               `camX + GAME_W + pad`, and with the camera locked at ~3332 and the
+               player landing on 4000 the run in is ~858px from the left against
+               ~802px from the right -- a difference of about 110ms on a 1.6s
+               run. The 900ms spacing below is unaffected.
+
+               ⚠️ AND NOTHING ELSE HAS TO CHANGE FOR IT. `Stage._spawn` puts him
+               on the other side and hands him a first-frame facing; the rush
+               branch takes its direction from the player every frame, so he
+               turns and runs the right way without a special case. The `z`s stay
+               where they are -- what has changed is the side, not the line. */
+            { kind: 'charutobi', x: 4500, z: 330, delayMs: 3700, from: 'behind' },
+            { kind: 'charutobi', x: 4500, z: 190, delayMs: 4600, from: 'behind' },
           ],
         },
         /* THE LAST WALK, and it lands the camera on the final frame of the shot
