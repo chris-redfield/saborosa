@@ -52,9 +52,30 @@ const PlayerPick = {
 };
 
 class Player extends Fighter {
+  /**
+   * A FULL SET OF LIVES -- what a run starts with, and what a CONTINUE hands
+   * back.
+   *
+   * ⚠️ ONE PLACE THAT KNOWS, ASKED BY BOTH. They were two reads of
+   * `CONFIG.playerLives` and that is the copied-value shape this codebase keeps
+   * re-finding: the moment a dev override existed, one of the two would have
+   * gone on handing out the shipping number and a continue would have quietly
+   * been more generous than the run it continued.
+   *
+   * The DEV override is read here rather than at either call site because
+   * `package.sh` refuses to build while dev mode is on -- so a testing value
+   * cannot ship, and `playerLives` stays the tuned number every fight is
+   * balanced against.
+   */
+  fullLives() {
+    const d = CONFIG.DEV;
+    if (d && d.on && d.lives != null) return d.lives;
+    return CONFIG.playerLives != null ? CONFIG.playerLives : 3;
+  }
+
   constructor(x, z) {
     super(PlayerPick.kind(), x, z, { hp: CONFIG.playerHealth, facing: 'right' });
-    this.lives = CONFIG.playerLives != null ? CONFIG.playerLives : 3;
+    this.lives = this.fullLives();
 
     /* THE TWO COMBO STRINGS, built once. Both share the first four hits -- the
        art is literally the same drawings -- and differ only in the finisher, so

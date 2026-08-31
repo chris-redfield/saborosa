@@ -579,6 +579,27 @@ right for an end screen and exactly wrong for a select, so the screen — not th
 input layer — carries the rule. The press is still *taken* either way:
 `takeAnyPress` is a queue, and leaving it unread only spends it one frame later.
 
+⚠️ **THE CONFIRM PUNCH CAME FROM THE MAIN GAME, BY READING IT.** *"we have the
+punch effect in our main game, can you try to reproduce it here?"* — and the
+right file was not the obvious one. `intro.js` has a "confirm punch", but its own
+comment points at `src/screens/select.js`: the **character-select lock-in**,
+which is the same moment on the same kind of screen. Pop 1.25 → 1.0 on an
+easeOutBack over 0.40s and a 9px shake decaying over 0.18s at 82 / 71 rad/s,
+copied unchanged. **"Like we did in X" means go and read X** — and when X names
+two candidates, the one whose *situation* matches beats the one whose *name*
+matches.
+
+⚠️ **IT STAMPS THE WHOLE PICTURE BECAUSE THE ART CANNOT BE SPLIT.** The main game
+clips to one fruit's panel; our two coconuts overlap — measured, the thinnest
+column between them still carries 385 rows of ink out of 1087, so a split would
+slice an arm mid-pop. The board stamps where the main game stamps the fruit, and
+that is an adaptation to the drawing rather than a compromise on the beat.
+
+⚠️ **AND THE TRAILING FADE-TO-BLACK WAS LEFT OUT ON PURPOSE.** There it covers a
+synchronous stage load; here the hand-off is the chosen coconut walking across
+the photograph, which is the thing that was asked for. Copying the whole beat
+would have hidden the feature underneath it.
+
 ⚠️ **THE COLOURED COCONUT IS THE SELECTED ONE, AND I READ IT BACKWARDS.**
 Corrected on sight: *"the all yellow is not the selected, the selected is the
 colored one."* The flat yellow is a WASH over the character you did not pick —
@@ -5974,6 +5995,79 @@ and the fight would quietly become unwinnable. The knob to reach for instead is
 `flyBossHoverY` (150): **142 restores the old window at 0.72 scale.**
 
 88 HP — a multiple of 22, so exactly 4 damage a bar square.
+
+---
+
+## CONTINUE? (2026-08-31)
+
+*"when the player dies his last life, keep the background with the game, but on
+top of it, add a new layer with the countdown animation... if the counter reaches
+zero and the players didn't press any button, this other frame must be used."*
+
+`src/continue.js`, knobs in README. The last life is gone, the world stops where
+it is, and the panel is painted over it. Press anything for a full set of lives
+and the fight you were losing; let it run out and the grey frame holds a beat
+before the game over panel.
+
+⚠️ **"KEEP THE BACKGROUND WITH THE GAME" IS A DRAW-ORDER ANSWER, NOT A SCREENSHOT
+ONE.** It goes in `drawEndCards()` — the slot the CLEAR tally and the game over
+veil already use, which exists precisely because those cards sit over whatever
+was drawn. Nothing is captured and nothing is re-rendered: the phase simply is
+not `play`, so `update()` is never reached, and the corpse holds mid-fade with
+the crowd frozen around it. **The screen reads as the game paused on your death
+because it literally is.**
+
+⚠️ **THREE LAYERS, ONE RECT, AND THE RECT IS DERIVED FROM THE IMAGE SIZE.** The
+artist's pictures are full-canvas overlays carrying different parts of one
+composition — measured: the figures occupy x 0.067–0.541 of the sheet, the word
+and the number 0.575–0.979, and the dead frame both. They line up because they
+were drawn lined up, so every layer is blitted into the same rect and **none of
+them is ever fitted to its own ink**.
+
+⚠️ **AND THAT REACHED BACK INTO THE ASSET CUT — THE SAME TRAP THE FRUIT SELECT
+HIT HOURS EARLIER.** `shrink-master.py` crops to the opaque bounding box by
+default; cropped, thirteen pictures that differ in where their ink sits would
+each land on their own geometry and the panel would shake as the digit changed.
+`--max-dim 1100 --no-crop` gives all fifteen 1100×799. **Any set of images that
+swap in place must be reduced without cropping** — that is now twice in one day.
+
+⚠️ **THE FIGHT IS DIMMED 30% UNDER THE PANEL, AND I HAD ARGUED AGAINST IT IN
+CODE.** The note that shipped in `game.js` reasoned that darkening the thing the
+player is deciding whether to go back to was the wrong note. Overruled the same
+day — *"so the gameplay kinda fades to background and the player has to decide"*
+— and the ask is the better read: **the world has stopped being what you are
+looking at and become what you are looking at a decision ABOUT.** It has to
+recede for the question to be the foreground. The reasoning was sound and the
+premise was wrong, which is the useful half to remember.
+
+⚠️ **THE VEIL IS THE BOTTOM LAYER, UNDER THE GREY DEAD FRAME TOO.** It dims the
+world, not the panel; over the pictures it would take 30% off the artist's
+colours and the yellow would go muddy. That is why `Continue` paints it and not
+`drawEndCards` — it has to sit *between* the fight and the panel's own layers,
+and that branch cannot get in there.
+
+⚠️ **THE DEAD FRAME REPLACES THE PANEL, IT DOES NOT JOIN IT.** `contagem-dead` is
+the whole composition desaturated — figures, word and zero in one picture — so
+drawing it over the live layers would put a colour pair of coconuts under a grey
+pair. It is an `if/else`, not a third blit.
+
+⚠️ **A PRESS AFTER ZERO DOES NOTHING**, and that is the point of the screen. A
+continue that could still be taken while the grey frame is up would make the
+countdown decoration.
+
+**THE STING MOVED RATHER THAN DOUBLED.** `playDeathSting()` fired on the last
+death; it now fires when the count runs out. The panel keeps the sound it always
+had, and the countdown plays over the level's own bed — a sting on arrival would
+tell the player the answer before they had been asked the question.
+
+**Two things left deliberately:** `blank-01/02` are cut and unwired (they are the
+grid with no digit, which is what a flash between numbers would be made of — not
+asked for, and not in the manifest, so they cost nothing to download), and there
+is **no tick sound**.
+
+**Measured, so nobody re-derives it:** every digit holds exactly one second, 0
+included, so the offer is ten seconds; the grey frame then holds 1.4s and hands
+over at 11.4s.
 
 ---
 

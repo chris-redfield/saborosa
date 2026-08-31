@@ -82,6 +82,26 @@ const CONFIG = {
        room jumps and the readout while leaving the DAMAGE REAL. Use that to
        walk the level for pacing; use 50 to get somewhere quickly. */
     punchDamage: 50,
+    /* ⚠️ HOW MANY LIVES A RUN STARTS WITH, OVERRIDING `playerLives` -- and it is
+       here rather than there ON PURPOSE. Asked for 2026-08-31: *"change the
+       number of extra lives of the player to 0 so I can quickly test the
+       continue screen"*, which is a testing value, and `playerLives: 3` is the
+       tuned one every fight in the game is balanced against. Editing that would
+       have shipped the change; this cannot, because `package.sh` refuses to
+       build while `on` is true.
+
+       ⚠️ IT IS TOTAL LIVES, NOT EXTRA ONES. The HUD's "x2" is lives MINUS the
+       one being played, so "0 extra lives" is **1** here and the first death
+       goes straight to the continue screen.
+
+       ⚠️ AND A CONTINUE GIVES BACK THIS SAME NUMBER, not `playerLives`. Both
+       sites ask `player.fullLives()`, which is the only thing that knows what a
+       full set is -- otherwise continuing during a dev session would hand back
+       three and the screen under test would not come round again.
+
+       null = leave `playerLives` alone, which is what a dev session testing
+       anything else wants. */
+    lives: 1,
 
     /* WHICH ROOM THE GAME STARTS IN, by index into ROOMS. Testing a late room
        by playing to it is how a late room stops getting tested; this is the
@@ -6497,6 +6517,54 @@ const CONFIG = {
     // another going the other way.
     gapMs: 140,
     artFadeMs: 320,
+    /* THE PUNCH -- the confirm beat, lifted from the MAIN GAME's own character
+       select (`src/screens/select.js`, its "lock-in"), which is where the same
+       moment already existed and therefore what "reproduce the punch effect"
+       had to mean. Its numbers are copied rather than re-invented: a stamp pop
+       of 1.25 settling to 1.0 on an easeOutBack over 0.40s, and a decaying
+       screen shake of 9px over 0.18s at 82 / 71 rad/s.
+
+       ⚠️ THE POP IS THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, AND THAT IS
+       BLOCKED ON THE ART RATHER THAN ON THE CODE. Asked for on the first
+       playtest -- *"make it only move the selected character"* -- and it cannot
+       be done from these files. The main game stamps ONE fruit because its art
+       is a row of separate panels it can clip to (`p.rect`). Ours is a single
+       drawing of two coconuts that TOUCH. Measured, three ways:
+
+         * one connected component of 837,483px spanning the whole picture, and
+           still one at an alpha threshold of 254 -- so it is ink, not a faint
+           halo, joining them;
+         * eroding the mask by 32px does not separate them either, so it is a
+           wide overlap and not a thin bridge;
+         * the thinnest column between them still carries 385 rows of ink out of
+           1087.
+
+       So there is no line to clip on, and any split invents a boundary through
+       the artist's drawing -- during a 25% pop the seam would be a hard vertical
+       edge with an arm growing across it.
+
+       ⚠️ WHAT WOULD UNBLOCK IT: the two figures exported as SEPARATE PNGs on the
+       same 7016x4924 canvas (so they still line up by construction), for each of
+       the two picked states. Then the pop clips to one layer and this note goes
+       away. Until then the board stamps where the main game stamps the fruit.
+
+       ⚠️ AND THE MAIN GAME'S TRAILING FADE-TO-BLACK IS DELIBERATELY NOT COPIED.
+       There it covers a hand-off to a synchronous stage load; here the hand-off
+       is the chosen coconut walking across the title photograph, which is the
+       thing that was asked for. Fading to black over it would hide the feature.
+
+       ⚠️ IT HAS TO FIT INSIDE `chosenHoldMs`. The pop settles at 400ms and the
+       hold is 500, so the beat is over before the prompt lifts. Drop the hold
+       below the stamp and the pop is cut off mid-bounce by the screen leaving. */
+    PUNCH: {
+      on: true,
+      stampMs: 400,       // pop settle time
+      pop: 0.25,          // swells to 1.25 and bounces back to ~1.0
+      shakeAmp: 9,        // px at its peak, decaying linearly
+      shakeMs: 180,
+      shakeFreqX: 82,     // rad/sec -- the main game's numbers, unchanged
+      shakeFreqY: 71,
+    },
     /* THE BEAT AFTER THE CHOICE, before anything moves. The highlight IS the
        feedback for the press, and it needs a moment on screen or the player
        never sees the picture they picked -- the screen would answer a press by
@@ -6512,6 +6580,101 @@ const CONFIG = {
        separately, or the coconuts stretch. */
     artHRel: 0.80,
     artYRel: 0.60,
+  },
+
+  /* =========================================================================
+     CONTINUE? (2026-08-31)
+     =========================================================================
+     Asked for on 2026-08-31: *"when the player dies his last life, keep the
+     background with the game, but on top of it, add a new layer with the
+     countdown animation... while the numbers go down, [the two figures] must be
+     cycled on screen. also, if the counter reaches zero and the players didn't
+     press any button, this other frame must be used."*
+
+     ⚠️ THE WORLD BEHIND IT IS THE REAL FRAME, NOT A CAPTURE. `game.js` paints
+     this from `drawEndCards()` -- the same slot the CLEAR tally and the game
+     over veil use, which exists exactly because those cards sit OVER whatever
+     was drawn. Nothing is snapshotted; the world simply stops being ticked, so
+     the corpse holds mid-fade and the crowd holds where it stood. That is what
+     makes it read as the game PAUSED on your death.
+
+     ⚠️ THREE LAYERS, ONE RECT. The pictures are full-canvas overlays carrying
+     different parts of one composition -- the figures in the left half of the
+     sheet, the word and the number in the right, and the dead frame both. They
+     are drawn at one rect derived from the IMAGE SIZE, never from the ink, so
+     they line up because the artist drew them lined up. See src/continue.js.
+
+     ⚠️ AND THAT RULE REACHED BACK INTO THE ASSET CUT. `shrink-master.py` crops
+     to the opaque bbox by default; cropped, these would each land on their own
+     geometry and the panel would shake as the digit changed. Cut with
+     `--max-dim 1100 --no-crop`, all fifteen are 1100x799 and cannot disagree.
+     10.4MB of masters became 2.5MB of `-game.png`, and the masters were deleted
+     on request -- the user keeps the originals outside the repo.
+
+     ⚠️ `batidao-continue-blank-01/02` ARE CUT AND UNUSED. They are the grid with
+     no digit in it -- all lit, and empty -- which is what a FLASH between digits
+     would be made of. Not wired, because a flash was not asked for; they are not
+     in the manifest either, so they cost repo weight and nothing in the
+     download. Two lines in continue.js if that beat is ever wanted. */
+  CONTINUE: {
+    /* false = the last death goes straight to the game over panel, exactly as
+       it did before this screen existed. The whole feature is behind it, and
+       the three pictures leave the manifest with it. */
+    on: true,
+    DIR: 'v2:beatemup-dungeon/continue/batidao-continue-',
+    /* HOW LONG THE OFFER STANDS. The artist drew ten digits, 0 through 9, so
+       this counts 9 down to 0 with each one holding a second -- ten seconds in
+       all, because the 0 is a drawing that deserves its beat rather than a frame
+       on the way to grey. Fewer seconds simply starts lower and skips the top
+       digits; more than 9 would ask for art that does not exist. */
+    seconds: 9,
+    // How long the two beaten coconuts hold each drawing.
+    figureMs: 380,
+    /* THE GREY FRAME'S BEAT BEFORE THE GAME OVER PANEL. It is the answer to a
+       question the player just failed to answer, so it has to be READ -- handing
+       straight on would make the count end in a cut. */
+    deadHoldMs: 1400,
+    /* HOW MANY LIVES A CONTINUE BUYS. A full set, which is what the word means
+       in this genre -- and `playerLives` rather than 3, so the two can never
+       disagree about what a full set is. He comes back where he fell, in the
+       fight he was losing; the crowd, the segment and the camera never moved. */
+    lives: null,          // null = CONFIG.playerLives
+    /* HOW FAR THE FIGHT IS PUSHED BACK UNDER THE PANEL. Asked for 2026-08-31:
+       *"add a darkening filter like 30% to the game screen, before drawing these
+       letters... so the gameplay kinda fades to background and the player has to
+       decide."*
+
+       ⚠️ IT IS UNDER EVERY LAYER, INCLUDING THE GREY DEAD FRAME -- it dims the
+       WORLD, not the panel. Over the pictures it would take 30% off the artist's
+       colours too and the yellow would go muddy.
+
+       ⚠️ AND I HAD ARGUED THE OTHER WAY IN CODE. The note this replaces said
+       darkening the thing the player is deciding whether to go back to was the
+       wrong note. The ask is the better read: the world has stopped being what
+       you are looking at and become what you are looking at a decision ABOUT. */
+    /* ⚠️ 0.50, WHICH IS THE PAUSE SCREEN'S NUMBER. Asked on the first playtest:
+       *"check the same logic that the pause button does now, that is correct."*
+       The logic already was the same -- `renderFrame(render)`, a black fillRect,
+       then the content on top at full alpha, which is exactly `Hud.drawCard`.
+       What differed was the STRENGTH: this was 0.30 against `PAUSE.dimAlpha`
+       0.50, so the world was pushed back less far and the panel popped less.
+       Matching the screen the user named as correct is the answer; 0.30 is one
+       line away if it turns out to be the panel that wanted changing. */
+    veilAlpha: 0.50,
+    /* THE VEIL RAMPS UP OVER THIS, AND THE PANEL DOES NOT -- it is solid from
+       its first frame. ⚠️ IT CARRIED THE PANEL TOO AND THAT WAS A BUG: a
+       translucent coconut shows the world through itself, and that world has
+       just been dimmed 30%, so the characters really were darkened for the first
+       quarter-second. Reported on the first playtest. **Anything drawn at less
+       than full alpha above a veil takes the veil on.** 0 = both instant. */
+    fadeInMs: 250,
+    /* THE PANEL'S RECT. Fitted by HEIGHT and centred: the sheet is 1.377:1
+       against a 1.778:1 canvas, so height is what keeps all of it on screen --
+       fitting by width would push the figures' feet off the bottom, and they are
+       the thing that has to sit on the floor. `yRel` is a hair below centre for
+       the same reason. */
+    hRel: 0.90,
+    yRel: 0.52,
   },
 
   /* --- THE VERMIN, and BOTH screens that crawl on them ----------------------

@@ -480,6 +480,69 @@ class Title {
   }
 
   /**
+   * THE CONFIRM PUNCH, lifted from the MAIN GAME's own character select
+   * (`src/screens/select.js` in the repo root -- its "lock-in"). That screen is
+   * where this moment already existed, so "reproduce the punch effect" meant
+   * reading it rather than inventing one: a stamp pop of 1.25 settling to 1.0 on
+   * an easeOutBack, and a decaying screen shake, both fired by the confirm. Its
+   * numbers are copied, not re-tuned.
+   *
+   * ⚠️ IT SHAKES THE PANEL, NOT THE PHOTOGRAPH. The main game shakes its
+   * foreground group over a background that holds still, and `intro.js` says why
+   * in as many words: *"Background and readability darken sit UNDER the shake so
+   * screen edges never reveal gaps when the foreground jolts."* Shaking the
+   * plate here would read as the camera being hit and would show the frame edge
+   * besides.
+   */
+  _easeOutBack(p) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+  }
+
+  /** The punch block, or null when nothing is being punched. */
+  _punch() {
+    const P = (CONFIG.SELECT && CONFIG.SELECT.PUNCH) || null;
+    if (!P || P.on === false || this.stage !== 'chosen') return null;
+    return P;
+  }
+
+  /**
+   * How far the picture is swollen by the stamp; 1 once it has settled.
+   *
+   * ⚠️ THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, and that is a fact about the
+   * art rather than a shortcut. The main game stamps ONE fruit because its art
+   * is a row of separate panels it can clip to (`p.rect`); ours is a single
+   * drawing of two coconuts whose arms overlap -- measured, the thinnest column
+   * between them still carries 385 rows of ink out of 1087. There is no line to
+   * clip on, and a split would slice an arm in half mid-pop. So the board stamps
+   * where the main game stamps the fruit.
+   */
+  _popK() {
+    const P = this._punch();
+    if (!P) return 1;
+    const ms = P.stampMs != null ? P.stampMs : 400;
+    if (ms <= 0) return 1;
+    const p = Math.min(1, this.stageT / ms);
+    return 1 + (P.pop != null ? P.pop : 0.25) * (1 - this._easeOutBack(p));
+  }
+
+  /** The shake offset in px, decaying linearly, or null once it is spent. */
+  _shake() {
+    const P = this._punch();
+    if (!P) return null;
+    const ms = P.shakeMs != null ? P.shakeMs : 180;
+    const amp = (P.shakeAmp != null ? P.shakeAmp : 9)
+              * Math.max(0, 1 - this.stageT / Math.max(1, ms));
+    if (amp <= 0.01) return null;
+    /* SECONDS, because the frequencies are the main game's rad/sec numbers and
+       are copied unchanged. Rewriting them for a ms clock would be a second
+       place for the feel to drift away from the screen this is reproducing. */
+    const t = this.stageT / 1000;
+    return { x: Math.sin(t * (P.shakeFreqX != null ? P.shakeFreqX : 82)) * amp,
+             y: Math.cos(t * (P.shakeFreqY != null ? P.shakeFreqY : 71)) * amp };
+  }
+
+  /**
    * 0..1 through a lift-OUT, and 0 when nothing is leaving.
    *
    * ACCELERATING (`p` squared) where every arrival on this screen decelerates.
@@ -533,7 +596,10 @@ class Title {
     if (!img) return;
     const iw = img.width || img.naturalWidth, ih = img.height || img.naturalHeight;
     if (!iw || !ih) return;
-    const dh = H * this._sel('artHRel', 0.80);
+    /* THE STAMP. Growing the DRAWN SIZE about the anchor is the scale: `cy` is
+       the picture's middle and the rect is built around it, so a bigger `dh`
+       swells it in place instead of pushing it down and right off its corner. */
+    const dh = H * this._sel('artHRel', 0.80) * this._popK();
     const dw = dh * iw / ih;
     const cy = H * this._sel('artYRel', 0.60);
     ctx.save();
@@ -594,8 +660,15 @@ class Title {
        printed on the screen, everything else lives in it. He and the picture
        never share a frame anyway (the art is gone before he sets off), so this
        is an ordering rule rather than a compositing decision. */
+    /* THE PUNCH SHAKES THE PANEL AND THE TYPE, NOT THE PHOTOGRAPH -- see
+       `_shake`. The walker is outside it too, and could not be caught by it
+       anyway: he does not set off until the `chosen` stage is over. */
+    const sh = this._shake();
+    ctx.save();
+    if (sh) ctx.translate(sh.x, sh.y);
     this._drawArt(ctx, W, H);
     this._drawType(ctx, W, H);
+    ctx.restore();
 
     if (this.out >= 0) {
       const ms = CONFIG.titleFadeOutMs || 600;

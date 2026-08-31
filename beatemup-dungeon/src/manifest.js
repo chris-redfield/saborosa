@@ -64,6 +64,28 @@ function assetManifest() {
     }
   }
 
+  /* THE CONTINUE PANEL: two figure drawings, ten digits and the grey dead frame.
+     ⚠️ THE DIGITS ARE GENERATED FROM `seconds`, not listed. Ten paths written out
+     by hand is ten chances to typo one that only shows up when the count reaches
+     it -- nine seconds into a screen you have to lose a run to see. Keyed
+     `continue:n<d>` so continue.js can ask for the number it is showing.
+
+     ⚠️ `blank-01/02` ARE DELIBERATELY ABSENT. They are cut and sitting in the
+     folder for a flash that was not asked for; nothing draws them, so nothing
+     downloads them. */
+  if (CONFIG.CONTINUE && CONFIG.CONTINUE.on && CONFIG.CONTINUE.DIR) {
+    const D = CONFIG.CONTINUE.DIR;
+    out.push({ key: 'continue:fig0', src: D + 'figura-01-game.png', how: 'big' });
+    out.push({ key: 'continue:fig1', src: D + 'figura-02-game.png', how: 'big' });
+    out.push({ key: 'continue:dead', src: D + 'contagem-dead-game.png', how: 'big' });
+    const n = Math.max(0, Math.min(9, CONFIG.CONTINUE.seconds != null
+                                        ? CONFIG.CONTINUE.seconds : 9));
+    for (let d = 0; d <= n; d++) {
+      out.push({ key: 'continue:n' + d, src: D + 'contagem-0' + d + '-game.png',
+                 how: 'big' });
+    }
+  }
+
   /* THE CRAWLING VERMIN: three frames read IN PLACE out of the flying dungeon's
      folder, and loaded ONCE for the TWO screens that use them -- the logo screen
      at the front and the game over panel at the end. `big` because they are

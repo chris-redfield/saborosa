@@ -34,6 +34,9 @@
   const title = new Title(assets, sheets);
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
+  /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
+     a world it never touches -- see the header of continue.js. */
+  const cont = new Continue(assets);
   /* The front door: the vermin and the SABOROSA logo, ahead of the title. It
      takes `gameOver` for its BACKDROP only -- the two screens crawl on one set
      of frames and share the draw, so they cannot fall out of step. */
@@ -69,7 +72,7 @@
   const grade = new Grade();
   let player = null;
   let phase = 'boot';          /* boot | logo | title | play | outro | ending
-                                  | fade | dead | gameover | clear */
+                                  | fade | dead | continue | gameover | clear */
   /* WHAT THE WALK-OUT HANDS TO. The outro is the same beat either way -- he
      walks off the right-hand edge -- but it means two different things: a door
      into the next room, or the end of the game. It used to be able to assume
@@ -800,12 +803,51 @@
         player.revive();
         phase = 'play';
         phaseT = 0;
+      } else if (CONFIG.CONTINUE && CONFIG.CONTINUE.on) {
+        /* ⚠️ THE OFFER COMES BEFORE THE PANEL, AND THE STING DOES NOT MOVE WITH
+           IT. `playDeathSting()` is the music of having lost, and on this screen
+           he has not lost yet -- it now fires when the count runs out, so the
+           panel arrives with the sound it always had and the countdown plays
+           over the level's own bed. A sting here would tell the player the
+           answer before they had been asked the question. */
+        phase = 'continue';
+        phaseT = 0;
+        cont.reset();
       } else {
         phase = 'gameover';
         phaseT = 0;
         playDeathSting();
       }
       input.flush();
+    }
+
+    /* THE COUNTDOWN. ⚠️ IT IS THE ONLY THING TICKED IN THIS PHASE -- the corpse
+       holds mid-fade, the crowd holds where it stood and the plate holds, which
+       is what makes the screen read as the game paused on the death rather than
+       as somewhere new. See the `if (phase === 'play')` gate above: nothing else
+       reaches `update()`. */
+    if (phase === 'continue') {
+      const r = cont.update(dt, input);
+      if (r === 'go') {
+        /* A CONTINUE IS A FULL SET OF LIVES AND THE SAME FIGHT. He gets up where
+           he fell, with the crowd, the segment and the camera exactly as he left
+           them -- the same arrangement every other death in the run uses, which
+           is why this is `revive()` and not a room reload.
+           ⚠️ THE LIVES GO BACK FIRST. `revive()` puts a body back on its feet
+           and says nothing about how many it has left; setting them after would
+           work today and break the first time revive() learns to read them. */
+        player.lives = (CONFIG.CONTINUE.lives != null)
+          ? CONFIG.CONTINUE.lives : player.fullLives();
+        player.revive();
+        phase = 'play';
+        phaseT = 0;
+        input.flush();
+      } else if (r === 'over') {
+        phase = 'gameover';
+        phaseT = 0;
+        playDeathSting();
+        input.flush();
+      }
     }
 
     const deathLock = (phase === 'dead') ? player.deathLock(sheets) : 0;
@@ -1121,6 +1163,17 @@
       hud.drawResults(ctx, stats,
                       Math.max(boardSkip, phaseT - 0.45),
                       Math.min(1, phaseT / 0.6));
+    } else if (phase === 'continue') {
+      /* OVER THE FIGHT, WITH A 30% VEIL UNDER IT -- and the veil is drawn by
+         `Continue` rather than here, because it belongs UNDER the panel's own
+         layers and this branch cannot get between them. See CONFIG.CONTINUE
+         `veilAlpha`.
+
+         ⚠️ IT IS NOT THE GAME OVER SCREEN'S DIP. That one takes the world all
+         the way to black because it is REPLACING it; this one pushes the fight
+         back so the question is the foreground, and the fight stays legible
+         underneath because it is what the player is deciding about. */
+      cont.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
     } else if (phase === 'gameover') {
       /* ⚠️ THE FIGHT DIPS TO BLACK FIRST, AND THE PANEL ONLY THEN ARRIVES.
          Cross-fading straight from the belt to the worms reads as a glitch; a

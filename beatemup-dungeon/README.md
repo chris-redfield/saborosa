@@ -379,6 +379,80 @@ cannot disagree.
 Nothing else resets: the crowd, the segment and the camera are exactly where
 they were. He was the only thing that stopped.
 
+## CONTINUE?
+
+The last life is gone, the world **stops where it is**, and the panel is painted
+on top of it: two beaten coconuts on the left, `CONTINUE?` and a pixel-grid
+number on the right, counting 9 down to 0.
+
+* **press anything** → a full set of lives and back up where you fell, in the
+  same fight, with the crowd and the camera exactly where you left them.
+* **let it reach zero** → the grey frame (`contagem-dead`) holds a beat, the
+  death sting plays and the game over panel follows.
+
+```js
+CONTINUE: {
+  on: true,           // false = the last death goes straight to the panel
+  seconds: 9,         // counts 9…0, one second each — ten in all
+  figureMs: 380,      // how long each of the two figure drawings holds
+  deadHoldMs: 1400,   // the grey frame, before the game over panel
+  veilAlpha: 0.30,    // how far the fight is pushed back UNDER the panel
+  fadeInMs: 250,      // the VEIL ramps up over this; the panel is solid at once
+  lives: null,        // null = CONFIG.playerLives, i.e. a full set
+  hRel: 0.90,         // the panel's height and centre, as fractions of canvas
+  yRel: 0.52,
+}
+```
+
+> ⚠️ **`fadeInMs` must never carry the panel, only the veil.** It did, and the
+> first playtest caught it: a translucent coconut shows the world through itself,
+> and that world has just been dimmed 30% — so the characters genuinely *were*
+> darkened for a quarter of a second. **Anything drawn at less than full alpha
+> above a veil takes the veil on.**
+
+> ⚠️ **The veil is the bottom layer — it dims the WORLD, not the panel.** Drawn
+> over the pictures it would take 30% off the artist's colours as well and the
+> yellow would go muddy. It is painted by `Continue` rather than by `game.js` for
+> exactly that reason: it has to sit *between* the fight and the panel's own
+> layers, and the `drawEndCards` branch cannot get in there.
+
+> ⚠️ **It is not the game over screen's dip.** That one takes the world all the
+> way to black because it is *replacing* it. This pushes the fight back so the
+> question is the foreground, and leaves it legible — it is what the player is
+> deciding about.
+
+> ⚠️ **The world behind it is the real frame, not a capture.** It is drawn from
+> `drawEndCards()` — the slot the CLEAR tally and the game over veil already use,
+> which exists because those cards sit *over* whatever was drawn. Nothing is
+> snapshotted; the world simply stops being ticked, so the corpse holds mid-fade
+> and the crowd holds where it stood.
+
+> ⚠️ **Three layers, one rect — and the rect comes from the image SIZE, never
+> from its ink.** The pictures are full-canvas overlays carrying different parts
+> of one composition: the figures live in the left half of the sheet, the word
+> and number in the right, the dead frame carries both. They line up because the
+> artist drew them lined up. Fit any of them to its own content and they scatter.
+
+> ⚠️ **Re-cutting them needs `--no-crop`, same as the fruit select.**
+> `shrink-master.py` crops to the opaque bbox by default and each of these would
+> land on its own geometry — the panel would shake as the digit changed. Cut with
+> `--max-dim 1100 --no-crop`, all fifteen are 1100×799. **10.4 MB of masters
+> became 2.5 MB**, and the masters were deleted on request (originals live
+> outside the repo).
+
+> ⚠️ **`batidao-continue-blank-01/02` are cut and unused.** They are the grid with
+> no digit — all lit, and empty — which is what a *flash* between digits would be
+> made of. Not wired, because a flash was not asked for; not in the manifest
+> either, so they cost repo weight and nothing in the download.
+
+> ⚠️ **The death sting moved, it did not double.** `playDeathSting()` used to
+> fire on the last death; it now fires when the **count runs out**, so the panel
+> arrives with the sound it always had and the countdown plays over the level's
+> own bed. A sting on arrival would tell the player the answer before asking the
+> question. There is no tick sound — that was not asked for.
+
+---
+
 ## The game over panel
 
 Dying used to dim the fight and put a small PERDEU! over it. It now gets the
@@ -1844,6 +1918,22 @@ video backwards.
 
 ## Dev mode
 
+| knob | what it does |
+|---|---|
+| `punchDamage` | 50 a hit. **`null` keeps the room jumps and leaves the damage real** — use that to walk the level for pacing. |
+| `lives` | **total** lives a run starts with, overriding `playerLives`. `1` = no extras, so the first death opens the CONTINUE screen. `null` = leave `playerLives` alone. |
+| `startRoom` | which room the game starts in, by index. |
+
+> ⚠️ **`DEV.lives` is total lives, not extra ones.** The HUD's "x2" is lives
+> *minus the one being played*, so "0 extra lives" is `1` here.
+
+> ⚠️ **It lives in `DEV` rather than in `playerLives` on purpose.** `playerLives:
+> 3` is the tuned number every fight in the game is balanced against, and
+> `package.sh` refuses to build while dev mode is on — so a testing value cannot
+> ship. Both the run start and a CONTINUE ask `player.fullLives()`, which is the
+> only thing that knows what a full set is; two reads of `CONFIG.playerLives`
+> would have left a continue quietly more generous than the run it continued.
+
 ```js
 DEV: { on: true, punchDamage: 50 },   // top of config.js
 ```
@@ -2814,6 +2904,33 @@ than by slot.
 > and **the two must agree**. Reorder that list without redrawing the art and the
 > highlight points at the wrong figure — which looks like an input bug, not a
 > list one. A third hero needs a fourth picture, not a code change.
+
+### The confirm punch
+
+Confirming stamps the picture and shakes the panel — **the main game's own
+character-select "lock-in"** (`src/screens/select.js` in the repo root), numbers
+copied rather than re-tuned: pop 1.25 → 1.0 on an easeOutBack over 400ms, plus a
+9px shake decaying over 180ms at 82 / 71 rad/s. `SELECT.PUNCH.on: false` removes
+it.
+
+> ⚠️ **It stamps the whole picture, not the chosen coconut** — and that is the
+> art, not a shortcut. The main game stamps one fruit because its art is a row of
+> separate panels it can clip to; ours is a single drawing of two coconuts whose
+> arms overlap. Measured: the thinnest column between them still carries **385
+> rows of ink out of 1087**. There is no line to clip on, and a split would slice
+> an arm mid-pop.
+
+> ⚠️ **The shake moves the panel and the type, never the photograph.** The main
+> game's `intro.js` says why: *"Background and readability darken sit UNDER the
+> shake so screen edges never reveal gaps when the foreground jolts."*
+
+> ⚠️ **The main game's trailing fade-to-black is deliberately not copied.** There
+> it covers a hand-off to a synchronous stage load; here the hand-off is the
+> chosen coconut walking across, which is the thing that was asked for.
+
+> ⚠️ **The beat has to fit inside `chosenHoldMs`.** The pop settles at 400ms
+> against a 500ms hold, so it is over before the prompt lifts. Drop the hold
+> below the stamp and the pop is cut off mid-bounce.
 
 > ⚠️ **A direction edge beats an any-press on the same frame, and that is the
 > only thing that makes this usable on a pad.** On a keyboard the arrows return
