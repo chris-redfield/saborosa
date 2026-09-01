@@ -81,6 +81,9 @@ const Level3 = {
      the first frame of every attempt. */
   _assets: null,
   _art: null,
+  _camDX: 0,        // how far the camera moved THIS frame, after its clamp
+  _boiling: false,  // is the elevator animating right now
+  _boilT: 0,        // its own clock -- only runs while it boils. See _tickBoil.
 
   /** Is this the bookcase? The guard every hook is wrapped in. */
   owns(room) { return !!(room && room.level3 && CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false); },
@@ -96,6 +99,9 @@ const Level3 = {
     this.done = false;
     this._bands = null;
     this._camX = 0;
+    this._camDX = 0;
+    this._boiling = false;
+    this._boilT = 0;
   },
 
   /**
@@ -288,6 +294,10 @@ const Level3 = {
     const L = this.current();
     if (!L || this.done) return this._finish(stage);
     this.legT += dt;
+    /* ⚠️ CLEARED EVERY FRAME AND SET BY `_camera`, so a leg that never calls it
+       (a lift) reads as a still camera instead of keeping the last walk's
+       value. */
+    this._camDX = 0;
 
     if (L.kind === 'lift') {
       /* ⚠️ INPUT IS NOT DISABLED HERE, THE WALLS ARE CLOSED (see bounds()).
@@ -308,6 +318,7 @@ const Level3 = {
          the whole illusion (see the header). */
       stage.camX = this._camX;
       stage.camTarget = this._camX;
+      this._tickBoil(dt, true);
       if (t >= 1) return this._nextLeg(stage, player);
       return null;
     }
@@ -315,6 +326,7 @@ const Level3 = {
     // --- a walk leg --------------------------------------------------------
     const b = this._bands[this.leg];
     this._camera(dt, stage, player, L, b);
+    this._tickBoil(dt, false);
 
     /* ⚠️ PROGRESS IS DRIVEN BY THE CAMERA, NOT BY THE PLAYER, and that is the
        same rule every other room follows -- `worldPxPerSecond` ties the film to
@@ -390,7 +402,15 @@ const Level3 = {
     /* PENNED TO THE LEG'S OWN BAND. `camLo`/`camHi` are exactly `px` apart --
        the leg's film pan -- so the camera cannot wander onto ground this stretch
        of the shot does not show. */
+    /* ⚠️ MEASURED AFTER THE CLAMP, NOT FROM `step`. `step` is what the deadzone
+       ASKED for, and at either end of the band the answer is refused -- the
+       player keeps walking into a pinned camera and `step` stays fat while
+       nothing on screen moves. Reading the clamped result is the difference
+       between "he is pushing" and "the world is sliding", and the boil wants
+       the second one. */
+    const was = this._camX;
     this._camX = Math.max(b.camLo, Math.min(b.camHi, this._camX + step));
+    this._camDX = this._camX - was;
     stage.camX = this._camX;
     stage.camTarget = this._camX;
   },
@@ -499,23 +519,47 @@ const Level3 = {
   },
 
   /**
-   * WHICH OF THE THREE DRAWINGS. The rule, as asked for: *"when the elevator is
-   * not moving, it should use only frame 1, when it starts moving vertically,
-   * it should cycle the 3 frames"*.
+   * WHEN THE ELEVATOR IS ALIVE, and it is a question about MOTION rather than
+   * about which leg is running.
    *
-   * ⚠️ AND THE CYCLE IS THE ONLY THING ON SCREEN THAT SAYS IT IS MOVING. The
-   * platform is motionless in screen space during a ride by construction (see
-   * `platformRect` above) and it is the PLATE that pans; so a parked lift and a
-   * rising one differ in the boil and in nothing else. That is why the parked
-   * state is frame 0 held rather than a slower boil -- a lift that shimmers
-   * while standing still would take the cue away from the one that is climbing.
+   * The rule arrived in two halves. First: *"when the elevator is not moving, it
+   * should use only frame 1, when it starts moving vertically, it should cycle
+   * the 3 frames"*. Then, widened: *"when the camera is moving, like when the
+   * elevator is moving referent to the camera, also make it animate with the 3
+   * frames, only when the camera is stopped we use the single frame"*.
+   *
+   * So it boils when it is MOVING RELATIVE TO THE VIEWER, by either route:
+   *
+   *   the camera pans   -- a parked lift at the end of a shelf slides across the
+   *                        screen while he walks, and stops dead when he does
+   *   the ride          -- ⚠️ AN EXPLICIT EXCEPTION, not the same rule twice.
+   *                        During a rise the platform is motionless in screen
+   *                        space by construction (see `platformRect`) and it is
+   *                        the PLATE that pans, so relative motion is exactly
+   *                        zero. Left to the camera test the lift would freeze
+   *                        for the whole climb -- and the boil is the ONLY thing
+   *                        on screen saying it is moving, so it would read as
+   *                        stuck. Hence the `riding` flag.
+   *
+   * ⚠️ AND IT HAS ITS OWN CLOCK RATHER THAN READING `legT`. A boil driven by the
+   * leg timer keeps advancing while it is held on frame 0, so every time the
+   * player stopped and started the drawing would jump to wherever the timer had
+   * got to. `_boilT` only runs while `_boiling`, so stopping holds and walking
+   * on resumes from the frame it held.
    */
-  _liftFrame(riding) {
+  _tickBoil(dt, riding) {
+    const P = (this.cfg() && this.cfg().platform) || {};
+    const eps = (P.camStillPx != null) ? P.camStillPx : 0.05;
+    this._boiling = riding || Math.abs(this._camDX || 0) > eps;
+    if (this._boiling) this._boilT += dt;
+  },
+
+  _liftFrame() {
     const A = this.art();
     const n = A ? A.frames.length : 1;
-    if (!riding || n < 2) return 0;
+    if (!this._boiling || n < 2) return 0;
     const ms = (this.cfg() && this.cfg().platform && this.cfg().platform.boilMs) || 110;
-    return Math.floor(this.legT * 1000 / ms) % n;
+    return Math.floor(this._boilT * 1000 / ms) % n;
   },
 
   /**
@@ -555,12 +599,12 @@ const Level3 = {
       const b = this._bands[this.leg];
       if (b) { at.push(b.arrivalPlatX); at.push(b.platX); }
     }
-    /* ⚠️ `L.kind` IS THE WHOLE OF "IS IT MOVING", and it is right for both
-       branches above rather than by luck: the only lift drawn on a LIFT leg is
-       the one under the player's feet, and every lift drawn on a WALK leg is
-       parked at the end of a shelf. If a leg ever draws both at once, this
-       becomes a per-lift question and the flag has to move into the loop. */
-    const f = this._liftFrame(L.kind === 'lift');
+    /* ONE FRAME FOR EVERY LIFT ON SCREEN, which is right because the thing that
+       decides it -- the camera -- is shared by all of them. Both lifts on a walk
+       leg slide by the same amount, so they boil together; see `_tickBoil`. If a
+       lift ever moves on its OWN (a second one rising in the background), this
+       becomes a per-lift question and the call moves inside the loop. */
+    const f = this._liftFrame();
     for (const worldX of at) {
       if (worldX == null) continue;
       const r = this.platformRect(worldX, camX);

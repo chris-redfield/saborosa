@@ -4161,12 +4161,18 @@ const CONFIG = {
       widthPx: 960,      // the NEAR LIP's width on screen; the one size knob
       offsetX: 0,
       standHalfRel: 0.35,// how much of that width he may stand on, each way
-      /* THE BOIL, and it only runs while the lift is RISING — parked, it holds
-         frame 0 ("when the elevator is not moving, it should use only frame 1").
-         ⚠️ IT IS ALSO THE ONLY MOTION CUE THERE IS: the platform is motionless
-         in screen space during a ride and the PLATE is what pans, so this is
-         what separates climbing from standing. See level3.js `_liftFrame`. */
+      /* THE BOIL. It runs whenever the lift is MOVING RELATIVE TO THE VIEWER —
+         while the camera pans past a parked one, and through a ride — and holds
+         frame 0 when the camera is still. Both halves were asked for; the ride
+         is an explicit exception rather than the same rule, because a rising
+         lift does not move on screen at all. See level3.js `_tickBoil`. */
       boilMs: 110,
+      /* HOW STILL "STILL" IS, in px of camera movement per frame. Not zero: the
+         camera is a float chasing a deadzone, so it lands a hair off its target
+         and keeps twitching after the player has stopped — at exactly 0 the lift
+         would shiver on a motionless screen, which is the one state this whole
+         rule exists to make quiet. */
+      camStillPx: 0.05,
     },
   },
 
