@@ -70,14 +70,22 @@ function assetManifest() {
      it -- nine seconds into a screen you have to lose a run to see. Keyed
      `continue:n<d>` so continue.js can ask for the number it is showing.
 
-     ⚠️ `blank-01/02` ARE DELIBERATELY ABSENT. They are cut and sitting in the
-     folder for a flash that was not asked for; nothing draws them, so nothing
-     downloads them. */
+     ⚠️ AND `blank-02`, THE DARK BOARD, WHICH USED TO BE DELIBERATELY ABSENT. It
+     is the beat between digits -- the sign with its flap mid-turn -- and it is
+     loaded like any other frame of the number layer. See CONTINUE.flapMs.
+
+     ⚠️ `blank-01`, THE LIT BOARD, IS STILL ABSENT AND NOW ON PURPOSE TWICE. The
+     first cut of the flip alternated the two blanks; the user asked for the dark
+     one alone, so nothing draws the lit one and nothing downloads it. */
   if (CONFIG.CONTINUE && CONFIG.CONTINUE.on && CONFIG.CONTINUE.DIR) {
     const D = CONFIG.CONTINUE.DIR;
     out.push({ key: 'continue:fig0', src: D + 'figura-01-game.png', how: 'big' });
     out.push({ key: 'continue:fig1', src: D + 'figura-02-game.png', how: 'big' });
     out.push({ key: 'continue:dead', src: D + 'contagem-dead-game.png', how: 'big' });
+    /* THE BOARD BETWEEN DIGITS. Keyed by what it LOOKS like rather than by its
+       file number: `blank-02` says nothing, `flapDark` says why it is here and
+       why the lit one is not. */
+    out.push({ key: 'continue:flapDark', src: D + 'blank-02-game.png', how: 'big' });
     const n = Math.max(0, Math.min(9, CONFIG.CONTINUE.seconds != null
                                         ? CONFIG.CONTINUE.seconds : 9));
     for (let d = 0; d <= n; d++) {

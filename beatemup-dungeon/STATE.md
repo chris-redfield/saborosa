@@ -6060,10 +6060,117 @@ death; it now fires when the count runs out. The panel keeps the sound it always
 had, and the countdown plays over the level's own bed — a sting on arrival would
 tell the player the answer before they had been asked the question.
 
-**Two things left deliberately:** `blank-01/02` are cut and unwired (they are the
-grid with no digit, which is what a flash between numbers would be made of — not
-asked for, and not in the manifest, so they cost nothing to download), and there
-is **no tick sound**.
+### The count FLIPS, it does not cut (2026-09-01)
+
+*"between the number frames, I want you to add the blank boards... the idea is to
+make it look as a split-flap display (also called a flap sign), for example that
+exists in the ferry building in san francisco."*
+
+`blank-01` (every cell lit) and `blank-02` (every cell dark) shipped the day
+before, cut and unwired, described here as "what a flash between numbers would be
+made of". `blank-02` is not a flash — it is the sign with its flap mid-turn, and
+putting it between the digits is what makes the board a mechanism rather than a
+slideshow. `_flapFrame()` in `continue.js`, `CONTINUE.flapMs`.
+
+⚠️ **THE DARK BOARD ALONE, AND THAT IS THE CORRECTION WORTH KEEPING.** The first
+build alternated both blanks — four frames at 55ms, dark/lit/dark/lit — reasoning
+that a real flap sign shows the back of the falling leaf AND the empty face of
+the card arriving. Wrong on the screen, and caught on sight: *"I actually want
+you to use only the dark one... i see the bright one being used as well."*
+`blank-01` is BRIGHTER THAN ANY DIGIT FRAME, so mid-turn it reads as a flash
+interrupting the count rather than as the count turning. **A physically faithful
+account of a mechanism is not the same as the thing reading as that mechanism**,
+and the extra board was the half that made it read as an animation.
+
+⚠️ **AND ONE BOARD MADE IT A DURATION RATHER THAN A SEQUENCE.** With two blanks
+there was a frame count to tune; with one there is only how long it is dark, so
+`flapFrames` went with the lit board — it would have meant `flapMs` twice.
+110ms of turn against 890ms of readable number. Much past ~200ms it stops being a
+turn and becomes a blackout with the number missing from it.
+
+⚠️ **THE BEAT OPENS THE NEW SECOND, IT DOES NOT CLOSE THE OLD ONE.** The count
+changing is what CAUSES the turn, so the dark has to follow the change: the new
+digit's second starts dark and settles into the number. Hung at the end of the
+old second instead, the digit you are reading goes out before anything has
+happened — that reads as a dropout, not as a sign.
+
+### The light comes up on the grey frame (2026-09-01)
+
+*"when it gets black and white, it now gets black and white at once... after it
+gets black and white, make the grey more clear, give it a clearing to the gray,
+make the effect slow, like its illuminating the last frame"*.
+
+The switch to `contagem-dead` stays a hard cut — **that is the count running out
+and it should land like a switch** — and what is slow is what happens after it.
+The frame arrives at brightness 0.55, murky, and rises smoothstepped to 1.35 over
+2s. `deadLightMs` / `deadLightFrom` / `deadLightTo`.
+
+⚠️ **STARTING BELOW 1 IS WHAT MAKES IT AN ILLUMINATION.** The obvious reading of
+"make the grey more clear" is a ramp from 1.0 upwards, and it does not read as
+anything: it brightens a picture the player has already taken in. Arriving DIM
+gives the rise somewhere to come from, and the drop at the switch is part of the
+effect rather than a cost of it. **A "brighten this" ask is usually a "put it in
+the dark first" job.** The top end stops at 1.35 because past ~1.6 the
+desaturated coconuts lose their outlines into the light and it reads as the
+picture fading, not clearing.
+
+⚠️ **SMOOTHSTEP, NOT LINEAR.** A light coming up has no hard stop, and the end of
+this move is the part being looked at — a straight ramp arrives at full and
+simply ceases.
+
+⚠️ **`ctx.filter`, NOT A WHITE VEIL.** A white rect at rising alpha would wash
+the world behind the panel as well and pull the picture towards flat white
+instead of a clearer grey; the filter scales this image's own values and touches
+nothing else. Same mechanism the props' recolour uses. It is cleared by the
+`restore()` already at the end of `draw()`.
+
+⚠️ **AND `deadHoldMs` WENT 1400 → 2600 WITH IT.** A ramp still climbing when the
+game over panel takes the screen is a light being switched off mid-rise. **A new
+duration inside an existing hold is two numbers, not one** — the hold is now the
+ramp plus a beat at the top.
+
+### And the coconuts run out of breath with the clock (2026-09-01)
+
+*"in the end, make the coconuts animation gradually much faster during the
+countdown"*. The two figure drawings held 380ms each for the whole ten seconds;
+now the hold runs 380 → 80 in a straight line across the count. **Measured off
+the real code: 383ms at the 9, 333 at the 8, 250 at the 5, 117 at the 1, 83 at
+the 0** — 51 swaps where a constant pace gave 26. The slump becomes a panic, and
+the picture says the offer is closing a beat before the number is read.
+
+⚠️ **`floor(t / period)` IS A CYCLE COUNT ONLY WHILE THE PERIOD IS CONSTANT.**
+The obvious edit — recompute `figureMs` each frame and keep the old expression —
+does not accelerate the figures, it makes them stutter: with a shrinking period
+that expression means "how many of TODAY'S periods fit in ALL the time so far",
+which jumps backwards and forwards as the period moves. The cycles actually
+completed are the integral of the frequency, and for a straight-line period
+`p(t) = a + b·t` that is `(1/b)·ln((a + b·t)/a)` — closed form, so it is exact
+rather than accumulated and cannot drift with the frame rate. **Any "make this
+speed up over time" on a `floor(t/ms)` animation is this same trap.**
+
+⚠️ **THE RAMP RUNS OFF `seconds`, NOT A DURATION OF ITS OWN.** It is the
+countdown's length because it IS the countdown; a second knob would be one more
+thing to keep in step, and a ramp finishing early or late would read as the
+animation having a reason of its own.
+
+⚠️ **AND THERE IS A FLOOR UNDER "FASTER".** At 60fps an 80ms hold is five frames.
+Much below that the two drawings stop reading as one figure breathing and start
+reading as two pictures being swapped — the alternation becomes a flicker rather
+than a movement. 4.75× is what "much faster" could mean here.
+
+⚠️ **THE DARK BOARD REPLACES THE NUMBER LAYER, IT DOES NOT STACK ON IT.** Both
+pictures carry the word `CONTINUE?` and the same grid at the same place; the
+blank drawn over a digit would just repaint the word and leave the number
+showing. One board at a time, which is also true of the sign.
+
+⚠️ **AND THE COST OF THE "DELIBERATELY ABSENT" NOTE.** The blanks' non-use was
+argued in `continue.js`, `manifest.js` AND `config.js`. Wiring them meant
+rewriting three comments that had each become false in the same commit. Worth
+having written — it is why this was two knobs instead of an asset hunt — but a
+comment explaining why something is NOT done ages into a lie the moment it is,
+so rewrite all of them in one pass.
+
+**One thing left deliberately:** there is **no tick sound**.
 
 **Measured, so nobody re-derives it:** every digit holds exactly one second, 0
 included, so the offer is ten seconds; the grey frame then holds 1.4s and hands

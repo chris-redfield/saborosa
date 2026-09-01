@@ -394,15 +394,61 @@ number on the right, counting 9 down to 0.
 CONTINUE: {
   on: true,           // false = the last death goes straight to the panel
   seconds: 9,         // counts 9…0, one second each — ten in all
-  figureMs: 380,      // how long each of the two figure drawings holds
-  deadHoldMs: 1400,   // the grey frame, before the game over panel
-  veilAlpha: 0.30,    // how far the fight is pushed back UNDER the panel
+  figureMs: 380,      // the figure cycle's hold at the START of the count
+  figureEndMs: 80,    // …and at the end — it ramps, so they panic as time runs out
+  flapMs: 110,        // the split-flap: the DARK board, at the top of a second
+  deadHoldMs: 2600,   // the grey frame, before the game over panel
+  deadLightMs: 2000,  // …and the light coming up on it, smoothstepped
+  deadLightFrom: 0.55,// it lands DIM and clears — that is the illumination
+  deadLightTo: 1.35,
+  veilAlpha: 0.50,    // how far the fight is pushed back UNDER the panel
   fadeInMs: 250,      // the VEIL ramps up over this; the panel is solid at once
   lives: null,        // null = CONFIG.playerLives, i.e. a full set
   hRel: 0.90,         // the panel's height and centre, as fractions of canvas
   yRel: 0.52,
 }
 ```
+
+> ⚠️ **The grey frame is lit, not just shown.** The switch to black and white
+> stays instant — that is the offer closing and it should land like a switch —
+> and then the frame comes up from `deadLightFrom` to `deadLightTo` over
+> `deadLightMs`. **It starts *below* 1 on purpose:** ramping 1.0 → 1.4 only
+> brightens a picture you have already read, where arriving dim gives the rise
+> somewhere to come from and the grey visibly clears. Past about 1.6 at the top
+> the desaturated coconuts lose their outlines into the light and it reads as
+> fading rather than clearing.
+
+> ⚠️ **`deadLightMs` must fit inside `deadHoldMs`** — a ramp still climbing when
+> the game over panel takes the screen is a light switched off mid-rise. That is
+> why the hold went 1400 → 2600 with this change; the two move together.
+
+> ⚠️ **It is a `ctx.filter` on the blit, not a white veil over it.** A white rect
+> at rising alpha would wash the world behind the panel too, and take the picture
+> towards flat white instead of towards a clearer grey.
+
+> ⚠️ **The coconuts speed up across the count.** The hold runs `figureMs` →
+> `figureEndMs` in a straight line over the whole offer, so they go from a slump
+> to a panic and the picture says the offer is closing a beat before you have read
+> the number. Measured off the real code: 383ms at the 9, 83ms at the 0.
+> `figureEndMs: 380` (equal to `figureMs`) restores the old constant pace.
+
+> ⚠️ **That ramp is an integral, not a division.** `floor(t / period)` counts
+> cycles only while `period` is constant; with a shrinking period it means "how
+> many of *today's* periods fit in all the time so far", which jumps around as the
+> period moves and makes the figures stutter instead of accelerating. The cycles
+> actually completed are `(1/b)·ln((a + b·t)/a)` for `p(t) = a + b·t` — exact, so
+> it cannot drift with the frame rate either.
+
+> ⚠️ **The number *flips*, it does not cut.** Each second opens with `blank-02`
+> — the board with every cell dark — up for `flapMs`, and lands on the digit, the
+> way a split-flap sign turns. The beat opens the NEW second rather than closing
+> the old one, because the count changing is what causes the turn. `flapMs: 0` =
+> the old hard cut.
+
+> ⚠️ **`blank-01`, the lit board, is deliberately unused.** The first cut of the
+> flip alternated the two blanks; it is brighter than any digit frame, so mid-turn
+> it read as a flash interrupting the count rather than as the count turning.
+> Dark board alone, and it is not in the manifest.
 
 > ⚠️ **`fadeInMs` must never carry the panel, only the veil.** It did, and the
 > first playtest caught it: a translucent coconut shows the world through itself,

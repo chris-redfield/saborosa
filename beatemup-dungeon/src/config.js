@@ -6577,8 +6577,22 @@ const CONFIG = {
     promptSize: 58,
     /* THE PICTURE: how much of the canvas height it fills and where its middle
        sits. Its width follows from the art's own 7249x4924 -- never set
-       separately, or the coconuts stretch. */
-    artHRel: 0.80,
+       separately, or the coconuts stretch.
+
+       ⚠️ 0.64 IS 0.80 TAKEN DOWN 20%, ASKED FOR ON 2026-09-01 -- *"make the
+       coconuts slightly smaller, 20% smaller"*. It is the DRAWN SIZE that
+       shrinks, not the art: nothing is re-cut and the two figures keep every
+       proportion the artist gave them.
+
+       ⚠️ AND IT LIFTED THEM OFF THE BOTTOM EDGE, WHICH IS `artYRel`'S DOING, NOT
+       A SECOND CHANGE. The rect is built around `artYRel` as its MIDDLE, so
+       shrinking pulls the bottom up as much as it pulls the top down: at 0.80
+       the picture ended at y=720, exactly the canvas edge with the feet 17px
+       inside it; at 0.64 it ends at 662 and they stand on the ground with room
+       under them. Keeping the feet where they were is `artYRel` 0.64, one line
+       -- left alone because the smaller figures reading as standing IN the
+       photograph rather than sitting on its edge is the better picture. */
+    artHRel: 0.64,
     artYRel: 0.60,
   },
 
@@ -6611,11 +6625,11 @@ const CONFIG = {
      10.4MB of masters became 2.5MB of `-game.png`, and the masters were deleted
      on request -- the user keeps the originals outside the repo.
 
-     ⚠️ `batidao-continue-blank-01/02` ARE CUT AND UNUSED. They are the grid with
-     no digit in it -- all lit, and empty -- which is what a FLASH between digits
-     would be made of. Not wired, because a flash was not asked for; they are not
-     in the manifest either, so they cost repo weight and nothing in the
-     download. Two lines in continue.js if that beat is ever wanted. */
+     ⚠️ AND `blank-02` IS THE FLAP. This note used to say the blanks were cut and
+     unused, kept in case a flash was ever wanted. The dark one was wanted, on
+     2026-09-01, and not as a flash: it is the sign with its flap mid-turn, so
+     the count now FLIPS to each digit instead of cutting to it. `blank-01`, the
+     lit board, stays unused -- see `flapMs`. */
   CONTINUE: {
     /* false = the last death goes straight to the game over panel, exactly as
        it did before this screen existed. The whole feature is behind it, and
@@ -6628,12 +6642,91 @@ const CONFIG = {
        on the way to grey. Fewer seconds simply starts lower and skips the top
        digits; more than 9 would ask for art that does not exist. */
     seconds: 9,
-    // How long the two beaten coconuts hold each drawing.
+    /* HOW LONG THE TWO BEATEN COCONUTS HOLD EACH DRAWING -- at the START of the
+       count. Asked for 2026-09-01: *"make the coconuts animation gradually much
+       faster during the countdown"*, so the period runs from `figureMs` down to
+       `figureEndMs` in a straight line across the whole count, and the pair go
+       from a slump to a panic as the offer closes. The picture then tells you
+       the same thing the number does, a beat before you have read the number.
+
+       ⚠️ 4.75x, WHICH IS WHAT "MUCH FASTER" HAD TO MEAN HERE. Anything gentler
+       is not visible against a drawing that is already moving; much past this
+       the two frames stop reading as one figure breathing and start reading as
+       two pictures being swapped, because at 60fps an 80ms hold is five frames
+       and there is a floor under how fast an alternation can go before it is a
+       flicker rather than a movement.
+
+       ⚠️ THE RAMP IS THE COUNTDOWN'S OWN LENGTH -- `seconds` + 1, the same span
+       the offer stands for. A duration of its own would be one more number to
+       keep in step, and a ramp that ended early or late would read as the
+       animation having a reason of its own.
+
+       ⚠️ AND THE MATH IS AN INTEGRAL, NOT A DIVISION, or the figures stutter
+       instead of accelerating. See `_figureFrame()` in continue.js.
+
+       figureEndMs equal to figureMs = the old constant pace. */
     figureMs: 380,
+    figureEndMs: 80,
+    /* THE SPLIT-FLAP. Asked for 2026-09-01: *"between the number frames, I want
+       you to add the blank boards... the idea is to make it look as a split-flap
+       display (also called a flap sign), for example that exists in the ferry
+       building in san francisco."*
+
+       Each second OPENS with the dark board (`blank-02`) up for this long, and
+       then the digit for the rest of the second -- 110ms of turn against 890ms
+       of readable number, which is the balance the sign itself strikes.
+
+       ⚠️ THE DARK BOARD ALONE, AND THAT IS THE CORRECTION THIS KNOB CARRIES. The
+       first build alternated dark and lit, four frames at 55ms, reasoning that a
+       real sign shows the back of the falling leaf and then the empty face of
+       the arriving one. *"I actually want you to use only the dark one... i see
+       the bright one being used as well."* The lit board is brighter than any
+       digit frame, so mid-turn it reads as a FLASH interrupting the count rather
+       than as the count turning. One board, one beat.
+
+       ⚠️ AND THAT MADE IT A DURATION RATHER THAN A SEQUENCE. With two boards
+       there was a frame count to tune; with one there is only how long it is
+       dark, so `flapFrames` is gone -- it would have meant `flapMs` twice.
+
+       ⚠️ SHORT IS THE EFFECT. Much past ~200ms the board stops being a turn and
+       becomes a blackout with the number missing from it.
+
+       0 = no flip, the digits cut as they did before. */
+    flapMs: 110,
     /* THE GREY FRAME'S BEAT BEFORE THE GAME OVER PANEL. It is the answer to a
        question the player just failed to answer, so it has to be READ -- handing
-       straight on would make the count end in a cut. */
-    deadHoldMs: 1400,
+       straight on would make the count end in a cut.
+
+       ⚠️ 1400 -> 2600 BECAUSE THE FRAME IS NOW LIT RATHER THAN JUST SHOWN. The
+       light takes `deadLightMs` to come up and then wants a moment at the top;
+       a hold that ends mid-rise is a light being switched off as it climbs. The
+       two numbers move together -- this one is the ramp plus a beat. */
+    deadHoldMs: 2600,
+    /* THE LIGHT COMING UP ON THE GREY FRAME. Asked for 2026-09-01: *"when it
+       gets black and white, it now gets black and white at once... after it gets
+       black and white, make the grey more clear, give it a clearing to the gray,
+       make the effect slow, like its illuminating the last frame"*.
+
+       The frame lands DIM at `deadLightFrom` and rises to `deadLightTo` over
+       `deadLightMs`, smoothstepped. So the count running out is still a hard
+       switch to black and white -- that is the offer closing and it should land
+       like one -- and what is slow is the light afterwards.
+
+       ⚠️ IT STARTS BELOW 1, WHICH IS WHAT MAKES IT AN ILLUMINATION RATHER THAN A
+       GLOW. Ramping 1.0 -> 1.4 only ever brightens a picture you have already
+       read; arriving at 0.55 puts the frame in the dark first, so the rise has
+       somewhere to come FROM and the grey visibly clears. The drop at the switch
+       is part of the effect, not a cost of it.
+
+       ⚠️ AND IT TOPS OUT SHORT OF WASHING OUT. 1.35 lifts the greys and keeps
+       the artist's blacks; past about 1.6 the desaturated coconuts start losing
+       their outlines into the light, which reads as the picture fading rather
+       than as the picture clearing.
+
+       deadLightMs: 0, or both ends at 1, = the frame simply appears, as before. */
+    deadLightMs: 2000,
+    deadLightFrom: 0.55,
+    deadLightTo: 1.35,
     /* HOW MANY LIVES A CONTINUE BUYS. A full set, which is what the word means
        in this genre -- and `playerLives` rather than 3, so the two can never
        disagree about what a full set is. He comes back where he fell, in the
