@@ -1298,9 +1298,47 @@
        be covering him, which is the whole effect undone. */
     const behind = emergingBehind();
     for (const f of all) {
+      /* THE DIGGERS' DUST, IMMEDIATELY BEFORE THE PLAYER. Asked for 2026-09-01:
+         *"should render on top of everything but the player, so it should appear
+         in front of the background (the enemy doesn't, and that is on purpose)."*
+
+         ⚠️ THE ENEMY AND HIS DUST ARE DRAWN AT DIFFERENT DEPTHS ON PURPOSE, and
+         that is the whole request. A digger is INJECTED INTO THE SCENERY -- the
+         cigarette mounds are painted over him, which is what makes him look like
+         he is coming through the floor -- and while the burst was part of
+         `Emerge.draw` it inherited that plane and got buried with him. A body
+         under the floor is the effect; dust under the floor is a bug.
+
+         ⚠️ HERE RATHER THAN AFTER THE LOOP, so the player is never covered.
+         Everything painted before this point is scenery, props and the fighters
+         behind him, which is what "on top of everything but the player" means in
+         a z-sorted pass. A fighter NEARER the camera than the player still draws
+         over it -- that is depth working, not the rule being broken.
+
+         ⚠️ AND IT IS NOT INSIDE `drawShadow`'s loop or the sprite loop of any one
+         fighter: the dust belongs to a hole in the world, not to the body that
+         came out of it, which is the same reason `Emerge` keeps its own copy of
+         the spot. */
+      if (f === player) drawEmergeDust(camX);
       if (behind && behind.indexOf(f) >= 0) continue;
       if (f === stage.boss) f.draw(ctx, f.usesSheets ? sheets : assets, camX);
       else f.draw(ctx, sheets, camX);
+    }
+  }
+
+  /**
+   * Every live burst, over the floor. See the note at its call site.
+   *
+   * ⚠️ THE SHEET IS FETCHED ONCE FOR THE WHOLE PASS rather than per enemy, and
+   * a missing one costs the dust and nothing else -- the arrival still reads
+   * without it, which is the standing rule for every borrowed asset here.
+   */
+  function drawEmergeDust(camX) {
+    const img = assets && assets.getDrawable('boom');
+    if (!img) return;
+    for (const e of crowd.list) {
+      const em = e.emerge;
+      if (em && em.booming) em.drawBoom(ctx, img, camX, e.depthScale());
     }
   }
 

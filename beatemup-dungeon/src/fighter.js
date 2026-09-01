@@ -1002,6 +1002,25 @@ class Fighter {
        `this.jumping` rather than `jumpY > 0`: a fighter LAUNCHED by the
        uppercut also has height, and that is a knockdown, which the `down`
        branch above has already claimed. */
+    /* COMING UP OUT OF THE GROUND IS DRAWN AS A JUMP. Asked for 2026-09-01:
+       *"inimigos saindo do chão - usar os frames que eles estão pulando, ao
+       invés dos frames normais. Eles pulam para fora dos buracos."* It used to
+       borrow the WALK row, which was the honest improvisation when the effect
+       was built -- there is no dig-out art -- and a walk cycle read as a body
+       being lifted through the floor rather than as one throwing itself out of
+       it. A jump row is a whole-body push off the ground, which is the shape of
+       the movement whether or not it was drawn for a hole.
+
+       ⚠️ IT FALLS BACK TO THE WALK, because `has()` is asked. Both desert
+       diggers own a six-frame `jump` (measured), but this branch is on Fighter
+       and any pack can arrive here. A missing row must cost the improvement,
+       not the arrival.
+
+       ⚠️ AND IT IS ANSWERED BEFORE `jumping`, not after. A digger is not
+       `jumping` -- there is no arc and no `jumpT`; the hop is `Emerge`'s rise
+       -- so the test below would never see him, and the `enter`/`walk` branches
+       further down would claim him first. */
+    if (this.buried && sheets && sheets.has(this.kind, 'jump')) return 'jump';
     if ((this.jumping || (this.landHoldT > 0 && this.state !== 'walk'))
         && sheets && sheets.has(this.kind, 'jump')) return 'jump';
     /* WALKING ON AT THE START OF A RUN. `walk()` will not promote `enter` to
@@ -1130,6 +1149,35 @@ class Fighter {
        At the current jumpMs 620 over six frames that is ~103ms a frame; it is
        NOT a POSE_MS entry, so changing the walk or idle rate leaves it alone. */
     if (p === 'jump') {
+      /* A DIGGER IS ON THE HOLE'S CLOCK, NOT THE JUMP'S. He has no `jumpT` and
+         never will -- his rise belongs to `Emerge` -- so the row is spread
+         across the part of the climb where the body is actually moving, which
+         is `1 - sunk` running 0 -> 1 over the rise. Without this he would hold
+         the LANDING frame for the whole climb (see the line below), which is a
+         fighter standing still in the air with his legs tucked. */
+      const em = this.emerge;
+      if (em && !em.released) {
+        /* ⚠️ ONE FRAME, HELD, NOT THE ROW PLAYED. Asked for 2026-09-01: *"hold
+           the frame where he is most stretched."* It played 0->5 across the
+           climb first, and the row is drawn as a jump from a STANDING start --
+           a crouch, a push, the tuck, the landing -- so most of it is a body
+           doing something on the ground, and only the tuck is a body in the
+           air. A digger is in the air for the whole of this, so he holds the
+           tuck.
+
+           ⚠️ FRAME 2 IN ALL FOUR DIGGER PACKS, confirmed by the user against
+           the rows: espeto, charutobi, cigarro and cigarro3 each draw the apex
+           there. It is ONE number because the packs agree, not because anything
+           forces them to -- a pack that disagrees needs a per-kind override
+           here, and `EMERGE.holdFrame` is where that would go.
+
+           ⚠️ AND THE INK MEASUREMENT DOES NOT PICK IT. The cigarettes' tallest
+           frame is 0, because their smoke plume is tallest there -- the same
+           plume `topPx` already warns about. The eye picked this, not a metric. */
+        const hold = (CONFIG.EMERGE && CONFIG.EMERGE.holdFrame != null)
+          ? CONFIG.EMERGE.holdFrame : 2;
+        return Math.max(0, Math.min(n - 1, hold));
+      }
       if (!this.jumping) return n - 1;      // the landing hold
       const t = Math.min(1, this.jumpT / (CONFIG.jumpMs / 1000));
       return Math.min(n - 1, Math.floor(t * n));
@@ -1291,13 +1339,34 @@ class Fighter {
        the floor from the moment he exists until he digs his way out. The guard
        was reading the clock to decide whether to believe the state. */
     const sunk = (em && !em.released) ? em.sunk : 0;
-    const sinkPx = sunk > 0
-      ? (sheets.topPx(this.kind, pose) * this.depthScale() + 8) * sunk
-      : 0;
+    /* AND HE PASSES THE GROUND LINE ON HIS WAY OUT. Asked for 2026-09-01:
+       *"don't make him like come to the ground level, make him pass the ground
+       level, and then come back, to simulate a jump."* `hop` is the airborne
+       half of the climb (see emerge.js), so this offset goes NEGATIVE -- the
+       body lifts clear of the floor and settles back onto it.
+
+       ⚠️ WHICH ALSO TURNS THE SCISSOR OFF BY ITSELF. The clip below is gated on
+       `sinkPx > 0`, so the moment he is above the line there is nothing to cut
+       and no second condition to keep in step with this one. That is why the
+       hop is folded into this number instead of being a separate offset.
+
+       ⚠️ AND IT SCALES WITH DEPTH like the sink does. A hop is a distance in
+       the world; a digger at the back of the belt must not leap as high in
+       canvas px as one at the front. */
+    const hop = (em && !em.released) ? em.hop : 0;
+    const hopPx = (CONFIG.EMERGE && CONFIG.EMERGE.hopPx != null)
+      ? CONFIG.EMERGE.hopPx : 26;
+    const sinkPx = (sunk > 0
+        ? (sheets.topPx(this.kind, pose) * this.depthScale() + 8) * sunk
+        : 0)
+      - hop * hopPx * this.depthScale();
 
     /* THE HOLE, BEFORE THE BODY -- the ground opens UNDER him, so he comes up out
        of it. Drawn after the sprite instead, it paints the gap on top of the
        fighter climbing through it. */
+    /* ⚠️ THE HOLE ONLY. The dust that comes out of it is drawn by its own pass
+       in game.js, because it must sit in FRONT of the cigarette floor this body
+       is deliberately drawn inside. See Emerge.drawBoom. */
     if (em && em.started) em.draw(ctx, camX, this.depthScale());
 
     if (!this.bodyHidden(sheets)) {

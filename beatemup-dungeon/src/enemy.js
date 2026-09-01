@@ -452,10 +452,44 @@ class Enemy extends Fighter {
          decided by where the player is standing when he gets there, and that is
          a second and a half after the wave was authored. */
       if (this.emerge) {
-        if (!this.emerge.started) this.emerge.start(this.x, this.z);
+        if (!this.emerge.started) {
+          this.emerge.start(this.x, this.z);
+          /* WHERE THE HOLE IS AND WHICH WAY HE COMES OUT OF IT. Kept here, not
+             read live, because `this.x` is about to move and the hole must not:
+             `Emerge` already anchors itself to the world for the same reason. */
+          this.emergeFromX = this.x;
+          this.emergeDir = (player && player.x >= this.x) ? 1 : -1;
+        }
         if (!this.emerge.released) {
           this.buried = true;
           this.state = 'walk';            // the drawing only -- see above
+          /* HE LANDS A STEP CLEAR OF THE HOLE, NOT BACK IN IT. Asked for
+             2026-09-01: *"ao invés de cair exatamente da onde eles saíram, eles
+             caem um passo pra frente."* Rising straight up out of a hole and
+             stopping dead on top of it reads as an elevator; a body that throws
+             itself out lands somewhere else, and the hole closing behind him is
+             what makes the two read as separate objects.
+
+             ⚠️ IT MOVES THE FIGHTER AND NOT THE HOLE, which is only safe because
+             `Emerge.start` took a COPY of the spot. That was written for a
+             different reason -- the hole must not trail him once he walks off --
+             and it is what lets this be three lines.
+
+             ⚠️ ON `travel`, SO THE STEP IS THE CLIMB. Not a separate clock: it
+             is 0 through the heave and runs 0 -> 1 over the rise, so he sits
+             still while the ground opens and travels only while he is actually
+             coming up. Two clocks would let the landing and the arrival
+             disagree. ⚠️ It was `1 - sunk`, which was the same thing until
+             `sunk` learned to reach 0 at `clearAt` -- after that the step would
+             have finished at 55% and left him hanging in the air going nowhere.
+
+             ⚠️ AND HE FACES THE WAY HE IS GOING. `_face(player)` runs on release
+             and would otherwise be the FIRST thing to set his facing -- so for
+             the whole jump he would be drawn facing whichever way he was
+             authored, then snap round on landing. */
+          const step = (this.emerge.cfg.stepPx != null ? this.emerge.cfg.stepPx : 34);
+          this.x = this.emergeFromX + step * this.emergeDir * this.emerge.travel;
+          this.facing = this.emergeDir;
           return;
         }
         this.buried = false;

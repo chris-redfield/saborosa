@@ -401,6 +401,11 @@ CONTINUE: {
   deadLightMs: 2000,  // …and the light coming up on it, smoothstepped
   deadLightFrom: 0.55,// it lands DIM and clears — that is the illumination
   deadLightTo: 1.35,
+  deadPunch: -0.10,   // …and a tiny stamp on the same frame it turns grey.
+                      //    NEGATIVE = away from the camera; the sign is the direction
+  deadPunchMs: 400,
+  deadPunchSplit: 0.5595,  // the empty column between the figures and the number
+  deadPunchCX: 0.3009, deadPunchCY: 0.5282,   // the figures' own ink centre
   veilAlpha: 0.50,    // how far the fight is pushed back UNDER the panel
   fadeInMs: 250,      // the VEIL ramps up over this; the panel is solid at once
   lives: null,        // null = CONFIG.playerLives, i.e. a full set
@@ -421,6 +426,25 @@ CONTINUE: {
 > ⚠️ **`deadLightMs` must fit inside `deadHoldMs`** — a ramp still climbing when
 > the game over panel takes the screen is a light switched off mid-rise. That is
 > why the hold went 1400 → 2600 with this change; the two move together.
+
+> ⚠️ **The coconuts stamp as the frame turns grey** — `deadPunch: -0.10`, on
+> `deadT`, the same clock as the switch and the light, so all three land on one
+> frame. It shipped at 0.18 ("medium", between the menu's 0.10 and the select's
+> 0.25) and that was too much: **the weight of a stamp is not a slot in a scale,
+> it is what the thing being stamped can carry**, and a pair of beaten coconuts
+> holding still on a grey screen carries very little. ⚠️ **The sign is the
+> direction:** negative recoils them *away* from the camera and springs them back,
+> positive swells them towards it — same curve, mirrored. Backwards is the right
+> shape here, because the menu's stamp and the select's answer a *press* and this
+> one answers a clock running out.
+
+> ⚠️ **Only the coconuts — and this picture can be split, where the fruit select's
+> could not.** `contagem-dead` is one image, but measured: the figures' ink ends at
+> 0.545 of the panel width and the word and number begin at 0.575, **a 33 px column
+> of nothing between them**. The select art had no such gap (one connected
+> component, 385 rows of ink in its thinnest column), which is why that one needed
+> a new export and this one needs two clipped passes. **The two cases look
+> identical and are not; measure before repeating a refusal.**
 
 > ⚠️ **It is a `ctx.filter` on the blit, not a white veil over it.** A white rect
 > at rising alpha would wash the world behind the panel too, and take the picture
@@ -1751,12 +1775,101 @@ injects nobody, and draws byte-for-byte what it always did.
 on: true,            // MASTER SWITCH — off, a digger is an ordinary walk-in
 heaveMs: 380,        // the hole opens, nothing coming out of it yet
 riseMs:  560,        // he climbs; he is UNTOUCHABLE for this and the heave
+stepPx:  34,         // …and lands this far CLEAR of the hole, towards the player
+hopPx:   26,         // …passing this far ABOVE the ground line on the way
+clearAt: 0.55,       // fraction of the rise spent still coming through the floor
+holdFrame: 2,        // the stretched jump frame, held for the whole climb
+boomFrom: 5,         // dust as he breaks the surface — the HOLE-FALL subset
+boomSizePx: 200,     //   …the SAME unit the death blasts use (208 / 193)
+boomDelayMs: 15,     //   …and held back until there is a body to see
+boomStride: 2,       //   …playing every 2nd frame, held twice as long
+steps: 6,            // the climb quantised to 6 positions — "few frames" 
 settleMs: 420,       // the hole closes — he is already fighting through this
 holeW: 31.2, holeH: 10.2, holeAlpha: 0.62, holeColor: '#241609',
 spawnBehindScenery: true,   // draw him inside the floor while he climbs
 minBandsInFront: 1,         // how many planes of floor cover him — dealt
 maxBandsInFront: 3,         //   per enemy between these two, inclusive
 ```
+
+> ⚠️ **He is drawn with his JUMP row, not his walk row** — they jump out of the
+> holes. A walk cycle reads as a body being *lifted* through the floor. It falls
+> back to the walk for any pack with no `jump`.
+
+> ⚠️ **One frame of it, held — not the row played.** `holdFrame: 2` is the apex
+> in all four digger packs (espeto, charutobi, cigarro, cigarro3). The row is a
+> jump from a *standing* start — crouch, push, tuck, land — so four of its six
+> frames are a body doing something on the ground, and a digger is in the air for
+> all of this. ⚠️ The frame was picked **by eye**: the cigarettes' tallest ink is
+> frame 0, because their smoke plume is tallest there.
+
+> ⚠️ **The dust is a SUBSET of an explosion this game already loads.** The main
+> game reads two defs off one sheet: `saborosa-boom-full.json` (12 frames) for the
+> furnace blast and `saborosa-boom.json` (7) for falling into a hole — and those
+> seven are exactly frames **5–11** of the twelve here as `BOOM_RECTS`. So the
+> hole version is the **tail**: no grow-in, no peak, just the dispersing half. It
+> opens already large and thins out, which is what dust kicked up by something
+> else looks like; the full string opens small and blooms, which is what a thing
+> detonating looks like. `boomFrom` is an **index**, not a second sheet or a
+> second defs file — the two games already share the art, they just start reading
+> it in different places.
+
+> ⚠️ **It fires `boomDelayMs` after `clearAt`, not on it.** `clearAt` is when his
+> *head* passes the line, not when there is a body to see — a burst there is a
+> puff of dust over nothing that he then walks out of. **The instant a thing
+> starts is not the instant it reads.** ⚠️ **And the window is far tighter than it looks:**
+> 200 too late, 100 still too late, 50 "almost there", 25, **15**. The airborne
+> half of the climb is 252 ms long and the answer is in its first *sixteenth* — the
+> burst belongs **on the break-through**, near enough to `clearAt` that the delay
+> is a nudge, and 0 is wrong only because nothing has broken through at that exact
+> frame. ⚠️ Measured: the strided tail is ⌈7/2⌉×2×70.9 = 567 ms, ending at 1270
+> against a `done` of 1360 — 90 ms of slack. `boomStride` lengthens the burst as
+> well as thinning it, so the two share this budget; `settleMs` buys more.
+
+> ⚠️ **It is sized in the same unit as the death blasts, which is what ended six
+> rounds of guessing.** It began as a `boomScale` ratio (0.5 → 0.35 → 0.455 →
+> 0.637 → 0.828, every correction the same way) until the ask that settled it:
+> *the same size as the explosion of the enemies that explode.*
+> `DEATH_BOOM.espeto.sizePx` is 208 and `charutobi`'s is 193, so this is **200**,
+> and `Emerge` does the identical `size / peak` arithmetic `Booms.draw` does off
+> the identical rects. **A number you cannot compare to anything is a number you
+> will guess at forever.**
+
+> ⚠️ **The dust is its own pass, and the enemy is not.** A digger is *injected
+> into the scenery* — the cigarette mounds paint over him, which is what makes him
+> look like he is coming through the floor — and while the burst travelled with
+> him it inherited that plane and got buried too. **A body under the floor is the
+> effect; dust under the floor is a bug.** `Emerge.drawBoom` is called from
+> `drawEntities` immediately before the player, so it sits over the floor, the
+> props and the fighters behind him. A fighter *nearer the camera* than the player
+> still draws over it — that is depth working, not the rule being broken.
+
+> ⚠️ **Both the climb and the burst are deliberately choppy.** `steps: 6` quantises
+> the rise into six positions and `boomStride: 2` plays every second frame of the
+> tail, each held twice as long — 4 drawings instead of 7. The reference is the
+> barrel pickup, which reads chunky not because anyone chose a stutter but because
+> its **row has few frames**, each owning a visible slice of the action
+> (`floor(t*n)` in `frameStep`). Here the body holds *one* drawing all the way out,
+> so there is no row to thin and the **movement** is the only thing left to
+> quantise. ⚠️ **One quantiser feeds `sunk`, `hop` and `travel`** — they are three
+> views of one movement, and stepping them separately lands the forward step
+> between two heights. ⚠️ And the burst drops **frames** rather than slowing the
+> rate: slowing it would stretch the tail past the hole's own life.
+
+> ⚠️ **He passes the ground line and comes back.** `clearAt` splits `riseMs`:
+> 0.55 of it is coming through the floor (`sunk` 1→0) and the rest is airborne
+> (`hop` 0→1→0, a **sine** — up and down as one curve, because an ease-out to the
+> apex and an ease-in down is two moves with a hang between them). `released`
+> still fires at the end of the rise, so he touches down on the exact frame the
+> AI takes him over; a hop with its own duration could outlast the climb and that
+> looks like a fighter walking in mid-air. The hop is folded into `sinkPx`, which
+> **turns the ground scissor off by itself** — the clip is gated on `sinkPx > 0`.
+
+> ⚠️ **`stepPx` moves the FIGHTER, not the hole.** Rising straight up and stopping
+> dead on the spot reads as an elevator; the hole closing *behind* him is what
+> makes the two read as two objects. Safe only because `Emerge.start` takes a copy
+> of the spot. It also sets his facing for the jump — before this, `_face()` on
+> release was the first thing to set it and he span round on landing. `0` = the
+> old straight-up arrival.
 
 **Two rollbacks, both one word:**
 

@@ -118,12 +118,91 @@ class Continue {
     return { x: (W - dw) / 2, y: H * this._n('yRel', 0.52) - dh / 2, w: dw, h: dh };
   }
 
-  _blit(ctx, key, W, H) {
+  /**
+   * `mul` swells the picture ABOUT ITS OWN CENTRE. Growing the drawn size
+   * around the anchor is what makes a stamp read as a stamp rather than as the
+   * panel sliding down and right off its corner -- the same arithmetic the fruit
+   * select's punch uses, and the same note is on it there.
+   */
+  _blit(ctx, key, W, H, o) {
     const img = this.assets.getDrawable(key);
     if (!img) return;
     const r = this._rect(W, H, img);
     if (!r) return;
-    ctx.drawImage(img, r.x, r.y, r.w, r.h);
+    const opt = o || {};
+    const m = (opt.mul == null) ? 1 : opt.mul;
+    /* THE CLIP IS IN THE PANEL'S OWN COORDINATES, as a fraction of its width,
+       so it survives every `hRel`/`yRel` retune. `lo`/`hi` default to the whole
+       thing; only the stamped dead frame passes them. */
+    const clipped = (opt.lo != null || opt.hi != null);
+    if (clipped) {
+      const x0 = r.x + r.w * (opt.lo != null ? opt.lo : 0);
+      const x1 = r.x + r.w * (opt.hi != null ? opt.hi : 1);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(x0, -4000, Math.max(0, x1 - x0), 9000);
+      ctx.clip();
+    }
+    if (m === 1) {
+      ctx.drawImage(img, r.x, r.y, r.w, r.h);
+    } else {
+      /* SWOLLEN ABOUT A POINT IN THE PICTURE, not about the rect's middle --
+         `cxRel`/`cyRel` are where the thing being stamped actually sits. */
+      const cx = r.x + r.w * (opt.cxRel != null ? opt.cxRel : 0.5);
+      const cy = r.y + r.h * (opt.cyRel != null ? opt.cyRel : 0.5);
+      ctx.drawImage(img, cx - (cx - r.x) * m, cy - (cy - r.y) * m, r.w * m, r.h * m);
+    }
+    if (clipped) ctx.restore();
+  }
+
+  /**
+   * The stamp on the grey frame, as a multiplier. 1 once it has settled.
+   *
+   * Asked for 2026-09-01: *"when at the last second, things turn gray, after it
+   * activate the gray thing, add a medium punch to the coconuts, at the same
+   * time."*
+   *
+   * ⚠️ THE COCONUTS ONLY, AND THIS PICTURE *CAN* BE SPLIT -- WHICH THE FRUIT
+   * SELECT'S COULD NOT. It stamped the whole frame first and that was wrong:
+   * *"only at the coconuts, don't punch the number display."* I had written the
+   * usual note saying `contagem-dead` is one picture so there is nothing to stamp
+   * but all of it -- and then measured it: the figures' ink ends at 0.545 of the
+   * panel's width and the word and number begin at 0.575, **a 33px column of
+   * nothing between them**. The select art had no such gap (one connected
+   * component, 385 rows of ink in its thinnest column), which is why that one
+   * needed an export and this one needs a clip. **The two cases look identical
+   * and are not; measure before repeating the refusal.**
+   *
+   * ⚠️ IT FIRES ON `deadT`, THE SAME CLOCK THE GREY AND THE LIGHT RUN ON, so all
+   * three land on one frame -- *"at the same time"* was the ask, and one clock
+   * is the only way to keep it true when any of them is retuned.
+   *
+   * ⚠️ TINY AND INWARD: -0.10. The magnitude is the menu's; the sign is the
+   * direction, and it is negative because *"instead of punching to the front,
+   * punch it to the back"*. Same easeOutBack curve as the menu's and the fruit
+   * select's, so all three are one gesture -- this one played backwards, which
+   * is the right shape for a thing that has just STOPPED: the other two answer a
+   * press, and this one answers a clock running out.
+   */
+  _popK() {
+    const amt = this._n('deadPunch', -0.10);
+    const ms = this._n('deadPunchMs', 400);
+    /* ⚠️ THE SIGN IS THE DIRECTION, WHICH IS WHY THIS TESTS `!== 0` AND NOT
+       `> 0`. A negative amount recoils AWAY from the camera and springs back;
+       a positive one swells towards it. Asked for 2026-09-01: *"reverse the
+       punch of the continue screen, instead of punching to the front, punch it
+       to the back."* Carrying the direction in the sign rather than in a second
+       `deadPunchIn: true` keeps it one number to read and one to tune -- and
+       the curve below is untouched, so the two directions are the same gesture
+       mirrored rather than two effects. */
+    if (!amt || !(ms > 0)) return 1;
+    const p = Math.min(1, this.deadT / ms);
+    /* easeOutBack, the same constants title.js uses. Three lines duplicated
+       rather than a shared helper: these two files share no module and one
+       import path for one curve is more coupling than it saves. */
+    const c1 = 1.70158, c3 = c1 + 1, q = p - 1;
+    const e = 1 + c3 * q * q * q + c1 * q * q;
+    return 1 + amt * (1 - e);
   }
 
   /**
@@ -261,7 +340,17 @@ class Continue {
         const e = p * p * (3 - 2 * p);
         ctx.filter = 'brightness(' + (from + (to - from) * e).toFixed(4) + ')';
       }
-      this._blit(ctx, 'continue:dead', W, H);
+      /* TWO PASSES OVER ONE PICTURE: the word and the number at rest, then the
+         figures stamped. Right first so the coconuts, which grow slightly past
+         the split at the top of the pop, are cut by the clip rather than drawn
+         over the number. */
+      const sp = this._n('deadPunchSplit', 0.5595);
+      this._blit(ctx, 'continue:dead', W, H, { lo: sp });
+      this._blit(ctx, 'continue:dead', W, H, {
+        hi: sp, mul: this._popK(),
+        cxRel: this._n('deadPunchCX', 0.3009),
+        cyRel: this._n('deadPunchCY', 0.5282),
+      });
       ctx.restore();
       return;
     }
