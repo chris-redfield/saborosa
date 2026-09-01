@@ -504,7 +504,8 @@ CONTINUE: {
 Dying used to dim the fight and put a small PERDEU! over it. It now gets the
 **flying dungeon's game over screen** — its three photographed frames of
 crawling vermin, looping at ~9.5fps, with the word revealed over them. Same
-panel, same timings, same lettering; different word.
+panel, same timings; **the word is a hand-drawn picture, and there are seven of
+them.**
 
 The sequence, once the death animation has played out and held:
 
@@ -513,7 +514,7 @@ The sequence, once the death animation has played out and held:
 | `fadeOutMs` 900 | the fight dips to black |
 | `holdMs` 350 | black, alone |
 | `fadeInMs` 900 | the panel arrives |
-| `title.d1` 1100 | PERDEU! pops |
+| `title.d1` 1100 | the phrase pops |
 | `armMs` 500 | then a press counts — 2850 ms in total |
 
 **The black hold is the point.** Cross-fading straight from the belt to the
@@ -524,9 +525,43 @@ game's sequencing and there was no reason to differ.
 moves the arming with it. Without that, a key still held from the last seconds
 of the run blows straight past the screen the player is meant to read.
 
-> **The word comes from `RESULTS.LABELS.lost`**, not from the panel's own
-> config — so PERDEU! is written in exactly one place. `GAME_OVER.title.words`
-> overrides it if the panel ever needs to say something else.
+### Seven ways of saying you lost
+
+`VIIISH…` · `OH NÃO!` · `JÁ ERA!` · `PERDEU!` · `DETONADO` · `CAIU PRA FORA…` ·
+`CAPO-TOU!` — one picked at random per game over, from
+`batidao-gameover-words-game.png` + its `-sprites.json`, cut by
+`tools/build-gameover-words.py`.
+
+```js
+title: {
+  SHEET: 'v2:beatemup-dungeon/batidao-gameover-words',
+  wRel: 0.80,        // the WIDEST phrase, as a fraction of canvas width
+  sizePct: 20.4,     // the TYPE fallback's size — NOT the picture's
+}
+```
+
+> ⚠️ **`wRel` is the pack's one scale and the widest phrase sets it.** Every
+> other frame is drawn at that same px-per-source ratio, so `VIIISH…` lands about
+> half the width of `CAIU PRA FORA…` — which is how they were drawn. Fitting each
+> phrase to `wRel` in turn would flatten the one difference the sheet is making.
+> Standing rule for a pack here.
+
+> ⚠️ **`sizePct` does not size the picture.** It is the font size, so it now
+> only moves the fallback — the trap being that it looks like the knob.
+
+> ⚠️ **The pick is made when the phase opens, not in `draw`.** The panel is
+> otherwise stateless and derives everything from `t`; a choice derived from `t`
+> is re-made every frame, which is seven words flickering rather than one.
+> `gameOver.roll()`, called from both places `game.js` enters `gameover`.
+
+> ⚠️ **`CAPO-TOU!` is one frame, drawn on two lines.** The cutter bands the sheet
+> by rows and then **merges** that pair — it is a hyphenated phrase, not two
+> words. `MERGE` in the tool, and it asserts the final count, so a re-export that
+> gains or loses a line fails there rather than putting half a word on screen.
+
+> **The fallback word comes from `RESULTS.LABELS.lost`** — reached only if the
+> sheet fails to load, in which case the panel sets PERDEU! in Futura exactly as
+> it did before. A missing picture costs the lettering's look, not the screen.
 
 The three frames are read **in place** out of `assets-v2/flying-dungeon/`, like
 the health bar and the gamepad map. They are the same files this game's title

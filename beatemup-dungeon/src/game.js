@@ -816,6 +816,7 @@
       } else {
         phase = 'gameover';
         phaseT = 0;
+        gameOver.roll();      // the phrase, picked once -- see game-over.js
         playDeathSting();
       }
       input.flush();
@@ -845,6 +846,10 @@
       } else if (r === 'over') {
         phase = 'gameover';
         phaseT = 0;
+        /* WHICH OF THE SEVEN PHRASES, chosen HERE rather than in the panel's
+           draw -- see game-over.js. It is the one thing that screen remembers,
+           because a pick made from its clock would be re-made every frame. */
+        gameOver.roll();
         playDeathSting();
         input.flush();
       }

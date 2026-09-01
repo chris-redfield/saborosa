@@ -3,27 +3,71 @@
  *
  * THE FLYING DUNGEON'S SCREEN, ported rather than reinvented: its three
  * photographed frames of crawling vermin, looping at ~9.5fps, with one word
- * revealed over them. There it reads TIME OVER; here it reads PERDEU!
+ * revealed over them. There it reads TIME OVER; here it reads one of seven
+ * hand-drawn phrases, picked at random.
  *
  * Read `flying-dungeon/src/game-over.js` before changing anything structural —
  * the frame walk, the reveal and the faux-bold stroke are all lifted from it,
  * and the two screens are meant to look like the same screen.
  *
- * STATELESS, AND THAT IS THE PORT'S BEST IDEA. Nothing here accumulates:
+ * ⚠️ THE WORD IS A DRAWING NOW. Asked for 2026-09-01, with a sheet of seven:
+ * *"instead of the current PERDEU that you wrote, I want us to randomize for
+ * each one of these words (each per row), the last row, is actually broken in
+ * two rows, that is on purpose, the CAPO-TOU, ok? that is a single row."* The
+ * pack is cut by `tools/build-gameover-words.py`, which is where the two-line
+ * phrase is joined back into one frame. The typed word survives as the FALLBACK
+ * -- a sheet that fails to load must cost the lettering's look, not the screen.
+ *
+ * STATELESS, EXCEPT FOR ONE INDEX, AND THAT EXCEPTION IS THE FEATURE. Nothing
+ * here accumulates:
  * `draw` is handed the time since the panel appeared and derives the frame, the
  * fades and the word reveal from it. So there is no update() to keep in step
  * with the shell's clock, nothing to drift, and replaying it is passing 0
  * again. This game's shell already tracks `phaseT`, so it is a natural fit.
  *
+ * ⚠️ WHICH IS EXACTLY WHY THE RANDOM PICK CANNOT LIVE IN `draw`. A choice made
+ * from `t` is re-made every frame: the phrase would change 60 times a second and
+ * read as a flicker of seven words rather than as one of them. It is not
+ * derivable from the clock, so it is the one thing the panel remembers, set by
+ * `roll()` when the shell enters the phase -- the same rule the impact bursts
+ * follow, freeze the pick on the EVENT.
+ *
  * ⚠️ THE THREE FRAMES ARE READ IN PLACE out of the other game's folder, like
  * the health bar and the gamepad map. They are also the same files this game's
  * title screen used to crawl on, before that became a photograph.
  *
- * ⚠️ THE WORD COMES FROM `RESULTS.LABELS.lost`, not from this file's config, so
- * PERDEU! is written once and the death card and this panel cannot disagree.
+ * ⚠️ THE FALLBACK WORD COMES FROM `RESULTS.LABELS.lost`, not from this file's
+ * config, so PERDEU! is written once and the death card and this panel cannot
+ * disagree. That is only reached when the picture pack is missing -- and note
+ * that the card and the panel DO differ now, on purpose: the card still names
+ * the run's result, and the panel is the joke about it.
  */
 class GameOver {
-  constructor(assets) { this.assets = assets; }
+  constructor(assets) {
+    this.assets = assets;
+    this.pick = 0;      // which phrase; see roll()
+  }
+
+  /**
+   * The lettering pack, or null if it is not loaded and the panel should set
+   * type instead.
+   */
+  _pack() {
+    const img = this.assets.getDrawable('goWords');
+    const defs = this.assets.getJSON('goWords');
+    return (img && defs && defs.frames && defs.frames.length) ? { img, defs } : null;
+  }
+
+  /**
+   * Choose the phrase. Called by the shell as the panel opens, ONCE.
+   *
+   * ⚠️ NOT IN `draw`, AND NOT DERIVED FROM `t`. See the header: a pick made from
+   * the clock is re-made every frame. This is the panel's only state.
+   */
+  roll() {
+    const p = this._pack();
+    this.pick = p ? Math.floor(Math.random() * p.defs.frames.length) : 0;
+  }
 
   _cfg() { return CONFIG.GAME_OVER || {}; }
 
@@ -72,7 +116,9 @@ class GameOver {
    */
   armedAtMs() {
     const c = this._cfg(), T = c.title || {};
-    const n = this._words().length;
+    // A picture is ONE word however many the artist wrote in it, so `d2` never
+    // applies to it -- otherwise the press would arm 700ms late on every phrase.
+    const n = this._pack() ? 1 : this._words().length;
     let words = T.d1 || 0;
     if (n > 1) words += T.d2 || 0;
     words += T.revealMs || 0;
@@ -139,7 +185,53 @@ class GameOver {
   }
 
   /**
-   * The lettering, revealed a word at a time. Ported whole.
+   * The chosen phrase, as a picture. Returns false if there is no pack, which is
+   * the caller's cue to set type instead.
+   *
+   * ⚠️ ONE SCALE FOR THE WHOLE PACK, TAKEN FROM THE WIDEST FRAME. `wRel` says
+   * how much of the canvas `CAIU PRA FORA...` spans, and every other phrase is
+   * drawn at that same ratio -- so the short ones land short, which is how the
+   * artist drew them. Fitting each frame to `wRel` in turn would make VIIISH...
+   * as wide as the longest sentence on the sheet and flatten the one difference
+   * the pack is making. The standing rule for a pack in this project.
+   *
+   * ⚠️ PLACED BY THE FRAME'S OWN ANCHOR, which the cutter writes as the centre.
+   * The words are centred on the screen, not standing on anything.
+   *
+   * ⚠️ IT RETURNS TRUE BEFORE `d1`, WHILE NOTHING IS DRAWN. The delay is not a
+   * reason to fall through to the type -- doing that would set PERDEU! for a
+   * second and then replace it with the picture.
+   */
+  _picture(ctx, W, H, t, a) {
+    const p = this._pack();
+    if (!p) return false;
+    const T = this._cfg().title || {};
+    const frames = p.defs.frames;
+    const f = frames[this.pick % frames.length];
+    const since = t - (T.d1 || 0);
+    if (since < 0) return true;
+    // The widest frame, off the pack itself -- seven numbers, and reading them
+    // here means the scale cannot fall out of step with a recut sheet.
+    let maxW = 1;
+    for (const q of frames) if (q.w > maxW) maxW = q.w;
+    const k = W * (T.wRel || 0.80) / maxW;
+    const dw = f.w * k, dh = f.h * k;
+    ctx.save();
+    ctx.globalAlpha = a * (T.revealMs > 0 ? Math.min(1, since / T.revealMs) : 1);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(p.img, f.x, f.y, f.w, f.h,
+                  W / 2 - (f.ax != null ? f.ax : f.w / 2) * k + (T.offX || 0),
+                  H * (T.yPct || 50) / 100
+                    - (f.ay != null ? f.ay : f.h / 2) * k + (T.offY || 0),
+                  dw, dh);
+    ctx.restore();
+    return true;
+  }
+
+  /**
+   * The lettering as TYPE -- the fallback, revealed a word at a time. Ported
+   * whole.
    *
    * THE FAUX-BOLD STROKE IS NOT DECORATION: Futura's real Extra Bold cut only
    * exists on machines that happen to have Futura, and stroking the glyphs in
@@ -147,6 +239,7 @@ class GameOver {
    * screen does it.
    */
   _title(ctx, W, H, t, a) {
+    if (this._picture(ctx, W, H, t, a)) return;
     const T = this._cfg().title || {};
     const size = H * (T.sizePct || 20) / 100;
     if (size < 1) return;

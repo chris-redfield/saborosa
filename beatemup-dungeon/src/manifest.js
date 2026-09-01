@@ -109,6 +109,21 @@ function assetManifest() {
       out.push({ key: 'vermin' + i, src: src, how: 'big' }));
   }
 
+  /* THE SEVEN WAYS OF SAYING YOU LOST -- the game over panel's lettering, which
+     is a drawing now rather than type. One sheet and its rects, in the same
+     two-file shape the scenery pack uses.
+
+     `image` rather than `big`: the atlas is 1396x2054 and the widest phrase is
+     drawn at 1024, so a downscale would only throw away pixels the panel still
+     wants. ⚠️ GATED ON THE PANEL ALONE, unlike the vermin above -- the logo
+     screen shares the crawl but not the words. */
+  if (CONFIG.GAME_OVER && CONFIG.GAME_OVER.on !== false
+      && CONFIG.GAME_OVER.title && CONFIG.GAME_OVER.title.SHEET) {
+    const S = CONFIG.GAME_OVER.title.SHEET;
+    out.push({ key: 'goWords', src: S + '-game.png', how: 'image' });
+    out.push({ key: 'goWords', src: S + '-sprites.json', how: 'json' });
+  }
+
   /* The SABOROSA logo, for the front door. `image` rather than `big`: it is
      705x166 and drawn at 666 wide, so there is nothing to downscale. */
   if (CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.SHEET) {

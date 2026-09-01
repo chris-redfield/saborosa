@@ -6827,7 +6827,9 @@ const CONFIG = {
   /* --- The game over panel -------------------------------------------------
      THE FLYING DUNGEON'S SCREEN, brought over: its three photographed frames of
      crawling vermin, looping, with one word revealed over them. There it says
-     TIME OVER; here it says PERDEU!
+     TIME OVER; here it says one of seven hand-drawn phrases, picked at random.
+
+     ⚠️ THE WORD USED TO BE TYPE AND IS NOW A PICTURE. See `title.SHEET`.
 
      ⚠️ THE FRAMES ARE `CONFIG.VERMIN_FRAMES`, SHARED WITH THE LOGO SCREEN and
      read in place out of `assets-v2/flying-dungeon/`, not copied. Two copies of a picture drift the moment one is recut, and the copy
@@ -6853,15 +6855,31 @@ const CONFIG = {
     holdMs: 350,                // black, before the panel
     fadeInMs: 900,              // the panel arriving
     armMs: 500,                 // after the word is up, before a press counts
-    /* The lettering. Same machinery and the same numbers as that game's
-       `overTitle`, so the two screens are set identically -- and the FONT is
-       `TITLE_FONT`, which is already its stack.
+    /* The lettering.
 
-       THE WORD IS NOT LISTED HERE ON PURPOSE. It comes from
-       `RESULTS.LABELS.lost`, so PERDEU! is written in exactly one place and the
-       death card and this panel can never disagree. Set `words` to override. */
+       ⚠️ IT IS A DRAWING NOW, NOT TYPE. Asked for 2026-09-01, with a sheet of
+       seven hand-lettered phrases: *"instead of the current PERDEU that you
+       wrote, I want us to randomize for each one of these words"*. `SHEET` is
+       that pack (`tools/build-gameover-words.py` cuts it) and one of its frames
+       is picked per game over. Everything below `SHEET`/`wRel` still describes
+       the TYPE, which is now the fallback: if the sheet fails to load the panel
+       sets `RESULTS.LABELS.lost` in Futura exactly as it did before, because a
+       missing picture must cost the lettering's look and not the screen.
+
+       ⚠️ `wRel` IS THE PACK'S ONE SCALE AND IT IS SET BY THE WIDEST PHRASE.
+       `CAIU PRA FORA...` spans this much of the canvas and every other frame is
+       drawn at that same px-per-source ratio -- so `VIIISH...`, which the artist
+       drew half as wide, lands half as wide. Fitting each phrase to the screen
+       would flatten exactly the difference the sheet is making. Standing rule
+       for a pack here; see tools/build-beat-fundo-defs.py.
+
+       ⚠️ AND `sizePct` DOES NOT APPLY TO THE PICTURE. It sets the FONT size, so
+       moving it changes only the fallback -- the trap being that it looks like
+       the knob for how big the words are. `wRel` is that knob now. */
     title: {
-      sizePct: 20.4,     // % of canvas height
+      SHEET: 'v2:beatemup-dungeon/batidao-gameover-words',
+      wRel: 0.80,        // the WIDEST phrase, as a fraction of canvas width
+      sizePct: 20.4,     // % of canvas height -- the TYPE fallback only
       yPct: 50,          // vertical middle of the text, down the canvas
       lsPct: 3,          // letter spacing, % of font size
       gapPct: 20,        // between words, if it ever has more than one

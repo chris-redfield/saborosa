@@ -143,10 +143,10 @@ reaches the panel. See *Lives* in README.
 
 **AND DYING HAS A SCREEN NOW TOO.** It used to dim the fight and put a small
 PERDEU! over it, which read as nothing happening. It gets the FLYING DUNGEON'S
-game over panel instead -- its crawling vermin, its timings, its lettering, with
-the word taken from `RESULTS.LABELS.lost` so PERDEU! is spelled in one place.
+game over panel instead -- its crawling vermin, its timings, its lettering.
 Read that game's `src/game-over.js` before changing anything structural; the two
-screens are meant to look like the same screen. See README.
+screens are meant to look like the same screen. See README. ⚠️ **The word is no
+longer type and no longer one word** -- see *Seven ways of saying you lost*.
 
 **AND THERE IS AN ENDING.** ⚠️ *He is drawn at `scale: 1.0` there — exactly his
 size in the fight. It shipped at 1.55 and was wrong on sight: a character who
@@ -6093,6 +6093,48 @@ changing is what CAUSES the turn, so the dark has to follow the change: the new
 digit's second starts dark and settles into the number. Hung at the end of the
 old second instead, the digit you are reading goes out before anything has
 happened — that reads as a dropout, not as a sign.
+
+### Seven ways of saying you lost (2026-09-01)
+
+*"instead of the current PERDEU that you wrote, I want us to randomize for each
+one of these words (each per row), the last row, is actually broken in two rows,
+that is on purpose, the CAPO-TOU, ok? that is a single row."*
+
+The panel set `RESULTS.LABELS.lost` in Futura. It now draws one of seven
+hand-lettered phrases -- VIIISH... / OH NÃO! / JÁ ERA! / PERDEU! / DETONADO /
+CAIU PRA FORA... / CAPO-TOU! -- picked at random per game over.
+`tools/build-gameover-words.py` cuts them; the type survives as the fallback, so
+a sheet that fails to load costs the lettering's look and not the screen.
+
+⚠️ **CUT ON ROW BANDS, AND ONE PHRASE IS TWO BANDS.** A phrase is not a connected
+component (`OH NÃO!` is ten of them, counting the floating tilde), so the unit is
+the band -- the same call `build-beat-fundo-defs.py` made about the cigarette
+mounds. `CAPO-` and `TOU!` are drawn on separate lines with clear white between
+them and are ONE phrase hyphenated across a break; the tool's `MERGE` joins them
+and it asserts the final count, so **a re-export that gains or loses a line fails
+in the cutter rather than putting half a word on the screen.** Told, not guessed
+-- there is nothing in the pixels that says those two rows belong together.
+
+⚠️ **ONE SCALE FOR THE PACK, SET BY THE WIDEST FRAME.** `title.wRel` is how much
+of the canvas `CAIU PRA FORA...` spans (0.80 = 1024px), and every other phrase is
+drawn at that same px-per-source ratio -- `VIIISH...` lands 535px because the
+artist drew it half as wide. Fitting each phrase to `wRel` in turn is the obvious
+implementation and it destroys the only thing the pack is doing.
+
+⚠️ **THE RANDOM PICK IS THE PANEL'S ONLY STATE, AND THAT COST AN ARGUMENT WITH
+THE FILE'S OWN HEADER.** `game-over.js` opens by advertising that it is STATELESS
+-- `draw(t)` derives the frame, the fades and the reveal from the clock, so there
+is nothing to keep in step and replaying it is passing 0 again. A random choice
+cannot be derived from `t`: made in `draw` it is re-made 60 times a second and
+the screen flickers through seven words. So `roll()` is called by the shell at
+both places it enters `gameover`, and the header now says "stateless except for
+one index, and that exception is the feature". **When a new feature breaks a
+property a file boasts about, amend the boast in the same commit.**
+
+⚠️ **AND `armedAtMs()` HAD TO BE TOLD A PICTURE IS ONE WORD.** It adds `d2` when
+there is more than one word, and `CAIU PRA FORA...` is four -- but it is one
+BLIT, so the press would have armed 700ms late on the long phrases and on time on
+the short ones. The pack forces `n = 1`.
 
 ### The light comes up on the grey frame (2026-09-01)
 
