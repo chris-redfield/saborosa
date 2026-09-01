@@ -46,6 +46,9 @@ class GameOver {
   constructor(assets) {
     this.assets = assets;
     this.pick = 0;      // which phrase; see roll()
+    /* THE SHUFFLE BAG. Indices still to be drawn this pass; see roll(). */
+    this.bag = [];
+    this.last = -1;     // what the player actually last saw, for the seam
   }
 
   /**
@@ -63,10 +66,49 @@ class GameOver {
    *
    * ⚠️ NOT IN `draw`, AND NOT DERIVED FROM `t`. See the header: a pick made from
    * the clock is re-made every frame. This is the panel's only state.
+   *
+   * ⚠️ SAMPLING WITHOUT REPLACEMENT, NOT INDEPENDENT DRAWS. Asked for
+   * 2026-09-01: *"for the death messages, do not repeat the same twice, only
+   * cycle repeat after all has been picked."* A fresh `random()` every time is
+   * memoryless, and memoryless is not what a player experiences as random: with
+   * seven phrases an immediate repeat lands one death in seven, and seeing
+   * PERDEU! twice running reads as the feature being broken -- the one outcome
+   * the sheet exists to prevent. So the seven are SHUFFLED INTO A BAG and drawn
+   * out one at a time; the bag refills only once it is empty, which is what
+   * guarantees all seven are seen before any is seen twice.
+   *
+   * ⚠️ AND THE SEAM BETWEEN TWO BAGS IS THE PART THAT IS EASY TO GET WRONG. The
+   * plain algorithm can end one bag on a phrase and open the next on the same
+   * one -- a repeat, on the one boundary the shuffle does not cover, arriving
+   * about one refill in seven. `last` is what was actually SHOWN, and a refill
+   * that opens on it is nudged. That is the difference between "no repeats
+   * within a cycle" and what was asked for, which is no repeats at all.
+   *
+   * ⚠️ THE BAG IS NOT PERSISTED. It lasts as long as the page: quitting and
+   * reloading starts a fresh deck. Making it survive a reload would mean
+   * localStorage for a joke, and the guarantee that matters is inside one
+   * sitting.
    */
   roll() {
     const p = this._pack();
-    this.pick = p ? Math.floor(Math.random() * p.defs.frames.length) : 0;
+    if (!p) { this.pick = 0; return; }
+    const n = p.defs.frames.length;
+    if (!this.bag.length) {
+      for (let i = 0; i < n; i++) this.bag.push(i);
+      // Fisher-Yates, so every ordering is equally likely.
+      for (let i = this.bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = this.bag[i]; this.bag[i] = this.bag[j]; this.bag[j] = t;
+      }
+      /* THE SEAM: a new bag must not open on the phrase the old one closed on.
+         Swapped with the END rather than re-shuffled, because a re-shuffle can
+         land on it again and a loop that retries is a loop that can spin. */
+      if (n > 1 && this.bag[0] === this.last) {
+        this.bag[0] = this.bag[n - 1]; this.bag[n - 1] = this.last;
+      }
+    }
+    this.pick = this.bag.shift();
+    this.last = this.pick;
   }
 
   _cfg() { return CONFIG.GAME_OVER || {}; }

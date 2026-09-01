@@ -31,7 +31,17 @@
      ⚠️ THE TITLE MOVED DOWN HERE FOR THAT REASON. It used to be built before
      `sheets` because it only needed a photograph; since 2026-08-22 LEBRON walks
      across it, so it draws out of the same packs the fight does. */
-  const title = new Title(assets, sheets);
+  /* THE HAND-LETTERED FRONT END, built once and handed to everything that
+     shows a word outside a fight: the title screen (its name, menu, options and
+     credits), the select, and the HUD. One instance because it is one sheet --
+     two would each keep their own scale and could disagree about how big the
+     pack is. */
+  const letters = new Letters(assets);
+  const title = new Title(assets, sheets, letters);
+  /* ⚠️ THE OPTIONS SCREEN NEEDS THE MIXER, and it is set rather than passed
+     because `sound` is built above for the whole game and the title screen is
+     the only thing on it that changes a volume. */
+  title.sound = sound;
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
@@ -50,7 +60,7 @@
      resolver is where a blow is decided, so it is where the mark is stamped. */
   const hitFX = new HitFX(assets);
   const combat = new Combat(stats, sound, hitFX);
-  const hud = new Hud();
+  const hud = new Hud(letters);
   const lifeBar = new LifeBar(assets);
   const debug = new Debug();
   const crowd = new Crowd();

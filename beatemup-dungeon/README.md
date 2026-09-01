@@ -499,6 +499,95 @@ CONTINUE: {
 
 ---
 
+## The hand-lettered front end
+
+Every word the game shows outside a fight is a drawing off one sheet
+(`batidao-letters-game.png` + `-sprites.json`, cut by
+`tools/build-letter-pack.py`, drawn by `src/letters.js`).
+
+| frame | where |
+|---|---|
+| `title` `subtitle` | the title screen, replacing the typed name and gloss |
+| `menuStart` `menuOptions` `menuCredits` | COMEÇAR / OPÇÕES / SABOROSA |
+| `choose` | ESCOLHA SEU COCO, over the select |
+| `pickLEBRON` `pickIPANEIMA` | under the two coconuts |
+| `life0…life3` | one per life, under the player's name |
+| `nameLEBRON` … `nameMISTERSTOP` | under a fighter's health bar |
+| `optTitle` `optVolume` `optMusic` | the OPÇÕES screen |
+| `credTitle` `credNames` | the SABOROSA credits |
+
+```js
+LETTERS: {
+  titleWRel: 0.72,     // THE one size knob — everything scales off the title
+  menuMul: 0.90,       // the menu, trimmed under that scale
+  selectedMul: 1.10,   // …and the highlighted item, 10% up on its NEIGHBOURS
+  menuRiseMs: 520,     // it slides up from under the frame and bounces in
+  itemPop: 0.10,       // the tiny stamp on an item that is CHOSEN
+  itemPopMs: 260,
+  menuHoldMs: 300,     // …and the beat before the screen acts on the choice
+  // …and the rest is POSITION: titleYRel, menuYRel, optRowYRel, …
+}
+OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
+```
+
+> ⚠️ **`titleWRel` is the only size number and it moves everything.** Each frame
+> is drawn at the ratio that makes the title span that much of the canvas, so the
+> artist's own hierarchy reaches the screen — title 1363px in the pack against a
+> fighter name at 124. Don't add a `wRel` per element; if one thing must change
+> size alone, that is a per-call `scale`, which is what the 10% menu bump uses.
+
+> ⚠️ **The meters are the row drawn short.** Each option row was lettered with
+> eight bars and the cutter recorded where each ends, so a level of *n* is one
+> blit `cuts[n]` wide. The row stays centred on its **whole** width as it
+> shortens — otherwise turning the volume down slides VOLUME across the screen.
+
+> ⚠️ **Fighter names are looked up by the name the fighter declares.**
+> `NARUTÃO` → `nameNARUTAO` (strip accents, drop non-alphanumerics, prefix). A new
+> boss gets its lettering by being drawn on the sheet under the name it already
+> has — no code change. `HORÁCIO` and `MISTER STOP` are cut and waiting for
+> fighters to claim them.
+
+> ⚠️ **The lives row is the lives, not the spares.** One coconut per life,
+> including the one being played, so `playerLives: 3` draws three and the last
+> life draws one. The four drawings cycle; repeating one reads as a stamp.
+
+> ⚠️ **The menu slides up from below, bounces in, and does not fade.** It reuses
+> the title's own travel (`titleDropFromRel`), approach (`p²`) and landing bounce
+> (`titleBouncePx`/`titleBounceMs`) — one gesture from opposite edges, only the
+> sign differs, so `titleBouncePx: 0` still turns both off together. **The bounce
+> is negated because the travel is:** a thing overshoots past its rest in the
+> direction it was moving, and these arrive from the other edge. **A slide that
+> also fades reads as a fade with some drift in it**, so alpha is 1 from the first
+> frame; `menuFadeMs` still fades the options and credits screens, which arrive
+> rather than move.
+
+> ⚠️ **An item stamps when it is CHOSEN, not when the cursor reaches it.** A
+> punch answers a commitment; spent on every nudge of the d-pad it cheapens itself
+> and leaves the real choice with no feedback. A cursor move gets `selectedMul` —
+> a state, and a state needs no animation. On the options screen "clicking" is
+> setting a meter, so left/right stamps and up/down does not.
+
+> ⚠️ **`menuHoldMs` is why the punch exists at all.** Confirming COMEÇAR moves
+> the screen on, so an item stamped and dismissed in the same frame is a pop
+> nobody sees. The press buys the stamp; the choice is spent 300 ms later. Same
+> beat, same reason, as `SELECT.chosenHoldMs`.
+
+> ⚠️ **The menu, options and credits are stages of `title.js`, not new files** —
+> the same photograph with different words on it, which is why the select lives
+> there too. Returning from a detour does not re-drop the title: the drop is timed
+> off `t`, which never rewinds.
+
+### Re-cutting the sheet
+
+```
+python3 tools/build-letter-pack.py --dry-run
+```
+
+The cutter bands the sheet by rows and then a table (`PACK`) says which bands are
+two lines, which are several pieces, and which multi-line block is one thing. It
+asserts what it expects to find, so a re-export that gains or loses a line fails
+there rather than putting half a word on screen.
+
 ## The game over panel
 
 Dying used to dim the fight and put a small PERDEU! over it. It now gets the
@@ -528,7 +617,7 @@ of the run blows straight past the screen the player is meant to read.
 ### Seven ways of saying you lost
 
 `VIIISH…` · `OH NÃO!` · `JÁ ERA!` · `PERDEU!` · `DETONADO` · `CAIU PRA FORA…` ·
-`CAPO-TOU!` — one picked at random per game over, from
+`CAPO-TOU!` — one per game over, **sampled without replacement**, from
 `batidao-gameover-words-game.png` + its `-sprites.json`, cut by
 `tools/build-gameover-words.py`.
 
@@ -548,6 +637,17 @@ title: {
 
 > ⚠️ **`sizePct` does not size the picture.** It is the font size, so it now
 > only moves the fallback — the trap being that it looks like the knob.
+
+> ⚠️ **It is a shuffle bag, not a fresh `random()` each time.** The seven are
+> shuffled into a deck and drawn one at a time; the deck refills only when it is
+> empty, so all seven are seen before any repeats. Independent draws are
+> memoryless, and memoryless is not what a player reads as random — an immediate
+> repeat would land one death in seven, and seeing PERDEU! twice running reads as
+> the feature being broken. ⚠️ **The seam is the part that is easy to miss:** a
+> bag can end on the phrase the next one starts with, so a refill that opens on
+> the last-shown phrase is nudged. Verified over 200,000 draws: zero back-to-back
+> repeats, every cycle of seven complete, counts even to one part in 28,571.
+> The bag is per-session; a reload starts a fresh deck.
 
 > ⚠️ **The pick is made when the phase opens, not in `draw`.** The panel is
 > otherwise stateless and derives everything from `t`; a choice derived from `t`

@@ -115,6 +115,37 @@ class Sound {
     }
   }
 
+  /**
+   * Push `CONFIG.OPTIONS` at the two buses. Called by the options screen every
+   * time a meter moves.
+   *
+   * ⚠️ THE OPTIONS ARE BARS, NOT GAINS, and this is the only place that knows
+   * the difference. The artist drew eight bars; the screen counts them; a full
+   * meter is the volume the game was mixed at (`sfxVolume` / `musicVolume`) and
+   * an empty one is silence. So turning the meter to the top restores the mix
+   * rather than pushing it to 1.0 and blowing the balance the whole game was
+   * tuned against.
+   *
+   * ⚠️ AND IT SETS THE LIVE NODES, not just the numbers. `musicGain` is already
+   * playing when the player opens the screen -- the title theme is running under
+   * it -- so a change that only wrote to CONFIG would take effect at the next
+   * track change and read as broken.
+   */
+  applyOptions() {
+    const O = CONFIG.OPTIONS || {};
+    const bars = Math.max(1, O.bars || 8);
+    const mus = Math.max(0, Math.min(bars, O.music == null ? bars : O.music)) / bars;
+    const sfx = Math.max(0, Math.min(bars, O.volume == null ? bars : O.volume)) / bars;
+    this.volume = ((CONFIG.musicVolume != null) ? CONFIG.musicVolume : 0.55) * mus;
+    if (this.musicGain) {
+      const trim = (CONFIG.MUSIC_GAIN && CONFIG.MUSIC_GAIN[this.track]);
+      this.musicGain.gain.value = this.volume * (trim == null ? 1 : trim);
+    }
+    if (this.sfxGain) {
+      this.sfxGain.gain.value = ((CONFIG.sfxVolume != null) ? CONFIG.sfxVolume : 0.9) * sfx;
+    }
+  }
+
   /** Build the graph. Safe to call repeatedly; only the first call does work. */
   _ensure() {
     if (this.ctx) return this.ctx;

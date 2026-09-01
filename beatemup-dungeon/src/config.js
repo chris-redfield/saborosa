@@ -6357,6 +6357,207 @@ const CONFIG = {
   titleNameColor: '#FAFA30',
   titleFadeOutMs: 600,   // to black, once dismissed
 
+  /* =========================================================================
+     THE HAND-LETTERED FRONT END (2026-09-01)
+     =========================================================================
+     One sheet carrying every word the game shows outside a fight, delivered as
+     seven numbered jobs: *"first 2 rows, batidao de coco and (big coconut bash)
+     right at the beginning of the game, instead of using the generated
+     lettering, use the hand drawn ones... this 3 next rows should appear in the
+     start of the game: Começar, opções and Saborosa... add the row Escolha seu
+     coco... add Lebrons and IPANEIMA below the characters at the character
+     select screen... instead of X0, x1, x2, for the lives, use the coconut
+     drawing line... 6 lines with names of the heros and the enemies, all these
+     lines are to appear under their health bars... use that in case the player
+     clicks that menu... if the player clicks SABOROSA in the starting menu,
+     that is the credits.*
+
+     Cut by `tools/build-letter-pack.py`; drawn by `src/letters.js`.
+
+     ⚠️ THERE IS ONE SIZE KNOB FOR THE WHOLE PACK AND IT IS `titleWRel`. Every
+     frame is drawn at the ratio that makes the TITLE span that much of the
+     canvas -- so the artist's own hierarchy (title 1363px in the pack against a
+     fighter name at 124) is what reaches the screen. A `wRel` per element would
+     be eleven numbers to keep in proportion by hand, and the first one nudged
+     would break a relationship the artist had already settled. Everything below
+     is POSITION, not size. See letters.js.
+
+     ⚠️ AND EVERY TYPED PATH IS STILL THERE UNDERNEATH. Each screen falls back
+     to the Futura it used to set if the pack is missing -- a failed download
+     costs the lettering's look, not the ability to start the game. */
+  LETTERS: {
+    SHEET: 'v2:beatemup-dungeon/batidao-letters',
+    /* THE ONE SCALE. The title spans this much of the canvas width; everything
+       else follows from it. */
+    titleWRel: 0.72,
+    /* THE TITLE SCREEN. Two lines of name, then the three menu items under
+       them. Fractions of the canvas.
+
+       ⚠️ THE MENU SITS LOW BECAUSE THE WALL IS BROWN THERE AND THE TYPE IS
+       YELLOW. Same reasoning `titleNameY` already carries for the name: the
+       photograph decides where words can go. */
+    /* ⚠️ MEASURED, NOT GUESSED, AND THE FIRST GUESS OVERLAPPED. The title is
+       drawn 922x161 and the gloss 588x74, so at 0.20/0.31 the two boxes shared
+       38px of screen -- a picture has a HEIGHT, where the two lines of type
+       these replaced were stacked by a font size and a gap. Preview, measure,
+       then set. */
+    titleYRel: 0.17,
+    subtitleYRel: 0.35,
+    /* ⚠️ 0.68, AND IT TOOK TWO GOES. At 0.55 COMEÇAR's box ended 7px from the
+       gloss's; at 0.60 it still read as one stack with the name -- *"the
+       começar, opções, and saborosa rows are too close to the title, bring them
+       down"* (2026-09-01). The menu has to be separable from the title at a
+       glance or the player cannot tell which of them is the thing to answer,
+       and the gap that does that is bigger than the one that merely stops them
+       touching. */
+    menuYRel: 0.68,      // the middle of the three items
+    /* THE MENU IS DRAWN 10% SMALLER THAN THE PACK'S ONE SCALE, asked for in the
+       same breath as bringing it down: *"reduce their size by 10%"*. The two
+       changes are one note -- a menu further from the title and smaller than it
+       is a menu that reads as subordinate to the name rather than as a fourth
+       line of it.
+
+       ⚠️ IT MULTIPLIES `selectedMul` RATHER THAN COMPETING WITH IT. The
+       highlighted item is 0.90 x 1.10 = 0.99 of the pack scale, so it is still
+       10% bigger THAN ITS NEIGHBOURS, which is the only comparison the player
+       makes. Reading 0.99 as "the highlight is gone" is the mistake to avoid
+       here: the bump is relative, and it was never relative to the title. */
+    menuMul: 0.90,
+    /* THE MENU SLIDES UP FROM UNDER THE FRAME -- it used to fade. Asked for
+       2026-09-01: *"they should slide in from the below, like the title does
+       from the upper part, but do it coming from the lower end."*
+
+       ⚠️ IT REUSES THE NAME'S OWN TRAVEL AND EASING (`titleDropFromRel`, and
+       `1 - (1-p)^3`), so the two are one gesture from opposite edges. Only the
+       sign differs. 520ms against the drop's 900 because it is the smaller,
+       lighter thing and a menu that takes as long to arrive as the title reads
+       as the screen still loading.
+
+       ⚠️ AND IT NO LONGER FADES AT ALL. A slide that also fades reads as a fade
+       with some drift in it. `menuFadeMs` still fades the OPTIONS and CREDITS
+       screens, which arrive rather than move.
+
+       ⚠️ IT BOUNCES ON ARRIVAL TOO, off `titleBouncePx` / `titleBounceMs` --
+       the name's own numbers, negated, because a thing overshoots past its
+       resting place in the DIRECTION IT WAS MOVING and these arrive from the
+       other edge. Setting `titleBouncePx: 0` still turns both off together, and
+       it also swaps both approaches back to the eased-out curve: an arrival
+       that is already slowing to a stop cannot bounce, so the two choices are
+       one choice. */
+    menuRiseMs: 520,
+    /* THE TINY PUNCH ON AN ITEM THAT IS CHOSEN. Asked for: *"when the other
+       menus are selected, they should have a tiny punch... all should have a
+       tiny punch."* Same curve as the select screen's confirm stamp
+       (`SELECT.PUNCH`), a fraction of its weight -- 0.10 against 0.25.
+
+       ⚠️ THE CURVE IS COPIED AND ONLY THE AMOUNT CHANGES, which is what keeps
+       the two reading as one interface: this gesture says "you took this one"
+       at the weight of a menu, that one says it at the weight of a fighter.
+       Two different easings would be two languages for one idea.
+
+       ⚠️ IT FIRES ON THE CHOICE, NOT ON THE CURSOR. It stamped on every
+       highlight move first and that was wrong: *"the punch is for when you click
+       the option, not for when you place the cursor on top of it."* A punch
+       answers a COMMITMENT; spent on every nudge of the d-pad it both cheapens
+       itself and leaves the actual choice with no feedback of its own. What a
+       cursor move gets is `selectedMul` -- a state, and a state does not need an
+       animation to announce it. On the options screen "clicking" is setting a
+       meter, so left/right stamps and up/down does not.
+
+       ⚠️ IT MULTIPLIES ON TOP OF `selectedMul` and settles back to it, so the
+       pop is a MOVE rather than a second way of being selected. */
+    itemPop: 0.10,
+    itemPopMs: 260,
+    /* HOW LONG THE CHOSEN ITEM HOLDS BEFORE THE SCREEN ACTS ON IT.
+
+       ⚠️ WITHOUT THIS THE PUNCH DOES NOT EXIST. Confirming COMEÇAR moves the
+       screen on, so an item stamped and dismissed in the same frame is a pop
+       nobody ever sees -- the beat is not decoration, it is the only reason the
+       stamp is visible. 300 against `itemPopMs` 260, so the pop has settled by a
+       hair before anything moves; the select screen buys the same beat with
+       `SELECT.chosenHoldMs` and its note gives the same reasoning. */
+    menuHoldMs: 300,
+    menuGapRel: 0.11,    // between item centres, as a fraction of canvas height
+    /* THE SELECTED ITEM IS 10% BIGGER. Asked for: *"when one option is
+       selected, make it slightly bigger, like 10% bigger, so the player know
+       that is selected."*
+
+       ⚠️ SIZE IS THE WHOLE HIGHLIGHT -- there is no colour change, no marker and
+       no box, because the art is one colour and a second colour would be a
+       decision the artist did not make. 1.10 is small enough to read as the
+       same word and large enough to be unambiguous next to its neighbours. */
+    selectedMul: 1.10,
+    menuFadeMs: 320,     // the items coming up once the name has landed
+    /* THE SELECT SCREEN. `ESCOLHA SEU COCO` replaces the typed prompt, and the
+       two names sit under the coconuts they belong to. `nameXRel` is measured
+       from the canvas centre, so the pair is symmetrical by construction. */
+    chooseYRel: 0.11,
+    /* ⚠️ 0.117 IS WHERE THE COCONUTS ACTUALLY ARE, taken off the art rather
+       than off the canvas: the left figure's ink is centred at 0.271 of the
+       select sheet and the right at 0.714, which at `SELECT.artHRel` 0.64 puts
+       them 155px and 145px either side of the middle. Half the picture's width
+       would have put the names in the gap between the two.
+
+       ⚠️ AND THEN PUSHED OUT TO 0.14, WHICH IS *NOT* UNDER THE COCONUTS' EXACT
+       CENTRES, because at 0.117 the two words were 25px apart and read as one
+       long word -- LEBRONIPANEIMA. `LEBRON` is 249px wide and `IPANEIMA` 299
+       against 300px between the figures, so there is no setting that both
+       centres them and separates them. 0.14 buys an 85px gap for a 25-35px
+       offset, and the offset is invisible while the collision was not.
+
+       ⚠️ AND 0.16 AFTER A LOOK AT IT: *"the lebron and ipaneima names are too
+       close to each other, push them a little further apart"* (2026-09-01).
+       85px of gap stopped them TOUCHING and still read as one line of text --
+       the same lesson the title menu taught an hour earlier, that the gap which
+       separates two things is much bigger than the gap that stops them
+       overlapping. 0.16 makes it 136px, for an offset from the coconuts of
+       50-60px, which is still the cheap half of the trade. */
+    pickNameXRel: 0.16,
+    /* ⚠️ 0.792 IS 0.90 MOVED BY THE SAME 78px THE PICTURE MOVED. It is not a
+       taste decision: the row is a caption, so it travels with what it captions.
+       If the coconuts move again, this moves with them. */
+    pickNameYRel: 0.792,
+    /* THE HUD. The lives row hangs under the player's bar and the fighter names
+       under whichever bar names them. Both are offsets in PIXELS from the
+       footprint the bar hands back, not fractions -- the bar is a fixed-size
+       drawing and these have to sit on it. */
+    hudNameGap: 6,
+    lifeGap: 4,          // between coconuts
+    lifeRowGap: 4,       // between the name row and the coconut row
+    /* THE OPTIONS SCREEN. A heading and two meters, over the same photograph.
+       ⚠️ THE METERS ARE THE ARTIST'S BARS, NOT A DRAWN RECTANGLE. Each row was
+       lettered with eight bars and the cutter recorded where each one ends, so
+       a level of n is that row drawn to the n-th bar's right edge -- the bars
+       are spaced the way they were DRAWN. See letters.js `cutFor`. */
+    optTitleYRel: 0.22,
+    optRowYRel: 0.50,
+    /* ⚠️ 0.115, DOWN FROM 0.17: *"at the opções menu, the rows are too distant
+       from each other, bring them closer"* (2026-09-01). 0.17 put 122px between
+       the two centres for rows only ~60px tall -- 60px of empty wall between
+       them, which reads as two unrelated things rather than as a list. This is
+       the title menu's own spacing (`menuGapRel` 0.11 against items of about
+       the same height), and the two menus should not disagree about what a list
+       looks like. */
+    optRowGapRel: 0.115,
+    /* THE CREDITS. `SABOROSA` over `é Gabriel Góes e Christian Miranda`. */
+    credTitleYRel: 0.32,
+    credNamesYRel: 0.58,
+  },
+
+  /* THE OPTIONS THE OPTIONS SCREEN SETS -------------------------------------
+     Two levels, 0..8, because the artist drew eight bars. They are the game's
+     own volumes expressed in bars: `sfxVolume` and `musicVolume` are what the
+     sound engine reads, and these say how many bars that is.
+
+     ⚠️ THEY START FULL RATHER THAN AT THE ENGINE'S CURRENT NUMBER. A meter that
+     opens at 5/8 because 0.55 happens to be the music default would look like a
+     setting somebody chose. */
+  OPTIONS: {
+    bars: 8,
+    volume: 8,          // SFX, in bars
+    music: 8,           // the music bus, in bars
+  },
+
   /* --- LEBRON crosses the title screen -------------------------------------
      Once the name has landed he walks in from the left and off the right, and
      that is the whole of it: no stop, no pose, nothing to press. Asked for on
@@ -6495,6 +6696,69 @@ const CONFIG = {
       coconut:       'v2:beatemup-dungeon/batidao-player-select-001-game.png',
       coconutStrong: 'v2:beatemup-dungeon/batidao-player-select-002-game.png',
     },
+    /* =====================================================================
+       ONE LAYER PER COCONUT (2026-09-01) -- WHAT UNBLOCKED THE PUNCH.
+       =====================================================================
+       The note under PUNCH below says the pop could not be limited to the
+       chosen figure because the art was ONE drawing of two coconuts that touch:
+       measured, a single connected component of 837,483px, still one at an
+       alpha threshold of 254, and not separable by eroding 32px. It also says
+       exactly what would unblock it -- *"the two figures exported as SEPARATE
+       PNGs on the same 7249x4924 canvas (so they still line up by
+       construction), for each of the two picked states"*. That is what arrived,
+       and it is why nothing here had to be measured or guessed: the four files
+       share the master canvas, so they are drawn at ONE rect and land where the
+       artist put them.
+
+       ⚠️ `on` IS THE ONE WITH THE WHITE HALO. Measured rather than assumed --
+       the difference between each pair is 1.6M pixels of pure white (255,255,255)
+       present in `coco-0N` and absent from `coco-0N-V2`. That is the same
+       highlight convention the old three-picture pack used, and this is written
+       down for the same reason that note was: it is not derivable by looking at
+       a thumbnail, and I had the old pair the wrong way round.
+
+       ⚠️ `off` IS THE FLAT YELLOW WASH. The highlight has TWO halves -- the
+       chosen coconut gains a white outline AND the other loses its colours --
+       and that is the convention the old three-picture pack used. The first
+       delivery carried only the outline half (measured: `coco-0N` and
+       `coco-0N-V2` differ by 1.6M pure-white pixels and ZERO colour pixels), so
+       for an afternoon an unselected coconut kept its colours; `yellow-01/02`
+       arrived the same day and finished it.
+
+       ⚠️ THEY LAND WITHOUT A SINGLE CODE CHANGE, and that is the payoff for
+       wiring the slot and waiting. Verified on arrival rather than assumed:
+       same 7249x4924 canvas, ink bboxes within 1px of the plain figures'
+       (168,594,3757,4774 against 169,594,3758,4774), silhouettes overlapping
+       0.996/0.997, mean RGB 199,169,25 -- the same yellow as the old
+       composites -- and ZERO pure-white pixels, so no halo on the one that is
+       not chosen. Four numbers, and every one of them had to be right for a
+       path swap to be the whole job.
+
+       ⚠️ SO `coco-0N-V2` IS NOW DRAWN BY NOTHING. The plain, halo-less colour
+       version has no state that shows it: chosen is `coco-0N`, unchosen is
+       `yellow-0N`. Its files are left in the folder and out of the manifest --
+       nothing downloads them.
+
+       ⚠️ `cxRel`/`cyRel` ARE THE FIGURE'S OWN CENTRE, and they are why the pop
+       does not slide. Each file is a FULL-CANVAS overlay with one coconut on it,
+       so scaling the layer about the picture's centre would swing the figure
+       sideways -- 39px at a 1.25 pop, 155px off-centre. These are the ink
+       centres of the two masters (bbox 168..3758 x 594..4774 of 7249x4924, and
+       3322..7038 x 408..4416), so the swell happens where the coconut is.
+
+       ⚠️ KEYED BY PACK, NOT BY POSITION, for the reason the note above gives. */
+    LAYERS: {
+      coconut: {
+        off: 'v2:beatemup-dungeon/batidao-player-select-yellow-01-game.png',
+        on:  'v2:beatemup-dungeon/batidao-player-select-coco-01-game.png',
+        cxRel: 0.2708, cyRel: 0.5451,
+      },
+      coconutStrong: {
+        off: 'v2:beatemup-dungeon/batidao-player-select-yellow-02-game.png',
+        on:  'v2:beatemup-dungeon/batidao-player-select-coco-02-game.png',
+        cxRel: 0.7146, cyRel: 0.4899,
+      },
+    },
     /* WHO IS HIGHLIGHTED WHEN THE SCREEN OPENS -- an index into PLAYER_PACKS.
        Asked for 2026-08-31: *"make the left one already selected by default when
        the player enters this screen."* 0 is the left of the picture, which is
@@ -6524,8 +6788,15 @@ const CONFIG = {
        of 1.25 settling to 1.0 on an easeOutBack over 0.40s, and a decaying
        screen shake of 9px over 0.18s at 82 / 71 rad/s.
 
-       ⚠️ THE POP IS THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, AND THAT IS
-       BLOCKED ON THE ART RATHER THAN ON THE CODE. Asked for on the first
+       ⚠️ THE POP IS THE CHOSEN FIGURE ALONE SINCE 2026-09-01 -- see `LAYERS`
+       above, which is the art that unblocked it. Everything from here to the end
+       of this note is the record of why it could not be done before, kept
+       because it is the argument for asking for art instead of writing code:
+       three measurements said the picture could not be split, the note said what
+       would unblock it, and the answer was one export.
+
+       ⚠️ [HISTORICAL] THE POP WAS THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, AND
+       THAT WAS BLOCKED ON THE ART RATHER THAN ON THE CODE. Asked for on the first
        playtest -- *"make it only move the selected character"* -- and it cannot
        be done from these files. The main game stamps ONE fruit because its art
        is a row of separate panels it can clip to (`p.rect`). Ours is a single
@@ -6546,7 +6817,9 @@ const CONFIG = {
        ⚠️ WHAT WOULD UNBLOCK IT: the two figures exported as SEPARATE PNGs on the
        same 7016x4924 canvas (so they still line up by construction), for each of
        the two picked states. Then the pop clips to one layer and this note goes
-       away. Until then the board stamps where the main game stamps the fruit.
+       away. -- AND THAT IS EXACTLY WHAT ARRIVED, four days of notes later. The
+       note is kept rather than deleted because it is the thing that made the ask
+       one sentence long.
 
        ⚠️ AND THE MAIN GAME'S TRAILING FADE-TO-BLACK IS DELIBERATELY NOT COPIED.
        There it covers a hand-off to a synchronous stage load; here the hand-off
@@ -6593,7 +6866,19 @@ const CONFIG = {
        -- left alone because the smaller figures reading as standing IN the
        photograph rather than sitting on its edge is the better picture. */
     artHRel: 0.64,
-    artYRel: 0.60,
+    /* ⚠️ 0.60 -> 0.545 TO MAKE ROOM FOR THE NAMES UNDER THEM (2026-09-01). At
+       0.60 the picture ended at y=662 and the coconuts' feet at 649, and
+       `LEBRON` / `IPANEIMA` are 66px tall -- there was no strip of screen left
+       to put them in that did not sit on the feet. The SIZE the user approved is
+       untouched; the picture moved up 40px, which is the smallest change that
+       buys the row.
+
+       ⚠️ AND THEN UP AGAIN, 20% (2026-09-01): *"at the escolha seu coco screen,
+       bring the coconut drawings up by 20%"*. 0.545 x 0.8. The names follow by
+       the same 78px -- see `LETTERS.pickNameYRel` -- because they are captions
+       of the picture and leaving them put would open a 117px hole between the
+       feet and the words that are meant to be under them. */
+    artYRel: 0.436,
   },
 
   /* =========================================================================

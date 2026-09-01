@@ -12,7 +12,75 @@
  * open decision as over there: ship a webfont or accept the fallback.
  */
 class Hud {
-  constructor() { this.flashT = 0; }
+  constructor(letters) {
+    this.flashT = 0;
+    /* THE HAND-LETTERED PACK, for the fighter names and the lives. Optional:
+       every use of it below falls back to the type it replaced, so the HUD of a
+       build whose pack failed to load still says who you are and how many
+       coconuts are left. */
+    this.letters = letters || null;
+  }
+
+  _lcfg(key, dflt) {
+    const L = CONFIG.LETTERS || {};
+    return L[key] != null ? L[key] : dflt;
+  }
+
+  /**
+   * A fighter's name under its bar, drawn from the pack if the sheet has it.
+   * Returns false if it did not, which is the caller's cue to set type.
+   *
+   * ⚠️ LEFT-ALIGNED ON THE BAR'S OWN LEFT EDGE, exactly as the type was --
+   * `Letters.draw` centres, so the centre is computed from the frame's width
+   * here rather than by giving the pack a second alignment mode it would only
+   * ever use once.
+   */
+  _drawName(ctx, name, box) {
+    const L = this.letters;
+    const key = L && L.nameKey(name);
+    if (!key) return false;
+    const sz = L.size(key, CONFIG.GAME_W);
+    return L.draw(ctx, key, box.x + sz.w / 2,
+                  box.y + box.h + this._lcfg('hudNameGap', 6) + sz.h / 2);
+  }
+
+  /**
+   * The lives, as drawn coconuts under the player's name.
+   *
+   * Asked for 2026-09-01: *"instead of X0, x1, x2, for the lives, use the
+   * coconut drawing line, for now add 3 coconuts as default"*.
+   *
+   * ⚠️ ONE COCONUT PER LIFE, INCLUDING THE ONE BEING PLAYED. The old readout
+   * said `x` + (lives - 1) -- the SPARES -- so a last life read `x0`, and the
+   * user named that exact case: *"0 equals 1 last coconut as life"*. A row of
+   * drawings has no way to say "zero spares" except by being empty, which is
+   * what a dead player looks like. So the row IS the lives, and `playerLives: 3`
+   * draws three.
+   *
+   * ⚠️ AND THE FOUR DRAWINGS CYCLE. The artist drew four coconuts, not one, and
+   * they differ; repeating a single frame would read as a stamp. Asked for.
+   */
+  _drawLives(ctx, player, box, nameH) {
+    const L = this.letters;
+    if (!L || !L.has('life0')) return false;
+    const n = Math.max(0, player.lives | 0);
+    if (n <= 0) return true;
+    const gap = this._lcfg('lifeGap', 4);
+    const sizes = [];
+    for (let i = 0; i < n; i++) {
+      const key = 'life' + (i % 4);
+      sizes.push({ key, s: L.size(L.has(key) ? key : 'life0', CONFIG.GAME_W) });
+    }
+    const h = Math.max.apply(null, sizes.map(o => o.s.h));
+    const y = box.y + box.h + this._lcfg('hudNameGap', 6) + nameH
+            + this._lcfg('lifeRowGap', 4) + h / 2;
+    let x = box.x;
+    for (const o of sizes) {
+      L.draw(ctx, o.key, x + o.s.w / 2, y);
+      x += o.s.w + gap;
+    }
+    return true;
+  }
 
   _font(px, weight) {
     return `${weight || 'bold'} ${px}px ${CONFIG.hudFont}`;
@@ -51,9 +119,20 @@ class Hud {
        naming the character who was not being played. Asking the player his own
        kind is the version that cannot be left behind by a second pack. */
     const me = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[player.kind]) || {};
-    ctx.fillText(me.name || '', box.x, box.y + box.h + 4);
-    ctx.textAlign = 'right';
-    ctx.fillText('x' + Math.max(0, player.lives - 1), box.x + box.w, box.y + box.h + 4);
+    /* THE NAME AND THE LIVES ARE DRAWINGS NOW, and the typed pair below is the
+       fallback for a build with no pack. ⚠️ THE LIVES MOVED FROM THE RIGHT EDGE
+       TO UNDER THE NAME: `x2` was two characters and a row of three coconuts is
+       not, so hanging it off `box.x + box.w` would have run it back across the
+       bar. It is its own row, and `nameH` is what keeps the two from touching. */
+    const nameSz = this.letters && this.letters.nameKey(me.name)
+      ? this.letters.size(this.letters.nameKey(me.name), CONFIG.GAME_W) : null;
+    const drewName = this._drawName(ctx, me.name, box);
+    const drewLives = this._drawLives(ctx, player, box, nameSz ? nameSz.h : 0);
+    if (!drewName) ctx.fillText(me.name || '', box.x, box.y + box.h + 4);
+    if (!drewLives) {
+      ctx.textAlign = 'right';
+      ctx.fillText('x' + Math.max(0, player.lives - 1), box.x + box.w, box.y + box.h + 4);
+    }
     ctx.restore();
   }
 
@@ -101,7 +180,13 @@ class Hud {
        widening the boss bar (`flyBossBarWRel`) slides the name with it and there
        is no second number to keep in step. */
     ctx.textAlign = 'left';
-    ctx.fillText(boss.name, box.x, box.y + box.h + (CONFIG.bossNameGap || 4));
+    /* HAND-LETTERED IF THE SHEET HAS THIS BOSS, TYPE IF IT DOES NOT -- and the
+       sheet is asked by the name the boss already declares, so a new boss gets
+       its lettering by being drawn under that name and nothing here changes.
+       See Letters.nameKey. */
+    if (!this._drawName(ctx, boss.name, box)) {
+      ctx.fillText(boss.name, box.x, box.y + box.h + (CONFIG.bossNameGap || 4));
+    }
     ctx.restore();
   }
 

@@ -62,6 +62,16 @@ function assetManifest() {
     for (const kind of Object.keys(S.PICKED || {})) {
       out.push({ key: 'select:' + kind, src: S.PICKED[kind], how: 'big' });
     }
+    /* ONE LAYER PER COCONUT, two states each -- what lets the punch pop only the
+       figure that was chosen. ⚠️ LOADED ALONGSIDE THE OLD THREE RATHER THAN
+       INSTEAD OF THEM, because the old pack is still the fallback for a build
+       where one of these four fails: a missing layer must cost the per-figure
+       pop, not the ability to see who you are choosing between. */
+    for (const kind of Object.keys(S.LAYERS || {})) {
+      const L = S.LAYERS[kind];
+      out.push({ key: 'sel:' + kind + ':off', src: L.off, how: 'big' });
+      out.push({ key: 'sel:' + kind + ':on',  src: L.on,  how: 'big' });
+    }
   }
 
   /* THE CONTINUE PANEL: two figure drawings, ten digits and the grey dead frame.
@@ -107,6 +117,20 @@ function assetManifest() {
   if (wantsVermin) {
     (CONFIG.VERMIN_FRAMES || []).forEach((src, i) =>
       out.push({ key: 'vermin' + i, src: src, how: 'big' }));
+  }
+
+  /* THE HAND-LETTERED FRONT END: every word outside a fight, on one sheet.
+     Same two-file pack shape as the scenery and the game over words. `image`
+     rather than `big`: it is 1363x2381 and the title is drawn at 922, so a
+     downscale would throw away pixels the front end still wants.
+
+     ⚠️ NOT GATED ON ANYTHING. Four separate screens read it -- the title, the
+     select, the HUD and the options/credits -- and a gate would be four
+     conditions that have to agree. It is 909KB and the game cannot show its own
+     name without it. */
+  if (CONFIG.LETTERS && CONFIG.LETTERS.SHEET) {
+    out.push({ key: 'letters', src: CONFIG.LETTERS.SHEET + '-game.png', how: 'image' });
+    out.push({ key: 'letters', src: CONFIG.LETTERS.SHEET + '-sprites.json', how: 'json' });
   }
 
   /* THE SEVEN WAYS OF SAYING YOU LOST -- the game over panel's lettering, which

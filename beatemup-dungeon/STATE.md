@@ -6094,6 +6094,177 @@ digit's second starts dark and settles into the number. Hung at the end of the
 old second instead, the digit you are reading goes out before anything has
 happened — that reads as a dropout, not as a sign.
 
+### The hand-lettered front end (2026-09-01)
+
+One sheet, `batidao-letter-todos.png`, and seven numbered jobs: the title and its
+gloss drawn instead of set; a three-item MENU (COMEÇAR / OPÇÕES / SABOROSA); the
+select prompt `ESCOLHA SEU COCO` and the two coconut names; the lives as drawn
+coconuts instead of `x2`; six fighter names under their health bars; an OPÇÕES
+screen; and SABOROSA as the credits. `tools/build-letter-pack.py` cuts it,
+`src/letters.js` draws it, `CONFIG.LETTERS` places it.
+
+⚠️ **ONE SCALE FOR THE WHOLE PACK, AND IT IS THE BEST DECISION IN THIS FEATURE.**
+`LETTERS.titleWRel` says how much of the canvas the TITLE spans, and every other
+frame is drawn at that same px-per-source ratio. The artist drew the title 1363px
+wide in the pack and a fighter name 124px — **so a single ratio reproduces the
+hierarchy they already drew**: the title dominates, the menu sits under it, the
+HUD names are small. A `wRel` per element would have been eleven numbers to keep
+in proportion by hand, and the first one nudged breaks a relationship somebody
+had already settled. Everything else in `LETTERS` is POSITION.
+
+⚠️ **THE BANDS DO NOT AGREE WITH THE LINES, AND THAT IS WHY THE CUTTER IS A TABLE
+AND NOT A LOOP.** Three separate things go wrong on one sheet: two lines band as
+one (`COMEÇAR`/`OPÇÕES`, `ESCOLHA SEU COCO`/`LEBRON` — their highlight blocks
+touch); one line is several things (four coconuts; a word plus eight meter bars);
+and one thing is several lines (the credits, kept whole). Row-band detection gets
+you most of the way and then the art needs telling apart by hand.
+
+⚠️ **AND A SPLIT LEAVES CRUMBS THAT MOVE THINGS.** `LEBRON`'s slice came out
+743px instead of 452 because a 25px-tall crumb of the line above sat far to its
+right — and since a frame is placed by its BOX, that invisible crumb would have
+shoved LEBRON off centre on the select screen. **A stray you cannot see becomes a
+POSITION you can.** Split rows now drop pieces under a quarter of their tallest;
+whole rows do not, because a real line legitimately contains short pieces (the
+dots of `...`, the floating É in the credits).
+
+⚠️ **THE METERS ARE THE ROW DRAWN SHORT.** `VOLUME` was lettered with eight bars,
+so the cutter recorded the x of each bar's right edge and a level of n is the row
+drawn to `cuts[n]` — one blit, spaced the way the artist spaced it. Counting bars
+in code would mean inventing a gap between them. The row stays centred on its
+WHOLE width as it shortens, or turning the volume down would slide the word
+across the screen.
+
+⚠️ **THE FIGHTER NAMES ARE LOOKED UP BY THE NAME THE FIGHTER ALREADY DECLARES.**
+`NARUTÃO` → `nameNARUTAO`: strip accents, drop non-alphanumerics, prefix. A table
+would be a THIRD place that has to know the cast (`CONFIG.CHARACTERS` and
+`MOSCA_NAME` are two), and the stale one would be the silent one. **HORÁCIO and
+MISTER STOP are cut and waiting**: no fighter answers to those names yet, and the
+day one does, its bar is lettered with no code change.
+
+⚠️ **THE LIVES ROW IS THE LIVES, NOT THE SPARES.** The old readout was `x` +
+(lives − 1), so a last life read `x0`. A row of drawings cannot say "zero spares"
+except by being empty, which is what a dead player looks like — and the user named
+the case exactly: *"0 equals 1 last coconut as life."* So one coconut per life,
+`playerLives: 3` draws three, and the four drawings CYCLE because the artist drew
+four and repeating one reads as a stamp.
+
+⚠️ **THREE NEW SCREENS AND NO NEW FILES.** The menu, the options and the credits
+are stages of `title.js`, for the reason the select already was: they are the same
+photograph with different words on it. Coming back from a detour does not re-drop
+the title either — the drop is timed off `t`, which never rewinds. A separate
+screen would have had to fake that.
+
+⚠️ **AND THE DETOUR STAGES HAD TO BE CHECKED BEFORE THE SELECT'S BRANCH.** That
+branch claims every stage that is not `name` or `walk`, so an options screen added
+after it is fed to `_tickSelect` and answers a question nobody asked. **A
+catch-all written when there were three stages is a trap for the fourth.**
+
+⚠️ **TWO MORE POSITION CALLS, BOTH OFF A PLAYTEST.** The OPÇÕES rows went from
+`optRowGapRel` 0.17 to 0.115 — 0.17 left 60px of empty wall between two rows only
+60px tall, which reads as two unrelated things rather than as a list, and 0.115 is
+the title menu's own spacing, so the two menus no longer disagree about what a
+list looks like. And the select art moved up 20% (`artYRel` 0.545 → 0.436) with
+`pickNameYRel` following by the same 78px: **the names are a caption, so they
+travel with what they caption**, or the move opens a 117px hole between the feet
+and the words meant to be under them.
+
+⚠️ **THE MENU MOVES INSTEAD OF FADING, AND BOUNCES IN.** *"They should slide in
+from the below, like the title does from the upper part"*, then *"when the 3 rows
+come from lower, they should bounce like the title does."* It reuses the name's
+travel, its accelerating approach (`p²`) AND its landing bounce, negated. **The
+negation is the whole trick: a thing overshoots past its rest in the direction it
+was moving**, and these arrive from the opposite edge. ⚠️ The approach curve and
+the bounce are ONE choice, not two — an eased-out arrival is already slowing to a
+stop, so a wobble after it reads as a separate twitch, which is why `_dropP` picks
+its curve off `titleBouncePx` as well. And the fade is gone entirely: **a slide
+that also fades reads as a fade with some drift in it.**
+
+⚠️ **AND THE PUNCH IS FOR CHOOSING, NOT FOR HOVERING — I HAD IT ON THE CURSOR.**
+*"The punch is for when you click the option, not for when you place the cursor on
+top of it."* A punch answers a COMMITMENT: spent on every nudge of the d-pad it
+cheapens itself and leaves the actual choice with no feedback of its own. **What a
+cursor move gets is the highlight — a STATE, and a state does not need an
+animation to announce it.** On the options screen "clicking" is setting a meter,
+so left/right stamps and up/down does not.
+
+⚠️ **WHICH FORCED A BEAT THE MENU DID NOT HAVE.** Confirming COMEÇAR moves the
+screen on, so an item stamped and dismissed in the same frame is a pop nobody ever
+sees — **the feedback is invisible unless the thing it is feedback FOR is
+delayed.** The press now buys the stamp and `update()` spends the choice
+`menuHoldMs` (300) later. The select screen had already bought exactly this beat
+with `chosenHoldMs`, and its note gives the same reasoning: I should have reached
+for it the moment a stamp went on a transition.
+
+⚠️ **AND THE SELECT NAMES HIT THE SAME WALL AN HOUR LATER.** `pickNameXRel`
+0.117 → 0.14 stopped `LEBRON` and `IPANEIMA` colliding into LEBRONIPANEIMA, and
+0.14 still read as one line of text: *"push them a little further apart."* 0.16,
+for 136px of gap. **Twice in one session, the fix that stops two things
+overlapping was not the fix that makes them read as two things** — see the menu
+below. The cost is that the names sit 50-60px off their coconuts' centres, which
+nobody can see; the collision was what nobody could miss.
+
+⚠️ **AND "TOO CLOSE" TOOK TWO GOES, BECAUSE CLEARANCE IS NOT SEPARATION.** The
+menu went 0.55 → 0.60 to stop its top item touching the gloss's box, and that was
+still wrong on sight: *"the começar, opções, and saborosa rows are too close to
+the title, bring them down and reduce their size by 10%."* 0.68 and `menuMul`
+0.90. **The gap that makes a menu read as subordinate to a title is much bigger
+than the gap that stops two boxes overlapping** — and the size cut is half of it,
+since a menu the same size as the title's gloss reads as a fourth line of the
+title. ⚠️ `menuMul` MULTIPLIES `selectedMul` rather than competing with it: the
+highlighted item is 0.99 of the pack scale, which is still 10% up on its
+NEIGHBOURS, and the neighbours are the only comparison the player makes.
+
+**Measured, so nobody re-derives it:** at `titleWRel` 0.72 the title draws 922×161
+and the gloss 588×74 — which is why `titleYRel`/`subtitleYRel` are 0.17/0.35 and
+not the 0.20/0.31 they shipped as for ten minutes: those overlapped by 38px. A
+picture has a height; two lines of type were stacked by a font size and a gap.
+
+### The punch stamps the coconut you chose (2026-09-01)
+
+*"we can now make the PUNCH animation better, make only the selected coconut
+receive the punch animation."*
+
+Refused on the first playtest of the select screen and refused correctly: the art
+was ONE drawing of two coconuts that touch, and `config.js` carried three
+measurements saying so (one connected component of 837,483px; still one at an
+alpha threshold of 254; the thinnest column between them still carrying 385 rows
+of ink out of 1087). **The same note said exactly what would unblock it** — *"the
+two figures exported as SEPARATE PNGs on the same 7249×4924 canvas, for each of
+the two picked states"* — and four files arrived on that canvas. The feature is
+`_drawLayers` in title.js and about forty lines.
+
+⚠️ **THAT NOTE IS THE POINT OF THIS ENTRY.** Writing down what would unblock a
+refused feature turned a re-litigation into a one-sentence ask. Refuse with the
+unlock attached.
+
+⚠️ **`on` IS THE ONE WITH THE HALO, MEASURED NOT ASSUMED.** The difference between
+each pair is 1.6M pixels of pure white present in `coco-0N` and absent from
+`coco-0N-V2`. I had the OLD pair the wrong way round in exactly this way, which is
+why this got measured instead of eyeballed.
+
+⚠️ **THE HIGHLIGHT HAS TWO HALVES AND THE FIRST DELIVERY CARRIED ONE.** The
+chosen coconut gains a white outline AND the other is washed flat yellow — that is
+the old three-picture pack's convention. The four per-figure files carried only
+the outline (measured: 1.6M pure-white pixels of difference, ZERO colour pixels).
+I stencilled yellow stand-ins out of the old composites — it works, all of these
+share the 7249×4924 canvas and the stencil covered 0.996 of the ink — and was told
+to drop it: *"gabriel is providing that for us now, please ignore that for now."*
+**A stand-in that looks finished is the kind that ships.** `yellow-01/02` arrived
+an hour later and **landed with no code change at all**, which is what wiring the
+slot and waiting buys. Verified on arrival rather than assumed: same canvas, ink
+bboxes within 1px of the plain figures, silhouettes overlapping 0.996/0.997, mean
+RGB 199,169,25 (the old composites' yellow), and zero pure-white pixels so the
+unchosen one carries no halo. ⚠️ `coco-0N-V2` is now drawn by nothing — chosen is
+`coco-0N`, unchosen is `yellow-0N` — and is left in the folder, out of the
+manifest.
+
+⚠️ **THE POP SCALES ABOUT THE FIGURE'S OWN CENTRE, NOT THE RECT'S.** Each file is
+a full-canvas overlay with one coconut on it; swelling it about the picture's
+middle slides the coconut sideways as it grows — 39px at a 1.25 pop — and reads as
+the pair drifting apart rather than one of them being hit. `cxRel`/`cyRel` are the
+measured ink centres. **And the chosen one draws LAST**, because the two overlap
+and a swelling layer under its neighbour is clipped by it.
+
 ### Seven ways of saying you lost (2026-09-01)
 
 *"instead of the current PERDEU that you wrote, I want us to randomize for each
@@ -6120,6 +6291,20 @@ of the canvas `CAIU PRA FORA...` spans (0.80 = 1024px), and every other phrase i
 drawn at that same px-per-source ratio -- `VIIISH...` lands 535px because the
 artist drew it half as wide. Fitting each phrase to `wRel` in turn is the obvious
 implementation and it destroys the only thing the pack is doing.
+
+⚠️ **AND IT IS SAMPLING WITHOUT REPLACEMENT, NOT INDEPENDENT DRAWS.** Corrected
+the same day: *"do not repeat the same twice, only cycle repeat after all has been
+picked."* A fresh `random()` per death is memoryless, and **memoryless is not what
+a player experiences as random** — with seven phrases an immediate repeat lands
+one death in seven, and PERDEU! twice running reads as the feature being broken,
+which is the one outcome the sheet exists to prevent. So the seven are shuffled
+into a bag (Fisher-Yates) and drawn out one at a time; the bag refills only when
+empty. ⚠️ **THE SEAM BETWEEN TWO BAGS IS WHERE THE NAIVE VERSION STILL REPEATS**
+— one bag can end on the phrase the next opens with, about one refill in seven —
+so a refill that opens on the last-SHOWN phrase swaps it to the end. Swapped
+rather than re-shuffled: a retry loop can spin. Verified over 200,000 draws
+against the real `roll()`: zero back-to-back repeats, every cycle of seven
+complete, counts even to one part in 28,571.
 
 ⚠️ **THE RANDOM PICK IS THE PANEL'S ONLY STATE, AND THAT COST AN ARGUMENT WITH
 THE FILE'S OWN HEADER.** `game-over.js` opens by advertising that it is STATELESS

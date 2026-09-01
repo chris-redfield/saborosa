@@ -40,13 +40,25 @@
  * cover-fit plate and a hand-off between two screens drawing the same picture:
  * a seam where the design has none.
  *
+ * ⚠️ AND IT IS ALSO THE MENU, THE OPTIONS AND THE CREDITS (2026-09-01). Three
+ * more screens joined it rather than three more files, for exactly the reason
+ * the select did: they are the same photograph with different words on it. The
+ * title does not even re-drop coming back from them -- the drop is timed off
+ * `t`, which never rewinds, so returning to `name` finds the name already
+ * landed. A separate screen would have had to fake that.
+ *
  * SO THIS RUNS AS STAGES OFF ONE CLOCK -- see `stage` in reset():
  *
- *     name    the title falls in and waits to be pressed          (as it always was)
- *     lift    the name accelerates up and off the top
- *     ask     ESCOLHA SUA FRUTA falls in; the picture fades up; left/right pick
- *     chosen  the choice is held a beat, then the prompt lifts and the art fades
- *     walk    the chosen hero crosses, exactly as before
+ *     name     the title falls in, then the three menu items fade up under it
+ *     options  OPÇÕES: two meters, up/down to choose, left/right to set
+ *     credits  SABOROSA: who made it
+ *     lift     the name accelerates up and off the top
+ *     ask      ESCOLHA SEU COCO falls in; the picture fades up; left/right pick
+ *     chosen   the choice is held a beat, then the prompt lifts and the art fades
+ *     walk     the chosen hero crosses, exactly as before
+ *
+ * ⚠️ `options` AND `credits` RETURN TO `name`, THEY DO NOT END ANYTHING. The
+ * menu is the screen's resting state and everything else on it is a detour.
  *
  * ⚠️ WITH `SELECT.on` FALSE THE MIDDLE THREE ARE SKIPPED and `name` hands
  * straight to `walk`. That is the old screen to the frame, and it is the
@@ -59,8 +71,12 @@
  * shading the photograph.
  */
 class Title {
-  constructor(assets, sheets) {
+  constructor(assets, sheets, letters) {
     this.assets = assets;
+    /* The hand-lettered pack. Every word on this screen is one of its frames --
+       and every one of them falls back to the type it replaced, so a pack that
+       failed to load costs the look and not the screen. */
+    this.letters = letters || null;
     /* The character packs, for the walk-across. Built by boot() before this
        screen is ever drawn -- and drawn defensively anyway (see `_walker`),
        because a pack that failed to load must cost a walk-on, not the screen. */
@@ -110,6 +126,31 @@ class Title {
     // the screen has to remember the last frame or one tap scrolls the list.
     this._heldL = false;
     this._heldR = false;
+    /* THE MENU. `menu` is which of COMEÇAR / OPÇÕES / SABOROSA is highlighted;
+       `optRow` is which meter the options screen is on. Both open at the top,
+       which is the item the player wants nine times out of ten. */
+    this.menu = 0;
+    this.optRow = 0;
+    this._heldU = false;
+    this._heldD = false;
+    /* ms since the menu became answerable -- its own fade clock, so returning
+       from the options screen brings the items back up rather than snapping
+       them on. Set the moment the name lands, and again on every return. */
+    this.menuT = -1;
+    /* ms since the highlight last MOVED, or -1 for "not moving". One clock for
+       both lists, because only one of them is ever on screen. See _itemPop. */
+    this.itemPopT = -1;
+    /* WHAT THE PRESS BOUGHT, held until its stamp has played. null when idle.
+       See the resolution in update(). */
+    this.pending = null;
+  }
+
+  /** The three menu items, top to bottom. Order is the sheet's order. */
+  static MENU() { return ['menuStart', 'menuOptions', 'menuCredits']; }
+
+  /** Is the hand-lettered pack up? Everything on this screen asks first. */
+  _art() {
+    return (this.letters && this.letters.has('title')) ? this.letters : null;
   }
 
   /** Is the select actually running, or is this the old title screen? */
@@ -142,10 +183,31 @@ class Title {
   update(dt, input) {
     this.t += dt * 1000;
     this.stageT += dt * 1000;
+    /* THE MENU'S OWN CLOCK, STARTED WHEN THE NAME LANDS. It is not `stageT` and
+       not an offset off `t`: coming back from the options screen the items have
+       to fade up again, and only a clock that can be restarted does that. -1 is
+       "not yet", which is also the gate `_tickMenu` reads -- one value, one
+       meaning, so the menu cannot be answerable before it is visible. */
+    if (this.menuT >= 0) this.menuT += dt * 1000;
+    else if (this.stage === 'name' && this.t >= this._landedAtMs()) this.menuT = 0;
+    if (this.itemPopT >= 0) this.itemPopT += dt * 1000;
     this._tickWalk(dt);
     if (this.out >= 0) {
       this.out += dt * 1000;
       if (this.out >= (CONFIG.titleFadeOutMs || 600)) { this.done = true; return true; }
+      return false;
+    }
+    /* THE TWO DETOURS OWN THE INPUT WHILE THEY ARE UP, and they are checked
+       BEFORE the select's branch below -- that branch claims every stage that is
+       not `name` or `walk`, so an options screen added after it would have been
+       fed to `_tickSelect` and answered a question nobody asked. */
+    if (this.stage === 'options') { this._tickOptions(input); return false; }
+    if (this.stage === 'credits') {
+      /* ⚠️ NOT UNTIL IT HAS BEEN UP A MOMENT. The press that OPENED the credits
+         is gone by now, but a held button repeats, and a screen that can be
+         opened and closed by one long press reads as not opening at all. */
+      if (this.stageT >= (CONFIG.LETTERS && CONFIG.LETTERS.menuFadeMs || 320)
+          && input && input.takeAnyPress()) this._toMenu();
       return false;
     }
     /* THE SELECT OWNS THE INPUT WHILE IT IS UP. It returns true once it has
@@ -156,7 +218,25 @@ class Title {
       this._tickSelect(input);
       return false;
     }
-    if (input && input.takeAnyPress()) this.go = true;
+    /* THE MENU ANSWERS THE PRESS NOW, WHEN THERE IS A MENU TO ANSWER IT. With
+       no lettering pack there are no items to draw, so the screen keeps its old
+       any-press behaviour rather than becoming unstartable -- the same fallback
+       rule every other use of the pack follows. */
+    /* THE CHOICE IS SPENT ONCE ITS STAMP HAS PLAYED, not on the frame it was
+       made. ⚠️ WITHOUT THIS BEAT THE PUNCH DOES NOT EXIST: confirming COMEÇAR
+       moves the screen on, so an item stamped and dismissed in the same frame is
+       a pop nobody ever sees. The select screen buys the same beat with
+       `chosenHoldMs`, for the same reason -- the feedback for a press needs a
+       moment on screen before the press is acted on. */
+    if (this.pending && this.itemPopT >= this._lcfg('menuHoldMs', 300)) {
+      const act = this.pending;
+      this.pending = null;
+      if (act === 'options') { this.stage = 'options'; this.stageT = 0; return false; }
+      if (act === 'credits') { this.stage = 'credits'; this.stageT = 0; return false; }
+      this.go = true;      // COMEÇAR: the flag the any-press used to set
+    }
+    if (this.stage === 'name' && this._menuOn()) this._tickMenu(input);
+    else if (input && input.takeAnyPress()) this.go = true;
     /* THE PRESS OPENS THE SELECT INSTEAD OF SENDING HIM OFF. Only once the name
        has LANDED -- the same gate the walk used to sit behind, kept for the same
        reason: type still falling must not be yanked back up. An early press is
@@ -190,6 +270,144 @@ class Title {
     }
     if (this.walkT >= 0 && this.walkT >= this._walkExitAtMs()) this.out = 0;
     return false;
+  }
+
+  /** Is there a menu to run? Only if its words exist. */
+  _menuOn() {
+    const L = this._art();
+    return !!(L && L.has('menuStart') && L.has('menuOptions') && L.has('menuCredits'));
+  }
+
+  /**
+   * The stamp on an item that has just taken the highlight, as a multiplier.
+   *
+   * Asked for 2026-09-01: *"when the other menus are selected, they should have
+   * a tiny punch, so for example, começar, opções, saborosa etc, all should have
+   * a tiny punch."*
+   *
+   * ⚠️ THE SAME SHAPE AS THE SELECT'S CONFIRM PUNCH, DELIBERATELY SMALLER. Both
+   * are `1 + amount * (1 - easeOutBack(p))` -- swell, overshoot back, settle --
+   * because they are the same gesture at two weights: this one says "you moved
+   * onto this", the other says "you chose it". Copying the CURVE and changing
+   * only the amount is what keeps them reading as one interface. 0.10 against
+   * the confirm's 0.25.
+   *
+   * ⚠️ IT MULTIPLIES ON TOP OF `selectedMul`, which is the standing size of a
+   * highlighted item -- so the pop is a move, not a second way of being
+   * selected. When it settles the item is exactly where the highlight leaves it.
+   *
+   * ⚠️ IT IS DRIVEN BY THE ITEM BEING ACTED ON, NOT BY THE CURSOR REACHING IT,
+   * and not by which item happens to be selected. It stamped on the cursor move
+   * first and that was wrong: *"the punch is for when you click the option, not
+   * for when you place the cursor on top of it."* A punch answers a COMMITMENT
+   * -- it is the same gesture the select makes when a coconut is chosen -- and
+   * spending it on every nudge of the d-pad both cheapens it and leaves the
+   * actual choice with no feedback of its own. What a cursor move gets is the
+   * highlight: 10% bigger, and a STATE does not need an animation to announce
+   * it. (Keyed on "is selected" it would also replay on every redraw.)
+   */
+  _itemPop() {
+    const ms = this._lcfg('itemPopMs', 260);
+    const amt = this._lcfg('itemPop', 0.10);
+    if (this.itemPopT < 0 || !(ms > 0) || !(amt > 0)) return 1;
+    const p = Math.min(1, this.itemPopT / ms);
+    return 1 + amt * (1 - this._easeOutBack(p));
+  }
+
+  /** Back to the resting screen, from either detour. */
+  _toMenu() {
+    this.stage = 'name';
+    this.stageT = 0;
+    this.menuT = 0;              // the items fade back up
+    this.itemPopT = -1;          // ...without one of them stamping on arrival
+    this.pending = null;
+    this._heldU = this._heldD = this._heldL = this._heldR = false;
+  }
+
+  /**
+   * A d-pad edge on the vertical axis, as (up, down). Held flags, so the screen
+   * has to remember the last frame or one tap runs the whole list.
+   */
+  _vEdge(input) {
+    const U = !!(input && input.up), D = !!(input && input.down);
+    const hit = { u: U && !this._heldU, d: D && !this._heldD };
+    this._heldU = U; this._heldD = D;
+    return hit;
+  }
+
+  /**
+   * COMEÇAR / OPÇÕES / SABOROSA.
+   *
+   * ⚠️ THE SAME DIRECTION-BEATS-ANY-PRESS RULE THE SELECT ALREADY LIVES BY, and
+   * it matters more here: on a gamepad every button sets `_anyPress`, the d-pad
+   * included, so without this a nudge downwards would move the highlight AND
+   * confirm it in the same frame -- and one of the three things it could confirm
+   * starts the game. The press is TAKEN either way, because `takeAnyPress` is a
+   * queue: leaving it unread spends it on the next frame instead.
+   *
+   * ⚠️ AND NOT UNTIL THE NAME HAS LANDED. `menuT` is set by the drawing side the
+   * frame the items become visible, so the menu cannot be answered before it can
+   * be read -- the same gate the select's question sits behind.
+   */
+  _tickMenu(input) {
+    const hit = this._vEdge(input);
+    const press = !!(input && input.takeAnyPress());
+    if (this.menuT < 0) return;              // the name is still falling
+    /* THE CHOICE IS MADE AND ITS STAMP IS PLAYING. The press above is still
+       TAKEN -- `takeAnyPress` is a queue, so leaving it unread spends it a frame
+       later, on whatever screen the choice hands to. */
+    if (this.pending) return;
+    const n = Title.MENU().length;
+    if (hit.u || hit.d) {
+      /* WRAPPING, because three items is short enough that running off the end
+         is a dead press rather than a boundary anyone wants to feel.
+         ⚠️ AND NO STAMP HERE -- see the note above. */
+      this.menu = (this.menu + (hit.d ? 1 : n - 1)) % n;
+      return;
+    }
+    if (!press) return;
+    /* THE PRESS BUYS THE STAMP AND NOTHING ELSE; update() spends the choice once
+       it has played. COMEÇAR still resolves to `go`, the flag the any-press used
+       to set, so everything downstream is the path this screen already had. */
+    this.pending = ['start', 'options', 'credits'][this.menu];
+    this.itemPopT = 0;
+  }
+
+  /**
+   * OPÇÕES: two meters, VOLUME and MÚSICA.
+   *
+   * ⚠️ LEFT/RIGHT SET, UP/DOWN CHOOSE, AND ANY OTHER PRESS LEAVES. There is no
+   * BACK item drawn on the sheet, so the way out has to be the button the player
+   * already used to get in.
+   *
+   * ⚠️ THE LEVELS ARE WRITTEN STRAIGHT INTO `CONFIG.OPTIONS` AND APPLIED. They
+   * are bars, 0..8, and `sound.applyOptions()` turns them into the two gains --
+   * so the meter and the audio cannot disagree, and nothing has to remember to
+   * push a value at the sound engine later.
+   */
+  _tickOptions(input) {
+    const hit = this._vEdge(input);
+    const L = !!(input && input.left), R = !!(input && input.right);
+    const hitL = L && !this._heldL, hitR = R && !this._heldR;
+    this._heldL = L; this._heldR = R;
+    const press = !!(input && input.takeAnyPress());
+    // Moving between the rows is a cursor move: the highlight, and no stamp.
+    if (hit.u || hit.d) { this.optRow = this.optRow ? 0 : 1; return; }
+    if (hitL || hitR) {
+      const O = CONFIG.OPTIONS || {};
+      const max = O.bars || 8;
+      const key = this.optRow ? 'music' : 'volume';
+      O[key] = Math.max(0, Math.min(max, (O[key] || 0) + (hitR ? 1 : -1)));
+      /* THE STAMP GOES HERE, NOT ON UP/DOWN. Setting a meter IS acting on the
+         option -- this screen's equivalent of clicking one -- where moving
+         between the rows is only the cursor. Same rule as the menu. */
+      this.itemPopT = 0;
+      if (this.sound && this.sound.applyOptions) this.sound.applyOptions();
+      return;
+    }
+    if (press && this.stageT >= (CONFIG.LETTERS && CONFIG.LETTERS.menuFadeMs || 320)) {
+      this._toMenu();
+    }
   }
 
   /**
@@ -509,9 +727,15 @@ class Title {
   /**
    * How far the picture is swollen by the stamp; 1 once it has settled.
    *
-   * ⚠️ THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, and that is a fact about the
-   * art rather than a shortcut. The main game stamps ONE fruit because its art
-   * is a row of separate panels it can clip to (`p.rect`); ours is a single
+   * ⚠️ SINCE 2026-09-01 THIS IS THE CHOSEN FIGURE ONLY -- `_drawLayers` applies
+   * it to one layer. The number is unchanged; what changed is the art. The note
+   * below is the record of why it was the whole picture before, and it is the
+   * argument for asking for an export rather than writing a clever split.
+   *
+   * ⚠️ [HISTORICAL] THE WHOLE PICTURE, NOT THE CHOSEN FIGURE, and that was a
+   * fact about the art rather than a shortcut. The main game stamps ONE fruit
+   * because its art
+   * is a row of separate panels it can clip to (`p.rect`); ours was a single
    * drawing of two coconuts whose arms overlap -- measured, the thinnest column
    * between them still carries 385 rows of ink out of 1087. There is no line to
    * clip on, and a split would slice an arm in half mid-pop. So the board stamps
@@ -587,9 +811,71 @@ class Title {
    * the game: a pack whose picture failed to load must cost the highlight, not
    * the ability to choose.
    */
+  /**
+   * The two coconuts as SEPARATE layers, so the confirm punch swells only the
+   * one that was chosen. Returns false if the layer pack is not there, which is
+   * the caller's cue to draw the old single picture.
+   *
+   * Asked for on the first playtest of the select and refused then -- *"make it
+   * only move the selected character"* -- because the art was one drawing of two
+   * coconuts that touch. It arrived as four files on the master canvas
+   * (2026-09-01) and this is all it took.
+   *
+   * ⚠️ EVERY LAYER IS DRAWN AT THE SAME RECT, and that rect is the one the
+   * single picture used. The four files share the artist's canvas, so they line
+   * up by construction -- fitting each to its own ink would scatter them, which
+   * is the trap this codebase has now hit on three separate packs.
+   *
+   * ⚠️ THE POP SCALES ABOUT THE FIGURE'S OWN CENTRE, NOT THE RECT'S. A layer is
+   * a full-canvas overlay with one coconut somewhere on it; swelling it about
+   * the picture's middle would slide the coconut sideways as it grew -- 39px at
+   * a 1.25 pop -- and read as the pair drifting apart rather than as one of them
+   * being hit. `cxRel`/`cyRel` are the measured ink centres.
+   *
+   * ⚠️ AND THE CHOSEN ONE IS DRAWN LAST. The two overlap by about 400px of the
+   * master canvas, so the one that is swelling has to be on top or its new size
+   * is clipped by the neighbour it is growing into.
+   */
+  _drawLayers(ctx, W, H, a) {
+    const S = CONFIG.SELECT || {};
+    const packs = PlayerPick.list();
+    const layers = [];
+    for (let i = 0; i < packs.length; i++) {
+      const L = (S.LAYERS || {})[packs[i]];
+      if (!L) return false;
+      const on = (this.pick === i);
+      const img = this.assets.getDrawable('sel:' + packs[i] + ':' + (on ? 'on' : 'off'));
+      if (!img) return false;
+      layers.push({ img, L, on });
+    }
+    // The picked one last; see the header.
+    layers.sort((p, q) => (p.on ? 1 : 0) - (q.on ? 1 : 0));
+    const pop = this._popK();
+    for (const l of layers) {
+      const iw = l.img.width || l.img.naturalWidth, ih = l.img.height || l.img.naturalHeight;
+      if (!iw || !ih) continue;
+      const base = H * this._sel('artHRel', 0.80);
+      const bw = base * iw / ih;
+      const cy = H * this._sel('artYRel', 0.60);
+      const x0 = (W - bw) / 2, y0 = cy - base / 2;
+      const m = l.on ? pop : 1;
+      // The figure's centre on screen, and the layer swollen about it.
+      const fx = x0 + bw * (l.L.cxRel != null ? l.L.cxRel : 0.5);
+      const fy = y0 + base * (l.L.cyRel != null ? l.L.cyRel : 0.5);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(l.img, fx - (fx - x0) * m, fy - (fy - y0) * m, bw * m, base * m);
+      ctx.restore();
+    }
+    return true;
+  }
+
   _drawArt(ctx, W, H) {
     const a = this._artAlpha();
     if (a <= 0) return;
+    if (this._drawLayers(ctx, W, H, a)) return;
     const kind = (this.pick >= 0) ? PlayerPick.list()[this.pick] : null;
     const img = (kind && this.assets.getDrawable('select:' + kind))
              || this.assets.getDrawable('select:none');
@@ -688,7 +974,150 @@ class Title {
    * blocks are on screen and none where the screen is asked to decide between
    * them.
    */
+  _lcfg(key, dflt) {
+    const L = CONFIG.LETTERS || {};
+    return L[key] != null ? L[key] : dflt;
+  }
+
+  /**
+   * The three menu items, under the name.
+   *
+   * ⚠️ THE HIGHLIGHT IS SIZE AND NOTHING ELSE -- `LETTERS.selectedMul`, 1.10.
+   * Asked for in those words. There is no colour change and no marker: the art
+   * is one colour, and a second one would be a decision the artist did not make.
+   *
+   * ⚠️ THEY FADE IN ON THEIR OWN CLOCK rather than arriving with the name. The
+   * name is a title and it FALLS; a menu that fell with it would read as four
+   * lines of one block, and the player would have to work out which of them can
+   * be answered.
+   */
+  _drawMenu(ctx, W, H) {
+    const L = this._art();
+    if (!L || this.menuT < 0) return;
+    /* THEY SLIDE UP FROM UNDER THE FRAME, THEY DO NOT FADE. Asked for
+       2026-09-01: *"the começar, opções and saborosa letters, should not fade in
+       like they do right now, they should slide in from the below, like the
+       title does from the upper part, but do it coming from the lower end."*
+
+       ⚠️ SAME TRAVEL AND SAME EASING AS THE NAME'S DROP, MIRRORED. `_travel` is
+       the screen-height the title falls from and `1 - (1-p)^3` is the curve it
+       lands on, so the two moves are one gesture from opposite edges rather than
+       two animations that happen to share a screen. Only the SIGN differs.
+
+       ⚠️ AND NO FADE AT ALL, WHICH IS THE POINT OF THE ASK. A slide that also
+       fades reads as a fade with some drift in it -- the movement has to be the
+       whole event. `menuFadeMs` no longer touches this list; it still fades the
+       options and credits screens, which arrive rather than move.
+
+       ⚠️ THE LIST MOVES AS ONE BLOCK. Staggering the three would be juice, and
+       it would also be three things arriving where the design has one -- the
+       name and its gloss already fall together for the same reason. */
+    const ms = this._lcfg('menuRiseMs', 520);
+    const p = ms > 0 ? Math.min(1, this.menuT / ms) : 1;
+    /* ⚠️ AND IT BOUNCES ON ARRIVAL, THE WAY THE NAME DOES. Asked for
+       2026-09-01: *"when the 3 rows come from lower, they should bounce like the
+       title does."* Same two pieces the drop uses and the same config: the
+       ACCELERATING approach (`p * p`, not an ease-out) and then `_bounce`, the
+       decaying sine over `titleBounceMs`. An eased-out arrival cannot bounce --
+       it is already slowing to a stop, so a wobble after it reads as a separate
+       twitch. The two have to be chosen together, which is why `_dropP` picks
+       its curve off `titleBouncePx` as well.
+
+       ⚠️ THE BOUNCE IS NEGATED BECAUSE THE TRAVEL IS. A thing overshoots PAST
+       its resting place in the direction it was moving: the name arrives from
+       above and dips down, these arrive from below and ride up. Same amplitude,
+       opposite sign -- and `titleBouncePx: 0` still turns both off at once. */
+    const rise = (CONFIG.titleBouncePx > 0) ? p * p : 1 - Math.pow(1 - p, 3);
+    const a = 1;
+    const cy = H * this._lcfg('menuYRel', 0.55)
+             + this._travel(H) * (1 - rise)
+             - this._bounce(this.menuT - ms);
+    const gap = H * this._lcfg('menuGapRel', 0.11);
+    const keys = Title.MENU();
+    /* THE MENU'S OWN TRIM, UNDER THE PACK'S ONE SCALE -- and the highlight
+       MULTIPLIES it rather than replacing it, so the selected item stays 10%
+       bigger than its neighbours whatever `menuMul` is set to. */
+    const base = this._lcfg('menuMul', 1);
+    const pop = this._itemPop();
+    for (let i = 0; i < keys.length; i++) {
+      const on = (i === this.menu);
+      L.draw(ctx, keys[i], W / 2, cy + (i - 1) * gap,
+             { alpha: a,
+               mul: base * (on ? this._lcfg('selectedMul', 1.10) * pop : 1) });
+    }
+  }
+
+  /**
+   * OPÇÕES: the heading and the two meters.
+   *
+   * ⚠️ A METER IS THE ROW DRAWN SHORT, NOT BARS COUNTED OUT. The cutter recorded
+   * where each of the artist's eight bars ends, so `cutFor(n)` is the width that
+   * shows n of them -- one blit, and the spacing is the spacing they were drawn
+   * with. Counting bars here would mean inventing a gap between them.
+   *
+   * ⚠️ AND THE ROW STAYS PUT AS IT SHORTENS. `Letters.draw` centres a cut frame
+   * on the WHOLE frame, so turning the volume down empties the meter instead of
+   * sliding VOLUME across the screen.
+   */
+  _drawOptions(ctx, W, H) {
+    const L = this._art();
+    if (!L) return;
+    const O = CONFIG.OPTIONS || {};
+    const fade = this._lcfg('menuFadeMs', 320);
+    const a = fade > 0 ? Math.min(1, this.stageT / fade) : 1;
+    L.draw(ctx, 'optTitle', W / 2, H * this._lcfg('optTitleYRel', 0.22), { alpha: a });
+    const cy = H * this._lcfg('optRowYRel', 0.48);
+    const gap = H * this._lcfg('optRowGapRel', 0.17);
+    const rows = [['optVolume', O.volume], ['optMusic', O.music]];
+    for (let i = 0; i < rows.length; i++) {
+      const [key, n] = rows[i];
+      L.draw(ctx, key, W / 2, cy + i * gap, {
+        alpha: a,
+        mul: (i === this.optRow)
+          ? this._lcfg('selectedMul', 1.10) * this._itemPop() : 1,
+        cut: L.cutFor(key, n == null ? L.bars(key) : n),
+      });
+    }
+  }
+
+  /** SABOROSA, and who that is. */
+  _drawCredits(ctx, W, H) {
+    const L = this._art();
+    if (!L) return;
+    const fade = this._lcfg('menuFadeMs', 320);
+    const a = fade > 0 ? Math.min(1, this.stageT / fade) : 1;
+    L.draw(ctx, 'credTitle', W / 2, H * this._lcfg('credTitleYRel', 0.32), { alpha: a });
+    L.draw(ctx, 'credNames', W / 2, H * this._lcfg('credNamesYRel', 0.58), { alpha: a });
+  }
+
+  /**
+   * The two coconut names, under the two coconuts.
+   *
+   * ⚠️ PLACED OFF THE CANVAS CENTRE, NOT OFF THE PICTURE'S RECT. `_drawArt`
+   * fits the select art by HEIGHT, so its left and right edges move with the
+   * canvas aspect -- hanging the names off them would put them under the
+   * coconuts on a 16:9 screen and beside them on anything else. The pair is
+   * symmetrical about the middle, which is where the artist centred them.
+   */
+  _drawPickNames(ctx, W, H, a) {
+    const L = this._art();
+    if (!L || a <= 0) return;
+    const dx = W * this._lcfg('pickNameXRel', 0.235);
+    const y = H * this._lcfg('pickNameYRel', 0.90);
+    const mul = this._lcfg('selectedMul', 1.10);
+    const names = ['pickLEBRON', 'pickIPANEIMA'];
+    for (let i = 0; i < names.length; i++) {
+      /* THE PICKED ONE IS BIGGER, the same 10% the menu uses -- the two screens
+         are asking the same kind of question and should answer it the same way.
+         At `pick` -1 neither grows, which is the state where nobody is chosen. */
+      L.draw(ctx, names[i], W / 2 + (i ? dx : -dx), y,
+             { alpha: a, mul: (this.pick === i) ? mul : 1 });
+    }
+  }
+
   _drawType(ctx, W, H) {
+    if (this.stage === 'options') { this._drawOptions(ctx, W, H); return; }
+    if (this.stage === 'credits') { this._drawCredits(ctx, W, H); return; }
     const ns = CONFIG.titleNameSize || 74;
     const ss = CONFIG.titleSubSize || 30;
     const cy = H * (CONFIG.titleNameY != null ? CONFIG.titleNameY : 0.30);
@@ -702,6 +1131,18 @@ class Title {
       const dy = (this.stage === 'ask')
         ? -travel * (1 - this._askP()) + this._bounce(this.stageT - this._askLandedMs())
         : -travel * this._liftP();
+      /* ESCOLHA SEU COCO, DRAWN RATHER THAN SET -- and it falls and lifts on the
+         same `dy` the typed prompt did, so the beat is untouched and only the
+         letterforms changed. ⚠️ The names under the coconuts ride the PICTURE's
+         alpha, not the prompt's: they belong to the art below them, and fading
+         them with the question would leave two names hanging over nothing while
+         the coconuts went. */
+      const L = this._art();
+      if (L && L.has('choose')) {
+        L.draw(ctx, 'choose', W / 2, H * this._lcfg('chooseYRel', 0.11) + dy);
+        this._drawPickNames(ctx, W, H, this._artAlpha());
+        return;
+      }
       this._block(ctx, W, H, [{ text: this._sel('PROMPT', ''), size,
                                 weight: CONFIG.titleNameWeight || 900, heavy: true }],
                   py, dy, 1);
@@ -735,6 +1176,31 @@ class Title {
     const dy = (this.stage === 'lift')
       ? -travel * this._liftP()
       : -travel * (1 - this._dropP()) + this._bounceOffset();
+    /* THE HAND-DRAWN NAME, IF IT IS THERE. Asked for 2026-09-01: *"instead of
+       using the generated lettering, use the hand drawn ones"*.
+
+       ⚠️ IT FALLS ON THE SAME `dy` AND FADES ON THE SAME `a` -- the two pictures
+       are a drop-in for the two lines of type, so the drop, the bounce, the lift
+       and the timing are all the ones that were tuned. Only the letterforms
+       changed, and the two lines now have their own `yRel` because a picture has
+       a height of its own and cannot be stacked by a font size and a gap.
+
+       ⚠️ AND THE WEIGHT HIERARCHY IS IN THE ART NOW. `titleNameWeight` /
+       `titleSubWeight` were doing that job and no longer apply here; the artist
+       drew the gloss smaller, and the pack's one scale carries that through. */
+    const L = this._art();
+    if (L) {
+      ctx.save();
+      ctx.globalAlpha = a;
+      L.draw(ctx, 'title', W / 2, H * this._lcfg('titleYRel', 0.20) + dy);
+      L.draw(ctx, 'subtitle', W / 2, H * this._lcfg('subtitleYRel', 0.31) + dy);
+      ctx.restore();
+      /* THE MENU IS NOT PART OF THE BLOCK and does not move with it: it fades
+         up where it belongs once the name has landed. In `lift` it is gone
+         already -- the question is on its way in. */
+      if (this.stage === 'name') this._drawMenu(ctx, W, H);
+      return;
+    }
     this._block(ctx, W, H, lines, cy, dy, a);
   }
 }
