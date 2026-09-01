@@ -1321,7 +1321,11 @@ const CONFIG = {
          a desert -- so this is nearer the street's 520/190 than the desert's
          330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
          changing one alone puts the near edge off the bottom of the canvas. */
-      belt: { topY: 470, depth: 210 },
+      /* ⚠️ `depth` IS ALSO THE ELEVATOR'S TOP FACE — 960 x 0.2080 — and the two
+         cannot drift apart without the player walking off the back of a drawn
+         platform. Move `LEVEL3.platform.widthPx` and this follows; the formula
+         and the reason are in the note on that block. */
+      belt: { topY: 470, depth: 200 },
       /* ⚠️ NOT A REAL WALL, AND NOTHING READS IT. level3.js pens the player to
          the current leg's band (`Level3.bounds`), so the room's own end is only
          here so `stage.endX()` returns something sane if anything asks. It is
@@ -4118,28 +4122,51 @@ const CONFIG = {
       { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
       { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97] },
     ],
-    /* THE PLACEHOLDER ELEVATOR — drawn, not a sprite, because the real ones do
-       not exist yet ("create a drawed platform as a placeholder... try to
-       incorporate the perspective in it"). Sizes are in screen px and the depth
-       ones are fractions of the BELT, which is the unit every z in this game
-       uses. See level3.js `drawPlatform` for why the trapezoid and the
-       back-only rails are the parts that make it read as lying on the floor. */
+    /* THE ELEVATOR. Three hand-drawn frames of one platform, cut by
+       tools/build-beat-elevador-defs.py. It replaced a DRAWN placeholder — a
+       code trapezoid with a converging grating and rails on its back corners —
+       and that whole block is gone rather than kept as a fallback, colours and
+       all. The illustrator drew no rails; the room does not need them.
+
+       ⚠️ ONE KNOB, AND EVERY OTHER PROPORTION COMES OUT OF THE DRAWING.
+       `widthPx` is the near lip's width on screen and nothing else is declared,
+       because an illustrated slab already HAS a perspective: the cutter measures
+       the convergence (0.729), the top face (0.2080 x width) and the front face
+       (0.0497 x width) off the alpha and writes them into the defs. The
+       placeholder needed `backRatio`/`depthRel`/`thickPx` only because a drawn
+       shape has to be told what it is. Do not add them back to "correct" the
+       art — see the standing rule about never reshaping a pack to fit a number.
+
+       ⚠️ AND THIS IS WHY THE ROOM'S BELT MOVED. The top face is what the player
+       stands on, so it has to BE the walkable band — every z he can reach needs
+       platform under it — which makes the belt's depth and the slab's depth one
+       number seen twice:
+
+           beltDepth = widthPx x 0.2080        960 x 0.2080 = 199.7 -> 200
+
+       The placeholder ducked this with `depthRel: 0.42` and covered 42% of the
+       belt, so he walked off the back of it into mid-air and nothing said so.
+       ⚠️ CHANGE `widthPx` AND THE ROOM'S `belt.depth` MOVES WITH IT, or the far
+       edge of the drawing stops being the far edge of the floor. The room's belt
+       carries the same warning pointing back here.
+
+       ⚠️ THE CEILING ON `widthPx` IS THE BOTTOM OF THE CANVAS, not taste. The
+       front face hangs below the near edge, so the slab needs
+       `topY + beltDepth + 0.0497 x widthPx <= 720`; at topY 470 that caps it at
+       about 965, and going wider means lifting `topY` as well. 960 is that cap
+       with a couple of px to spare, which is the one reason it is not a rounder
+       number. */
     platform: {
-      widthPx: 620,      // the FRONT edge; the back is `backRatio` of it
-      backRatio: 0.62,   // < 1 is the perspective — the belt converges going back
-      depthRel: 0.42,    // how much of the belt's depth the slab covers
-      zRel: 0.72,        // where its FRONT edge sits down the belt
+      sheet: 'v2:beatemup-dungeon/elevador',
+      widthPx: 960,      // the NEAR LIP's width on screen; the one size knob
       offsetX: 0,
-      thickPx: 26,       // the front face, so it is a slab and not a decal
-      standHalfRel: 0.35,// how much of the front width he may stand on, each way
-      slats: 7,
-      rails: true,
-      railHeightPx: 96,
-      topColor: '#4a515e',
-      sideColor: '#2b2f38',
-      edgeColor: '#8b93a3',
-      lineColor: 'rgba(0,0,0,0.35)',
-      railColor: '#6b7280',
+      standHalfRel: 0.35,// how much of that width he may stand on, each way
+      /* THE BOIL, and it only runs while the lift is RISING — parked, it holds
+         frame 0 ("when the elevator is not moving, it should use only frame 1").
+         ⚠️ IT IS ALSO THE ONLY MOTION CUE THERE IS: the platform is motionless
+         in screen space during a ride and the PLATE is what pans, so this is
+         what separates climbing from standing. See level3.js `_liftFrame`. */
+      boilMs: 110,
     },
   },
 

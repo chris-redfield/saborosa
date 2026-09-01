@@ -1103,7 +1103,7 @@
       if (layer.on === false) continue;
       if (layer.entities) {
         // The lift is drawn UNDER the fighters, like scenery: he stands on it.
-        if (l3) Level3.drawPlatform(ctx, stage);
+        if (l3) Level3.drawPlatform(ctx, stage, assets);
         drawEntities(camX);
         continue;
       }

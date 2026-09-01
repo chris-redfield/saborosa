@@ -50,11 +50,15 @@
  * which is also why nothing in combat.js or fighter.js has to know a lift
  * exists.
  *
- * THE PLATFORM IS DRAWN, NOT A SPRITE (asked for as a placeholder for elevators
- * that do not exist yet). One trapezoid on the belt's own perspective plus a
- * front face for thickness -- see `drawPlatform`. It is scenery in the
- * scenery.js sense: nothing collides with it, nothing stands on it for real,
- * and the moment something has to, it becomes a prop and leaves this file.
+ * THE PLATFORM IS THE REAL ART NOW -- three hand-drawn frames, cut by
+ * tools/build-beat-elevador-defs.py, in place of the trapezoid this file used to
+ * paint as a placeholder. It is still scenery in the scenery.js sense: nothing
+ * collides with it, nothing stands on it for real, and the moment something has
+ * to, it becomes a prop and leaves this file. Two things about it are load
+ * bearing and neither is obvious -- the top face IS the walkable belt (see the
+ * config note on why those are one number), and it is DRAWN somewhere the player
+ * cannot stand, because centring it in the frame and boarding it are different
+ * x. See `drawPlatform` and the band loop.
  *
  * THE HOOKS. Six of them, all one line, all guarded by `Level3.owns(room)`:
  *   stage.js   reset()        -> Level3.reset()
@@ -71,6 +75,12 @@ const Level3 = {
   legT: 0,          // seconds spent in the current leg (lifts are timed)
   done: false,
   _bands: null,     // world-x band per leg, resolved once on entering the room
+  /* THE ELEVATOR'S PACK, handed in by the draw hook and held rather than passed
+     around. ⚠️ NEITHER IS CLEARED BY `reset()`: they are the loaded art, not
+     this run's state, and dropping them on a retry would re-hunt the atlas on
+     the first frame of every attempt. */
+  _assets: null,
+  _art: null,
 
   /** Is this the bookcase? The guard every hook is wrapped in. */
   owns(room) { return !!(room && room.level3 && CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false); },
@@ -164,6 +174,36 @@ const Level3 = {
         ? ((L.dir < 0) ? camHi : camLo) + this._prevLandScreen : null;
       this._prevLandScreen = landScreen;
 
+      /* ⚠️ WHERE THE LIFT IS *DRAWN* IS NOT WHERE IT IS BOARDED, and separating
+         the two is what finally answers "can it be in the middle of the frame?".
+         The note above is still true and still binding -- the PLAYER cannot be
+         at screen centre while the camera is pinned, so the point he has to walk
+         to is stuck at 940 or 340. But that only ever fixed the DRAWING because
+         the slab used to be painted centred on him.
+
+         With the real art the difference matters: it is 960px wide against the
+         placeholder's 620, so centred on the landing it hangs 140px off the
+         right of the canvas -- *"the elevator is in the right corner"*. Drawn at
+         `platScreenX` instead, it is centred in the frame and he boards it
+         off-centre, which is what stepping onto a lift looks like anyway.
+
+         ⚠️ THE STANDING WALLS FOLLOW THE DRAWING, NOT THE LANDING (see
+         `bounds`), and the two numbers have to keep letting him board without a
+         jolt: he arrives at the landing, so the landing must be INSIDE
+         `platX +/- widthPx * standHalfRel` or he is clamped sideways on the
+         frame the ride begins -- the one thing the hand-over is built not to do.
+         At 960 and 0.35 that is +/-336 against a 300px offset, so he boards 36px
+         inside the near end of his own walking room. Widen the offset or narrow
+         `standHalfRel` and that margin is what goes first. */
+      const platS = (C.platScreenX != null) ? C.platScreenX : CONFIG.GAME_W / 2;
+      const platX = (landing == null) ? null
+        : ((L.dir < 0) ? camLo : camHi) + platS;
+      /* The lift he STEPPED OFF, drawn at the same screen spot it occupied
+         during the ride -- the camera has not moved, so that is the same
+         `platS` measured from this band's other end. */
+      const arrivalPlatX = (arrival == null) ? null
+        : ((L.dir < 0) ? camHi : camLo) + platS;
+
       /* `from` is always where the player ENTERS and `to` where they LEAVE,
          whichever way that is in x, so nothing downstream has to sort them.
 
@@ -175,7 +215,8 @@ const Level3 = {
         : ((L.dir < 0) ? hi - pad - inset : lo + pad + inset);
       const to = (landing != null) ? landing
         : ((L.dir < 0) ? lo + pad : hi - pad);
-      this._bands.push({ lo, hi, from, to, camLo, camHi, landing, arrival });
+      this._bands.push({ lo, hi, from, to, camLo, camHi, landing, arrival,
+                         platX, arrivalPlatX });
       cursor = hi + gap;
     }
     /* ⚠️ `stage` IS PASSED SO THE CAMERA MOVES WITH HIM, AND LEAVING IT OFF WAS A
@@ -376,9 +417,13 @@ const Level3 = {
          player to screen x -3010 -- three screens to the left -- and read as
          *"the character vanishes and the elevator goes up by itself"*. */
       const P = (this.cfg() && this.cfg().platform) || {};
-      const at = this._liftLandingX();
+      /* ⚠️ THE PLATFORM'S DRAWN x, NOT THE BOARDING POINT. They are different
+         numbers since the lift was centred in the frame, and the walls belong to
+         the thing he is standing on -- penning him around the landing would let
+         him walk off the right-hand end of a slab that is no longer under it. */
+      const at = this._liftPlatX();
       if (at == null) return { minX: cam + m, maxX: cam + CONFIG.GAME_W - m };
-      const half = (P.widthPx || 620) * (P.standHalfRel || 0.35);
+      const half = (P.widthPx || 960) * (P.standHalfRel || 0.35);
       return { minX: at - half, maxX: at + half };
     }
     const b = this._bands[this.leg];
@@ -403,35 +448,98 @@ const Level3 = {
    */
   platformRect(worldX, camX) {
     const P = (this.cfg() && this.cfg().platform) || {};
-    const wFront = P.widthPx || 620;
-    const y = Belt.topY + Belt.depth * (P.zRel != null ? P.zRel : 0.72);
+    const A = this.art();
+    const wFront = P.widthPx || 1010;
+    /* ⚠️ THE NEAR LIP SITS ON THE BELT'S NEAR EDGE, and that is now the whole
+       of the placement -- the `zRel`/`depthRel` pair it used to take is gone.
+       A drawn trapezoid had to be TOLD how deep it was; an illustrated one
+       already is, so the only freedom left is how wide to draw it, and where
+       the front edge lands follows from the belt. See the config note on why
+       the two depths are one number. */
+    const y = Belt.topY + Belt.depth;
     return {
-      cx: worldX - camX,                       // screen centre
-      wFront, wBack: wFront * (P.backRatio || 0.62),
-      depth: Belt.depth * (P.depthRel || 0.42),
-      y, thick: P.thickPx || 26,
+      cx: worldX - camX + (P.offsetX || 0),   // screen x of the lip's centre
+      y,                                      // screen y of the lip
+      wFront,
+      scale: A ? wFront / A.frontW : 1,
     };
   },
 
-  /** Where the lift being ridden stands, in world x. */
-  _liftLandingX() {
+  /**
+   * Where the lift being ridden is DRAWN, in world x.
+   *
+   * ⚠️ RESTORED AFTER I DELETED IT. Replacing the drawn slab meant rewriting the
+   * tail of this file and this four-line accessor sat inside the replaced range,
+   * so `drawPlatform` and `bounds` both called a method that was no longer
+   * there -- an every-frame TypeError on the first draw of the room, which is
+   * to say the room did not run at all.
+   */
+  _liftPlatX() {
     const prev = this._bands && this._bands[this.leg - 1];
-    return prev ? prev.landing : null;
+    return prev ? prev.platX : null;
   },
 
   /**
-   * The placeholder elevator: a drawn slab, not a sprite.
-   *
-   * ⚠️ THE PERSPECTIVE IS THE BELT'S, NOT AN INVENTED ONE. This game's floor is
-   * a depth band -- z runs from `Belt.topY` to `Belt.topY + Belt.depth` and the
-   * picture converges going back -- so the platform is a trapezoid narrower at
-   * its BACK edge, which is the same cue every fighter's shadow already uses. A
-   * rectangle would sit on the belt looking pasted on; matching the convergence
-   * is most of what makes a flat shape read as lying on the ground.
-   *
-   * Drawn only while a lift leg is running, and behind every fighter.
+   * The art, once the loader has it. Null until then, which is a real state:
+   * `drawPlatform` draws nothing rather than falling back to a shape, because a
+   * trapezoid appearing for one frame where the elevator will be is a worse
+   * failure than an empty shelf -- it reads as the placeholder coming back.
    */
-  drawPlatform(ctx, stage) {
+  art() {
+    if (this._art) return this._art;
+    /* ⚠️ A MISS IS NOT CACHED, and that is the point of the guard rather than a
+       style choice. This is first asked on the frame the room is drawn, which
+       can be before the loader has the pack; caching the null would answer
+       "there is no elevator" for the rest of the run, and the room would play
+       through with the lifts invisible and nothing in the log. */
+    const a = this._assets;
+    const d = (a && a.getJSON) ? a.getJSON('elevador') : null;
+    if (d && d.frames && d.frames.length) this._art = d;
+    return this._art || null;
+  },
+
+  /**
+   * WHICH OF THE THREE DRAWINGS. The rule, as asked for: *"when the elevator is
+   * not moving, it should use only frame 1, when it starts moving vertically,
+   * it should cycle the 3 frames"*.
+   *
+   * ⚠️ AND THE CYCLE IS THE ONLY THING ON SCREEN THAT SAYS IT IS MOVING. The
+   * platform is motionless in screen space during a ride by construction (see
+   * `platformRect` above) and it is the PLATE that pans; so a parked lift and a
+   * rising one differ in the boil and in nothing else. That is why the parked
+   * state is frame 0 held rather than a slower boil -- a lift that shimmers
+   * while standing still would take the cue away from the one that is climbing.
+   */
+  _liftFrame(riding) {
+    const A = this.art();
+    const n = A ? A.frames.length : 1;
+    if (!riding || n < 2) return 0;
+    const ms = (this.cfg() && this.cfg().platform && this.cfg().platform.boilMs) || 110;
+    return Math.floor(this.legT * 1000 / ms) % n;
+  },
+
+  /**
+   * The elevator. Three hand-drawn frames, in the belt's own perspective.
+   *
+   * ⚠️ THE PERSPECTIVE IS IN THE DRAWING, NOT IN THIS FILE ANY MORE. The slab
+   * that shipped here was code -- a trapezoid narrower at the back, a grating
+   * that converged with it, and rails on the back corners only -- built to be
+   * thrown away when the art landed. All of it is gone rather than kept as a
+   * fallback: the shape, the seven slats, the four colours and the rails, which
+   * the illustrator did not draw and the room does not need.
+   *
+   * What survives is the RELATIONSHIP, and it is the reason the drawn slab was
+   * written that way: the top face is exactly as deep as the walkable belt, so
+   * every z the player can reach is a z with platform under it. The old code
+   * approximated that with `depthRel` and got 42% of it. See `tools/
+   * build-beat-elevador-defs.py` for where the numbers come from.
+   *
+   * Drawn only where a lift stands, and behind every fighter.
+   */
+  drawPlatform(ctx, stage, assets) {
+    if (assets) this._assets = assets;
+    const A = this.art();
+    if (!A) return;
     const L = this.current();
     if (!L || !this._bands) return;
     const camX = this._camX;
@@ -442,78 +550,39 @@ const Level3 = {
        off a moment ago and which should recede rather than blink out. */
     const at = [];
     if (L.kind === 'lift') {
-      at.push(this._liftLandingX());
+      at.push(this._liftPlatX());
     } else {
       const b = this._bands[this.leg];
-      if (b) { at.push(b.arrival); at.push(b.landing); }
+      if (b) { at.push(b.arrivalPlatX); at.push(b.platX); }
     }
+    /* ⚠️ `L.kind` IS THE WHOLE OF "IS IT MOVING", and it is right for both
+       branches above rather than by luck: the only lift drawn on a LIFT leg is
+       the one under the player's feet, and every lift drawn on a WALK leg is
+       parked at the end of a shelf. If a leg ever draws both at once, this
+       becomes a per-lift question and the flag has to move into the loop. */
+    const f = this._liftFrame(L.kind === 'lift');
     for (const worldX of at) {
       if (worldX == null) continue;
       const r = this.platformRect(worldX, camX);
       // Culled on the slab's own width, like everything else that scrolls.
       if (r.cx + r.wFront < 0 || r.cx - r.wFront > CONFIG.GAME_W) continue;
-      this._drawSlab(ctx, r);
+      this._drawSlab(ctx, A, f, r);
     }
   },
 
   /** One slab. Split out so the draw loop above stays about WHICH lifts. */
-  _drawSlab(ctx, r) {
-    const P = (this.cfg() && this.cfg().platform) || {};
-    const bx0 = r.cx - r.wBack / 2, bx1 = r.cx + r.wBack / 2;   // back edge
-    const fx0 = r.cx - r.wFront / 2, fx1 = r.cx + r.wFront / 2; // front edge
-    const by = r.y - r.depth, fy = r.y;                         // back / front y
-
-    ctx.save();
-    /* THE FRONT FACE FIRST, so the top face's edge draws over its seam. */
-    ctx.fillStyle = P.sideColor || '#2b2f38';
-    ctx.beginPath();
-    ctx.moveTo(fx0, fy); ctx.lineTo(fx1, fy);
-    ctx.lineTo(fx1, fy + r.thick); ctx.lineTo(fx0, fy + r.thick);
-    ctx.closePath(); ctx.fill();
-
-    // The top face: the trapezoid that carries the perspective.
-    ctx.fillStyle = P.topColor || '#4a515e';
-    ctx.beginPath();
-    ctx.moveTo(bx0, by); ctx.lineTo(bx1, by);
-    ctx.lineTo(fx1, fy); ctx.lineTo(fx0, fy);
-    ctx.closePath(); ctx.fill();
-
-    /* THE GRATING RUNS BACK-TO-FRONT, WHICH IS WHAT SELLS IT. Lines across the
-       slab would be parallel and say nothing; lines along the direction of view
-       converge with the trapezoid and read as depth for free. */
-    ctx.strokeStyle = P.lineColor || 'rgba(0,0,0,0.35)';
-    ctx.lineWidth = 2;
-    const n = P.slats || 7;
-    for (let i = 1; i < n; i++) {
-      const t = i / n;
-      ctx.beginPath();
-      ctx.moveTo(bx0 + (bx1 - bx0) * t, by);
-      ctx.lineTo(fx0 + (fx1 - fx0) * t, fy);
-      ctx.stroke();
-    }
-
-    // The lip, so the slab has an edge to stand on rather than a painted line.
-    ctx.strokeStyle = P.edgeColor || '#8b93a3';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(bx0, by); ctx.lineTo(bx1, by);
-    ctx.lineTo(fx1, fy); ctx.lineTo(fx0, fy);
-    ctx.closePath(); ctx.stroke();
-
-    /* THE RAILS ARE WHAT MAKE IT AN ELEVATOR RATHER THAN A STEP, and they are
-       drawn from the BACK corners only -- a rail at the front would stand
-       between the camera and the fighter, which is the one thing a beat 'em
-       up's foreground must never do. */
-    if (P.rails !== false) {
-      const rh = P.railHeightPx || 96;
-      ctx.strokeStyle = P.railColor || '#6b7280';
-      ctx.lineWidth = 5;
-      for (const rx of [bx0, bx1]) {
-        ctx.beginPath(); ctx.moveTo(rx, by); ctx.lineTo(rx, by - rh); ctx.stroke();
-      }
-      ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(bx0, by - rh); ctx.lineTo(bx1, by - rh); ctx.stroke();
-    }
-    ctx.restore();
+  _drawSlab(ctx, A, f, r) {
+    const img = this._assets && this._assets.getDrawable
+      ? this._assets.getDrawable('elevador') : null;
+    if (!img) return;
+    const fr = A.frames[f] || A.frames[0];
+    const w = fr.w * r.scale, h = fr.h * r.scale;
+    /* THE ANCHOR IS THE FRONT LIP'S CENTRE (see the cutter's header), so the
+       front face hangs BELOW the belt's near edge the way a body hangs above
+       it. Anchoring on the image's bottom would sink the whole slab by its own
+       thickness and put the player's feet in mid-air. */
+    const x = Math.round(r.cx - A.ax * r.scale);
+    const y = Math.round(r.y - A.ay * r.scale);
+    ctx.drawImage(img, fr.x, fr.y, fr.w, fr.h, x, y, Math.round(w), Math.round(h));
   },
 };

@@ -204,6 +204,25 @@ function assetManifest() {
     out.push({ key: 'scenery', src: CONFIG.SCENERY.sheet + '-sprites.json', how: 'json' });
   }
 
+  /* THE BOOKCASE'S ELEVATOR: three hand-drawn frames of one platform. Same
+     two-file pack shape as the ground cover and listed by hand for the same
+     reason -- it is scenery, not a fighter, so it has no business in
+     CONFIG.CHARACTERS where `sheets.build()` and everything that walks the cast
+     would find it.
+
+     `image` rather than `big`: the atlas is 1146x891 and the widest the lift is
+     ever drawn is about 1010, so a downscale would be throwing away pixels the
+     screen is about to use.
+
+     ⚠️ GATED ON `LEVEL3.on`, which is the switch that takes the whole room --
+     so a build without the bookcase does not pay 729KB for its furniture. */
+  if (CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false && CONFIG.LEVEL3.platform
+      && CONFIG.LEVEL3.platform.sheet) {
+    const s = CONFIG.LEVEL3.platform.sheet;
+    out.push({ key: 'elevador', src: s + '-game.png', how: 'image' });
+    out.push({ key: 'elevador', src: s + '-sprites.json', how: 'json' });
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>
