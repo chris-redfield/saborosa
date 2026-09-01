@@ -6141,6 +6141,25 @@ would be a THIRD place that has to know the cast (`CONFIG.CHARACTERS` and
 MISTER STOP are cut and waiting**: no fighter answers to those names yet, and the
 day one does, its bar is lettered with no code change.
 
+⚠️ **AND `lifeMul` 0.80 IS THE SECOND USE OF THE ESCAPE HATCH** (*"the coconut
+drawing that represent each life is too big, make it 20% smaller"*), after
+`menuMul`. Both are MULTIPLIERS on the pack's one scale rather than sizes of their
+own, so the artist's proportions still hold between everything else. ⚠️ It applies
+to the MEASURE as well as the draw — the row is placed by its summed width, so a
+mul on one and not the other spaces the row for coconuts it is no longer drawing.
+**Two exceptions is a hatch; four would mean `titleWRel` is simply wrong.**
+
+⚠️ **AND THEY BELONG AT THE BAR'S RIGHT EDGE, NOT ON A ROW OF THEIR OWN.**
+Corrected: *"the coconut lives should stay at the rightmost end of the HP bar, not
+below the character name."* I had moved them under the name reasoning that `x2`
+was two glyphs and three drawings would run back across the bar — **which was a
+fact about the old ANCHOR, not about the row**: laid out from `box.x + box.w`
+backwards it ends where it should and grows leftwards into the empty middle of the
+plate, and the HUD is one line shorter. The real difference between the two
+readouts is that `textAlign = 'right'` measured the text for free and a row of
+pictures has to sum its own width before drawing its first frame. `lifeRowGap` was
+deleted with the second row.
+
 ⚠️ **THE LIVES ROW IS THE LIVES, NOT THE SPARES.** The old readout was `x` +
 (lives − 1), so a last life read `x0`. A row of drawings cannot say "zero spares"
 except by being empty, which is what a dead player looks like — and the user named
@@ -6168,16 +6187,30 @@ list looks like. And the select art moved up 20% (`artYRel` 0.545 → 0.436) wit
 travel with what they caption**, or the move opens a 117px hole between the feet
 and the words meant to be under them.
 
-⚠️ **THE MENU MOVES INSTEAD OF FADING, AND BOUNCES IN.** *"They should slide in
-from the below, like the title does from the upper part"*, then *"when the 3 rows
-come from lower, they should bounce like the title does."* It reuses the name's
-travel, its accelerating approach (`p²`) AND its landing bounce, negated. **The
-negation is the whole trick: a thing overshoots past its rest in the direction it
-was moving**, and these arrive from the opposite edge. ⚠️ The approach curve and
-the bounce are ONE choice, not two — an eased-out arrival is already slowing to a
-stop, so a wobble after it reads as a separate twitch, which is why `_dropP` picks
-its curve off `titleBouncePx` as well. And the fade is gone entirely: **a slide
-that also fades reads as a fade with some drift in it.**
+⚠️ **THE MENU MOVES INSTEAD OF FADING, BOUNCES IN, AND RUNS ON THE NAME'S CLOCK
+— WHICH TOOK THREE ASKS TO GET RIGHT.** *"They should slide in from the below,
+like the title does from the upper part"*, then *"when the 3 rows come from lower,
+they should bounce like the title does"*, then *"the 3 options only come
+afterwards, make the 3 options come at the same time, like syncronized with the
+title."* Each answer was a step closer to the same thing: it now uses `_dropP()`
+and `_bounce(t − landedAt)`, the very expressions `_drawType` uses for the name.
+
+⚠️ **SYNCHRONISED BY SHARING THE EXPRESSION, NOT BY MATCHING TWO SETS OF
+NUMBERS.** The middle version had `menuRiseMs: 520` starting when the name landed;
+setting it to `titleDropMs` instead would have *looked* synchronised until either
+number was retuned. **The knob is gone rather than kept equal** — that is the only
+version that cannot drift, and it also means the bounce came for free: `_dropP`
+already picks the accelerating approach (`p²`) whenever `titleBouncePx` is set,
+because an eased-out arrival cannot bounce (it is already slowing to a stop, so a
+wobble after it reads as a separate twitch). Approach and bounce are one choice,
+and a shared clock cannot make it differently.
+
+⚠️ **THE ONLY DIFFERENCE IS THE SIGN**, travel and bounce both — a thing
+overshoots past its rest in the direction it was moving, so the name dips down as
+it lands and these ride up. Verified frame by frame: at 966ms the title sits 8px
+BELOW its resting y while the menu sits 8px ABOVE its own, and both settle by
+1216ms. And the fade is gone entirely: **a slide that also fades reads as a fade
+with some drift in it.**
 
 ⚠️ **AND THE PUNCH IS FOR CHOOSING, NOT FOR HOVERING — I HAD IT ON THE CURSOR.**
 *"The punch is for when you click the option, not for when you place the cursor on

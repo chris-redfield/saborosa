@@ -60,23 +60,49 @@ class Hud {
    * ⚠️ AND THE FOUR DRAWINGS CYCLE. The artist drew four coconuts, not one, and
    * they differ; repeating a single frame would read as a stamp. Asked for.
    */
-  _drawLives(ctx, player, box, nameH) {
+  _drawLives(ctx, player, box) {
     const L = this.letters;
     if (!L || !L.has('life0')) return false;
     const n = Math.max(0, player.lives | 0);
     if (n <= 0) return true;
     const gap = this._lcfg('lifeGap', 4);
+    /* THE COCONUTS ARE TRIMMED UNDER THE PACK'S ONE SCALE, the way the menu is.
+       Asked for 2026-09-01: *"the coconut drawing that represent each life is too
+       big, make it 20% smaller."* This is the escape hatch letters.js describes
+       -- one scale for the pack, and a per-call `mul` where a single element has
+       to sit differently. It applies to the MEASURE as well as the draw, or the
+       row would be spaced for coconuts it is no longer drawing. */
+    const mul = this._lcfg('lifeMul', 1);
     const sizes = [];
     for (let i = 0; i < n; i++) {
       const key = 'life' + (i % 4);
-      sizes.push({ key, s: L.size(L.has(key) ? key : 'life0', CONFIG.GAME_W) });
+      sizes.push({ key, s: L.size(L.has(key) ? key : 'life0', CONFIG.GAME_W, mul) });
     }
     const h = Math.max.apply(null, sizes.map(o => o.s.h));
-    const y = box.y + box.h + this._lcfg('hudNameGap', 6) + nameH
-            + this._lcfg('lifeRowGap', 4) + h / 2;
-    let x = box.x;
+    /* THE SAME ROW AS THE NAME, ENDING AT THE BAR'S RIGHT EDGE. Corrected
+       2026-09-01: *"the coconut lives should stay at the rightmost end of the HP
+       bar, not below the character name."* They shipped on a row of their own
+       under the name, on the reasoning that three drawings are not two
+       characters and would run back across the bar from the right. That reasoning
+       was about the OLD anchor: laid out from `box.x + box.w` BACKWARDS the row
+       ends where it should and grows leftwards into the empty middle of the
+       plate, which is exactly where `x2` used to sit. The plate is also one line
+       shorter for it.
+
+       ⚠️ SO THE ROW IS PLACED BY ITS RIGHT EDGE, WHICH MEANS MEASURING IT FIRST.
+       `x2` was two glyphs and `textAlign = 'right'` did this for free; a row of
+       pictures has to have its own width summed before its first one can be
+       drawn. That is the whole difference between the old readout and this one.
+
+       ⚠️ AND IT IS `box.x + box.w`, THE BAR'S OWN RIGHT EDGE, NOT THE SCREEN'S.
+       `LifeBar.render` hands the footprint back for exactly this, so moving or
+       resizing the bar carries the lives with it. */
+    const y = box.y + box.h + this._lcfg('hudNameGap', 6) + h / 2;
+    let total = gap * (sizes.length - 1);
+    for (const o of sizes) total += o.s.w;
+    let x = box.x + box.w - total;
     for (const o of sizes) {
-      L.draw(ctx, o.key, x + o.s.w / 2, y);
+      L.draw(ctx, o.key, x + o.s.w / 2, y, { mul });
       x += o.s.w + gap;
     }
     return true;
@@ -120,14 +146,11 @@ class Hud {
        kind is the version that cannot be left behind by a second pack. */
     const me = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[player.kind]) || {};
     /* THE NAME AND THE LIVES ARE DRAWINGS NOW, and the typed pair below is the
-       fallback for a build with no pack. ⚠️ THE LIVES MOVED FROM THE RIGHT EDGE
-       TO UNDER THE NAME: `x2` was two characters and a row of three coconuts is
-       not, so hanging it off `box.x + box.w` would have run it back across the
-       bar. It is its own row, and `nameH` is what keeps the two from touching. */
-    const nameSz = this.letters && this.letters.nameKey(me.name)
-      ? this.letters.size(this.letters.nameKey(me.name), CONFIG.GAME_W) : null;
+       fallback for a build with no pack. They share one row under the bar: the
+       name from its left edge, the coconuts ending at its right, which is the
+       arrangement `x2` always had. See _drawLives. */
     const drewName = this._drawName(ctx, me.name, box);
-    const drewLives = this._drawLives(ctx, player, box, nameSz ? nameSz.h : 0);
+    const drewLives = this._drawLives(ctx, player, box);
     if (!drewName) ctx.fillText(me.name || '', box.x, box.y + box.h + 4);
     if (!drewLives) {
       ctx.textAlign = 'right';

@@ -318,7 +318,7 @@ class Title {
   _toMenu() {
     this.stage = 'name';
     this.stageT = 0;
-    this.menuT = 0;              // the items fade back up
+    this.menuT = 0;              // answerable at once: nothing re-animates
     this.itemPopT = -1;          // ...without one of them stamping on arrival
     this.pending = null;
     this._heldU = this._heldD = this._heldL = this._heldR = false;
@@ -991,47 +991,51 @@ class Title {
    * lines of one block, and the player would have to work out which of them can
    * be answered.
    */
-  _drawMenu(ctx, W, H) {
+  _drawMenu(ctx, W, H, alpha) {
     const L = this._art();
-    if (!L || this.menuT < 0) return;
-    /* THEY SLIDE UP FROM UNDER THE FRAME, THEY DO NOT FADE. Asked for
-       2026-09-01: *"the começar, opções and saborosa letters, should not fade in
-       like they do right now, they should slide in from the below, like the
-       title does from the upper part, but do it coming from the lower end."*
+    if (!L) return;
+    /* THEY SLIDE UP FROM UNDER THE FRAME, THEY DO NOT FADE, AND THEY DO IT ON
+       THE NAME'S OWN CLOCK. Three asks in one pass on 2026-09-01: *"they should
+       slide in from the below, like the title does from the upper part"*, then
+       *"they should bounce like the title does"*, then *"the 3 options only come
+       afterwards, make the 3 options come at the same time, like syncronized
+       with the title."*
 
-       ⚠️ SAME TRAVEL AND SAME EASING AS THE NAME'S DROP, MIRRORED. `_travel` is
-       the screen-height the title falls from and `1 - (1-p)^3` is the curve it
-       lands on, so the two moves are one gesture from opposite edges rather than
-       two animations that happen to share a screen. Only the SIGN differs.
+       ⚠️ SYNCHRONISED BY SHARING THE CLOCK, NOT BY MATCHING TWO SETS OF NUMBERS.
+       The progress value IS `_dropP()` and the bounce is off `_landedAtMs()` --
+       the same two expressions `_drawType` uses for the name -- so the blocks
+       leave their edges together, travel together and land on the same frame.
+       They previously started when the name LANDED and ran 520ms of their own,
+       and `menuRiseMs` is now GONE rather than left equal to `titleDropMs`: a
+       copied duration drifts the first time either one is retuned.
 
-       ⚠️ AND NO FADE AT ALL, WHICH IS THE POINT OF THE ASK. A slide that also
+       ⚠️ SO THE ONLY DIFFERENCE IS THE SIGN. `_travel` is the screen-height the
+       name falls from; this ADDS it where the name subtracts it, and the bounce
+       is negated for the same reason -- a thing overshoots PAST its resting place
+       in the direction it was moving, so the name dips down on landing and these
+       ride up. `titleBouncePx: 0` still turns both off at once.
+
+       ⚠️ AND THE BOUNCE COMES FOR FREE FROM THE SHARED CLOCK. `_dropP` picks the
+       ACCELERATING approach (`p * p`) whenever `titleBouncePx` is set, because an
+       eased-out arrival cannot bounce: it is already slowing to a stop, and a
+       wobble after it reads as a separate twitch. Approach and bounce are ONE
+       choice, and sharing the clock means this list cannot make it differently.
+
+       ⚠️ NO FADE AT ALL, WHICH WAS THE POINT OF THE SECOND ASK. A slide that also
        fades reads as a fade with some drift in it -- the movement has to be the
-       whole event. `menuFadeMs` no longer touches this list; it still fades the
-       options and credits screens, which arrive rather than move.
+       whole event. It does take the NAME's alpha, so if the title is ever faded
+       rather than dropped the two still agree. `menuFadeMs` no longer touches
+       this list; it still fades the options and credits screens, which arrive
+       rather than move.
 
-       ⚠️ THE LIST MOVES AS ONE BLOCK. Staggering the three would be juice, and
-       it would also be three things arriving where the design has one -- the
-       name and its gloss already fall together for the same reason. */
-    const ms = this._lcfg('menuRiseMs', 520);
-    const p = ms > 0 ? Math.min(1, this.menuT / ms) : 1;
-    /* ⚠️ AND IT BOUNCES ON ARRIVAL, THE WAY THE NAME DOES. Asked for
-       2026-09-01: *"when the 3 rows come from lower, they should bounce like the
-       title does."* Same two pieces the drop uses and the same config: the
-       ACCELERATING approach (`p * p`, not an ease-out) and then `_bounce`, the
-       decaying sine over `titleBounceMs`. An eased-out arrival cannot bounce --
-       it is already slowing to a stop, so a wobble after it reads as a separate
-       twitch. The two have to be chosen together, which is why `_dropP` picks
-       its curve off `titleBouncePx` as well.
-
-       ⚠️ THE BOUNCE IS NEGATED BECAUSE THE TRAVEL IS. A thing overshoots PAST
-       its resting place in the direction it was moving: the name arrives from
-       above and dips down, these arrive from below and ride up. Same amplitude,
-       opposite sign -- and `titleBouncePx: 0` still turns both off at once. */
-    const rise = (CONFIG.titleBouncePx > 0) ? p * p : 1 - Math.pow(1 - p, 3);
-    const a = 1;
+       ⚠️ THE LIST MOVES AS ONE BLOCK. Staggering the three would be juice, and it
+       would also be three things arriving where the design has one -- the name
+       and its gloss already fall together for the same reason. */
+    const p = this._dropP();
+    const a = (alpha == null) ? 1 : alpha;
     const cy = H * this._lcfg('menuYRel', 0.55)
-             + this._travel(H) * (1 - rise)
-             - this._bounce(this.menuT - ms);
+             + this._travel(H) * (1 - p)
+             - this._bounce(this.t - this._landedAtMs());
     const gap = H * this._lcfg('menuGapRel', 0.11);
     const keys = Title.MENU();
     /* THE MENU'S OWN TRIM, UNDER THE PACK'S ONE SCALE -- and the highlight
@@ -1195,10 +1199,10 @@ class Title {
       L.draw(ctx, 'title', W / 2, H * this._lcfg('titleYRel', 0.20) + dy);
       L.draw(ctx, 'subtitle', W / 2, H * this._lcfg('subtitleYRel', 0.31) + dy);
       ctx.restore();
-      /* THE MENU IS NOT PART OF THE BLOCK and does not move with it: it fades
-         up where it belongs once the name has landed. In `lift` it is gone
-         already -- the question is on its way in. */
-      if (this.stage === 'name') this._drawMenu(ctx, W, H);
+      /* THE MENU ARRIVES WITH THE NAME, FROM THE OTHER EDGE -- one gesture on
+         one clock; see _drawMenu. In `lift` it is gone already: the question is
+         on its way in. */
+      if (this.stage === 'name') this._drawMenu(ctx, W, H, a);
       return;
     }
     this._block(ctx, W, H, lines, cy, dy, a);

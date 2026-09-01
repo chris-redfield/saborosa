@@ -6423,28 +6423,27 @@ const CONFIG = {
        makes. Reading 0.99 as "the highlight is gone" is the mistake to avoid
        here: the bump is relative, and it was never relative to the title. */
     menuMul: 0.90,
-    /* THE MENU SLIDES UP FROM UNDER THE FRAME -- it used to fade. Asked for
-       2026-09-01: *"they should slide in from the below, like the title does
-       from the upper part, but do it coming from the lower end."*
+    /* THE MENU HAS NO TIMING OF ITS OWN, AND THAT IS DELIBERATE. It slides up
+       from under the frame while the name drops into it, bounces the way the
+       name bounces, and lands on the same frame -- all of it off `titleDropMs`,
+       `titleDropFromRel`, `titleBouncePx` and `titleBounceMs`, which are the
+       NAME's numbers. Three asks on 2026-09-01 walked it here: slide instead of
+       fade, then bounce like the title, then *"make the 3 options come at the
+       same time, like syncronized with the title."*
 
-       ⚠️ IT REUSES THE NAME'S OWN TRAVEL AND EASING (`titleDropFromRel`, and
-       `1 - (1-p)^3`), so the two are one gesture from opposite edges. Only the
-       sign differs. 520ms against the drop's 900 because it is the smaller,
-       lighter thing and a menu that takes as long to arrive as the title reads
-       as the screen still loading.
+       ⚠️ IT HAD A `menuRiseMs` AND IT IS GONE. Setting it equal to `titleDropMs`
+       would have looked synchronised until somebody retuned one of them; sharing
+       the expression is the only version that cannot drift. If the menu ever
+       genuinely needs its own pace, that is a new knob AND a note saying the two
+       are deliberately apart.
+
+       ⚠️ THE ONLY DIFFERENCE IS THE SIGN -- the travel is added rather than
+       subtracted and the bounce is negated, because a thing overshoots past its
+       rest in the direction it was moving and these arrive from the other edge.
 
        ⚠️ AND IT NO LONGER FADES AT ALL. A slide that also fades reads as a fade
        with some drift in it. `menuFadeMs` still fades the OPTIONS and CREDITS
-       screens, which arrive rather than move.
-
-       ⚠️ IT BOUNCES ON ARRIVAL TOO, off `titleBouncePx` / `titleBounceMs` --
-       the name's own numbers, negated, because a thing overshoots past its
-       resting place in the DIRECTION IT WAS MOVING and these arrive from the
-       other edge. Setting `titleBouncePx: 0` still turns both off together, and
-       it also swaps both approaches back to the eased-out curve: an arrival
-       that is already slowing to a stop cannot bounce, so the two choices are
-       one choice. */
-    menuRiseMs: 520,
+       screens, which arrive rather than move. */
     /* THE TINY PUNCH ON AN ITEM THAT IS CHOSEN. Asked for: *"when the other
        menus are selected, they should have a tiny punch... all should have a
        tiny punch."* Same curve as the select screen's confirm stamp
@@ -6523,7 +6522,20 @@ const CONFIG = {
        drawing and these have to sit on it. */
     hudNameGap: 6,
     lifeGap: 4,          // between coconuts
-    lifeRowGap: 4,       // between the name row and the coconut row
+    /* THE LIVES, TRIMMED UNDER THE PACK'S ONE SCALE. Asked for 2026-09-01:
+       *"the coconut drawing that represent each life is too big, make it 20%
+       smaller."* 0.80.
+
+       ⚠️ THIS IS THE ESCAPE HATCH, NOT A SECOND SIZE SYSTEM. `titleWRel` still
+       sets the whole pack and everything keeps the artist's proportions against
+       everything else; `lifeMul` and `menuMul` are the two places an element was
+       asked to sit differently, and each one is a multiplier ON that scale rather
+       than a size of its own. The moment a third or fourth appears, the question
+       to ask is whether `titleWRel` is wrong -- not to add another. */
+    lifeMul: 0.80,
+    /* ⚠️ `lifeRowGap` IS GONE. It spaced a second row under the name, and the
+       lives are not a second row: they sit at the RIGHT END of the bar on the
+       name's own line, where the old `x2` readout was. Corrected 2026-09-01. */
     /* THE OPTIONS SCREEN. A heading and two meters, over the same photograph.
        ⚠️ THE METERS ARE THE ARTIST'S BARS, NOT A DRAWN RECTANGLE. Each row was
        lettered with eight bars and the cutter recorded where each one ends, so

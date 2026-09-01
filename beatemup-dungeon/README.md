@@ -520,8 +520,8 @@ Every word the game shows outside a fight is a drawing off one sheet
 LETTERS: {
   titleWRel: 0.72,     // THE one size knob — everything scales off the title
   menuMul: 0.90,       // the menu, trimmed under that scale
+  lifeMul: 0.80,       // …and the lives
   selectedMul: 1.10,   // …and the highlighted item, 10% up on its NEIGHBOURS
-  menuRiseMs: 520,     // it slides up from under the frame and bounces in
   itemPop: 0.10,       // the tiny stamp on an item that is CHOSEN
   itemPopMs: 260,
   menuHoldMs: 300,     // …and the beat before the screen acts on the choice
@@ -533,8 +533,10 @@ OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
 > ⚠️ **`titleWRel` is the only size number and it moves everything.** Each frame
 > is drawn at the ratio that makes the title span that much of the canvas, so the
 > artist's own hierarchy reaches the screen — title 1363px in the pack against a
-> fighter name at 124. Don't add a `wRel` per element; if one thing must change
-> size alone, that is a per-call `scale`, which is what the 10% menu bump uses.
+> fighter name at 124. Don't add a `wRel` per element; if one thing must sit
+> differently, that is a **multiplier on** that scale. There are two: `menuMul`
+> 0.90 and `lifeMul` 0.80. If a third and fourth appear, the question is whether
+> `titleWRel` is wrong — not whether to add another.
 
 > ⚠️ **The meters are the row drawn short.** Each option row was lettered with
 > eight bars and the cutter recorded where each ends, so a level of *n* is one
@@ -551,15 +553,25 @@ OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
 > including the one being played, so `playerLives: 3` draws three and the last
 > life draws one. The four drawings cycle; repeating one reads as a stamp.
 
-> ⚠️ **The menu slides up from below, bounces in, and does not fade.** It reuses
-> the title's own travel (`titleDropFromRel`), approach (`p²`) and landing bounce
-> (`titleBouncePx`/`titleBounceMs`) — one gesture from opposite edges, only the
-> sign differs, so `titleBouncePx: 0` still turns both off together. **The bounce
-> is negated because the travel is:** a thing overshoots past its rest in the
-> direction it was moving, and these arrive from the other edge. **A slide that
-> also fades reads as a fade with some drift in it**, so alpha is 1 from the first
-> frame; `menuFadeMs` still fades the options and credits screens, which arrive
-> rather than move.
+> ⚠️ **They sit at the bar's right edge, on the name's row** — where the old `x2`
+> readout was, growing leftwards into the empty middle of the plate. That means
+> the row has to be **measured before it is drawn**: `textAlign = 'right'` did this
+> for free with two glyphs, and a row of pictures has to sum its own width first.
+> It is anchored to `box.x + box.w`, the footprint `LifeBar.render` hands back, so
+> moving or resizing the bar carries the lives with it.
+
+> ⚠️ **The menu has no timing of its own.** It slides up from under the frame
+> while the name drops into it, bounces the way the name bounces, and lands on the
+> same frame — all of it off `titleDropMs` / `titleDropFromRel` / `titleBouncePx`
+> / `titleBounceMs`, the *name's* numbers. **Synchronised by sharing the
+> expression, not by matching two sets of numbers**: it had a `menuRiseMs` set
+> equal to the drop, and that looks synchronised right up until somebody retunes
+> one of them. The only difference is the sign — the travel is added rather than
+> subtracted and the bounce is negated, because a thing overshoots past its rest
+> in the direction it was moving and these arrive from the other edge. **A slide
+> that also fades reads as a fade with some drift in it**, so there is no fade;
+> `menuFadeMs` still fades the options and credits screens, which arrive rather
+> than move.
 
 > ⚠️ **An item stamps when it is CHOSEN, not when the cursor reaches it.** A
 > punch answers a commitment; spent on every nudge of the d-pad it cheapens itself
