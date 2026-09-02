@@ -1273,6 +1273,26 @@ const CONFIG = {
             { kind: 'charutobi', x: 6200, z: 150, delayMs: 1800, from: 'ground' },
           ],
         },
+        /* ===== HORACIO ========================================================
+           THE ACTUAL BOSS, added 2026-09-02: *"this boss should appear at the
+           second stage, after the last wave of enemies in the end of the
+           stage"*. So the arena above is NOT replaced -- it stays as the last
+           wave and he follows it, which is what "after the last wave" says.
+
+           ⚠️ `who` IS REQUIRED. A boss segment without it is the MOSCA, which is
+           a default that predates the horse; she is already fought twice in the
+           street and dies there. The warning on the arena above said exactly
+           this and it is kept because it is still the trap.
+
+           ⚠️ NOT LOCKED, and the note above the arena explains why it buys
+           little: the fight sits on the FINAL FRAME of the film, so the camera
+           has nowhere forward to go and the backdrop is still either way. It is
+           left unlocked so the shot can move if the player walks BACK, rather
+           than being pinned for no gain.
+
+           HE COSTS NO FILM, like the arena before him -- the camera spent all
+           5007px of the shot before the walk ended. */
+        { kind: 'boss', who: 'horacio', lock: false },
       ],
     },
 
@@ -4080,6 +4100,178 @@ const CONFIG = {
      room even if it went one way: shelf 2 pans twice as fast as the other two,
      so the player has to cross twice as much ground for the same seconds of
      film. Per-leg `px` handles it without anyone having to notice. */
+  /* =========================================================================
+     HORACIO — the desert's boss
+     =========================================================================
+     The last thing in stage 2, after the three-enemy wave that used to stand in
+     for him. Asked for 2026-09-02 in nine beats; beats 1 and 2 are built, 3-9
+     are not yet. src/horacio-boss.js carries the list and its own reasons.
+
+     ⚠️ HE IS NOT IN `CONFIG.CHARACTERS` AND MUST NOT BE PUT THERE. His pack is
+     LEVEL x STATE x FACING with no `anims` row, so `sheets.build()` cannot
+     measure a scale off it and everything that walks the cast would trip on
+     him. He is listed by hand in manifest.js, exactly like the ground cover.
+
+     ⚠️ AND THE PACK HAS NO ANIMATION FRAMES AT ALL -- no idle, no walk, no
+     boil. Every level/state/facing is ONE drawing. Anything that needs to look
+     alive here has to come from moving him, turning him, or changing his state.
+     ⚠️ DO NOT ALTERNATE armoured/exposed AS AN IDLE: those are a well body and
+     a hurt one and it would read as him flickering between the two.
+
+     ⚠️ `who: 'horacio'` IS LOAD-BEARING ON THE SEGMENT. A boss segment with no
+     `who` is the MOSCA -- a default that predates the horse -- and she already
+     dies in the street. See the ROOMS note where the segment is written.
+
+     HIS NAMEPLATE COSTS NOTHING: HORACIO was cut into the hand-drawn letter
+     pack on 2026-09-01 and wired to nothing, and `Letters.nameKey` derives the
+     frame from whatever name a fighter declares. That cut is why this line is
+     all it takes. */
+  HORACIO_BOSS: {
+    name: 'HORÁCIO',
+    sheet: 'v2:beatemup-dungeon/horacio',
+    /* ⚠️ DOUBLED 2026-09-02 ON REQUEST, 230 -> 460 at level 1, reaching 583 as
+       the grandao -- so he is now considerably BIGGER than HIPOLITO (319), the
+       final boss, which is a deliberate instruction and not a drift.
+
+       120 against HIPOLITO's 150. He is a stage 2 boss and the fight is long by
+       construction -- it has a scripted opening before a punch is thrown -- so
+       the health has to buy phases rather than a slugging match. ⚠️ JUDGE THIS
+       WITH DEV OFF: at `DEV.punchDamage` 50 he dies in three hits. */
+    health: 120,
+    /* THE BODY HE ARRIVES IN: level 1, the small spikes, as specified. */
+    enterLevel: 1,
+    /* HOW TALL HE DRAWS AT EACH LEVEL, straight out of the cutter's printout.
+       ⚠️ THE HURTBOX READS THIS, so it grows with him -- a fixed box would let
+       punches pass through the grandao or connect with air around the joaninha.
+       Re-run tools/build-beat-horacio-defs.py with a different TARGET_H and
+       these four move with it. */
+    sheetLevels: 4,       // one atlas per level -- see manifest.js
+    /* ⚠️ THESE FOUR ARE THE CUTTER'S PRINTOUT AND MOVE WITH ITS `TARGET_H`,
+       which has now changed twice on request: 230 -> 460 -> 322. The hurtbox
+       reads them, so they cannot be left behind when the art is re-cut. */
+    sizeByLevel: [324, 354, 404, 449],
+    sizePx: 354,          // the fallback, and the level he enters at
+    /* NO GROUND SHADOW, on request -- see the note in horacio-boss.js for why
+       it is worse than useless on a boss that lives inside the floor. */
+    shadow: false,
+    /* ⚠️ HIS HITS BURST YELLOW, overriding the game-wide rule that yellow means
+       "you landed one" and red means "you took one". Asked for 2026-09-02, and
+       it is read by combat._impact off the ATTACKER, so it is his property
+       rather than a branch in the impact code. */
+    fxColour: 'yellow',
+    hitWRel: 0.62,        // he is round, not long like the horse (0.86)
+    hitZ: 52,
+    /* WHERE HIS HOLE OPENS, down the belt. Not mid-belt like the other two
+       bosses: he ARRIVES by digging up, so this is the hole's position and one
+       at 0.5 with the player at the near edge would open behind him. */
+    spawnZRel: 0.62,
+    dieMs: 900,
+    /* THE SPIKE THEATRE, beat 2, written as data so it can be judged by eye and
+       retuned without touching the class: *"o spike pequeno entra, ele fica como
+       joaninha por 1 segundo, daí sai o máximo 2 vezes, sai grandao, joaninha e
+       sai grandao, daí no final ele volta pro nível 1."*
+
+       Levels are 0 joaninha / 1 small / 2 medium / 3 grandao. He enters at 1, so
+       the script opens by retracting to 0 and closes by returning to 1.
+       ⚠️ THE LIFE BAR COMES UP WITH THIS PHASE, gated on `arrived()`. */
+    THEATRE: [
+      { level: 0, ms: 1000 },   // "fica como joaninha por 1 segundo"
+      { level: 3, ms: 620 },    // "sai grandao"
+      { level: 0, ms: 380 },    // "joaninha"
+      { level: 3, ms: 620 },    // "e sai grandao"
+      { level: 1, ms: 520 },    // "no final ele volta pro nível 1"
+    ],
+    /* HOW FAR OUT OF THE GROUND HE HAS TO BE BEFORE A PUNCH COUNTS. Under this
+       he is not there to hit; the PEEK comes up to 0.55 and is therefore an
+       opening, and roaming at 1.0 is not. ⚠️ RAISING THIS PAST `BALL.peekSunk`
+       CLOSES THE ONLY RELIABLE WINDOW IN THE FIGHT and he becomes hittable just
+       when he surfaces to attack. */
+    hittableSunk: 0.6,
+    /* THE BALL PHASE -- beats 3, 4, 5 and the walking half of 7. */
+    BALL: {
+      digMs: 480,        // going down, and balling up
+      peekRiseMs: 260,   // the head coming out
+      peekSunk: 0.55,    // how much of him shows while he looks about
+      peekMs: 1250,      // ⚠️ the fight's one reliable opening -- see hittableSunk
+      lookMs: 380,       // how long he holds each side while "olhando pros lados"
+      /* ⚠️ ALL THREE SPEEDS IN THIS BLOCK AND `CHARGE.speed` WERE CUT 10% ON
+         REQUEST 2026-09-02 ("make him move 10% slower"): 430 -> 387,
+         88 -> 79, and the charge 620 -> 558. They move together because the ask
+         was about HIM, not about one attack -- slowing only the charge would
+         have made the hunt and the stroll relatively faster. */
+      roamSpeed: 387,    // px/s underground -- he crosses ground fast, unseen
+      roamMaxMs: 1800,   // a ceiling, so an unreachable goal cannot hang the phase
+      /* ⚠️ THE LEAST HE MAY TRAVEL BEFORE SURFACING. *"ele submerge totalmente e
+         sai em outro ponto"* -- without a floor on the distance the goal can be
+         drawn next to where he already is, the roam finishes on its first frame
+         and he pops up in the spot he just left. Set this to 0 and that comes
+         straight back. */
+      roamMinPx: 280,
+      /* HOW BURIED HE IS WHILE HUNTING. ⚠️ NOT 1: the tip of one spike travels
+         through the cigarettes, which is the only cue to where he is and was
+         asked for explicitly. ⚠️ AND IT MUST STAY ABOVE `hittableSunk` (0.6) or
+         roaming stops being cover and becomes a free window on him. */
+      roamSunk: 0.86,
+      /* THE FLOAT, *"as like he was floating in water"*. ⚠️ APPLIED TO THE
+         DRAWING ONLY, never to the depth the hitbox reads -- see `_bob()`. */
+      bobMs: 1500,
+      bobAmp: 0.035,
+      surfaceMs: 300,    // coming all the way out
+      walkMs: 1700,      // beat 7: how long he strolls before digging back in
+      walkSpeed: 79,
+    },
+    /* THE THREE CHARGE LANES, as fractions of belt depth: *"em cima, em baixo ou
+       no meio"*. Back, middle, front -- and the direction is a separate coin
+       flip, so the same lane runs both ways. */
+    LANES: [0.18, 0.5, 0.86],
+    /* THE CHARGE ITSELF. ⚠️ `def` FIELDS ARE READ BY combat.bossHits -- damage,
+       knockback, lift, knockdown -- so this doubles as the attack table. It
+       knocks down: a spiked ball at 620px/s that merely staggered you would let
+       the player walk straight back into the next one. */
+    CHARGE: {
+      speed: 558,
+      startPad: 220,     // how far past the screen edge he surfaces to run up
+      /* ⚠️ HOW DEEP THE ROLLING BALL SITS, and it must not be 0. At 0 he rests
+         exactly on the ground line and reads as FLOATING -- a sphere has no feet
+         and nothing overlaps its lower edge. Sinking him puts the floor in front
+         of that edge, and because `behindScenery()` is true at any depth the
+         cigarette mounds paint over it as well. Raise it and he ploughs deeper;
+         set it to 0 and the floating comes straight back.
+
+         ⚠️ 0.26 -> 0.38 ON REQUEST 2026-09-02 ("sink him a little bit more...
+         make the crop in his lower end slightly bigger"). THIS IS THE VISIBLE
+         ROLLING BALL ONLY. The other two ball depths were deliberately left
+         alone: `BALL.roamSunk` (0.86) had just been raised the other way to show
+         MORE spike while he hunts, and `BALL.peekSunk` (0.55) is the window you
+         are meant to punch -- and it cannot pass `hittableSunk` (0.6) without
+         making him untouchable in his own opening. */
+      sunk: 0.38,
+      overrun: 180,      // how far past the wall he carries before digging in
+      damage: 12, knockback: 260, lift: 0, knockdown: true,
+    },
+    /* BEAT 9: up next to the player and the spikes go in. Timed in three parts
+       like every other attack in this game, so the drawing and the window that
+       can actually hit cannot drift apart. */
+    STAB: {
+      level: 3,          // he does it as the grandao -- the spikes are the move
+      standOff: 90,      // how far to the side of the player he surfaces
+      riseMs: 300, activeMs: 220, recoverMs: 420,
+      reachX: 96, reachZ: 62,
+      damage: 14, knockback: 200, lift: 0, knockdown: false,
+    },
+    /* WHAT HE PICKS WHEN HE HAS FINISHED LOOKING AROUND. ⚠️ THESE MUST SUM TO
+       1: the third is whatever is left over, so a pair adding to more than 1
+       silently deletes the walk. */
+    WEIGHTS: { charge: 0.5, stab: 0.3, walk: 0.2 },
+    /* WHICH WAY EACH OF THE EIGHT DRAWINGS LOOKS, in degrees: 0 is at the
+       camera, 90 is screen RIGHT, 180 is away. Read off the sheet by eye.
+       ⚠️ THIS IS THE FIRST THING TO SUSPECT IF HE FACES THE WRONG WAY. The main
+       game's telephone enemy shipped with exactly this table mirrored and it
+       took a session to spot, because a creature facing the wrong way still
+       looks like a creature. Swap the 90 and 270 halves to correct it. */
+    FACING_DEG: [0, 45, 90, 135, 180, 225, 270, 315],
+  },
+
   LEVEL3: {
     on: true,
     /* Read for `worldPxPerSecond` in the round trip that hands the backdrop a

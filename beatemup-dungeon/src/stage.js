@@ -276,9 +276,18 @@ class Stage {
            stage carries nothing between the two: the first encounter ends when
            it flies away, the second is a fresh one at full health, and neither
            this file nor the boss remembers the other happened. */
-        this.boss = (s.who === 'horse')
-          ? new HorseBoss(bx, bz, this.camX)
-          : new FlyBoss(bx, bz, this.camX, { fleeAt: s.fleeAt });
+        /* ⚠️ HORACIO IS PLACED ON THE FLOOR HE COMES OUT OF, not at mid-belt
+           like the other two. He ARRIVES by digging up through the ground
+           (`Emerge`), so where he is put IS where the hole is -- and a hole at
+           `Belt.depth * 0.5` with the player standing at the near edge would
+           open behind him. `spawnZRel` puts it forward, in the walking half of
+           the belt. */
+        const HC = CONFIG.HORACIO_BOSS;
+        this.boss = (s.who === 'horacio')
+          ? new HoracioBoss(bx, Belt.depth * ((HC && HC.spawnZRel) || 0.62), this.camX)
+          : (s.who === 'horse')
+            ? new HorseBoss(bx, bz, this.camX)
+            : new FlyBoss(bx, bz, this.camX, { fleeAt: s.fleeAt });
       }
       /* Waits for `finished()`, not for `dead` — the death fall and fade play
          out before the level is called, so the boss is not deleted out from

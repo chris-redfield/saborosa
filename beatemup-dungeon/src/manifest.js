@@ -223,6 +223,31 @@ function assetManifest() {
     out.push({ key: 'elevador', src: s + '-sprites.json', how: 'json' });
   }
 
+  /* HORACIO, the desert's boss. Listed by hand and NOT in CONFIG.CHARACTERS,
+     for the same reason the ground cover is not: his pack is level x state x
+     facing with no `anims`, so `sheets.build()` has nothing to measure and
+     everything that walks the cast would trip over him.
+
+     ⚠️ ONE ATLAS PER LEVEL, AND THAT IS NOT AN OPTIMISATION -- it is the only
+     way he fits. At his drawn size the whole pack would be about 5950x6250,
+     past `bigTextureCap` (3200) and past the 4096 limit older hardware still
+     has; texture DIMENSIONS are the wall, so compression does not answer it.
+     Splitting by level costs nothing at run time because only one level is ever
+     on screen. `sheets` in the defs names them and each frame carries its index.
+
+     ⚠️ `image` AND NOT `big`: every atlas is already inside the cap, so `big`
+     would downscale nothing and only add a decode hop. Together they are the
+     heaviest asset in the game by a wide margin -- the cutter's `TARGET_H` is
+     what moves that, and it prints every size on every run. */
+  if (CONFIG.HORACIO_BOSS && CONFIG.HORACIO_BOSS.sheet) {
+    const h = CONFIG.HORACIO_BOSS.sheet;
+    const n = CONFIG.HORACIO_BOSS.sheetLevels || 4;
+    for (let i = 0; i < n; i++) {
+      out.push({ key: 'horacio' + i, src: h + '-L' + i + '-game.png', how: 'image' });
+    }
+    out.push({ key: 'horacio', src: h + '-sprites.json', how: 'json' });
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>

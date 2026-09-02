@@ -83,9 +83,17 @@ class Combat {
        through all six inside a fifth of a second, which is noise rather than
        variety. Same for the mirror. */
     const fx = CONFIG.HIT_FX || {};
-    const colour = fx.colorByRole
+    /* ⚠️ AN ATTACKER MAY OVERRIDE THE COLOUR, and it beats the role rule. The
+       rule is "yellow when you land one, red when you take one", which is about
+       WHO -- but a fighter can want its own mark regardless: HORACIO's blows
+       burst yellow ("when THIS boss hits you, the effect is not the red one
+       anymore, its the yellow one"), asked for 2026-09-02. Declaring
+       `fxColour` on the attacker is all it takes, so the next character that
+       wants one needs no branch here. */
+    const own = attacker && attacker.fxColour;
+    const colour = own || (fx.colorByRole
       ? (byPlayer ? fx.playerColour : fx.enemyColour)
-      : null;
+      : null);
 
     // Impact point, in world coords: between the two, at the victim's depth.
     this.events.push({

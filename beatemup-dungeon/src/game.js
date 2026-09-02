@@ -1246,10 +1246,30 @@
       if (!em.behindScenery()) continue;
       (out || (out = [])).push(e);
     }
+    /* ⚠️ AND THE BOSS, WHO IS NOT IN THE CROWD. `stage.boss` is its own field,
+       so a pass that only walks `crowd.list` silently leaves it out -- exactly
+       the blind spot the emerge dust hit. HORACIO digs in and out for the whole
+       fight rather than once on arrival, so he answers with his own depth-based
+       `behindScenery()` and carries his plane on himself instead of on an
+       `Emerge` that is long gone. Any boss that does not implement the pair is
+       simply never injected, which is the old behaviour. */
+    const b = stage.boss;
+    if (b && b.behindScenery && b.scenPlane) {
+      const pl = b.scenPlane(scenery.bands);
+      if (pl != null && b.behindScenery()) {
+        b._scenPlane = pl;
+        (out || (out = [])).push(b);
+      }
+    }
     /* Deepest plane first, so the injections come out in the order the bands are
        painted and each one only ever needs the range since the last. */
-    if (out) out.sort((a, b) => a.emerge.plane - b.emerge.plane);
+    if (out) out.sort((a, b2) => planeOf(a) - planeOf(b2));
     return out;
+  }
+
+  /** A digger keeps its plane on its `Emerge`; a boss keeps it on itself. */
+  function planeOf(f) {
+    return f.emerge ? f.emerge.plane : (f._scenPlane || 0);
   }
 
   function drawScenery(camX) {
@@ -1257,9 +1277,12 @@
     if (!inject) { scenery.draw(ctx, camX); return; }
     let lo = -Infinity;
     for (const f of inject) {
-      scenery.drawBands(ctx, camX, lo, f.emerge.plane);
-      lo = f.emerge.plane;
-      f.draw(ctx, sheets, camX);
+      scenery.drawBands(ctx, camX, lo, planeOf(f));
+      lo = planeOf(f);
+      /* ⚠️ THE SAME `usesSheets` BRANCH AS `drawEntities`, because a boss can be
+         injected here now. Handing HORACIO `sheets` would draw him as nothing at
+         all -- his pack is not one. */
+      f.draw(ctx, f === stage.boss && !f.usesSheets ? assets : sheets, camX);
     }
     scenery.drawBands(ctx, camX, lo, Infinity);
   }
