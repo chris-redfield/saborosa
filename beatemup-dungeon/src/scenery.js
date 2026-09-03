@@ -96,6 +96,7 @@ class Scenery {
     this.items = [];
     this.bands = 0;        // how many belt bands this room laid out
     this._dense = null;    // the baked high-density zone, if the room has one
+    this.bandZ = null;     // each band's mean depth -- see planeForZ()
     this.defs = null;
   }
 
@@ -252,6 +253,18 @@ class Scenery {
               + (Scenery._h(r * 97 + 3) - 0.5) * (S.zJitter || 40);
       this._scatter(defs, n, x0, x1, z, p, sc, S.spacing || 0.65, r, b);
     }
+
+    /* EACH BAND'S OWN DEPTH, for `planeForZ`. The mean of its items' ground
+       points: a band is a plane, and this is where that plane sits. Computed
+       from the field as laid out rather than from `zFrom`/`zTo`, so `zJitter`
+       and `bandOffsetZ` are already in it. */
+    const sum = new Array(BANDS).fill(0), cnt = new Array(BANDS).fill(0);
+    for (const it of this.items) {
+      const b = it.b;
+      if (b == null || b < 0 || b >= BANDS) continue;
+      sum[b] += it.z; cnt[b]++;
+    }
+    this.bandZ = sum.map((v, i) => (cnt[i] ? v / cnt[i] : null));
 
     /* AND THE BAKED ZONE, laid out from the same ladder so it is the same floor
        -- see `_bakeDense`. It reads `this.items` only to leave it alone. */
@@ -451,6 +464,29 @@ class Scenery {
     const sx = D.x0 - camX * st.p;
     if (sx + st.w < 0 || sx > CONFIG.GAME_W) return;
     ctx.drawImage(st.cv, Math.round(sx), Math.round(Belt.topY + st.topRel));
+  }
+
+  /**
+   * WHICH PLANE A BODY AT DEPTH `z` BELONGS IN -- how many bands are BEHIND it.
+   *
+   * ⚠️ THIS IS Z-SORTING AGAINST THE FLOOR, and it is what a randomly dealt
+   * plane cannot do. `Emerge.pickPlane` deals a random one on purpose: a digger
+   * is buried while it uses it, so which seam it comes up through is variety and
+   * nothing is visible enough for the depth to matter. HORACIO is not buried --
+   * he rolls across the room in plain sight at a chosen lane -- and a random
+   * plane put him at z 68 with only the NEAREST band drawn over him, whose
+   * mounds sit at the bottom of the screen and never overlap him at all. He read
+   * as *"on top of all cigarette layers"*.
+   *
+   * Bands are laid out far-to-near, so the answer is the count whose own depth
+   * is behind his. Floored at 1 for the reason `Emerge.pickPlane` gives: plane 0
+   * means "behind every belt band", which reorders the floor against itself.
+   */
+  planeForZ(z) {
+    if (!this.bandZ || !this.bandZ.length) return null;
+    let n = 0;
+    for (const bz of this.bandZ) if (bz != null && bz < z) n++;
+    return Math.max(1, Math.min(this.bands, n));
   }
 
   draw(ctx, camX) { this.drawBands(ctx, camX, -Infinity, Infinity); }

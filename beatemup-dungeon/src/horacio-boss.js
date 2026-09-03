@@ -253,17 +253,29 @@ class HoracioBoss {
    * "behind every belt band", which reorders the floor against itself while he
    * is climbing. Copied rather than reasoned about again.
    */
-  scenPlane(bands) {
-    if (!bands || bands < 1) return null;
-    if (this._plane == null || this._planeBands !== bands) {
-      this._planeBands = bands;
-      const E = CONFIG.EMERGE || {};
-      const lo = Math.max(1, E.minBandsInFront != null ? E.minBandsInFront : 1);
-      const hi = Math.min(bands, E.maxBandsInFront != null ? E.maxBandsInFront : bands);
-      const inFront = (hi < lo) ? lo : lo + Math.floor(Math.random() * (hi - lo + 1));
-      this._plane = Math.max(1, bands - inFront);
+  scenPlane(scenery) {
+    if (!scenery || !scenery.bands) return null;
+    /* ⚠️ BY DEPTH, NOT DEALT AT RANDOM, AND THE RANDOM VERSION WAS THE BUG. A
+       digger gets a random seam because it is BURIED while it uses one -- which
+       of them it comes up through is variety, and nothing of it is visible
+       enough for the depth to matter. HORACIO is the opposite: he rolls across
+       the room in the open at a lane he chose, so the plane has to be where he
+       actually IS. Dealt at random it put him at the far lane with only the
+       NEAREST band over him, whose mounds are at the bottom of the screen and
+       never touched him -- *"it looks like he is on top of all cigarette
+       layers"*, while the sunken states looked right because the clip was doing
+       the work instead.
+
+       ⚠️ AND IT IS RE-ASKED EVERY FRAME rather than cached: his z changes when
+       he picks a charge lane and when he surfaces at the player's depth, and a
+       plane cached from the last time he went under is a plane for a depth he
+       has since left. It is a comparison against `bands` numbers, so there is
+       nothing to save. */
+    if (scenery.planeForZ) {
+      const p = scenery.planeForZ(this.z);
+      if (p != null) return p;
     }
-    return this._plane;
+    return Math.max(1, scenery.bands - 1);
   }
 
   /**
@@ -503,7 +515,6 @@ class HoracioBoss {
   _submerge(dt) {
     const B = CONFIG.HORACIO_BOSS.BALL;
     this.state = 2;                    // the ball drawing, at his current level
-    this._plane = null;                // a different seam every time he goes under
     const target = (B.roamSunk != null) ? B.roamSunk : 0.88;
     if (this._easeSunk(dt, target, B.digMs)) this._pickGoal();
   }

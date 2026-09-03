@@ -1255,7 +1255,10 @@
        simply never injected, which is the old behaviour. */
     const b = stage.boss;
     if (b && b.behindScenery && b.scenPlane) {
-      const pl = b.scenPlane(scenery.bands);
+      /* ⚠️ THE WHOLE `scenery`, NOT ITS BAND COUNT. HORACIO picks his plane by
+         DEPTH now (see his `scenPlane`), which needs where the bands actually
+         sit -- a count cannot answer that. */
+      const pl = b.scenPlane(scenery);
       if (pl != null && b.behindScenery()) {
         b._scenPlane = pl;
         (out || (out = [])).push(b);
