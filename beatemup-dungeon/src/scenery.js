@@ -421,19 +421,33 @@ class Scenery {
 
        A mound's anchor is exact bottom-centre, so its ink is entirely ABOVE its
        ground point: the top is `z - h * s` and the bottom is `z`. */
-    const w = Math.ceil(x1 - x0);
     const strips = [];
     let bytes = 0;
     for (let b = 0; b < BANDS; b++) {
       const mine = items.filter((it) => (it.b != null ? it.b : 0) === b);
       if (!mine.length) { strips.push(null); continue; }
-      let top = Infinity, bot = -Infinity;
+      /* ⚠️ THE STRIP IS SIZED TO ITS INK, NOT TO THE ZONE, AND SIZING IT TO THE
+         ZONE WAS A VISIBLE BUG. A mound is ~1094px wide drawn and the zone is
+         1480px, so 43 of the 65 baked mounds have ink crossing an edge -- a
+         canvas cut at the zone boundary sliced them off SQUARE, and because each
+         band scrolls at its own rate the cut swept across the screen as a hard
+         vertical line on the way into the arena, once per band. Reported as
+         *"one cigarette mound ... was cropped, so I see a big vertical line"*.
+
+         Measuring the bounds off the items makes clipping impossible by
+         construction rather than by a pad someone has to keep big enough. It is
+         also tighter than one global pad would be: each band has its own mound
+         sizes, so each gets its own margin instead of the widest band's. */
+      let top = Infinity, bot = -Infinity, lft = Infinity, rgt = -Infinity;
       for (const it of mine) {
         const fr = defs.frames[it.k];
         top = Math.min(top, it.z - fr.h * it.s);
         bot = Math.max(bot, it.z);
+        lft = Math.min(lft, it.x - fr.ax * it.s);
+        rgt = Math.max(rgt, it.x + (fr.w - fr.ax) * it.s);
       }
       const h = Math.ceil(bot - top) + 2;
+      const w = Math.ceil(rgt - lft) + 2;
       const cv = document.createElement('canvas');
       cv.width = w; cv.height = h;
       const c = cv.getContext('2d');
@@ -441,14 +455,16 @@ class Scenery {
         const fr = defs.frames[it.k];
         const sc = it.s, aw = fr.w * sc, ah = fr.h * sc, ax = fr.ax * sc;
         c.drawImage(img, fr.x, fr.y, fr.w, fr.h,
-                    Math.round(it.x - x0 - ax),
+                    Math.round(it.x - lft - ax),
                     Math.round(it.z - fr.ay * sc - top),
                     aw, ah);
       }
       bytes += w * h * 4;
-      strips.push({ cv, p: rate[b], topRel: top, w, h });
+      /* `xRel` is the strip's own world x -- its LEFT INK EDGE, not the zone's
+         corner -- so the blit no longer has a shared origin to drift from. */
+      strips.push({ cv, p: rate[b], topRel: top, xRel: lft, w, h });
     }
-    this._dense = { x0, w, strips, count: items.length, bytes };
+    this._dense = { x0, strips, count: items.length, bytes };
   }
 
   /**
@@ -461,7 +477,9 @@ class Scenery {
     if (!D) return;
     const st = D.strips[b];
     if (!st) return;
-    const sx = D.x0 - camX * st.p;
+    /* Off the strip's OWN left ink edge -- see the note in `_bakeDense` on why
+       each strip is sized to its content rather than to the zone. */
+    const sx = st.xRel - camX * st.p;
     if (sx + st.w < 0 || sx > CONFIG.GAME_W) return;
     ctx.drawImage(st.cv, Math.round(sx), Math.round(Belt.topY + st.topRel));
   }
