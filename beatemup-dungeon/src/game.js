@@ -1350,6 +1350,31 @@
       if (f === stage.boss) f.draw(ctx, f.usesSheets ? sheets : assets, camX);
       else f.draw(ctx, sheets, camX);
     }
+
+    /* A BOSS'S OWN EXPLOSIONS, LAST OF ALL -- his arrival dust and his death
+       string. Added 2026-09-03 with HORACIO's death; a boss without `drawFX` is
+       not drawn here, which is the other two's existing behaviour.
+
+       ⚠️ THIS IS A PASS OF ITS OWN AND NOT PART OF HIS `draw()`, because
+       HORACIO is INJECTED INTO THE SCENERY whenever he is in the ground -- the
+       mounds are painted over him, which is what makes him look like he is
+       coming through the floor. Anything drawn from inside `draw()` inherits
+       that plane, so his arrival dust was coming out UNDER the cigarettes and
+       his death blasts would have too: he is killed at the PEEK more often than
+       anywhere else, and the peek leaves him 55% buried for the whole death.
+       **A body under the floor is the effect; an explosion under the floor is a
+       bug** -- the identical correction the diggers' dust needed on 2026-09-01.
+
+       ⚠️ AND IT IS AFTER THE LOOP RATHER THAN IN THE DUST PASS ABOVE, which is
+       a deliberate difference from the mooks' *"on top of everything but the
+       player"*. That rule anchors an effect to the PLAYER's slot in the z sort,
+       and it works for a digger because a digger is always behind the floor.
+       The boss is not: he is drawn from the scenery pass while he is in the
+       ground and from this loop while he is out, so a fixed slot means that in
+       one of those two cases HIS OWN BODY is painted over his own explosions.
+       Last is the only position that is right in both. */
+    const bfx = stage.boss;
+    if (bfx && bfx.drawFX) bfx.drawFX(ctx, assets, camX);
   }
 
   /**

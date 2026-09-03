@@ -4260,13 +4260,42 @@ const CONFIG = {
          note in enemy.js. */
       clearY: 40,
     },
+    /* WHICH OF THE EIGHT DRAWINGS HE WEARS WHILE HE IS COMING OUT OF THE GROUND
+       -- the beat-1 arrival AND every later `rise`. 0 is the front, the one
+       pointing at the camera.
+
+       Asked for 2026-09-03: *"when the boss jumps, he is only spawning to his
+       side, he should always spawn (jump from the ground) looking to the front,
+       WHEN HE IS jumping from the ground... right now he spawns looking to the
+       front when he is calling the charutobis, so copy that behavior when
+       jumping out of the ground always."*
+
+       ⚠️ IT IS THE SAME VALUE `SUMMON.signalFacing` USES, AND ON PURPOSE -- the
+       summon was named as the reference. Kept as its own knob rather than read
+       off SUMMON because the two are different beats that happen to agree, and
+       tying them would mean a pointing drawing (when one exists) silently
+       changed how he comes out of the ground.
+
+       ⚠️ AND IT HAS TO BEAT `_faceToward`, which runs every frame for every
+       phase but the emerge and the theatre. Both users set it AFTER that call,
+       which is the same trick `_summon` already uses to hold its pose. */
+    outFacing: 0,
     hitWRel: 0.62,        // he is round, not long like the horse (0.86)
     hitZ: 52,
     /* WHERE HIS HOLE OPENS, down the belt. Not mid-belt like the other two
        bosses: he ARRIVES by digging up, so this is the hole's position and one
        at 0.5 with the player at the near edge would open behind him. */
     spawnZRel: 0.62,
-    dieMs: 900,
+    /* ⚠️ 2150, NOT THE 900 THE PLAIN FADE USED. The fuse and the blasts ARE the
+       death now and both have to finish INSIDE this: the last blast starts at
+       startMs + (count-1) x everyMs = 800 + 7 x 55 = 1185ms and then runs for
+       12 x `boomMs` (70.9) = 851ms more, so it is all over at 2036.
+       `finished()` waits for this number and the room advances on it -- advance
+       early and a blast is cut off mid-frame, which is the failure that once
+       left the horse's corpse hanging through its outro.
+       ⚠️ RE-DO THAT SUM if `count`, `everyMs` or `startMs` move. `startMs` is
+       the fuse, so lengthening the red flash pushes this too. */
+    dieMs: 2150,
     /* THE SPIKE THEATRE, beat 2, written as data so it can be judged by eye and
        retuned without touching the class: *"o spike pequeno entra, ele fica como
        joaninha por 1 segundo, daí sai o máximo 2 vezes, sai grandao, joaninha e
@@ -4317,9 +4346,79 @@ const CONFIG = {
          DRAWING ONLY, never to the depth the hitbox reads -- see `_bob()`. */
       bobMs: 1500,
       bobAmp: 0.035,
-      surfaceMs: 300,    // coming all the way out
+    /* ⚠️ 560, NOT THE 300 IT WAS, AND THE NUMBER IS BORROWED ON PURPOSE. This is
+       now the WHOLE of the surfacing -- the climb and the hop, split by
+       `RISE.clearAt` rather than added to each other -- and 560 is `EMERGE.riseMs`
+       exactly, the duration the mooks' jump out of the ground was tuned to over
+       six rounds on 2026-08-31. At 300 the two halves are 165ms and 135ms, and a
+       135ms hop is four frames: a twitch, not a jump. See `_rise`. */
+      surfaceMs: 560,    // the whole climb-and-hop out of the floor
       walkMs: 1700,      // beat 7: how long he strolls before digging back in
       walkSpeed: 79,
+    },
+    /* HOW HE COMES OUT WHEN HE COMES OUT FOR GOOD -- beats 7 and 9's opening.
+       Asked for 2026-09-03: *"when he leaves the ground, he is just popping out,
+       we want him to leave like the other enemies, like giving a little jump
+       outside of the ground, of course this is only when he is like leaving
+       entirely from the ground and standing after."*
+
+       ⚠️ THIS IS THE `rise` PHASE ONLY, WHICH IS THE POINT OF THE "of course".
+       Every other depth change of his ENDS in the ground -- the peek stops with
+       his head out, the roam holds `roamSunk`, the charge holds `CHARGE.sunk`
+       for its whole crossing -- and a hop on any of those would be a body
+       jumping out of a hole it is about to stay in. `rise` is the only phase
+       that ends with him standing on the floor. */
+    RISE: {
+      /* WHERE THE CLIMB ENDS AND THE HOP BEGINS, as a fraction of
+         `BALL.surfaceMs`. ⚠️ IT SPLITS THAT DURATION, IT DOES NOT ADD ONE --
+         `Emerge`'s rule, and it matters here for its own reason: he has to be
+         OUT before he is in the air, and a hop with its own clock running after
+         the climb starts its arc from a body still sunk in the floor, which
+         reads as him being winched up rather than jumping. 0.55 is EMERGE's, so
+         308ms coming through and 252ms airborne. */
+      clearAt: 0.55,
+      /* HOW HIGH THE HOP GOES, in px at the near edge of the belt (it is scaled
+         by depth like everything else he does).
+
+         ⚠️ IT IS `EMERGE.hopPx` (26) SCALED TO HIS BODY, NOT COPIED. He is drawn
+         354px against a mook's 137, so the same 26 would be a hop a quarter the
+         relative size and would read as a stumble; 26 x (354 / 136.8) = 67. The
+         ask was *"a little jump"*, and little is relative to the thing jumping.
+         0 = no hop, straight up and stop, which is what it did before. */
+      hopPx: 67,
+      /* HOW MANY POSITIONS THE WHOLE MOVEMENT IS QUANTISED TO -- `null` means
+         "whatever the mooks use" (`EMERGE.steps`, 6), which is the answer while
+         the ask is *"like the other enemies"*. ⚠️ HE OWNS NO ANIMATION FRAMES AT
+         ALL, so exactly as with a digger holding one drawing, the MOVEMENT is
+         the only thing there is to make choppy. ⚠️ His beat-1 arrival already
+         runs through `Emerge` at these steps, so matching it is what makes his
+         two ways out of the ground read as one creature. 0 or 1 = smooth. */
+      steps: null,
+      /* ⚠️ WHEN THE BALL BECOMES A BODY, and `true` is a fix rather than a
+         preference. It used to hold the ball for the entire climb and flip to
+         the standing drawing on the LAST frame -- a change of body at the one
+         moment he is fully visible and standing still, which is the loudest
+         possible place to put it and was half of what *"he is just popping out"*
+         described. Unballing before the climb leaves nothing to pop: he comes up
+         as the thing he is going to be. `false` restores the old order. */
+      unballAtStart: true,
+      /* HOW LONG HE KEEPS LOOKING AT THE CAMERA AFTER HE LANDS, in ms. Asked for
+         2026-09-03: *"he is looking forward, BUT for very small time, right
+         afterwards he already looks at the player. make him hold the looking
+         forward position a little bit more, half a second more."*
+
+         ⚠️ IT IS NOT PART OF `surfaceMs`, AND THAT IS THE POINT. The rise has to
+         END when the MOVEMENT ends -- stab, summon and walk all start their own
+         clocks from it -- so buying the pose more time by lengthening the phase
+         would leave him hanging in the air for half a second instead. This is
+         the FACING alone outliving the phase that set it, carried as a debt into
+         whatever comes next (see the facing block in `update`).
+
+         ⚠️ AND IT BEATS `_faceToward`, which is what makes it work at all: that
+         runs every frame for every phase but the emerge and the theatre, so
+         before this the front pose was overwritten on the very frame he landed.
+         0 = the old behaviour, front only while he is actually moving. */
+      holdMs: 500,
     },
     /* THE THREE CHARGE LANES, as fractions of belt depth: *"em cima, em baixo ou
        no meio"*. Back, middle, front -- and the direction is a separate coin
@@ -4348,6 +4447,41 @@ const CONFIG = {
          making him untouchable in his own opening. */
       sunk: 0.38,
       overrun: 180,      // how far past the wall he carries before digging in
+      /* HOW FAR THE CHARGE'S CONTACT BOX REACHES UP AND DOWN THE BELT FROM HIS
+         GROUND POINT, as fractions of `sizePx()`. Reported 2026-09-03: *"when he
+         is doing the ball attack like charging, the collisions are wrong, they
+         are too low for his helmet position."*
+
+         ⚠️ IT USED TO BE `hitZ` (52), THE STANDING HURTBOX, AND THAT IS THE BUG.
+         Measured off the drawing with `CHARGE.sunk` applied, at level 1: the
+         ball's ink runs from 234px above his ground point to 48px below it, and
+         its widest row -- the equator, right under the helmet -- is 116px above.
+         A 52px band around his FEET therefore sat entirely beneath a ball 280px
+         tall, so the player was hit by the floor under him and walked through
+         the helmet untouched.
+
+         ⚠️ THE BOX GROWS UPWARD AND KEEPS ITS FLOOR. Extending the top can only
+         ADD contacts, so nothing that connected before stops connecting.
+         CENTRING it on the helmet -- the obvious reading of "too low" -- is the
+         wrong fix and would have been worse than the bug: at the BACK lane
+         (z 68) a box centred 116px higher sits at z -48, off the belt, where no
+         player can ever be. **A box on a belt is a depth; a sprite's height is
+         not depth.**
+
+         ⚠️ AND THEY ARE READ OFF THE BALL'S MASS, NOT ITS SILHOUETTE: the rows at
+         least half as wide as the equator span 199px up and 33px down, which is
+         the sphere without the outermost spike tips. 199/354 = 0.562, 33/354 =
+         0.093. Taking the tips as well is `hitUpRel: 0.66` and is a bigger box
+         in every lane -- a look call, and this is the conservative half of it.
+
+         ⚠️ THE LANES STILL MEAN SOMETHING, and that was checked rather than
+         hoped for. Against a 380-deep belt the safe ground left is: back lane
+         (z 68) player z > 101, middle (190) z > 223, front (327) z < 128. The
+         front lane is now the dangerous one and the back lane the mild one,
+         which is the honest consequence of a foot-anchored box under a body
+         drawn this big. */
+      hitUpRel: 0.562,
+      hitDownRel: 0.093,
       damage: 12, knockback: 260, lift: 0, knockdown: true,
     },
     /* BEAT 9: up next to the player and the spikes go in. Timed in three parts
@@ -4365,6 +4499,130 @@ const CONFIG = {
        silently deletes the walk. */
     /* ⚠️ THESE MUST SUM TO 1: the last is whatever is left over, so a set
        adding to more than 1 silently deletes the walk. */
+    /* --- GOING UP ----------------------------------------------------------
+       A STRING OF EXPLOSIONS, not a fade. Asked for 2026-09-03: *"when he dies,
+       he needs to blow up like the other bosses with lots of explosion
+       animations"*.
+
+       ⚠️ IT IS THE SAME `Booms` THE HORSE AND THE MOSCA USE, so this block is
+       the whole of his version -- how many, how far apart, how big. Nothing was
+       added to boom.js for him. The art is STILL LIFE's explosion sheet
+       (`BOOM_RECTS`, at the bottom of this file), read in place.
+
+       ⚠️ THE PATTERN IS ROLLED ONCE, AT THE MOMENT HE DIES, and the reference
+       size passed to `arm()` is `sizePx()` -- the body he actually died in. He
+       can be killed as the joaninha mid-theatre (324) or as the grandao
+       mid-stab (449), and a fixed reference would scatter one body's blasts
+       across the other. */
+    DEATH_BOOM: {
+      on: true,
+      /* EIGHT, ONE MORE THAN THE HORSE'S SEVEN. He is round where the horse is
+         long, so the string has less body to walk along and covers it by
+         overlapping instead. */
+      count: 8,
+      /* ⚠️ `startMs` IS THE FUSE, AND IT IS 800 RATHER THAN 0. Asked for
+         2026-09-03: *"before he dies, when his HP reaches 0, make him blow up
+         like the charutobi, so make him flash red, and them he blows up with the
+         several explosions."* It is the gap the red flash lives in -- see
+         `DEATH_FUSE`, which reads its LENGTH off this number rather than
+         carrying one of its own, so "flash, then blow up" cannot come apart.
+         800 is the charutobi's `shudder.holdMs` exactly.
+
+         ⚠️ THE SUM `dieMs` IS BUILT FROM. The last blast STARTS at
+         startMs + (count-1) x everyMs = 800 + 385 = 1185ms and runs 12 x
+         `boomMs` (70.9) = 851ms more, ending at 2036 -- which is what `dieMs`
+         2150 is sized for. Move ANY of the three and redo it. */
+      startMs: 800,
+      /* ⚠️ 55, DOWN FROM THE HORSE'S 165, AND THIS IS THE OTHER HALF OF *"we
+         haven't achieved that effect."* At 165 the eight blasts take 1.2s to all
+         arrive, which is the horse's reading on purpose -- a body coming apart,
+         unzipping nose to tail -- and it is not what was asked for here. At 55
+         they are all alight by 385ms and each runs 851, so they overlap almost
+         completely: ONE detonation made of eight bursts rather than eight
+         explosions in a row. **The stagger is what decides between "blowing up"
+         and "coming apart"**, and the count and the size are not. Back to 165
+         for the old reading. */
+      everyMs: 55,
+      /* WHERE THEY LAND, as fractions of his drawn size: x across the body from
+         his ground point, y up from it. ⚠️ ROUNDER THAN THE HORSE'S 0.55/0.75.
+         He is a sphere and the horse is longer than it is tall, so its spread is
+         deliberately wide and flat; copying those numbers onto him would string
+         the blasts out sideways past a body that does not go that way. */
+      spreadXRel: 0.42,
+      spreadYRel: 0.58,
+      /* ...and how far up the body the string SITS before that spread. Low,
+         because he can die at the peek with two thirds of him still under the
+         floor, and a high base would put the whole string in the sky over a hole
+         with a boss in it. */
+      baseYRel: 0.16,
+      /* Width of the PEAK frame on screen in px, before the jitter. 240 against
+         a 354px body is the horse's ratio (210 against 304) carried over rather
+         than re-guessed. */
+      sizePx: 240,
+      sizeJitter: 0.28,
+      /* ⚠️ THERE IS NO `fadeMs` AND NO `fadeStrobeMs` ANY MORE, AND THAT IS THE
+         POINT. This block carried both in turn on 2026-09-03 -- a linear fade
+         (620ms, then "as long as the blasts last") and then a strobe whose duty
+         ran down -- and both were refused: *"remove the stroboscopic thing, but
+         also remove the fading, we want it to look like he is blowing up, and we
+         haven't achieved that effect, can you make him blow and vanish at
+         once?"* They are DELETED rather than switched off, which is what this
+         project does with a look that was refused.
+
+         **An explosion does not make a body transparent, it REPLACES it.** Both
+         attempts were a boss turning into a ghost -- one smoothly, one with a
+         flicker -- and neither is a thing coming apart. He is now simply not
+         drawn from `startMs` onward; see the guard at the top of `_drawBody`.
+         The moment is `startMs` itself rather than a knob of its own, so the
+         flash ending and the first blast arriving are ONE number. */
+      /* WHEN THE BODY IS TAKEN AWAY, in ms from the death -- `null` = "when the
+         LAST blast starts", which is `startMs + (count-1) x everyMs` = 1185.
+
+         ⚠️ IT WAS `startMs` (800) FOR ABOUT TEN MINUTES AND THAT WAS TOO EARLY:
+         *"its vanishing too fast now, even before the explosion effects, let him
+         be there during the explosion, but then he vanishes."* The reason is in
+         the sheet -- `BOOM_RECTS` frame 0 is the blast still GROWING, barely
+         wider than nothing -- so removing him on the frame the first one fires
+         gave a boss, then a spark, then an explosion arriving after he had
+         already gone. **An explosion has to cover a thing before it can replace
+         it.**
+
+         ⚠️ THE DEFAULT IS DERIVED SO IT TRACKS THE STRING. By the last blast's
+         start every one of the eight is alight and the earliest are near their
+         widest, so the patch of screen he is standing on is solid explosion: he
+         goes UNDER the detonation, and it clears to nothing. Retuning `count` or
+         `everyMs` moves the vanish with the peak instead of stranding it at a
+         time that used to be one. A raw number still wins -- later leaves him
+         standing in the thinning tail, earlier is the bug above. */
+      vanishAt: null,
+    },
+    /* THE RED FLASH BEFORE THE EXPLOSIONS -- the moment his health hits 0 and
+       before the first blast. Asked for 2026-09-03: *"make him blow up like the
+       charutobi, so make him flash red, and them he blows up with the several
+       explosions."*
+
+       ⚠️ IT HAS NO DURATION OF ITS OWN. It runs until `DEATH_BOOM.startMs`, so
+       "flash, then blow up" is one number and cannot come apart -- a second one
+       drifting from the first is either a dead boss standing still doing nothing
+       or a flash carrying on through his own explosion.
+
+       ⚠️ AND IT IS ONLY THE TINT, WHERE THE CHARUTOBI'S IS TINT PLUS A TREMBLE.
+       His shudder swaps two borrowed drawings on the same beat as the red;
+       HORACIO'S PACK HAS NOT ONE ANIMATION FRAME IN IT, so there is nothing to
+       swap, and faking it by alternating armoured and exposed would flip between
+       a well body and a wounded one -- which the class header already forbids
+       for exactly this reason. **Take the half of a borrowed effect the art can
+       support and do not invent the other half.** */
+    DEATH_FUSE: {
+      /* THE BOMB'S PANIC RATE, via the charutobi, and one beat lit in three --
+         40ms of red every 120ms. Copied rather than aliased for the reason both
+         of theirs give: these want the same colour today, and a shared constant
+         would tie this death to a future retune of the bomb's panic. */
+      ms: 40,
+      tint: 'brightness(0) invert(24%) sepia(100%) saturate(4000%) ' +
+            'hue-rotate(-8deg) brightness(110%)',
+      tintAlpha: 0.85,
+    },
     WEIGHTS: { charge: 0.4, stab: 0.22, summon: 0.22, walk: 0.16 },
     /* WHICH WAY EACH OF THE EIGHT DRAWINGS LOOKS, in degrees: 0 is at the
        camera, 90 is screen RIGHT, 180 is away. Read off the sheet by eye.

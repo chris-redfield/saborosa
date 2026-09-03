@@ -104,6 +104,32 @@ class HoracioBoss {
     this.lookT = 0;
     this.hasHit = false;            // combat.bossHits writes this -- see hitbox()
 
+    /* HE GOES UP RATHER THAN DOWN, like the other two bosses. Asked for
+       2026-09-03: *"when he dies, he needs to blow up like the other bosses
+       with lots of explosion animations"*.
+
+       ⚠️ THE SAME `Booms` BOTH OTHERS USE, not a third copy. It was lifted out
+       of horse-boss.js the day the Mosca wanted the same death, and everything
+       that differs between the three -- how many, how far apart, how big -- is
+       already config. So this is one field, one `arm()` and one `draw()`, and
+       `CONFIG.HORACIO_BOSS.DEATH_BOOM` is the whole of his version.
+
+       ⚠️ AND THE PATTERN IS ROLLED AT THE MOMENT OF DEATH, not per frame. That
+       is `Booms`'s own rule and the most repeated mistake in this codebase's
+       effects; it is stated here because the temptation is to arm it in `draw`
+       where the sheet is, and `draw` runs sixty times a second. */
+    this.booms = new Booms();
+
+    /* HOW LONG HE STILL OWES THE FRONT POSE, in seconds -- see `_rise` and the
+       facing block in `update`. 0 = he is looking wherever the fight says. */
+    this._faceHoldT = 0;
+
+    /* WHERE HE STARTED THE SURFACING FROM -- see `_rise`. Null means the phase
+       has not begun; it is a captured value rather than a constant because he
+       surfaces from the peek (0.55) and from a full roam (0.86) and the climb
+       has to look the same length either way. */
+    this._riseFrom = null;
+
     /* THE SAME ARRIVAL THE DESERT'S MOOKS USE, deliberately: *"Ele sai pulando
        igual o resto da galera"*. Reusing `Emerge` rather than writing a rise
        here is what makes that literally true -- the heave, the step count, the
@@ -337,6 +363,20 @@ class HoracioBoss {
       this.dead = true;
       this.dieT = 0;
       this.phase = 'die';
+      /* ⚠️ ARMED HERE, ON THE BLOW, AND NOWHERE ELSE. `Booms.arm` rolls the
+         scatter once and stores it; calling it from `draw` would re-roll it
+         every frame, which is not an explosion, it is static. `sizePx()` and
+         not `CONFIG.sizePx` so the spread follows whichever body he died in --
+         he can die as the joaninha mid-theatre or as the grandao mid-stab, and
+         a fixed reference would scatter a 449px body's blasts across a 324px
+         one. */
+      this.booms.arm(CONFIG.HORACIO_BOSS.DEATH_BOOM, this.sizePx());
+      /* ⚠️ AND THE HOP IS ABANDONED. He can be killed mid-`_rise`, and `jumpY`
+         is only ever zeroed by the phase that raised it -- a corpse left in the
+         air explodes a body-height above the ground. Same family as every other
+         bug in this file: a thing left running after the state that owned it. */
+      this.jumpY = 0;
+      this._riseFrom = null;
     }
   }
 
@@ -356,10 +396,40 @@ class HoracioBoss {
       /* THE WHOLE BALL IS THE ATTACK -- there is no reach, he simply is
          dangerous where he is. So the box is his body, not a swing in front of
          it, and `dir` is which way he is rolling so the knockback throws the
-         player along the charge rather than into it. */
-      const hw = this.halfW(), hz = this.halfZ();
+         player along the charge rather than into it.
+
+         ⚠️ AND IT IS NOT `halfZ()`, WHICH IS WHAT IT WAS UNTIL 2026-09-03:
+         *"when he is doing the ball attack like charging, the collisions are
+         wrong, they are too low for his helmet position."* Measured off the
+         drawing rather than argued about -- at level 1, with `CHARGE.sunk`
+         applied, the ball's ink runs from 234px ABOVE his ground point down to
+         48px below it, and its widest row (the equator, under the helmet) is
+         116px above. `halfZ()` is 26. So the live box was a 52px band around his
+         FEET, sitting entirely under a ball 280px tall: the player was hit by
+         the floor beneath him and walked through the helmet untouched.
+
+         ⚠️ IT GROWS UPWARD AND KEEPS ITS FLOOR, which is the whole shape of the
+         fix. Extending the top can only ADD contacts, so nothing that connected
+         before stops connecting; centring the box on the helmet instead would
+         have moved it off the ground line entirely, and at the BACK lane (z 68)
+         a box centred 116px above that is at z -48, off the belt, unreachable by
+         any player -- a charge that could never hit anyone. **A box on a belt is
+         a depth, and a sprite's height is not depth.**
+
+         ⚠️ SO THE NUMBERS ARE FRACTIONS OF `sizePx()`, NOT PIXELS, and they are
+         read off the ball's MASS rather than its silhouette: the rows at least
+         half as wide as the equator span 199px above the ground point to 33px
+         below it, which is the sphere without the outermost spike tips. Taking
+         the tips too (0.66 up) is defensible and is a bigger box; it is a look
+         call and this is the conservative half of it. ⚠️ THEY SCALE WITH HIM
+         because `sizePx()` does -- he charges at `enterLevel` today, but the
+         grandao would want a bigger box and would get one. */
+      const hw = this.halfW();
+      const sz = this.sizePx();
+      const up = sz * (C.CHARGE.hitUpRel != null ? C.CHARGE.hitUpRel : 0.562);
+      const down = sz * (C.CHARGE.hitDownRel != null ? C.CHARGE.hitDownRel : 0.093);
       return { x0: this.x - hw, x1: this.x + hw,
-               z0: this.z - hz, z1: this.z + hz,
+               z0: this.z - up, z1: this.z + down,
                def: C.CHARGE, dir: this.chargeDir };
     }
     if (this.phase === 'stab' && this.t * 1000 >= (C.STAB.riseMs || 0)
@@ -384,6 +454,14 @@ class HoracioBoss {
     return g;
   }
 
+  /**
+   * ⚠️ THIS WAITS FOR THE WHOLE DEATH, NOT FOR `dead`, and with the blasts in it
+   * that is load-bearing rather than tidy. The room advances on this, and
+   * advancing while a blast is still alight cuts it off mid-frame -- the same
+   * failure that once hung the horse's corpse in mid-air through its outro.
+   * `dieMs` has to cover `Booms.spanMs(DEATH_BOOM)`; the note on it in config
+   * carries the sum and the warning to redo it.
+   */
   finished() {
     return this.dead && this.dieT >= (CONFIG.HORACIO_BOSS.dieMs || 900) / 1000;
   }
@@ -413,7 +491,28 @@ class HoracioBoss {
        last frame -- and tracking the player overwrote that on the very next
        one, so he played the whole thing in profile. A scripted display is not a
        state in which he is paying attention to anybody. */
-    if (this.phase !== 'emerge' && this.phase !== 'theatre') {
+    /* ⚠️ AND THE FRONT POSE OUTLASTS THE JUMP. Reported 2026-09-03: *"when he
+       jumps, it works, he is looking forward, BUT for very small time, right
+       afterwards he already looks at the player."* Holding it only for the
+       `rise` phase meant `_faceToward` took the facing back on the very frame he
+       landed, so the pose the player was meant to read was over the moment the
+       movement was. `RISE.holdMs` buys the landing its own beat.
+
+       ⚠️ IT IS A DEBT CARRIED ACROSS THE PHASE CHANGE, not a longer rise. The
+       rise has to end when the MOVEMENT ends -- stab, summon and walk all start
+       their own clocks from it -- so padding `surfaceMs` would have left him
+       hanging in the air instead. This is the facing alone outliving the phase
+       that set it.
+
+       ⚠️ AND IT IS SAFE ON THE STAB, WHICH LOOKS LIKE IT SHOULD NOT BE: that
+       attack's box is `x +/- reachX`, symmetric, so it reaches both ways
+       whatever he is facing. The facing there is cosmetic. If a directional
+       attack is ever added after a rise, THIS is the thing to check first. */
+    if (this._faceHoldT > 0) {
+      this._faceHoldT -= dt;
+      this.facing = (CONFIG.HORACIO_BOSS.outFacing != null)
+        ? CONFIG.HORACIO_BOSS.outFacing : 0;
+    } else if (this.phase !== 'emerge' && this.phase !== 'theatre') {
       this._faceToward(player);
     }
 
@@ -576,11 +675,105 @@ class HoracioBoss {
     if (this.t * 1000 >= B.peekMs) this._decide(player);
   }
 
-  /** Beats 7 and 9's opening: he comes all the way out. */
+  /**
+   * Beats 7 and 9's opening: he comes all the way out -- AND JUMPS OUT, since
+   * 2026-09-03. *"when he leaves the ground, he is just popping out, we want him
+   * to leave like the other enemies, like giving a little jump outside of the
+   * ground... only when he is like leaving entirely from the ground and standing
+   * after."*
+   *
+   * ⚠️ THIS PHASE IS THE WHOLE OF "LEAVING ENTIRELY", WHICH IS WHY THE HOP GOES
+   * HERE AND NOWHERE ELSE. Every other time he changes depth he is staying in
+   * the ground: the peek stops at `peekSunk` with his head out, the roam holds
+   * `roamSunk`, and the charge holds `CHARGE.sunk` for its whole crossing. This
+   * is the only phase that ends with him standing on the floor, and its three
+   * exits (stab, summon, walk) are exactly the "standing after" in the ask.
+   *
+   * ⚠️ IT IS THE SAME SHAPE AS `Emerge`'s, NOT THE SAME CODE, and that is a
+   * deliberate exception to how his ARRIVAL was built. Beat 1 reuses `Emerge`
+   * outright because it is a digger coming out of a hole; this is a body already
+   * halfway out of the floor moving the rest of the way, with no hole to open,
+   * no heave and no dust. What it borrows is the part that matters -- the split
+   * (`clearAt`), the stepped movement and the sine arc -- so the two hops read
+   * as one creature doing one thing twice, and `RISE.steps` defaults to
+   * `EMERGE.steps` rather than repeating the number.
+   *
+   * ⚠️ THE TWO HALVES SPLIT ONE DURATION, THEY DO NOT ADD ONE -- `Emerge`'s rule
+   * and it holds here for a different reason. He must be OUT before he is in the
+   * air: run the climb and then a hop with its own clock, and the arc starts
+   * from a body still sunk in the floor, which reads as him being winched.
+   *
+   * ⚠️ AND HE UNBALLS AT THE START, NOT AT THE END. This used to hold the ball
+   * for the whole climb and flip to the standing body on the last frame -- a
+   * change of body at the one moment he is fully visible, which is the loudest
+   * possible place to put it and is half of what "just popping out" was. Coming
+   * up as the body he is going to be leaves nothing to pop. `RISE.unballAtStart:
+   * false` restores the old order.
+   */
   _rise(dt, player) {
     const B = CONFIG.HORACIO_BOSS.BALL;
-    if (this._easeSunk(dt, 0, B.surfaceMs)) {
+    const R = CONFIG.HORACIO_BOSS.RISE || {};
+    /* ⚠️ CAPTURED, NOT ASSUMED TO BE 1. He surfaces from the peek (0.55) and,
+       if the peek is ever skipped, from a full roam (0.86) -- easing from a
+       constant would make one of the two start with a jump. */
+    if (this._riseFrom == null) {
+      this._riseFrom = this._sunk;
+      if (R.unballAtStart !== false) this.state = 0;
+    }
+    /* ⚠️ HE COMES OUT FACING THE CAMERA, and this is written every frame rather
+       than once on entry because `update` calls `_faceToward(player)` before it
+       dispatches to this phase. Setting it once would be overwritten on the very
+       next frame -- which is exactly the bug the theatre hit ("he played the
+       whole thing in profile"), and the reason `_summon` sets its pose here too.
+
+       Asked for 2026-09-03: *"he should always spawn (jump from the ground)
+       looking to the front... right now he spawns looking to the front when he
+       is calling the charutobis, so copy that behavior."* So it is literally the
+       summon's value, `outFacing`.
+
+       ⚠️ AND IT OUTLASTS THE PHASE BY `RISE.holdMs`. It used to end on the frame
+       he landed -- *"he is looking forward, BUT for very small time, right
+       afterwards he already looks at the player"* -- because `_faceToward` runs
+       for every phase but the emerge and the theatre. The debt is paid down in
+       `update`; see the note there. */
+    this.facing = (CONFIG.HORACIO_BOSS.outFacing != null)
+      ? CONFIG.HORACIO_BOSS.outFacing : 0;
+    const ms = Math.max(1, B.surfaceMs || 560);
+    let u = Math.min(1, (this.t * 1000) / ms);
+    /* THE SAME QUANTISER THE MOOKS CLIMB ON. He owns no animation frames at all,
+       so -- exactly as with a digger holding one drawing -- the MOVEMENT is the
+       only thing there is to make choppy. ⚠️ The last step has to land on 1: a
+       hop that stops a frame short leaves him permanently a few px in the air.
+       0 or 1 = smooth. */
+    const steps = R.steps != null ? R.steps
+                : ((CONFIG.EMERGE && CONFIG.EMERGE.steps) || 0);
+    if (steps > 1) u = Math.round(u * (steps - 1)) / (steps - 1);
+
+    const c = Math.min(0.95, Math.max(0.05, R.clearAt != null ? R.clearAt : 0.55));
+    if (u < c) {
+      /* Coming through the floor. `jumpY` stays 0 -- the clip is at `groundY()`
+         and lifting him here would raise the floor line with him. */
+      this._sunk = this._riseFrom * (1 - u / c);
+      this.jumpY = 0;
+    } else {
+      /* Airborne. One sine, so there is no hang at the top -- `Emerge`'s curve
+         and its reason. Scaled by depth like everything else he does, so a hop
+         at the back of the belt is not a near one drawn small. */
+      this._sunk = 0;
+      const k = (u - c) / (1 - c);
+      this.jumpY = Math.sin(Math.PI * k)
+                 * (R.hopPx != null ? R.hopPx : 67) * this.depthScale();
+    }
+
+    if (u >= 1) {
+      this.jumpY = 0;
+      this._sunk = 0;
       this.state = 0;                  // armoured again -- the shell reopens
+      this._riseFrom = null;
+      /* ...and he keeps looking at the camera for a moment after landing. See
+         the facing block in `update` for why this is a debt rather than a
+         longer phase. */
+      this._faceHoldT = (R.holdMs != null ? R.holdMs : 500) / 1000;
       this._to(this.next === 'stab' ? 'stab'
              : this.next === 'summon' ? 'summon' : 'walk');
     }
@@ -745,8 +938,15 @@ class HoracioBoss {
     if (!this.emerge) { this._to('theatre'); return; }
     if (!this.emerge.started) this.emerge.start(this.x, this.z);
     this.emerge.update(dt);
-    // He comes up facing whoever he came up at.
-    this.facing = (player && player.x < this.x) ? 6 : 2;
+    /* ⚠️ FRONT, NOT SIDE-ON AT THE PLAYER, SINCE 2026-09-03. This used to be
+       `(player && player.x < this.x) ? 6 : 2` -- "he comes up facing whoever he
+       came up at" -- and it was the other half of *"he is only spawning to his
+       side."* It also meant his very first appearance turned through 90 degrees
+       the instant the arrival finished, because the theatre sets the front pose
+       below: a snap that nobody had reported but that this removes for free.
+       One rule for both ways he leaves the ground -- see `outFacing`. */
+    this.facing = (CONFIG.HORACIO_BOSS.outFacing != null)
+      ? CONFIG.HORACIO_BOSS.outFacing : 0;
     if (this.emerge.done) {
       this.emerge = null;
       /* ⚠️ HAND THE DEPTH OVER, AND FORGETTING THIS MADE HIM VANISH. `_sunk`
@@ -760,7 +960,10 @@ class HoracioBoss {
          when the arrival finishes, so it is 0, and every sink after this is an
          eased phase rather than a jump. */
       this._sunk = 0;
-      this.facing = 0;              // and turns to the front for the show
+      /* ...and holds the front for the show. Written even though the arrival
+         already leaves him there: the theatre is performed AT THE CAMERA and
+         that is its own requirement, not a side effect of how he arrived. */
+      this.facing = 0;
       /* WHERE THE FIGHT IS. Every later goal is measured from the spot he
          arrived at rather than from wherever he happens to be, so a run of
          charges cannot walk the whole fight off down the room. */
@@ -844,7 +1047,6 @@ class HoracioBoss {
   draw(ctx, assets, camX) {
     const d = this._packs(assets);
     if (!d) return;
-    const C = CONFIG.HORACIO_BOSS;
 
     /* THE BODY HE IS WEARING IS A FUNCTION OF HIS HEALTH -- see `_bodyState`.
        `this.state` carries what the PHASE needs (balled or upright) and the
@@ -854,7 +1056,6 @@ class HoracioBoss {
     if (this.state !== 2) this.state = this._bodyState(d);
     const f = this._frame(d);
     this.state = wasState;
-    if (!f) return;
 
     const dsc = this.depthScale();
     const gx = this.groundX(camX);
@@ -862,8 +1063,174 @@ class HoracioBoss {
     /* ⚠️ ONE TEXTURE PER LEVEL, so the frame says which. See manifest.js for
        why the pack is split at all. A level whose atlas has not loaded draws
        nothing rather than drawing out of the wrong sheet. */
-    const img = assets.getDrawable('horacio' + (f.sheet || 0));
+    const img = f ? assets.getDrawable('horacio' + (f.sheet || 0)) : null;
+
+    /* ⚠️ THE TWO `return`s THAT USED TO BE HERE ARE NOW A GUARD ROUND THE BODY,
+       AND THAT IS BECAUSE OF THE DEATH BLASTS. A missing frame or an unloaded
+       atlas used to abandon the whole method, which was harmless while the body
+       was the only thing it drew -- and would now take the explosions with it,
+       so a boss whose art hiccupped on the frame he died would simply vanish.
+       Same correction `Emerge.draw` needed the day it gained the dust: **an
+       effect that outlives the thing it happens to has to re-read every early
+       return above it.** */
+    if (f && img) this._drawBody(ctx, f, img, dsc, gx, gy);
+
+    /* THE HOLE, and only the hole. It is a mark on the FLOOR and belongs under
+       everything, in his own plane -- which is where this method is drawn from
+       whenever he is in the ground. ⚠️ THE DUST THAT COMES OUT OF IT IS NOT
+       HERE ANY MORE; see `drawFX`. */
+    if (this.emerge) this.emerge.draw(ctx, camX, dsc);
+  }
+
+  /**
+   * HIS EXPLOSIONS -- the arrival's dust and the death's string -- drawn in
+   * their own pass, over the floor.
+   *
+   * ⚠️ THEY CANNOT LIVE IN `draw()`, AND THIS IS THE BUG THAT MOVED THEM
+   * (2026-09-03). Whenever he is in the ground `behindScenery()` is true and
+   * game.js paints him BETWEEN two bands of the cigarette floor -- that
+   * injection is what makes him look like he is coming through it. Anything
+   * drawn from inside `draw()` inherits that plane, so his arrival dust was
+   * being painted under the mounds, and the death blasts would have been too:
+   * he is killed at the PEEK more often than anywhere else (it is the fight's
+   * one reliable opening, at `peekSunk` 0.55), which is exactly the state that
+   * buries them. **A body under the floor is the effect; an explosion under the
+   * floor is a bug** -- the identical correction `Emerge.drawBoom` needed on
+   * 2026-09-01, for the identical reason, one level up.
+   *
+   * ⚠️ THE HOLE STAYS BEHIND. It is a mark on the floor and belongs under the
+   * mounds; only the things in the AIR move out. Same split as the mooks'.
+   *
+   * ⚠️ AND game.js CALLS THIS LAST, after the whole entity pass, rather than in
+   * the diggers' dust pass. That pass anchors its effects to the PLAYER's slot
+   * in the z sort, which works for a digger because a digger is always behind
+   * the floor; HE IS DRAWN FROM TWO DIFFERENT PASSES depending on his depth, so
+   * any fixed slot leaves one of the two cases with his own body painted over
+   * his own explosions.
+   *
+   * ⚠️ AND IT IS OUTSIDE THE GROUND CLIP `draw()` SETS, which is the second half
+   * of the same problem: blasts inside that scissor would be cut off at the
+   * floor line they are supposed to be blowing apart.
+   *
+   * ⚠️ THE DEATH STRING RUNS ON `dieT`, THE SAME CLOCK `finished()` READS, so
+   * the fade, the blasts and the room advancing cannot drift apart when `dieMs`
+   * is retuned. A missing sheet costs the effect and nothing else.
+   */
+  drawFX(ctx, assets, camX) {
+    const img = assets && assets.getDrawable('boom');
     if (!img) return;
+    const dsc = this.depthScale();
+    if (this.emerge && this.emerge.booming) {
+      this.emerge.drawBoom(ctx, img, camX, dsc);
+    }
+    if (this.dead && this.booms.armed) {
+      this.booms.draw(ctx, img, this.groundX(camX), this.groundY(), this.dieT);
+    }
+  }
+
+  /**
+   * THE FUSE: the red flash between his health hitting 0 and the first blast.
+   *
+   * Asked for 2026-09-03: *"before he dies, when his HP reaches 0, make him blow
+   * up like the charutobi, so make him flash red, and them he blows up with the
+   * several explosions."*
+   *
+   * ⚠️ IT IS THE CHARUTOBI'S BLINK, NOT A NEW ONE -- the same filter string
+   * (which is the bomb's panic red), the same 40ms rate, the same ONE BEAT LIT
+   * IN THREE. Copied rather than aliased for the reason his own note gives:
+   * these are different objects that want the same colour today, and sharing a
+   * constant would tie this death to a future retune of the bomb.
+   *
+   * ⚠️ AND IT IS ONLY THE TINT, BECAUSE HE HAS NOTHING TO TREMBLE WITH. The
+   * charutobi's shudder is two things -- a red flash AND two borrowed drawings
+   * swapped on the same beat. There is not one animation frame anywhere in
+   * HORACIO's pack, so the drawing half has nothing to play; faking it by
+   * alternating armoured and exposed would flip between a well body and a
+   * wounded one, which this file's header already forbids. **Take the half of a
+   * borrowed effect the art can support, and do not invent the other half.**
+   *
+   * ⚠️ ITS LENGTH IS `DEATH_BOOM.startMs`, ASKED RATHER THAN TYPED. The flash
+   * runs until the first blast fires, which is what "and then he blows up"
+   * means; a second number would be a second thing to keep in step, and the two
+   * drifting apart is either a silent gap of a dead boss standing still or a
+   * flash that carries on through his own explosion.
+   */
+  _fuseTint() {
+    if (!this.dead) return null;
+    const C = CONFIG.HORACIO_BOSS;
+    const B = C.DEATH_BOOM, F = C.DEATH_FUSE;
+    if (!F || !F.tint || !B || !B.on) return null;
+    const until = (B.startMs || 0) / 1000;
+    if (until <= 0 || this.dieT >= until) return null;
+    const ms = F.ms || 40;
+    const lit = (this.dieT * 1000) % (ms * 3) < ms;
+    return lit ? { tint: F.tint,
+                   tintAlpha: F.tintAlpha != null ? F.tintAlpha : 0.85 } : null;
+  }
+
+  /**
+   * WHEN THE BODY IS TAKEN AWAY, in seconds from the death. `Infinity` with the
+   * blasts off, which leaves the plain fade in `_drawBody` as the only death.
+   *
+   * ⚠️ THE DEFAULT IS "WHEN THE LAST BLAST STARTS", ASKED RATHER THAN TYPED.
+   * *"let him be there during the explosion, but then he vanishes."* By that
+   * frame every blast in the string is alight and the earliest ones are near
+   * their widest, so the screen where he is standing is full of explosion -- he
+   * goes UNDER the detonation and it is gone before it is, which is the shape
+   * the ask describes. Deriving it from `startMs`, `count` and `everyMs` means
+   * retuning the string moves the vanish with it instead of stranding it at a
+   * time that used to be the peak.
+   *
+   * ⚠️ A RAW `vanishAt` IN MS STILL WINS -- the `atFrame`-vs-`atMs` bargain this
+   * file makes everywhere. Later than this and he stands in the thinning tail;
+   * earlier and he is gone before the explosion has grown enough to hide him,
+   * which is the failure that produced this method.
+   */
+  _vanishAtS() {
+    const B = CONFIG.HORACIO_BOSS.DEATH_BOOM;
+    if (!B || !B.on) return Infinity;
+    const ms = (B.vanishAt != null)
+      ? B.vanishAt
+      : (B.startMs || 0) + Math.max(0, (B.count || 7) - 1) * (B.everyMs || 180);
+    return ms / 1000;
+  }
+
+  /**
+   * The body itself. Split out of `draw` on 2026-09-03 so that a missing frame
+   * cannot skip the death blasts -- it has no other reason to exist and nothing
+   * else calls it.
+   */
+  _drawBody(ctx, f, img, dsc, gx, gy) {
+    const C = CONFIG.HORACIO_BOSS;
+    const B = C.DEATH_BOOM;
+
+    /* ⚠️ HE IS NOT DRAWN AT ALL PAST `vanishAtS()` -- no fade, no strobe, he is
+       simply not there. Asked for 2026-09-03: *"remove the stroboscopic thing,
+       but also remove the fading, we want it to look like he is blowing up, and
+       we haven't achieved that effect, can you make him blow and vanish at
+       once?"*
+
+       ⚠️ AND THE MOMENT IS NOT `startMs`, WHICH IS WHERE IT WENT FIRST. Removing
+       him on the frame the first blast FIRES was reported straight back: *"its
+       vanishing too fast now, even before the explosion effects, let him be
+       there during the explosion, but then he vanishes."* The reason it read
+       that way is in the sheet: `BOOM_RECTS` frame 0 is the blast still GROWING,
+       barely wider than nothing, so at `startMs` there is a boss one frame and a
+       spark the next, with the explosion arriving after he has already gone.
+       **An explosion has to cover a thing before it can replace it.** See
+       `_vanishAtS`.
+
+       ⚠️ BOTH OF THE THINGS THIS REPLACES ARE DELETED RATHER THAN SWITCHED OFF,
+       which is what this project does with a look that was refused (see the
+       emerge rim, the film filter). There is no `fadeMs` and no `fadeStrobeMs`
+       any more: a linear ramp made him a ghost, and a shrinking duty made him a
+       ghost with a flicker. **Neither is an explosion, because an explosion does
+       not make a body TRANSPARENT -- it replaces it.**
+
+       ⚠️ WITH THE BLASTS OFF (`DEATH_BOOM.on: false`) the plain fade over
+       `dieMs` is still down below -- that is the death this had before any of
+       this, and it is one flag away. */
+    if (this.dead && this.dieT >= this._vanishAtS()) return;
 
     /* HOW FAR HE IS STILL IN THE GROUND. `Emerge.sunk` is 1 while buried and 0
        once he is out, and it is applied as a DOWNWARD OFFSET under a clip at
@@ -883,31 +1250,49 @@ class HoracioBoss {
       ctx.clip();
     }
     let alpha = 1;
-    if (this.hurtT > 0) {
+    /* THE HIT BLINK. ⚠️ NOT WHILE HE IS DEAD, and that is new with the fuse: the
+       killing blow sets `hurtT` like any other, so its 60ms half-alpha flicker
+       used to run through the first 300ms of the red flash -- two blinks on
+       different beats over the same body, which reads as noise rather than as
+       either of them. The flash already says a blow landed, and it says the
+       bigger thing. */
+    if (this.hurtT > 0 && !this.dead) {
       const period = (CONFIG.hurtBlinkMs || 60) / 1000;
       alpha = (Math.floor(this.hurtT / period) % 2) ? 0.55 : 1;
     }
-    if (this.dead) {
-      const p = Math.min(1, this.dieT / ((C.dieMs || 900) / 1000));
-      alpha *= 1 - p;
+    /* THE ONLY DEATH LEFT THAT TOUCHES OPACITY, and it is the one WITHOUT the
+       explosions -- the plain fade this boss had before them, kept as the
+       fallback behind `DEATH_BOOM.on`. While the blasts are on, the guard at the
+       top of this method has already returned and nothing here runs. */
+    if (this.dead && !(B && B.on)) {
+      alpha *= 1 - Math.min(1, this.dieT / ((C.dieMs || 900) / 1000));
     }
+    const dx = Math.round(gx - f.ax * dsc);
+    const dy = Math.round(gy - f.ay * dsc + sunk * h);
+    const dw = Math.round(f.w * dsc), dh = Math.round(h);
     ctx.globalAlpha = alpha;
-    ctx.drawImage(img, f.x, f.y, f.w, f.h,
-                  Math.round(gx - f.ax * dsc),
-                  Math.round(gy - f.ay * dsc + sunk * h),
-                  Math.round(f.w * dsc), Math.round(h));
-    ctx.restore();
+    ctx.drawImage(img, f.x, f.y, f.w, f.h, dx, dy, dw, dh);
 
-    /* THE HOLE AND THE DUST, drawn by the arrival itself. ⚠️ THE BOSS HAS TO DO
-       THIS ITSELF: game.js's dust pass walks `crowd.list`, and a boss is not in
-       the crowd -- it is `stage.boss`. A missing burst sheet costs the dust and
-       nothing else, which is the standing rule for a borrowed asset here. */
-    if (this.emerge) {
-      this.emerge.draw(ctx, camX, dsc);
-      const boom = assets.getDrawable('boom');
-      if (boom && this.emerge.booming) {
-        this.emerge.drawBoom(ctx, boom, camX, dsc);
-      }
+    /* THE FUSE'S RED, AS A SECOND BLIT THROUGH A FILTER over the first -- the
+       arrangement sheets.js uses for the charutobi, copied down to the order.
+       ⚠️ IT IS THE SAME FOUR NUMBERS, NOT A RE-DERIVED PLACEMENT. A tint drawn
+       from its own arithmetic lines up while the body is still and slides off it
+       the moment anything moves the sprite -- the bug the bomb's panic tint hit,
+       which is why that one re-blits through the same closure. Here the
+       destination rect is computed once above and both passes use it.
+       ⚠️ AND THE FILTER OPENS WITH `brightness(0)`: hue and saturate are no-ops
+       on dark ink, so the recipe crushes to black first and builds the colour
+       back up. An unsupported `filter` makes this a plain redraw -- invisible,
+       not broken. */
+    const ft = this._fuseTint();
+    if (ft) {
+      ctx.filter = ft.tint;
+      ctx.globalAlpha = alpha * ft.tintAlpha;
+      ctx.drawImage(img, f.x, f.y, f.w, f.h, dx, dy, dw, dh);
     }
+    /* ⚠️ AND `restore()` IS WHAT CLEARS `filter`. It is canvas state like the
+       clip and the alpha, so leaving it set would tint the next thing anybody
+       draws this frame. */
+    ctx.restore();
   }
 }
