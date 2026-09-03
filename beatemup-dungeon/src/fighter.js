@@ -977,8 +977,16 @@ class Fighter {
        the knockdown PHASE — the same rule as the attack poses, and for the
        same reason: the drawing can then never disagree with the state the
        fighter is actually in, whatever `downLandMs` and friends are retuned to.
-       A pack whose row only falls over (the coconut's) declares no phase poses
-       and keeps the single `down`. */
+       A pack that declares no phase poses keeps the single `down`.
+
+       ⚠️ AND THAT FALLBACK PLAYS THE ROW ONCE PER PHASE, NOT ONCE PER
+       KNOCKDOWN, because `stateT` restarts at every phase change. It is correct
+       for the grid packs -- their `down` is one drawing -- and it was a visible
+       bug for the coconut, whose six-frame row ran three times through one
+       knockdown until he was given the slices on 2026-09-03: *"the animation
+       cycles 3 times, I want it to cycle only one time"*. Any ragged pack with a
+       multi-frame knockdown row wants the three poses; the fallback is for packs
+       that have nothing to slice. */
     if (this.state === 'down') {
       const phase = this.downPhase === 'lie' ? 'downLie'
                   : this.downPhase === 'rise' ? 'downRise' : 'downLand';

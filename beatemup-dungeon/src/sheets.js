@@ -108,9 +108,19 @@ class Sheets {
              native: data.native || 'right',
              /* POSE MAP PER PACK. `CONFIG.POSE_RAGGED` is the shared table, but
                 two ragged sheets do not have to hold the same moves in the same
-                rows: the coconut's knockdown row is six frames of falling over,
-                the cigarette's is a fall AND a stand-up, so the same `down`
-                slice cannot serve both. A pack overrides only what differs. */
+                rows: a pack's combo row can be three wind-up/strike pairs where
+                the shared table slices five, so the same entry cannot serve
+                both. A pack overrides only what differs.
+
+                ⚠️ THE EXAMPLE THAT USED TO BE HERE WAS WRONG, and it is what
+                made a bug survive: it said the coconut's knockdown row was "six
+                frames of falling over" against the cigarette's "fall AND a
+                stand-up". Both rows are a fall and a stand-up -- the six
+                drawings were put side by side on 2026-09-03 and 0-2 is going
+                over, 3 is flat, 4-5 is getting back up. The coconut simply had
+                no phase slices written, so all three knockdown phases replayed
+                the whole row. **A comment that explains why something is
+                missing will stop anyone noticing that it is missing.** */
              poses: Object.assign({}, CONFIG.POSE_RAGGED, (def && def.poses) || {}),
              scale: CONFIG.fighterSizePx / refH, refH };
   }

@@ -317,9 +317,40 @@ class Emerge {
    * -- the burst has to punctuate an arrival the player can already see, or it
    * is a puff of dust over nothing that he then walks out of.
    */
+  /**
+   * ⚠️ AND `boomDelayMs` IS MEASURED FROM `clearAt`, NOT FROM THE START OF THE
+   * ARRIVAL, which is the one thing about this number that has to be read
+   * before it is turned. Reported 2026-09-03: *"this explosion animation is set
+   * to run like 7 ms after the first animation starts... its taking more than
+   * 7ms... in 15ms the explosion was taking too long, but when I reduced to 7,
+   * not much changed."* Nothing was broken. The burst goes off at
+   *
+   *     heaveMs + riseMs x clearAt + boomDelayMs
+   *     380     + 560    x 0.55    + 7            = 695ms
+   *
+   * after the ground starts opening, so 15 -> 7 moved 8ms of 695 -- a HALF FRAME
+   * at 60Hz, out of a wait of forty-two. **A relative knob cannot be judged
+   * against the wrong zero**, and this one's zero is 688ms in.
+   *
+   * ⚠️ SO THERE ARE TWO OF THEM NOW, AND THE PAIR IS `DEATH_BLAST`'s `atFrame`
+   * vs `atMs` EXACTLY: `boomDelayMs` ASKS THE CLIMB (it rides `heaveMs`,
+   * `riseMs` and `clearAt`, so retiming any of them keeps the burst on the
+   * break-through, which is where it belongs), and `boomAtMs` TELLS IT (a raw
+   * time from the ground opening -- what the ask above was written in, and the
+   * only way to put the burst BEFORE `clearAt` without moving the hop, since
+   * `clearAt` also splits the rise). Prefer the relative one; `boomAtMs` wins
+   * when it is set, and goes stale the moment the climb is retimed.
+   */
   get _boomAtS() {
+    /* Set = the whole answer, from `start()`. Nothing else is read. */
+    if (this.cfg.boomAtMs != null) return this.cfg.boomAtMs / 1000;
     const c = Math.min(0.95, Math.max(0.05,
       this.cfg.clearAt != null ? this.cfg.clearAt : 0.55));
+    /* ⚠️ NOT FLOORED AT 0. Negative is meaningful and is the cheap way to pull
+       the burst in FRONT of the break-through while `clearAt` -- and so the hop
+       -- stays exactly where it is. `drawBoom` and `booming` both bail while
+       `since < 0`, so an anchor before the hole opens simply starts the burst
+       on frame 0 of the arrival. */
     const d = (this.cfg.boomDelayMs != null ? this.cfg.boomDelayMs : 200) / 1000;
     return this._heave + this._rise * c + d;
   }

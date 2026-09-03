@@ -1558,7 +1558,35 @@ const CONFIG = {
                    and if the dedupe ever folds this frame differently the slot
                    moves. If the ending suddenly shows the wrong drawing, this
                    line is why. Verify against the atlas, not against the name. */
-                poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
+                poses: {
+                  victory: { anim: 'jump', from: 2, to: 3 },
+                  /* THE KNOCKDOWN, SLICED BY PHASE -- and until 2026-09-03 it
+                     was not, which is the bug this fixes. The pack owns a
+                     SINGLE six-frame `knockdown` row and declared no phase
+                     poses, so `Fighter.pose` fell back to the one `down` pose
+                     for all three phases. `stateT` RESTARTS AT EVERY PHASE
+                     CHANGE, so that one row played from frame 0 three times
+                     over a single knockdown -- once on the fall, once lying
+                     down, once getting up. Reported as *"the animation cycles 3
+                     times, I want it to cycle only one time"*.
+
+                     ⚠️ THE FIX IS DATA, NOT A CLOCK. Nothing about the three
+                     phases or their durations changed; the row is simply cut
+                     where the motion changes, exactly as every cigarette's is,
+                     and each phase then owns the drawings it was drawn for. Cut
+                     off the ART: 0-2 is going over, 3 is flat on his back, 4-5
+                     is coming back up angry.
+
+                     ⚠️ IT ALSO SPENDS THE TIME BETTER. As one row at
+                     `POSE_MS.down` (110ms) the six frames were over in 660ms and
+                     then held; the phases are 520/620/320, so the fall now takes
+                     173ms a frame, the flat drawing is HELD for the whole lie,
+                     and the stand-up runs out exactly as he gets control back.
+                     See the `phaseMs` branch in Fighter.frameStep. */
+                  downLand: { anim: 'knockdown', from: 0, to: 3 },
+                  downLie:  { anim: 'knockdown', from: 3, to: 4 },
+                  downRise: { anim: 'knockdown', from: 4, to: 6 },
+                } },
 
     /* THE STRONG COCONUT — the same thirteen rows, drawn again as a different
        character, from `coconut-strong-sprites-fim.png` (2026-08-26). Same pose
@@ -1609,7 +1637,16 @@ const CONFIG = {
                         untouched -- see the note at the hit site in combat.js
                         -- so this is weight, not power. */
                      knockbackScale: 1.15,
-                     poses: { victory: { anim: 'jump', from: 2, to: 3 } } },
+                     /* The same six-frame row at the same cut -- see the
+                        note on LEBRON's. Both packs are the illustrator's same
+                        thirteen rows, so the bounds are his too, not a second
+                        reading of a second drawing. */
+                     poses: {
+                       victory:  { anim: 'jump', from: 2, to: 3 },
+                       downLand: { anim: 'knockdown', from: 0, to: 3 },
+                       downLie:  { anim: 'knockdown', from: 3, to: 4 },
+                       downRise: { anim: 'knockdown', from: 4, to: 6 },
+                     } },
 
     /* CIGARRO — THE FIRST VILLAIN WITH ART OF HIS OWN, and he replaced JUIXY
        wave for wave rather than joining the cast: the orange was the main
@@ -5216,7 +5253,67 @@ const CONFIG = {
        695ms it ends at 1262 against a `done` of 1360 -- 98ms of slack. `stride`
        lengthens the burst as well as thinning it, so the two knobs share this
        budget; `settleMs` is what buys more of it. */
+    /* ⚠️ AND IT IS MEASURED FROM `clearAt`, NOT FROM THE START OF THE ARRIVAL.
+       Reported 2026-09-03: *"this explosion animation is set to run like 7 ms
+       after the first animation starts. But this is not working, its taking more
+       than 7ms... in 15ms the explosion animation was taking too long, but when
+       I reduced to 7, not much changed."* Nothing is broken and the number is
+       not wrong -- it is read against a zero 688ms in:
+
+           heaveMs + riseMs x clearAt + boomDelayMs
+           380     + 560    x 0.55    + 7            = 695ms
+
+       so 15 -> 7 moved EIGHT of those 695. Half a frame at 60Hz out of a
+       forty-two frame wait, which is exactly the "not much changed" that was
+       reported. **A relative knob cannot be judged against the wrong zero.** If
+       the burst is wanted visibly earlier, this is not the knob with the room in
+       it -- `boomAtMs` below is, or a NEGATIVE value here, which is legal and
+       pulls the burst in front of the break-through without touching the hop. */
     boomDelayMs: 7,
+    /* THE SAME MOMENT AS A RAW TIME FROM THE GROUND OPENING, or `null` to let
+       `boomDelayMs` above decide. `null` resolves to 695ms, to the millisecond,
+       so switching between the two is a comparison rather than a jump.
+
+       ⚠️ SET TO 395 ON 2026-09-03, ON REQUEST: *"instead of 695ms, make it blow
+       at 395ms."* That is 300ms EARLIER, and it moves the burst to the far side
+       of a landmark rather than nudging it -- the hole finishes opening at 380,
+       his head does not break the surface until 688, so the dust now goes off
+       over an OPEN, EMPTY hole and he climbs up THROUGH it. It is a different
+       reading of the effect, not a retimed one: the burst stops punctuating his
+       arrival and becomes the thing he arrives out of.
+
+       ⚠️ AND IT NOW COVERS THE WHOLE CLIMB. The strided tail is 567ms, so it
+       runs 395 -> 962 against a landing at 940 -- the dust clears 22ms after he
+       is on his feet, where at 695 it ran to 1262 and he fought through the last
+       300ms of it. That is why this is worth a look even though it is one
+       number: the burst used to outlive the arrival and now ends with it.
+
+       ⚠️ `boomDelayMs: 7` ABOVE IS DEAD WHILE THIS IS SET, and it is left at 7
+       rather than cleared because it is the tuned relative answer -- six rounds
+       of halving -- and `boomAtMs: null` is how you get back to it.
+
+       ⚠️ THIS IS `DEATH_BLAST`'s `atFrame`-vs-`atMs` BARGAIN, SECOND VERSE, and
+       the same warning applies. `boomDelayMs` ASKS THE CLIMB -- it rides
+       `heaveMs`, `riseMs` and `clearAt`, so retiming any of the three keeps the
+       burst on the break-through, which is the beat it is supposed to punctuate.
+       This one TELLS it, and goes silently stale the moment the climb is
+       retimed. Prefer the relative one; reach for this when the timing you want
+       is not a fixed distance from `clearAt` at all.
+
+       ⚠️ IT IS ALSO THE ONLY WAY TO PUT THE BURST *BEFORE* THE BREAK-THROUGH
+       WITHOUT MOVING THE HOP. `clearAt` is not a burst knob -- it SPLITS the
+       rise into "coming through the floor" and "airborne", so dragging it down
+       to fetch the dust earlier shortens the climb and lengthens the hop at the
+       same time. That is why the note above says a further cut is honestly
+       `clearAt`, and why this exists instead: it is the same cut with the
+       movement left alone.
+
+       ⚠️ AND THE FLOOR ON IT IS ~688, NOT 0. Below that the burst goes off over
+       a hole nobody has come out of yet, which is the exact look that was
+       refused when it fired ON `clearAt`: *"it blows before the enemy even
+       becomes visible but in a bad way."* Anything under one frame (~16ms) of
+       695 will also not be distinguishable from 695 on a 60Hz display. */
+    boomAtMs: 395,
     /* THE HOLE CLOSING, and it runs AFTER he is released -- he is walking and
        swinging while this plays out. Ticked on the effect's own clock in
        Enemy.update rather than in the AI branch that waited on it, for the

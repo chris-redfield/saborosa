@@ -307,16 +307,35 @@ Looping poses (idle, walk) run off a free-running clock and wrap. One-shot
 poses (down, death) play forward once and **hold the last frame** — holding
 matters, or a death would loop and resurrect the corpse every second.
 
-**`hurt` cycles rather than holding**, and it is the exception on purpose. A
-flinch drawn as two poses is a shudder, and a shudder frozen on its second frame
-reads as a fighter that got stuck. Every other one-shot ends in a state worth
-holding — dead, or on the floor; this one ends by standing back up. At `hurtMs`
-260 and 100ms a frame that is two frames and a repeat of the first.
+**`hurt` does not read this table at all**, and that is the exception. ⚠️ *This
+paragraph used to say it cycles its two drawings through one stun, and that was
+reversed on 2026-08-24:* *"for every hit we use one of these frames, they should
+alternate for each hit."* Cycling meant every blow played the same 0-1-0 shudder,
+so two different flinches read as one animation. It is now **one drawing per
+blow, held** — picked by a counter bumped in `Fighter.hurt` and taken modulo the
+row, so a re-cut sheet with three flinches alternates three. `POSE_MS.hurt` is
+dead for this pose as a result.
 
 **A pack whose knockdown row also stands up** does not use the `down` row above
 at all: it is sliced by phase and each slice is spread across its own phase
 (`downLandMs` / `downLieMs` / `downRiseMs`), the way the jump is spread across
-its arc. That is the cigarette; see his sprite section.
+its arc. **That is every ragged pack in the game** — the cigarettes, and since
+2026-09-03 both coconuts.
+
+> ⚠️ **The coconut was the odd one out, and it was a bug rather than a style.**
+> He declared no phase poses, so all three phases fell back to the single `down`
+> — and `stateT` restarts at every phase change, so his six-frame row played from
+> frame 0 **three times** in one knockdown. Reported 2026-09-03: *"the animation
+> cycles 3 times, I want it to cycle only one time."* The six drawings were put
+> side by side and they are a fall **and** a stand-up, exactly like the
+> cigarette's: 0–2 going over, 3 flat on his back, 4–5 back up angry. So the fix
+> is three lines of data per pack (`downLand` 0–3 / `downLie` 3–4 / `downRise`
+> 4–6) and no code at all. ⚠️ It also spends the time better: at 110 ms a frame
+> the row was over in 660 ms and then held, where the phases are 520/620/320 — so
+> the fall now takes 173 ms a frame, the flat drawing is **held** for the whole
+> lie, and the stand-up runs out exactly as he gets control back. ⚠️ **What made
+> this survive is that a comment explained it away**: `sheets.js` said the
+> coconut's row was "six frames of falling over", which is not what the row is.
 
 **Picking up** spreads its frames across the action rather than running at a
 fixed rate, so the drawing always fills exactly the time the player is committed
@@ -1781,7 +1800,8 @@ clearAt: 0.55,       // fraction of the rise spent still coming through the floo
 holdFrame: 2,        // the stretched jump frame, held for the whole climb
 boomFrom: 5,         // dust as he breaks the surface — the HOLE-FALL subset
 boomSizePx: 200,     //   …the SAME unit the death blasts use (208 / 193)
-boomDelayMs: 15,     //   …and held back until there is a body to see
+boomDelayMs: 7,      //   …held back this long AFTER `clearAt` — see below
+boomAtMs: 395,       //   …or a RAW time from the hole opening; null = use the above
 boomStride: 2,       //   …playing every 2nd frame, held twice as long
 steps: 6,            // the climb quantised to 6 positions — "few frames" 
 settleMs: 420,       // the hole closes — he is already fighting through this
@@ -1817,13 +1837,50 @@ maxBandsInFront: 3,         //   per enemy between these two, inclusive
 > *head* passes the line, not when there is a body to see — a burst there is a
 > puff of dust over nothing that he then walks out of. **The instant a thing
 > starts is not the instant it reads.** ⚠️ **And the window is far tighter than it looks:**
-> 200 too late, 100 still too late, 50 "almost there", 25, **15**. The airborne
-> half of the climb is 252 ms long and the answer is in its first *sixteenth* — the
+> 200 too late, 100 still too late, 50 "almost there", 25, 15, **7**. The airborne
+> half of the climb is 252 ms long and the answer is in its first *thirtieth* — the
 > burst belongs **on the break-through**, near enough to `clearAt` that the delay
 > is a nudge, and 0 is wrong only because nothing has broken through at that exact
-> frame. ⚠️ Measured: the strided tail is ⌈7/2⌉×2×70.9 = 567 ms, ending at 1270
-> against a `done` of 1360 — 90 ms of slack. `boomStride` lengthens the burst as
+> frame. ⚠️ Measured: the strided tail is ⌈7/2⌉×2×70.9 = 567 ms, ending at 1262
+> against a `done` of 1360 — 98 ms of slack. `boomStride` lengthens the burst as
 > well as thinning it, so the two share this budget; `settleMs` buys more.
+
+> ⚠️ **AND ITS ZERO IS 688 ms IN, WHICH IS WHY TURNING IT DOWN STOPPED DOING
+> ANYTHING.** Reported 2026-09-03: *"this explosion animation is set to run like
+> 7 ms after the first animation starts. But this is not working, its taking more
+> than 7 ms… in 15 ms the explosion was taking too long, but when I reduced to 7,
+> not much changed."* Nothing is broken. The burst goes off at
+>
+> ```
+> heaveMs + riseMs × clearAt + boomDelayMs
+> 380     + 560    × 0.55    + 7            = 695 ms
+> ```
+>
+> after the ground starts opening, so 15 → 7 moved **8 ms of 695** — half a frame
+> at 60 Hz out of a forty-two-frame wait. **A relative knob cannot be judged
+> against the wrong zero.** ⚠️ To move it somewhere the eye can see, use
+> **`boomAtMs`**: a raw time from the hole opening, where `null` resolves to
+> *exactly* 695 ms so switching between the two is a comparison rather than a
+> jump. ⚠️ **It is set to `395` since 2026-09-03** — *"instead of 695ms, make it
+> blow at 395ms"* — which is 300 ms earlier and lands on the far side of a
+> landmark rather than nudging: the hole finishes opening at 380 and his head
+> does not break the surface until 688, so the dust goes off over an **open,
+> empty hole** and he climbs up *through* it. The burst is no longer punctuating
+> his arrival; it is the thing he arrives out of. ⚠️ And it now **covers the
+> whole climb** — the 567 ms tail runs 395 → 962 against a landing at 940, so the
+> dust clears 22 ms after he is on his feet, where at 695 it ran to 1262 and he
+> fought through the last 300 ms of it. `boomDelayMs` **asks the climb** (it rides `heaveMs`, `riseMs` and
+> `clearAt`, so retiming any of them keeps the burst on the break-through);
+> `boomAtMs` **tells it**, and goes stale the moment the climb is retimed — the
+> same bargain as `DEATH_BLAST`'s `atFrame` vs `atMs`. Prefer the relative one.
+> ⚠️ `boomAtMs` is also the only way to put the burst **before** the break-through
+> without moving the hop, because `clearAt` is not a burst knob — it *splits* the
+> rise, so dragging it down to fetch the dust earlier shortens the climb and
+> lengthens the hop at the same time. A negative `boomDelayMs` does the same job
+> relatively and is legal. ⚠️ Below ~688 the dust goes off over a hole nobody has
+> come out of yet, which is the look that was refused the first time round; and
+> anything within one frame (~16 ms) of 695 will not be distinguishable from 695
+> on a 60 Hz display.
 
 > ⚠️ **It is sized in the same unit as the death blasts, which is what ended six
 > rounds of guessing.** It began as a `boomScale` ratio (0.5 → 0.35 → 0.455 →
