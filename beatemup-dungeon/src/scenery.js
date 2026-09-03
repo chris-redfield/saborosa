@@ -95,6 +95,7 @@ class Scenery {
        the layout reads it. See `drawBands`. */
     this.items = [];
     this.bands = 0;        // how many belt bands this room laid out
+    this._dense = null;    // the baked high-density zone, if the room has one
     this.defs = null;
   }
 
@@ -252,6 +253,10 @@ class Scenery {
       this._scatter(defs, n, x0, x1, z, p, sc, S.spacing || 0.65, r, b);
     }
 
+    /* AND THE BAKED ZONE, laid out from the same ladder so it is the same floor
+       -- see `_bakeDense`. It reads `this.items` only to leave it alone. */
+    this._bakeDense(room, defs, rows, depth, rate, size, drop, BANDS);
+
     /* ⚠️ THE SIXTH LAYER, AND IT IS NOT A SIXTH BAND. Asked for 2026-08-28:
        *"testar outra camada de cigarros (sexta, no fundo)... essa camada não vai
        no belt normal do jogo, ela vai na área morta"*.
@@ -331,6 +336,123 @@ class Scenery {
    * draws on the narrowest, and one big enough for the narrowest pops the widest
    * in at the edge of the screen.
    */
+  /**
+   * THE DENSE ZONE -- one stretch of the room whose floor is BAKED.
+   *
+   * Asked for 2026-09-02, of HORACIO's arena: *"it has some gaps in the
+   * cigarettes... I want it to be more saturated with background cigarettes but
+   * without causing performance problems"*.
+   *
+   * ⚠️ MORE ROWS IS THE WRONG ANSWER AND THE COST TABLE SAYS SO. This field
+   * measures 90.7% coverage at 23-27 mounds drawn a frame; 99.5% costs 49-55 and
+   * a true 100% costs 86-93, about 16 screens of overdraw. Doubling that during
+   * the boss fight is the worst moment in the game to spend it -- HORACIO is
+   * four big textures and he summons a wall of charutobis on top.
+   *
+   * ⚠️ SO THE DENSITY IS BAKED, AND THE REASON IT IS EXACT RATHER THAN AN
+   * APPROXIMATION IS THAT A BAND IS A RIGID LAYER. `parallax` is per BAND, not
+   * per mound (see `_ramp` in enterRoom), so every item in a band shares one
+   * scroll rate: the whole band translates by `camX * p` and nothing inside it
+   * moves relative to anything else. Pre-render a band's stretch once and blit
+   * it at `fromX - camX * p` and the pixels are identical to drawing every
+   * mound. Density then costs NOTHING -- one blit per band whether it holds ten
+   * mounds or two hundred.
+   *
+   * ⚠️ WHICH IS WHY THIS IS NOT THE "BAKE THE FLOOR INTO ONE STRIP" IDEA THE
+   * COVERAGE NOTE REJECTS. That one is rejected because a single strip cannot
+   * have three bands moving at three speeds over it -- true, and the answer is
+   * one strip PER BAND, which keeps the parallax exactly.
+   *
+   * ⚠️ AND IT IS A ZONE, NOT THE WHOLE ROOM, FOR MEMORY. The desert is 6286px
+   * long; five bands of that at belt height is about 48MB of canvas. The arena
+   * is roughly one screen and costs a tenth of it.
+   */
+  _bakeDense(room, defs, rows, depth, rate, size, drop, BANDS) {
+    const S = CONFIG.SCENERY, D = S && S.DENSE;
+    this._dense = null;
+    if (!D || !D.on || !room || !room.dense) return;
+    if (typeof document === 'undefined') return;   // build tools have no DOM
+    const x0 = room.dense.fromX, x1 = room.dense.toX;
+    if (!(x1 > x0)) return;
+    const extra = Math.max(1, Math.round(D.extraRows || rows));
+    const n = defs.frames.length;
+
+    /* The extra rows sit BETWEEN the existing ones -- `(r + 0.5) / extra` --
+       because the gaps this exists to fill are the gaps between rows, which is
+       the same finding the coverage note reached the hard way: packing tighter
+       in x never closed them. Seeds are offset so the new field is not the old
+       one drawn twice in the same places. */
+    const items = [];
+    const keep = this.items;
+    this.items = items;
+    for (let r = 0; r < extra; r++) {
+      const b = Math.min(BANDS - 1, Math.floor(r * BANDS / extra));
+      const f = (r + 0.5) / extra;
+      const z = (S.zFrom + (S.zTo - S.zFrom) * f + drop[b]) * depth
+              + (Scenery._h(r * 131 + 57) - 0.5) * (S.zJitter || 40);
+      this._scatter(defs, n, x0, x1, z, rate[b], size[b],
+                    (D.spacing || S.spacing || 0.65), 1000 + r, b);
+    }
+    this.items = keep;
+    if (!items.length) return;
+
+    const img = this.assets.getDrawable('scenery');
+    if (!img) return;
+
+    /* ⚠️ EACH STRIP IS SIZED TO ITS OWN BAND, NOT TO THE FIELD. A band's mounds
+       occupy a slice of the belt, not all of it -- so one shared height sized to
+       the global span made every strip mostly empty and cost 16MB of canvas
+       across five of them. Per-band bounds cut that by about two thirds for the
+       same pixels. Memory is the only thing bounding this feature (the draw cost
+       is one blit either way), so it is worth the extra loop.
+
+       A mound's anchor is exact bottom-centre, so its ink is entirely ABOVE its
+       ground point: the top is `z - h * s` and the bottom is `z`. */
+    const w = Math.ceil(x1 - x0);
+    const strips = [];
+    let bytes = 0;
+    for (let b = 0; b < BANDS; b++) {
+      const mine = items.filter((it) => (it.b != null ? it.b : 0) === b);
+      if (!mine.length) { strips.push(null); continue; }
+      let top = Infinity, bot = -Infinity;
+      for (const it of mine) {
+        const fr = defs.frames[it.k];
+        top = Math.min(top, it.z - fr.h * it.s);
+        bot = Math.max(bot, it.z);
+      }
+      const h = Math.ceil(bot - top) + 2;
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const c = cv.getContext('2d');
+      for (const it of mine) {
+        const fr = defs.frames[it.k];
+        const sc = it.s, aw = fr.w * sc, ah = fr.h * sc, ax = fr.ax * sc;
+        c.drawImage(img, fr.x, fr.y, fr.w, fr.h,
+                    Math.round(it.x - x0 - ax),
+                    Math.round(it.z - fr.ay * sc - top),
+                    aw, ah);
+      }
+      bytes += w * h * 4;
+      strips.push({ cv, p: rate[b], topRel: top, w, h });
+    }
+    this._dense = { x0, w, strips, count: items.length, bytes };
+  }
+
+  /**
+   * Blit one band's baked strip. ⚠️ CALLED WHILE WALKING THE BANDS, not after
+   * them: the strip belongs at its band's depth, and dropping all of them at
+   * the end would paint the far band's fill over the near band's mounds.
+   */
+  _blitDense(ctx, camX, b) {
+    const D = this._dense;
+    if (!D) return;
+    const st = D.strips[b];
+    if (!st) return;
+    const sx = D.x0 - camX * st.p;
+    if (sx + st.w < 0 || sx > CONFIG.GAME_W) return;
+    ctx.drawImage(st.cv, Math.round(sx), Math.round(Belt.topY + st.topRel));
+  }
+
   draw(ctx, camX) { this.drawBands(ctx, camX, -Infinity, Infinity); }
 
   /**
@@ -355,9 +477,24 @@ class Scenery {
     const defs = this.defs;
     if (!img || !defs) return;
     const topY = Belt.topY;
+    /* ⚠️ ONCE PER BAND, ON FIRST SIGHT -- NOT ON A BAND CHANGE, WHICH WAS A BUG.
+       The first cut flushed the strip whenever the band changed between two
+       items, on the strength of the note above saying bands do not interleave in
+       z. Read it again: it says *"band 0-1 run z 129..226"* -- 0 and 1 SHARE a
+       range. So in z order they alternate, the band flipped back and forth, and
+       the same strip was blitted several times a frame: measured 6 blits for 5
+       strips on a plain split, and every one of them re-draws its own
+       semi-transparent edges over itself.
+
+       Drawing on first sight is once by construction. It also puts the baked
+       fill BEHIND that band's hand-placed mounds, which is the right way round:
+       the fill is filler, and the field the user tuned by eye reads on top. */
+    const drawn = this._denseDrawn || (this._denseDrawn = {});
+    for (const k in drawn) delete drawn[k];
     for (const it of this.items) {
       const b = it.b != null ? it.b : 0;
       if (b < lo || b >= hi) continue;
+      if (!drawn[b]) { drawn[b] = 1; this._blitDense(ctx, camX, b); }
       const f = defs.frames[it.k];
       /* ⚠️ EACH ITEM CARRIES ITS OWN SCROLL RATE, and the CULL below has to use
          the same number or a lagging layer pops in and out at the screen edge. */

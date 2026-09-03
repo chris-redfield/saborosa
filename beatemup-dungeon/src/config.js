@@ -1022,6 +1022,19 @@ const CONFIG = {
          collide with nothing, so this changes what the room LOOKS like and
          nothing about how it plays. */
       scenery: true,
+      /* ⚠️ THE BAKED DENSE FLOOR, OVER HORACIO'S END OF THE ROOM ONLY. Asked
+         for 2026-09-02: the arena *"has some gaps in the cigarettes... I want it
+         to be more saturated ... but without causing performance problems"*.
+         Inside this stretch the ground cover is pre-rendered per band and
+         blitted, so the extra density is free at draw time -- see
+         CONFIG.SCENERY.DENSE and `Scenery._bakeDense`.
+
+         THE RANGE covers the last wave's arena (walls 5046..6246) and the boss
+         segment after it, plus a little either side: the camera has spent all
+         5007px of the shot by then and sits near 5006, so this is essentially
+         "the screen the end of the room is fought on". Widen it and the bake
+         costs proportionally more memory and nothing else. */
+      dense: { fromX: 4880, toX: 6360 },
       /* THE DAY PASSES OVER THIS ROOM AND ONLY THIS ONE. Orange at the start,
          purple at the end, driven by how far across the room the camera has been
          -- see CONFIG.GRADE. Declared per room for the same reason `scenery` is:
@@ -4724,6 +4737,27 @@ const CONFIG = {
      **19-21 drawn against 17-20**, one atlas bind, unchanged. */
   SCENERY: {
     on: true,
+    /* THE BAKED DENSE ZONE. One stretch of a room whose floor is pre-rendered
+       per band and blitted, so its coverage costs one draw per band instead of
+       one per mound. Switched on by a room carrying `dense: { fromX, toX }`.
+
+       ⚠️ READ THE HEADER OF `Scenery._bakeDense` BEFORE CHANGING ANY OF THIS.
+       The reason it is exact rather than an approximation is that parallax is
+       per BAND, so a band is a rigid layer; the reason it is a zone rather than
+       the whole room is memory (the desert end to end would be ~48MB of
+       canvas). Both are load-bearing.
+
+       `extraRows` is the density, and it is FREE at draw time -- the whole
+       point. It is not free at LOAD time (one bake) or in memory (one canvas
+       per band), which is what bounds it rather than the frame budget. */
+    DENSE: {
+      on: true,
+      extraRows: 16,   // against the field's 10, and interleaved between them
+      /* Tighter in x than the loose field, because here it costs nothing. ⚠️ THE
+         COVERAGE NOTE'S FINDING STILL HOLDS -- packing in x never closed the
+         gaps, ROWS did -- so this is the smaller of the two levers even here. */
+      spacing: 0.5,
+    },
     /* The pack, cut by tools/build-beat-fundo-defs.py. Loaded under the asset
        key `scenery` -- see src/manifest.js, which spells that key twice. */
     sheet: 'v2:beatemup-dungeon/cigarros-fundo',
