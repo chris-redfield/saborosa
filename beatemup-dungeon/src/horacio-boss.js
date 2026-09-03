@@ -25,22 +25,24 @@
  * shows -- so he does not need the Mosca's blink to say a hit landed. He gets
  * the blink too, but the state change is the message.
  *
- * THE FIGHT, as specified. Nine beats; the ones marked --- are not built yet:
+ * THE FIGHT, as specified. All nine beats:
  *
  *   1. the screen stops, he comes out of the ground jumping, at level 1   BUILT
  *   2. the spike theatre, and the life bar appears                        BUILT
- *   3. back into the ground, becomes a ball, roams "looking for a place"  ---
- *   4. head out, looks around, submerges, surfaces somewhere else         ---
- *   5. he can travel horizontally while balled                            ---
- *   6. the CHARGE, in one of three z lanes, either direction              ---
- *   7. sometimes he surfaces and walks, or laughs                         --- *
- *   8. he signals and a WALL of charutobis crosses the screen             ---
- *   9. he surfaces next to you and stabs with the spikes                  ---
+ *   3. back into the ground, becomes a ball, roams "looking for a place"  BUILT
+ *   4. head out, looks around, submerges, surfaces somewhere else         BUILT
+ *   5. he can travel horizontally while balled                            BUILT
+ *   6. the CHARGE, in one of three z lanes, either direction              BUILT
+ *   7. sometimes he surfaces and walks, or laughs                         HALF *
+ *   8. he signals and a WALL of charutobis crosses the screen             BUILT *
+ *   9. he surfaces next to you and stabs with the spikes                  BUILT
  *
- *   * ⚠️ 7 IS HALF-BLOCKED ON ART and 8 is fully blocked on it: there is no
- *     laughing drawing and no pointing drawing ("nos sprites que temos até o
- *     momento, nao tem ele rindo, nem ele apontando"). The WALKING half of 7 is
- *     buildable now because walking is translation. The laugh is not.
+ *   * THE TWO MISSING DRAWINGS: there is no laughing pose and no pointing pose
+ *     ("nos sprites que temos até o momento, nao tem ele rindo, nem ele
+ *     apontando"). 7's WALKING half is built because walking is translation;
+ *     the laugh is not built and is waiting on art. 8 IS built, on an agreed
+ *     STAND-IN pose for the signal -- see `_summon`. Neither is a look that has
+ *     been approved; both are placeholders with the real drawing outstanding.
  */
 class HoracioBoss {
   /* RAW `assets`, NOT `sheets`. His pack is level x state x facing and carries
@@ -150,6 +152,57 @@ class HoracioBoss {
 
   /** Has he finished arriving? The life bar is gated on this -- see hud.js. */
   arrived() { return this.phase !== 'emerge'; }
+
+  /**
+   * WHICH BODY HIS HEALTH PUTS HIM IN.
+   *
+   * Asked for 2026-09-02: *"When he has full health, he has the red armor.
+   * After he is at less than half the HP, he has the almost full armor, the one
+   * that is not completely red. And when his HP is near 0, he should use the
+   * other one with almost no armor?"*
+   *
+   * ⚠️ THE THIRD TIER IS ONLY HALF PRESENT IN THE ART, and this is the honest
+   * report rather than a silent substitution. Every spike level has TWO bodies:
+   *
+   *     armoured  the red shell over a red body        -- full health
+   *     exposed   the red shell over a BEIGE body      -- under `hurtAt`
+   *
+   * The third, `naked` -- the beige creature with NO shell at all -- was drawn
+   * for the JOANINHA ONLY (master 001). Levels 1, 2 and 3 have no naked
+   * drawing, because a creature with no shell has no spike level.
+   *
+   * ⚠️ SO THE THIRD TIER IS DELIBERATELY OFF (`nakedAt: null`), decided
+   * 2026-09-02: *"lets use only these 2 stages for now, we will introduce the
+   * stage with almost no armor only in the end"*. The code for it is complete
+   * and stays -- setting `nakedAt` to a fraction turns it on -- but with the
+   * drawing missing at his usual levels it would have shown up only in the one
+   * phase where he is the joaninha, which is an inconsistency rather than a
+   * feature. When it is wanted, either the naked body gets drawn for the other
+   * levels or he drops to level 0 at that threshold, so losing the last of his
+   * health IS losing his spikes. That is a look decision and it is not made.
+   *
+   * ⚠️ AND THIS REPLACED `hurt` AS THE USER OF THE EXPOSED DRAWING. It used to
+   * flash on `hurtT`, which read as him flickering between well and wounded
+   * several times a second. The hit is now said by the BLINK alone (see `draw`)
+   * and the exposed body means something durable instead.
+   */
+  _bodyState(d) {
+    const C = CONFIG.HORACIO_BOSS;
+    const f = this.maxHp ? this.hp / this.maxHp : 1;
+    if (f > (C.hurtAt != null ? C.hurtAt : 0.5)) return 0;
+    /* ⚠️ `nakedAt: null` MEANS OFF, AND IT HAS TO BE READ THAT WAY EXPLICITLY.
+       Written as `C.nakedAt != null ? C.nakedAt : 0.18` -- which is how the
+       rest of this file reads its defaults -- switching the tier off by setting
+       it to null would have fallen through to the 0.18 default and left the
+       feature running. That is this project's own recurring trap: a knob set to
+       a disabling value that does nothing, because the READ SITE has a `||`
+       behind it. Off is checked before any default is applied. */
+    if (C.nakedAt != null && f <= C.nakedAt) {
+      const lv = d.index[this.level];
+      if (lv && lv[3] && lv[3][this.facing] != null) return 3;
+    }
+    return 1;
+  }
 
   /** How far into the ground he is right now, wherever that is driven from. */
   sunkNow() {
@@ -360,7 +413,76 @@ class HoracioBoss {
     if (this.phase === 'rise') return this._rise(dt, player);
     if (this.phase === 'charge') return this._charge(dt, bounds);
     if (this.phase === 'stab') return this._stab(dt);
+    if (this.phase === 'summon') return this._summon(dt, bounds);
     if (this.phase === 'walk') return this._walk(dt, player, bounds);
+  }
+
+  /**
+   * Beat 8. *"ele faz um sinal com a mãozinha e sai varios charutobis te
+   * atacando, uma wave que atravessa a tela, que voce tem que pular por cima. o
+   * socar um e fugir. A ideia é ter um muro de charutobis, um ataque bomba."*
+   *
+   * ⚠️ HE DOES NOT SPAWN THEM HIMSELF. A boss is `stage.boss` and has no crowd
+   * to add to -- the same reason his dust and his scenery plane had to be
+   * handed out rather than drawn from inside. He raises a REQUEST and stage.js
+   * performs it, so the one place that knows how to put an enemy in the world
+   * stays the one place that does it.
+   *
+   * ⚠️ AND THE SIGNAL POSE IS A STAND-IN. There is no pointing drawing -- *"nao
+   * tem ele rindo, nem ele apontando"* -- so he holds the armoured front pose
+   * for the beat instead. That was agreed as a stand-in, not accepted as the
+   * look: when the drawing lands it replaces `signalState`/`signalFacing` and
+   * nothing else here changes.
+   */
+  _summon(dt, bounds) {
+    const S = CONFIG.HORACIO_BOSS.SUMMON;
+    this.state = (S.signalState != null) ? S.signalState : 0;
+    this.facing = (S.signalFacing != null) ? S.signalFacing : 0;
+    this._sunk = 0;
+    /* THE WAVE LEAVES ON THE SIGNAL'S BEAT, not on the phase's first frame, so
+       the gesture reads as causing it. Raised once -- `_summonReq` is cleared by
+       whoever takes it. */
+    if (!this._summonSent && this.t * 1000 >= (S.signalMs || 420)) {
+      this._summonSent = true;
+      const lim = this._limits(bounds);
+      const dir = (this._player && this._player.x < this.x) ? -1 : 1;
+      this._summonReq = {
+        kind: S.kind || 'charutobi',
+        count: S.count || 7,
+        dir,
+        /* THE WALL SPANS THE BELT. They are spread across z, which is what
+           makes it a wall rather than a queue -- a line of them at one depth is
+           something you walk around. */
+        z0: Belt.depth * (S.zFrom != null ? S.zFrom : 0.12),
+        z1: Belt.depth * (S.zTo != null ? S.zTo : 0.95),
+        fromX: dir > 0 ? lim.lo - (S.offscreenPx || 260)
+                       : lim.hi + (S.offscreenPx || 260),
+        endX: dir > 0 ? lim.hi + (S.offscreenPx || 260)
+                      : lim.lo - (S.offscreenPx || 260),
+        /* null = "whatever speed he chases you at" -- resolved in enemy.js off
+           his own SUICIDE_RUSH entry, not duplicated here. */
+        speed: (S.speed != null) ? S.speed : null,
+        clearY: S.clearY || 40,
+        triggerX: S.triggerX, triggerZ: S.triggerZ,
+        jitterZ: Belt.depth * (S.jitterZRel || 0),
+        jitterX: S.jitterXPx || 0,
+        stagger: S.staggerMs || 0,
+      };
+    }
+    if (this.t * 1000 >= (S.signalMs || 420) + (S.recoverMs || 700)) {
+      this._to('submerge');
+    }
+  }
+
+  /**
+   * Hand the pending wave to whoever can spawn it, once. ⚠️ TAKE-AND-CLEAR
+   * rather than a flag someone else resets: a request that survived being read
+   * would spawn a wall every frame until the phase ended.
+   */
+  takeSummon() {
+    const r = this._summonReq;
+    this._summonReq = null;
+    return r;
   }
 
   /**
@@ -448,7 +570,8 @@ class HoracioBoss {
     const B = CONFIG.HORACIO_BOSS.BALL;
     if (this._easeSunk(dt, 0, B.surfaceMs)) {
       this.state = 0;                  // armoured again -- the shell reopens
-      this._to(this.next === 'stab' ? 'stab' : 'walk');
+      this._to(this.next === 'stab' ? 'stab'
+             : this.next === 'summon' ? 'summon' : 'walk');
     }
   }
 
@@ -523,8 +646,10 @@ class HoracioBoss {
     const C = CONFIG.HORACIO_BOSS, B = C.BALL;
     const W = CONFIG.GAME_W;
     const r = Math.random();
-    const w = C.WEIGHTS || { charge: 0.5, stab: 0.3, walk: 0.2 };
-    this.next = (r < w.charge) ? 'charge' : (r < w.charge + w.stab) ? 'stab' : 'walk';
+    const w = C.WEIGHTS || { charge: 0.4, stab: 0.22, summon: 0.22, walk: 0.16 };
+    this.next = (r < w.charge) ? 'charge'
+              : (r < w.charge + w.stab) ? 'stab'
+              : (r < w.charge + w.stab + w.summon) ? 'summon' : 'walk';
     if (this.next === 'charge') {
       /* THE THREE LANES ARE FRACTIONS OF THE BELT -- back, middle, front -- and
          the side is a coin flip, so the same lane can be run either way. */
@@ -586,6 +711,11 @@ class HoracioBoss {
       this._to('rise');
       return;
     }
+    if (this.next === 'summon') {
+      this._summonSent = false;
+      this._to('rise');
+      return;
+    }
     if (this.next === 'walk') { this._to('rise'); return; }
     this._to('submerge');
   }
@@ -608,6 +738,17 @@ class HoracioBoss {
     this.facing = (player && player.x < this.x) ? 6 : 2;
     if (this.emerge.done) {
       this.emerge = null;
+      /* ⚠️ HAND THE DEPTH OVER, AND FORGETTING THIS MADE HIM VANISH. `_sunk`
+         starts at 1 and `Emerge` drives the arrival through its OWN value, so
+         the frame the arrival was dropped `sunkNow()` fell back to a `_sunk`
+         nobody had ever written -- still 1, fully buried. He appeared, finished
+         his theatre, and then blinked out of existence mid-screen, coming back
+         later already sunken: *"he just vanishes... that is ugly"*. The comment
+         in `draw` said the arrival owns the value "only while it is running"; it
+         did not say who takes it afterwards, which is the whole bug. He is OUT
+         when the arrival finishes, so it is 0, and every sink after this is an
+         eased phase rather than a jump. */
+      this._sunk = 0;
       this.facing = 0;              // and turns to the front for the show
       /* WHERE THE FIGHT IS. Every later goal is measured from the spot he
          arrived at rather than from wherever he happens to be, so a run of
@@ -694,11 +835,12 @@ class HoracioBoss {
     if (!d) return;
     const C = CONFIG.HORACIO_BOSS;
 
-    /* THE HURT DRAWING IS THE EXPOSED BODY. See the header: he is the one boss
-       in this game with real art for being hit, so the state carries it and the
-       blink is only the garnish. */
+    /* THE BODY HE IS WEARING IS A FUNCTION OF HIS HEALTH -- see `_bodyState`.
+       `this.state` carries what the PHASE needs (balled or upright) and the
+       damage tier is resolved here, at the last moment, so no phase has to
+       remember to keep them in step. */
     const wasState = this.state;
-    if (this.hurtT > 0 && this.phase !== 'emerge') this.state = 1;
+    if (this.state !== 2) this.state = this._bodyState(d);
     const f = this._frame(d);
     this.state = wasState;
     if (!f) return;

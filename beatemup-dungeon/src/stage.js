@@ -289,6 +289,15 @@ class Stage {
             ? new HorseBoss(bx, bz, this.camX)
             : new FlyBoss(bx, bz, this.camX, { fleeAt: s.fleeAt });
       }
+      /* ⚠️ THE BOSS MAY ASK FOR A WAVE, and this is where one gets made. HORACIO's
+         summon (beat 8) raises a request rather than spawning: he is
+         `stage.boss` and has no crowd to add to, and putting an enemy in the
+         world is this file's job. `takeSummon` clears it as it hands it over,
+         so a wall is spawned once rather than every frame of the gesture. */
+      if (this.boss && this.boss.takeSummon) {
+        const req = this.boss.takeSummon();
+        if (req) this._summonWave(req, crowd);
+      }
       /* Waits for `finished()`, not for `dead` — the death fall and fade play
          out before the level is called, so the boss is not deleted out from
          under its own last beat.
@@ -568,6 +577,52 @@ class Stage {
         emergeSeed: waveSeed,
       });
       crowd.add(en);
+    }
+  }
+
+  /**
+   * A WALL OF ENEMIES CROSSING THE ROOM -- HORACIO's summon, beat 8.
+   *
+   * ⚠️ THIS IS NOT `_spawn` WITH DIFFERENT NUMBERS AND MUST NOT BECOME IT.
+   * `_spawn` calls `crowd.clearLiving()`, places each enemy off screen and
+   * steers it to a MARK it then fights from. Every one of those is wrong here:
+   * the boss is mid-fight so clearing the living would delete the previous
+   * wall AND anything else standing, and a crosser has no mark -- it walks
+   * through and off the far side.
+   *
+   * ⚠️ THEY ARE SPREAD ACROSS z, WHICH IS WHAT MAKES IT A WALL. All at one
+   * depth is a queue you sidestep. `count` of them fill `z0..z1`, so the only
+   * ways past are over the top or through a gap you punch.
+   */
+  _summonWave(req, crowd) {
+    if (!crowd) return;
+    const n = Math.max(1, req.count | 0);
+    /* ⚠️ THE WALL IS RAGGED ON PURPOSE. Evenly spaced across the belt and all
+       starting on one x, it read as *"too well aligned, it makes it
+       artificial"* -- a row of identical bodies in perfect step is a formation,
+       not a swarm. Each gets a wobble in z off its slot and a stagger BACKWARDS
+       in x, so they arrive over a beat instead of as one line.
+
+       ⚠️ THE JITTER IS RANDOM PER SUMMON, NOT HASHED. The scenery is hashed
+       because the player walks back over the same ground and it must not change
+       underneath them; a wave is a one-off event nobody revisits, so a fresh
+       roll each time is what stops two summons in one fight looking identical. */
+    for (let i = 0; i < n; i++) {
+      const t = (n === 1) ? 0.5 : i / (n - 1);
+      const jz = (req.jitterZ || 0) * (Math.random() * 2 - 1);
+      const z = Math.max(0, Math.min(Belt.depth,
+                                     req.z0 + (req.z1 - req.z0) * t + jz));
+      // Backwards along the direction of travel, so nobody starts ahead of the
+      // leading edge and gets to the player before the wall reads as a wall.
+      const x = req.fromX - req.dir * Math.random() * (req.jitterX || 0);
+      crowd.add(new Enemy(req.kind, x, z, {
+        delayMs: (req.stagger || 0) * i,
+        entryX: null,          // no mark: `cross` drives it, see enemy.js
+        facing: req.dir > 0 ? 'right' : 'left',
+        cross: { dir: req.dir, endX: req.endX, speed: req.speed,
+                 clearY: req.clearY,
+                 triggerX: req.triggerX, triggerZ: req.triggerZ },
+      }));
     }
   }
 

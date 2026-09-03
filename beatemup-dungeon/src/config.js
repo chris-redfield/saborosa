@@ -4159,6 +4159,57 @@ const CONFIG = {
        it is read by combat._impact off the ATTACKER, so it is his property
        rather than a branch in the impact code. */
     fxColour: 'yellow',
+    /* THE DAMAGE TIERS, as fractions of health. Above `hurtAt` he wears the red
+       armoured body; below it the exposed one (the beige creature showing
+       through the shell); below `nakedAt` the shell-less body IF the level has
+       one. ⚠️ ONLY THE JOANINHA HAS A NAKED DRAWING -- see `_bodyState` in
+       horacio-boss.js for the two ways to close that and why neither was
+       chosen here. */
+    hurtAt: 0.5,
+    /* ⚠️ NULL MEANS OFF, AND THE READ SITE CHECKS FOR NULL BEFORE ITS DEFAULT
+       so that it really is off -- see `_bodyState`. Two tiers ship for now
+       ("lets use only these 2 stages for now, we will introduce the stage with
+       almost no armor only in the end"); put a fraction here to turn the third
+       one on, and read the note in horacio-boss.js first, because the naked
+       drawing only exists for the joaninha. */
+    nakedAt: null,
+    /* BEAT 8: the wall of charutobis. ⚠️ THE SIGNAL POSE IS A STAND-IN -- there
+       is no pointing drawing yet -- so he holds the armoured front pose for the
+       gesture. `signalState`/`signalFacing` are where the real one goes. */
+    SUMMON: {
+      kind: 'charutobi',
+      /* 7 -> 5 on request ("there are too many charutobis, reduce the amount by
+         30%"). Still spread across the belt -- that is what makes it a WALL
+         rather than a queue -- just a more open one. */
+      count: 5,
+      zFrom: 0.12, zTo: 0.95,
+      /* ⚠️ THE WALL IS DELIBERATELY RAGGED. Evenly spaced and all on one x it
+         read as *"too well aligned, it makes it artificial"*. `jitterZRel` is a
+         fraction of the belt each one wobbles off its slot; `jitterXPx` is how
+         far BACK along the direction of travel it can start. See stage._summonWave. */
+      jitterZRel: 0.07,
+      jitterXPx: 190,
+      /* null = the speed he chases you at (SUICIDE_RUSH.charutobi.speed, 1.7 x
+         walkSpeedX = 510px/s), resolved in enemy.js so it cannot drift from the
+         rush it is meant to match. A number here is absolute px/s. */
+      speed: null,
+      /* ⚠️ WIDER THAN THE RUSH'S 24x34, ON PURPOSE. That pair is tight so a
+         bomber AIMING at the player is on top of him when he goes; a crosser
+         walks its own line past whoever is there, so at 24 it mostly strolls by
+         -- *"they should blow as soon as they are close enough of the player"*. */
+      triggerX: 72,
+      triggerZ: 58,
+      signalState: 0, signalFacing: 0,
+      signalMs: 420,     // the gesture, before they come
+      recoverMs: 700,    // and how long he stands there after
+      offscreenPx: 260,  // how far out they start and how far past they run
+      staggerMs: 0,      // per-slot delay; the ragged arrival comes from jitterXPx
+      /* HOW HIGH THE PLAYER MUST BE TO CLEAR ONE. ⚠️ THIS IS THE ONLY REASON
+         THE WALL IS FAIR -- an ordinary charutobi cannot be jumped, and a wall
+         that could not either would be unavoidable damage. See the `hopped`
+         note in enemy.js. */
+      clearY: 40,
+    },
     hitWRel: 0.62,        // he is round, not long like the horse (0.86)
     hitZ: 52,
     /* WHERE HIS HOLE OPENS, down the belt. Not mid-belt like the other two
@@ -4262,7 +4313,9 @@ const CONFIG = {
     /* WHAT HE PICKS WHEN HE HAS FINISHED LOOKING AROUND. ⚠️ THESE MUST SUM TO
        1: the third is whatever is left over, so a pair adding to more than 1
        silently deletes the walk. */
-    WEIGHTS: { charge: 0.5, stab: 0.3, walk: 0.2 },
+    /* ⚠️ THESE MUST SUM TO 1: the last is whatever is left over, so a set
+       adding to more than 1 silently deletes the walk. */
+    WEIGHTS: { charge: 0.4, stab: 0.22, summon: 0.22, walk: 0.16 },
     /* WHICH WAY EACH OF THE EIGHT DRAWINGS LOOKS, in degrees: 0 is at the
        camera, 90 is screen RIGHT, 180 is away. Read off the sheet by eye.
        ⚠️ THIS IS THE FIRST THING TO SUSPECT IF HE FACES THE WRONG WAY. The main
@@ -5113,18 +5166,23 @@ const CONFIG = {
        there is a puff of dust over nothing that he then walks out of.
 
        ⚠️ AND THE WINDOW IS FAR TIGHTER THAN IT LOOKS: 200 was *"too delayed"*,
-       100 still too delayed, 50 *"almost there"*, 25, 15. The airborne half of
-       the climb is 252ms long and the answer sits in its first SIXTEENTH --
-       **the burst belongs ON the break-through**, near enough to `clearAt` that
-       the delay is a nudge rather than a beat, and 0 is wrong only because
-       nothing has broken through yet at that exact frame. Halving from 200
-       walked down to it in five rounds; nothing here was reasoned to.
+       100 still too delayed, 50 *"almost there"*, 25, 15, and 7 on 2026-09-02.
+       The airborne half of the climb is 252ms long and the answer sits in its
+       first THIRTIETH -- **the burst belongs ON the break-through**, near enough
+       to `clearAt` that the delay is a nudge rather than a beat, and 0 is wrong
+       only because nothing has broken through yet at that exact frame. Halving
+       from 200 walked down to it over six rounds; nothing here was reasoned to,
+       and at this size a single frame at 60fps is 16ms -- more than the whole
+       delay. ⚠️ SO THE LAST FEW STEPS ARE SUB-FRAME: 15 and 7 both round to the
+       same drawn frame on a 60Hz display and differ only on faster ones. If a
+       further cut is asked for, the honest answer is 0 with `clearAt` moved,
+       not a smaller number here.
 
        ⚠️ MEASURED: the strided tail is ceil(7/2) x 2 x `boomMs` = 567ms, so from
-       703ms it ends at 1270 against a `done` of 1360 -- 90ms of slack. `stride`
+       695ms it ends at 1262 against a `done` of 1360 -- 98ms of slack. `stride`
        lengthens the burst as well as thinning it, so the two knobs share this
        budget; `settleMs` is what buys more of it. */
-    boomDelayMs: 15,
+    boomDelayMs: 7,
     /* THE HOLE CLOSING, and it runs AFTER he is released -- he is walking and
        swinging while this plays out. Ticked on the effect's own clock in
        Enemy.update rather than in the AI branch that waited on it, for the

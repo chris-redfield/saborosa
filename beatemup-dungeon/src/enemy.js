@@ -70,6 +70,10 @@ class Enemy extends Fighter {
     this.enterT = (o.delayMs || 0) / 1000;
     // Where the walk-in heads for. Null = fight from where it was placed.
     this.entryX = o.entryX != null ? o.entryX : null;
+    /* THE CROSSING WALL. Set by HORACIO's summon (see stage._summon): this one
+       does not hunt, it walks a straight line across the room at a fixed z and
+       is reaped at the far wall. Null for every enemy the level places. */
+    this.cross = o.cross || null;
     this.speedScale = (CONFIG.enemySpeedScale && CONFIG.enemySpeedScale[kind]) || 0.8;
     this.damage = (CONFIG.enemyDamage && CONFIG.enemyDamage[kind]) || 6;
     // Where on the circle this one sits. Seeded from the spawn position rather
@@ -654,9 +658,57 @@ class Enemy extends Fighter {
     if (this.rush) {
       const R = this.rush;
       const rdx = player.x - this.x, rdz = player.z - this.z;
-      if (Math.abs(rdx) <= (R.triggerX || 80)
-          && Math.abs(rdz) <= (R.triggerZ || 46)) {
+      /* ⚠️ A CROSSER CAN BE JUMPED OVER AND AN ORDINARY RUSHER CANNOT, and that
+         difference is the whole of HORACIO's summon: *"uma wave que atravessa a
+         tela, que voce tem que pular por cima"*. The note above is emphatic that
+         the trigger owes nothing to height -- true, and it stays true for the
+         charutobis the LEVEL places, because a bomber you could hop over would
+         have no teeth. But a WALL is a different move: it fills the ground, so
+         the only honest answer to it is to leave the ground. Gated on `cross`
+         so the normal suicide run is byte-for-byte what it was. */
+      const hopped = this.cross
+        && player.jumpY > ((this.cross.clearY != null) ? this.cross.clearY : 40);
+      /* ⚠️ A CROSSER NEEDS A WIDER TRIGGER THAN A RUSHER, WHICH IS THE OPPOSITE
+         OF WHAT IT LOOKS LIKE. The rush's 24x34 is deliberately TIGHT so that a
+         bomber aiming at the player is genuinely ON them when he goes off --
+         see the note in SUICIDE_RUSH. But a crosser is not aiming: it walks its
+         own line past whoever is standing there, so a radius tuned for
+         body-on-body contact means it mostly strolls by. Reported as *"they
+         only blow if you touch them... they should blow as soon as they are
+         close enough of the player"*. The cross carries its own pair. */
+      const tx = (this.cross && this.cross.triggerX != null)
+        ? this.cross.triggerX : (R.triggerX || 80);
+      const tz = (this.cross && this.cross.triggerZ != null)
+        ? this.cross.triggerZ : (R.triggerZ || 46);
+      if (!hopped && Math.abs(rdx) <= tx && Math.abs(rdz) <= tz) {
         this._detonate();
+        return;
+      }
+      /* THE WALL WALKS ITS LINE. No seeking, no facing the player: it is a
+         moving barrier, and one that drifted toward whoever it was passing
+         would stop being a wall and become eight more rushers. It is still
+         fully interruptible, so *"o socar um e fugir"* works unchanged.
+
+         ⚠️ REAPED AT THE FAR SIDE, NOT LEFT TO WANDER. `expired` is read by
+         Crowd.update -- without it the summon would leak a body per charutobi
+         into every later fight in the room. */
+      if (this.cross) {
+        this.ai = 'rush';
+        const C = this.cross;
+        /* ⚠️ THE SAME SPEED HE RUNS AT YOU WITH, taken from his OWN rush entry
+           rather than written here: *"they should be faster, like same speed
+           they have when they are running after you"*. Deriving it means the
+           day `SUICIDE_RUSH.charutobi.speed` is retuned -- it has been once
+           already, 1.25 -> 1.7 -- the wall follows instead of drifting into a
+           second, slower answer. `cross.speed` overrides, in absolute px/s. */
+        const sp = (C.speed != null) ? C.speed
+                 : (R.speed || 1.25) * CONFIG.walkSpeedX;
+        this.x += C.dir * sp * dt;
+        this.facing = C.dir > 0 ? 'right' : 'left';
+        this.state = 'walk';
+        if ((C.dir > 0 && this.x > C.endX) || (C.dir < 0 && this.x < C.endX)) {
+          this.expired = true;
+        }
         return;
       }
       this.ai = 'rush';
@@ -1159,6 +1211,10 @@ class Crowd {
        over whenever it likes and the dead still leave the way they were drawn
        to. `corpseGone()` is the same arithmetic the fade uses. */
     for (let i = this.list.length - 1; i >= 0; i--) {
+      /* ⚠️ `expired` COMES FIRST AND DOES NOT ASK ABOUT A CORPSE. A crosser that
+         walked off the far side is not dead and has no corpse to fade, so the
+         corpse reaper would never look at it -- see HORACIO's summon. */
+      if (this.list[i].expired) { this.list.splice(i, 1); continue; }
       if (this.list[i].corpseGone && this.list[i].corpseGone(sheets)) this.list.splice(i, 1);
     }
   }
