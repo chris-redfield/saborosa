@@ -2301,10 +2301,63 @@ video backwards.
 DEV: { on: true, punchDamage: 50 },   // top of config.js
 ```
 
-> ⚠️ **It is OFF — that is the shipping state**, and `package.sh` refuses to
-> build while it is `true`. That refusal is the safety net: a forgotten `true`
-> costs a failed build rather than a shipped cheat, so turn it back to `false`
-> when you are done testing rather than working around the build.
+> ⚠️ **OFF is the shipping state** — read the value in `config.js`, not this
+> sentence — and `package.sh` refuses to build while it is `true`. That refusal
+> is the safety net: a forgotten `true` costs a failed build rather than a
+> shipped cheat, so turn it back to `false` when you are done testing rather
+> than working around the build.
+
+### Unlocking it in game — pause, then type SABOROSA
+
+```js
+DEV_UNLOCK: { on: true, word: 'SABOROSA' },   // NOT inside DEV — see below
+```
+
+**Pause (Enter), type the word in CAPITALS, and dev mode toggles.** The pause
+card grows a `SABOROSA MODE ON` line, and the corner marker appears with it.
+`on: false` removes the code.
+
+> ⚠️ **There is no OFF line, and there must not be one.** One was built — off
+> otherwise looks exactly like a code that was never typed — and refused on
+> sight: *"remove the SABOROSA MODE OFF text, don't ever make that appear."* It
+> is **deleted**, not held behind a flag, like every other look this project has
+> turned down. **The absence of the line is the off state.**
+
+> ⚠️ **The card says SABOROSA MODE, the corner marker still says DEV**, and that
+> split is deliberate. The card is the only place a *player* is ever told about
+> this, so it wears the game's name; the marker exists to stop a forgotten flag
+> being read as a balance problem, and whoever is reading that is not a player.
+> `DEV_UNLOCK.label` is the string, kept separate from `word` so that renaming
+> the code does not rewrite the label.
+
+> ⚠️ **It is deliberately NOT inside `CONFIG.DEV`.** Everything in that block is
+> dead while `DEV.on` is false — every read site enforces it — and the unlock is
+> the one thing that has to work *precisely then*. In there it would be a door
+> locked from the inside.
+
+> ⚠️ **Uppercase is enforced by reading `e.key` instead of `e.code`**, which is
+> the opposite of how every other key in this game is read. A `code` is the
+> physical key and cannot tell `S` from `s`; `e.key` is `'S'` only with shift
+> held or caps lock on. **So a word with a digit or a symbol in it will not
+> record at all.**
+
+> ⚠️ **The letters are recorded at the top of the keydown handler, before
+> everything else.** Two of SABOROSA's letters are movement keys — **S is down
+> and A is left** — and that branch `return`s, so recording anywhere below it
+> would silently drop both and the word could never be finished.
+
+> ⚠️ **Input only listens while the card is up** (`Input.armCheat`, armed on the
+> pause edge, and it forgets the buffer both ways). Recording always and
+> checking only here would look identical and would not be: you could type it
+> while walking around and unlock by pausing afterwards. It is matched on the
+> **end** of what was typed, so a mistyped run-up does not have to be cleared.
+
+**What the toggle reaches, and what it does not.** Every gate on `DEV.on` is a
+live read inside a function — the room jump, the punch damage, the corner
+marker, the debug overlay — so they all answer on the next frame. The two that
+are read *once* stay read once: `startRoom` is a boot-time jump, and `DEV.lives`
+is taken in `player.fullLives()` at construction and on a continue, **so
+unlocking mid-run does not top the player up.**
 
 > ⚠️ **The number-key room jump is refused in `input.js` too**, not only in
 > `game.js`. A shortcut that skips most of the game should not depend on one
@@ -3963,6 +4016,9 @@ be broken the moment a run starts. The *kind* is still the honest 50/50.
 
 `PAUSE.LINES` is the text — line 0 is drawn big, the rest evenly. It is **just
 `['PAUSA']`**: a control list was put here and taken back out the same day.
+⚠️ **The card appends its own line when dev mode is on** (and after the code
+turns it off) — see *Unlocking it in game*. It appends to a **copy**: pushing
+onto `CONFIG.PAUSE.LINES` itself would stack a `SABOROSA MODE ON` per pause.
 ⚠️ Which means the game now tells the player nothing about its controls
 anywhere — a decision made twice, in two places, in one day. The itch page is
 what is left.
@@ -4919,6 +4975,36 @@ length of the blink and swapped straight back.
 > ⚠️ **There is no recoil for the ball and there should not be** — a tucked ball
 > has no face. He is still punchable balled (the peek is the fight's one reliable
 > opening) and there the blink alone says it, as it did everywhere before.
+> **Except below 25 %, where there is no ball either — see just below.**
+
+#### Below 25 % he has no ball at all (2026-09-04)
+
+*"when he is doing the ball attack, or submerged, do not use the sprites from F3,
+because they have the helmet. For this stage, just use his regular sprites."*
+
+Every ball drawing in the pack — the joaninha's included — is a body tucked
+**into its shell**, so at the one tier whose whole point is that the shell is
+gone, the ball was putting it straight back on. Under `nakedAt` the charge, the
+roam, the peek and the submerge all draw the **naked body**, and it picks up the
+naked recoil with them (the ball never had one).
+
+> ⚠️ **The test is `st !== 3`, not `_shellGone()`.** It asks *did a naked drawing
+> actually come out of `_bodyState`* rather than *is his health low* — so if the
+> tier is ever switched off at the level he is in (`nakedLevel: null`, or a
+> re-cut that loses the frame) the fallback is the exposed body and **the ball
+> correctly wins again**. Gating on health would have stood him up mid-charge
+> with no naked art to show for it.
+
+> ⚠️ **The roaming tell changes and it is worth knowing.** At `roamSunk` 0.86 the
+> cue that he is under the cigarettes is *a spike tip travelling through them* —
+> asked for explicitly. Naked he has no spikes, so it becomes a smooth beige dome
+> cresting. Still a cue, softer.
+
+> ⚠️ **`CHARGE.hitUpRel` / `hitDownRel` were measured off the BALL's mass** and
+> have not been re-measured against the naked body. The silhouettes are close
+> (both round, roughly the same height) so nothing was changed, but it is the
+> honest caveat and it sits next to the already-reported oddness with his
+> collisions while sunken.
 
 > ⚠️ **It runs through the first 300 ms of his death, unlike the blink.** The
 > blink is suppressed while `dead` because two flickers on different beats over

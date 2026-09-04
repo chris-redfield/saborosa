@@ -32,6 +32,13 @@ class Input {
     this._pickupQueued = false;
     this._roomJump = -1;       // dev: room index requested by a number key
     this._anyPress = false;
+    /* THE TYPED-LETTER BUFFER, for the dev-mode unlock -- see `armCheat`. It is
+       NOT a queued press and `flush()` deliberately leaves it alone: a press is
+       an instruction the game owes the player an answer to, and this is a few
+       characters of half-finished typing that only one screen is ever listening
+       for. Its whole lifetime is `armCheat`. */
+    this._typed = '';
+    this._cheatArmed = false;
 
     this._kb = { left: false, right: false, up: false, down: false };
     this._pad = { left: false, right: false, up: false, down: false };
@@ -55,6 +62,27 @@ class Input {
       ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
     };
     t.addEventListener('keydown', e => {
+      /* THE TYPED CODE, AND IT HAS TO BE READ BEFORE EVERYTHING ELSE IN THIS
+         HANDLER. Two of SABOROSA's letters are movement keys -- S is down and A
+         is left -- and the MOVE branch below RETURNS, so recording anywhere
+         after it would silently drop both of them and the word could never be
+         completed. The one place this can live is the top.
+
+         ⚠️ `e.key`, NOT `e.code`, AND THAT IS THE "UPPERCASE ONLY" REQUIREMENT.
+         Every other key in this file is read as a `code` -- a physical key,
+         layout- and shift-independent, which is what a game control wants. This
+         is the opposite: the ask was uppercase, so it has to be the CHARACTER
+         the keyboard produced. `KeyS` cannot tell S from s; `e.key` is 'S' only
+         with shift held or caps lock on.
+
+         ⚠️ AND `e.repeat` IS CHECKED HERE TOO, not left to the guard below it.
+         A finger resting on O autorepeats at the OS rate and would fill the
+         buffer with a hundred of them -- harmless for a match, but it is the
+         same reason the presses below have the guard. */
+      if (this._cheatArmed && !e.repeat && e.key && e.key.length === 1
+          && e.key >= 'A' && e.key <= 'Z') {
+        this._typed = (this._typed + e.key).slice(-Input.CHEAT_MAX);
+      }
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this._kb[m] = true; return; }
       // `e.repeat` is the guard that makes these presses rather than holds:
@@ -252,6 +280,36 @@ class Input {
   takeSwap() { const w = this._swapQueued; this._swapQueued = false; return w; }
   takeAnyPress() { const a = this._anyPress; this._anyPress = false; return a; }
 
+  /**
+   * START OR STOP LISTENING FOR A TYPED CODE, and forget anything half-typed
+   * either way.
+   *
+   * ⚠️ THE ARMING IS WHAT KEEPS THE CODE TO ONE SCREEN. Recording always and
+   * checking only on the pause screen would look identical from here and would
+   * not be: the letters would accumulate during play, so typing SABOROSA while
+   * walking around and pausing afterwards would unlock it. The word has to be
+   * typed AT the screen that listens for it, and clearing on every change of
+   * state is what makes that literally true.
+   *
+   * Idempotent, so the caller can hand it a `paused` flag every frame if that
+   * ever reads better than calling it on the edge.
+   */
+  armCheat(on) {
+    on = !!on;
+    if (on === this._cheatArmed) return;
+    this._cheatArmed = on;
+    this._typed = '';
+  }
+
+  /** True ONCE if `word` has just been typed, and consumed on read like every
+      other `take`. Matched on the END of the buffer, so a mistyped run-up does
+      not have to be cleared by hand -- SABOROSSABOROSA still lands. */
+  takeCheat(word) {
+    if (!word || !this._typed.endsWith(word)) return false;
+    this._typed = '';
+    return true;
+  }
+
   /** Drop anything queued — used when a screen changes, so a key pressed on the
       way out of one state does not act on the state it lands in. */
   flush() {
@@ -260,3 +318,9 @@ class Input {
     this._roomJump = -1;
   }
 }
+
+/* HOW MANY TYPED LETTERS ARE REMEMBERED. Only ever compared with `endsWith`, so
+   this is a cap on the buffer and not the length of any code -- it needs to be
+   at least as long as the longest word `takeCheat` is asked about, and every
+   character past that is just room to mistype. */
+Input.CHEAT_MAX = 32;

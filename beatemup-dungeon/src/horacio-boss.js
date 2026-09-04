@@ -195,11 +195,26 @@ class HoracioBoss {
    *
    * Three things decide it and they are layered, not mixed:
    *
-   *   the PHASE   owns `this.state`, and the only thing it really insists on is
-   *               the BALL. Balled is a posture, not a wound, so a balled boss
-   *               stays balled however hurt he is.
    *   his HEALTH  picks the body -- armoured / exposed / naked. `_bodyState`.
+   *   the PHASE   owns `this.state`, and the only thing it really insists on is
+   *               the BALL -- balled is a posture, not a wound. ⚠️ EXCEPT ONCE
+   *               THE SHELL IS OFF: see below.
    *   the LAST PUNCH  swaps that body for its recoil while `hurtT` runs.
+   *
+   * ⚠️ THE NAKED BODY BEATS THE BALL, AND IT IS THE ONE PLACE THE HEALTH WINS.
+   * Asked for 2026-09-04: *"when he is doing the ball attack, or submerged, do
+   * not use the sprites from F3, because they have the helmet. For this stage,
+   * just use his regular sprites."* Every ball drawing in the pack -- including
+   * the joaninha's -- is a body tucked INTO its shell, so at the tier whose
+   * whole point is that the shell is gone the ball puts it straight back on.
+   *
+   * ⚠️ WRITTEN AS `st !== 3` RATHER THAN AS `_shellGone()`, AND THAT MATTERS.
+   * The test is "did a naked drawing actually come out of `_bodyState`", not
+   * "is his health low" -- so if the tier is ever turned off at the level he is
+   * in (`nakedLevel: null`, or a re-cut that loses the frame) `_bodyState`
+   * falls back to the EXPOSED body and the ball correctly wins again. Gating on
+   * the health would have drawn him standing up mid-charge with no naked art to
+   * show for it.
    *
    * ⚠️ IT RESOLVES AT DRAW TIME AND WRITES NOTHING BACK. It used to be done by
    * assigning `this.state`, drawing, and assigning it back -- which worked, and
@@ -212,7 +227,8 @@ class HoracioBoss {
    * back to the body it was going to draw anyway rather than to a blank.
    */
   _drawState(d) {
-    const st = (this.state === 2) ? 2 : this._bodyState(d);
+    let st = this._bodyState(d);
+    if (this.state === 2 && st !== 3) st = 2;
     if (!this._recoiling()) return st;
     const hit = HoracioBoss.HIT_STATE[st];
     if (hit == null) return st;

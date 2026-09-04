@@ -3504,6 +3504,32 @@ const CONFIG = {
      LINE 0 IS DRAWN BIG by `Hud.drawCard`; anything after it would be drawn
      small and evenly spaced, which is why the list fitted here in the first
      place. */
+  /* THE DEV-MODE UNLOCK: pause, then type the word in CAPITALS to turn
+     `DEV.on` on or off. Asked for 2026-09-04.
+
+     ⚠️ IT IS DELIBERATELY **NOT** INSIDE `CONFIG.DEV`, and that is the whole
+     point rather than tidiness. Everything in that block is dead while
+     `DEV.on` is false -- the comment there says so and every read site enforces
+     it -- and the unlock is the one thing that must work precisely THEN. Put it
+     in there and it would be a door locked from the inside.
+
+     ⚠️ UPPERCASE IS ENFORCED IN input.js BY READING `e.key` INSTEAD OF
+     `e.code`, which is the opposite of how every other key in this game is
+     read. See the note on the keydown handler before changing the word: a word
+     with a digit or a symbol in it will not record at all.
+
+     `on: false` removes the code entirely; the word is matched on the END of
+     what has been typed, so a mistyped run-up does not have to be cleared. */
+  DEV_UNLOCK: {
+    on: true,
+    word: 'SABOROSA',
+    /* WHAT THE PAUSE CARD CALLS IT, asked for 2026-09-04 -- the player's name
+       for the thing, not the developer's.
+       ⚠️ ITS OWN STRING RATHER THAN `word + ' MODE'`, so that renaming the code
+       does not rewrite the label and vice versa. They only happen to agree. */
+    label: 'SABOROSA MODE',
+  },
+
   PAUSE: {
     on: true,
     LINES: ['PAUSA'],

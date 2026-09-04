@@ -560,6 +560,11 @@
          song from the top on every pause. */
       sound.setPaused(paused);
       input.flush();
+      /* THE DEV-MODE UNLOCK LISTENS ONLY WHILE THE PAUSE CARD IS UP. Armed and
+         disarmed on the EDGE, and `armCheat` forgets the buffer both ways, so
+         the word has to be typed at this screen rather than carried to it --
+         see CONFIG.DEV_UNLOCK and Input.armCheat. */
+      input.armCheat(paused);
     }
     if (paused) {
       /* THE WORLD IS DRAWN, NOT ADVANCED: `render` is the same call the play
@@ -572,9 +577,40 @@
          game's recurring bug and it presents as input being dead on a screen
          that looks completely normal -- which, on a pause screen, would look
          exactly like a pause screen. */
+      /* THE UNLOCK. ⚠️ IT WRITES `CONFIG.DEV.on` AT RUN TIME, which is safe
+         because every gate on it is a live read inside a function -- the room
+         jump, the punch damage, the corner marker, the debug overlay -- so all
+         of them answer to this on the very next frame with nothing rebuilt.
+         The two that are NOT live are read once and stay read once: `startRoom`
+         is a boot-time jump, and `DEV.lives` is taken in Player.fullLives() at
+         construction and on a continue, so unlocking mid-run does not top the
+         player up. That is the honest behaviour, not a gap -- a cheat that
+         handed out lives retroactively would be a different feature. */
+      if (CONFIG.DEV_UNLOCK && CONFIG.DEV_UNLOCK.on !== false && CONFIG.DEV
+          && input.takeCheat(CONFIG.DEV_UNLOCK.word || 'SABOROSA')) {
+        CONFIG.DEV.on = !CONFIG.DEV.on;
+      }
       renderFrame(render);
-      hud.drawCard(ctx, CONFIG.PAUSE.LINES || ['PAUSA'], 1, CONFIG.hudColor,
-                   CONFIG.PAUSE.dimAlpha);
+      /* ⚠️ A COPY, NEVER `CONFIG.PAUSE.LINES` ITSELF. Pushing onto the config
+         array would append a line to it permanently and once per pause, so the
+         card would grow a stack of these over a session. */
+      const lines = (CONFIG.PAUSE.LINES || ['PAUSA']).slice();
+      /* ⚠️ "SABOROSA MODE", NOT "DEV MODE", ON REQUEST -- this is the only place
+         in the game a PLAYER is told about it, so it wears the game's name and
+         not the developer's. The corner marker stays `DEV`: that one exists to
+         stop a forgotten flag being mistaken for a balance problem, and the
+         person reading it is not a player.
+
+         ⚠️ AND THERE IS NO "OFF" LINE. There was one, for the half a session
+         between this being built and being played: switching the mode off said
+         so on the card, because off otherwise looks exactly like a code that
+         was never typed. It was refused on sight -- *"remove the SABOROSA MODE
+         OFF text, don't ever make that appear"* -- and it is DELETED rather
+         than held behind a flag, which is what this project does with a look
+         that was turned down. **The absence of the line IS the off state.** */
+      const label = (CONFIG.DEV_UNLOCK && CONFIG.DEV_UNLOCK.label) || 'DEV MODE';
+      if (CONFIG.DEV && CONFIG.DEV.on) lines.push(label + ' ON');
+      hud.drawCard(ctx, lines, 1, CONFIG.hudColor, CONFIG.PAUSE.dimAlpha);
       requestAnimationFrame(loop);
       return;
     }

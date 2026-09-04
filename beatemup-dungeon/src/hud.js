@@ -296,10 +296,14 @@ class Hud {
 
   /** A full-screen card: a dimmed screen with a line or two over it.
    *
-   *  ⚠️ NOTHING CALLS THIS ANY MORE. It drew the death card until 2026-08-21,
-   *  when dying got a real panel (`game-over.js`) instead. Kept because it is
-   *  the obvious tool for a pause screen, which this game does not have yet --
-   *  delete it if that never happens rather than leaving it to rot. */
+   *  It drew the death card until 2026-08-21, when dying got a real panel
+   *  (`game-over.js`) instead, and was kept on the argument that it was the
+   *  obvious tool for a pause screen this game did not have yet. THE PAUSE
+   *  SCREEN ARRIVED and this is what draws it -- one caller, in game.js.
+   *
+   *  ⚠️ IT IS PLAIN CANVAS TEXT, not the hand-drawn letter pack, so it will set
+   *  any string it is handed. That is why the pause card can grow a DEV MODE ON
+   *  line without a glyph being cut for it. */
   /**
    * The DEV MODE marker.
    *
