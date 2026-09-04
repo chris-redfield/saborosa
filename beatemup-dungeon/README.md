@@ -4868,6 +4868,86 @@ always."*
 > tying them would mean a pointing drawing (when one is finally made) silently
 > changing how he comes out of the ground.
 
+### The third damage tier, and the recoil
+
+The last unused drawing in his pack went in, and nine more arrived the same day.
+Two separate things, and they are easy to confuse because both are "he is hurt":
+
+| | says | lasts |
+|---|---|---|
+| **damage tier** | how far through the fight he is | until his health moves again |
+| **recoil** | *that punch, just now* | `hurtMs` (300 ms) |
+
+```js
+hurtAt: 0.5,          // under this, the exposed body — the beige creature showing through
+nakedAt: 0.25,        // under this, the shell is OFF        <- new
+nakedLevel: 0,        // ...and he drops to the joaninha     <- new, and see below
+hitPoseMs: null,      // how long the recoil holds; null = as long as the blink
+```
+
+*"batidao-boss-espeto-001-F4.png — this file is supposed to be used when the
+boss has 25% or less of HP."*
+
+> ⚠️ **`nakedAt` alone would have done nothing, and `nakedLevel` is why.** The
+> naked body was drawn for **master 001 only** — a creature with no shell has no
+> spike level — so `index[level>0][3]` is null and the lookup falls straight back
+> to the armoured body. He fights at level 1 and stabs at level 3, so the tier
+> would have been invisible everywhere except mid-theatre. **So losing the last
+> of his health is losing his spikes:** under 25 % his body is the joaninha
+> whatever the phase asked for. Set `nakedLevel: null` to make the tier inert
+> again rather than half-applied.
+
+> ⚠️ **His size and hurtbox follow him down** — `sizeByLevel[0]`, 324 px against
+> level 1's 354. That is deliberate and it is one resolver, `bodyLevel()`, read
+> by both the drawing and `sizePx()`. A body that shrinks on screen while its
+> box stays the old size is the bug where punches connect with air beside him.
+
+> ⚠️ **The stab loses its spikes down here.** Beat 9 sets level 3 *"because the
+> grandao does the stabbing"* and under 25 % it draws as the naked joaninha
+> lunging. It is the honest read of losing your armour, but it is a **look call**
+> and it is the one to revisit first if the ending of the fight reads wrong.
+
+Then the recoil: `damage-sprites/batidao-boss-espeto-hit-*`, states **4/5/6** —
+the screwed-shut eyes and gritted teeth of bodies 0/1/3, swapped in for the
+length of the blink and swapped straight back.
+
+> ⚠️ **Their `F` numbering is its own and does not match the main pack's.** Hit
+> `F3` is the **naked** recoil, not the ball — the ball has no hit drawing at any
+> level, so the numbering compacts. Nine files: 4 levels × 2, plus the joaninha's
+> naked.
+
+> ⚠️ **There is no recoil for the ball and there should not be** — a tucked ball
+> has no face. He is still punchable balled (the peek is the fight's one reliable
+> opening) and there the blink alone says it, as it did everywhere before.
+
+> ⚠️ **It runs through the first 300 ms of his death, unlike the blink.** The
+> blink is suppressed while `dead` because two flickers on different beats over
+> one body is noise; a held grimace under the death flash is not a flicker, it is
+> the blow that did it still on his face.
+
+#### Re-cutting him with the recoils
+
+```
+python3 tools/build-beat-horacio-defs.py
+```
+
+> ⚠️ **`TARGET_H` now measures the BODY, not the cell, and that was a real bug
+> for one run.** The recoils reach ~7 master rows higher than the poses they
+> replace, so the shared cell grew — and the same `TARGET_H` came out as scale
+> **0.31749 instead of 0.31949**: the entire boss, every level and every state,
+> 0.6 % smaller because a hurt frame arrived.
+
+> ⚠️ **`ax` is pinned to the normal bodies for the same reason.** A few recoils
+> lean up to 28 master px past the left edge of their cell, so the window is the
+> union of both sheets' runs — but the anchor **is** the cell's centre, and
+> widening a cell asymmetrically would have slid the whole boss sideways in a
+> change that is meant to be invisible until he is punched.
+
+> ⚠️ **The atlases grew to 15.6 MB over four textures** (from 8.9), largest
+> 2963 × 2814 — still inside `bigTextureCap` (3200), which is the wall. The
+> column count is now *searched* rather than `sqrt(n)`: at level 3 a 6-column
+> shelf packs 20 px over the cap and fits comfortably at 7.
+
 ---
 
 ## Masters arrive too big

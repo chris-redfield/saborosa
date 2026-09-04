@@ -18,6 +18,29 @@ STATE:
     F4  naked      the beige creature with NO shell at all. Level 001 only,
                    because a creature with no shell has no spike level.
 
+THEN NINE MORE ARRIVED (2026-09-03), in damage-sprites/, named
+batidao-boss-espeto-hit-<level>-F<n>: the RECOIL of each body, the frame he
+wears for the moment a punch lands. Their F numbering is its OWN, compacted,
+and reading it as the main pack's is the mistake to avoid:
+
+    hit F1  armoured recoil   eyes screwed shut ">  <"
+    hit F2  exposed recoil    the same squint over gritted yellow teeth
+    hit F3  naked recoil      LEVEL 001 ONLY -- so hit-F3 is the NAKED body,
+                              NOT the ball, even though plain F3 is the ball.
+
+⚠️ THERE IS NO HIT POSE FOR THE BALL, at any level, and that is the art being
+right: a tucked ball has no face to screw up. 4 levels x 2 + 1 = the nine files.
+He can still be punched while balled (the peek is the fight's one opening), and
+there he keeps the ball drawing and says the hit with the blink alone.
+
+⚠️ AND THE HIT FRAMES DO NOT SHARE THE MAIN PACK'S CELL RUNS EXACTLY. Three of
+level 001's eight start up to 28 master px LEFT of the corresponding normal run
+-- the recoil leans -- so slicing them at the normal runs would shave a strip
+off the pose. The window is the UNION of the two sheets' runs. But see
+`ax` below: widening a cell moves its centre, and the centre IS the anchor, so
+the anchor is measured from the NORMAL frames only and every existing drawing
+stays exactly where it was.
+
 ⚠️ I READ F1..F4 AS BOIL FRAMES FIRST AND THEY ARE NOT. They are four different
 BODIES. The mistake was caught by compositing every frame on one shared ground
 line before wiring anything -- the "boil" ghosted a foot low and half a body
@@ -63,9 +86,11 @@ Output (assets-v2/beatemup-dungeon/):
                            frames, index }
                          each frame carries `sheet`, the index into `sheets`
                         index[level][state][facing] -> one frame id.
-                        state 0 armoured, 1 exposed, 2 ball, 3 naked.
-                        ⚠️ ONLY LEVEL 0 HAS STATE 3; the others hold null there,
-                        so a lookup must fall back rather than index blindly.
+                        state 0 armoured, 1 exposed, 2 ball, 3 naked,
+                              4 armoured_hit, 5 exposed_hit, 6 naked_hit.
+                        ⚠️ ONLY LEVEL 0 HAS STATES 3 AND 6, AND NO LEVEL HAS A
+                        HIT BALL; those hold null, so a lookup must fall back
+                        rather than index blindly.
 """
 import json
 import os
@@ -74,10 +99,20 @@ import numpy as np
 from PIL import Image
 
 SRC = 'assets-v2/beatemup-dungeon/boss_horacio/batidao-boss-espeto-%s-F%d.png'
+HIT = ('assets-v2/beatemup-dungeon/boss_horacio/damage-sprites/'
+       'batidao-boss-espeto-hit-%s-F%d.png')
 OUT = 'assets-v2/beatemup-dungeon/horacio'
-# (sheet number, how many boil frames it has). Order IS the level order.
-LEVELS = [('001', 4), ('002', 3), ('003', 3), ('004', 3)]
-STATE_NAMES = ['armoured', 'exposed', 'ball', 'naked']
+# (sheet number, how many BODIES it has, how many HIT bodies it has).
+# Order IS the level order.
+LEVELS = [('001', 4, 3), ('002', 3, 2), ('003', 3, 2), ('004', 3, 2)]
+# ⚠️ THE HIT STATES ARE APPENDED, NEVER INTERLEAVED. `state` is stored in the
+# JSON and read by horacio-boss.js as a number; inserting `armoured_hit` next to
+# `armoured` would renumber `ball` and `naked` and silently repoint every lookup
+# in that file. Adding on the end is the only edit that cannot do that.
+STATE_NAMES = ['armoured', 'exposed', 'ball', 'naked',
+               'armoured_hit', 'exposed_hit', 'naked_hit']
+# hit file F<n> -> state index. See the header: hit F3 is the NAKED recoil.
+HIT_STATE = {1: 4, 2: 5, 3: 6}
 FACINGS = 8
 ALPHA = 40
 COL_GAP = 80       # empty columns tolerated inside one facing
@@ -145,78 +180,140 @@ def rows_of(mask):
 
 
 def main():
-    # ---- load every master once, and find each level's eight facings --------
+    # ---- load every master once, normal and hit -----------------------------
+    # keyed (level number, state index) -- the SAME numbering the JSON stores,
+    # so nothing downstream has to know which file a body came out of.
     sheets = {}
-    for num, nf in LEVELS:
+    for num, nf, nh in LEVELS:
         for fi in range(1, nf + 1):
             path = SRC % (num, fi)
             if not os.path.exists(path):
                 raise SystemExit(f'missing {path}')
             im = Image.open(path).convert('RGBA')
-            sheets[(num, fi)] = (im, np.array(im)[:, :, 3] > ALPHA)
+            sheets[(num, fi - 1)] = (im, np.array(im)[:, :, 3] > ALPHA)
+        for fi in range(1, nh + 1):
+            path = HIT % (num, fi)
+            if not os.path.exists(path):
+                raise SystemExit(f'missing {path}')
+            im = Image.open(path).convert('RGBA')
+            sheets[(num, HIT_STATE[fi])] = (im, np.array(im)[:, :, 3] > ALPHA)
+
+    def states_of(num, nf, nh):
+        return [si for si in range(nf)] + [HIT_STATE[fi] for fi in range(1, nh + 1)]
 
     cells = {}          # (level, facing) -> (x0, y0, x1, y1) in master coords
+    # (level, facing) -> the NORMAL frames' own bounds (x0, x1, y0, y1).
+    # ⚠️ THE ANCHOR AND THE SCALE BOTH COME FROM THIS, NOT FROM THE CELL --
+    # see the notes where `ax` and `scale` are computed.
+    body = {}
     ground = 0
-    for li, (num, nf) in enumerate(LEVELS):
-        runs = facings_of(sheets[(num, 1)][1])
+    for li, (num, nf, nh) in enumerate(LEVELS):
+        # ⚠️ THE WINDOW IS THE UNION OF THE TWO SHEETS' RUNS. A few recoil poses
+        # lean out past the normal run's left edge and slicing at the normal one
+        # would shave the pose. Both sheets give eight runs in the same order --
+        # asserted, because a merged or split run would silently pair facing 3
+        # with facing 4 and h-flip half his fight.
+        runs = facings_of(sheets[(num, 0)][1])
         if len(runs) != FACINGS:
             raise SystemExit(f'{num}: found {len(runs)} facings, expected {FACINGS}')
-        for fa, (cx0, cx1) in enumerate(runs):
-            # The union over this cell's boil frames -- see the header.
-            x0, y0, x1, y1 = cx0, 10 ** 9, cx1, -1
-            for fi in range(1, nf + 1):
-                m = sheets[(num, fi)][1][:, cx0:cx1 + 1]
+        hruns = facings_of(sheets[(num, HIT_STATE[1])][1])
+        if len(hruns) != FACINGS:
+            raise SystemExit(f'{num} hit: found {len(hruns)} facings, expected {FACINGS}')
+        for fa in range(FACINGS):
+            cx0 = min(runs[fa][0], hruns[fa][0])
+            cx1 = max(runs[fa][1], hruns[fa][1])
+            # The union over every body in this cell -- see the header.
+            x0, y0, x1, y1 = 10 ** 9, 10 ** 9, -1, -1
+            bx0, bx1, by0, by1 = 10 ** 9, -1, 10 ** 9, -1
+            for si in states_of(num, nf, nh):
+                m = sheets[(num, si)][1][:, cx0:cx1 + 1]
                 r = rows_of(m)
                 if r is None:
-                    raise SystemExit(f'{num} F{fi} facing {fa}: no ink')
-                y0, y1 = min(y0, r[0]), max(y1, r[1])
+                    raise SystemExit(f'{num} state {si} facing {fa}: no ink')
                 cols = np.nonzero(m.any(axis=0))[0]
-                x0 = min(x0, cx0 + int(cols.min()))
-                x1 = max(x1, cx0 + int(cols.max()))
+                lo, hi = cx0 + int(cols.min()), cx0 + int(cols.max())
+                y0, y1 = min(y0, r[0]), max(y1, r[1])
+                x0, x1 = min(x0, lo), max(x1, hi)
+                if si < 4:
+                    bx0, bx1 = min(bx0, lo), max(bx1, hi)
+                    by0, by1 = min(by0, r[0]), max(by1, r[1])
+            # ⚠️ THE GROUND ROW IS THE NORMAL BODIES' ONLY (`by1`, not `y1`).
+            # Every recoil sits higher than the pose it replaces -- he flinches
+            # UP -- so letting them into this max is harmless today and would
+            # move the whole pack's ground line, and therefore every `ay` in it,
+            # the first time one did not. The ground is where he STANDS.
+            ground = max(ground, by1)
             cells[(li, fa)] = (x0, y0, x1, y1)
-            ground = max(ground, y1)
+            body[(li, fa)] = (bx0, bx1, by0, by1)
 
     # ---- one scale, off level 1 (index 1), facing 0 -------------------------
-    ref = cells[(1, 0)]
-    scale = TARGET_H / float(ref[3] - ref[1] + 1)
+    # ⚠️ OFF THE **BODY**, NOT THE CELL, AND THAT IS NOT A REFACTOR. It read the
+    # cell until the recoils were added, and they reach 7 master rows higher
+    # than the pose they replace, so the cell grew and the same TARGET_H came
+    # out as scale 0.31749 instead of 0.31949: the ENTIRE boss, every level and
+    # every state, 0.6% smaller because a hurt frame arrived. `TARGET_H` is
+    # documented as the level-1 BODY height on screen and now measures one.
+    ref = body[(1, 0)]
+    scale = TARGET_H / float(ref[3] - ref[2] + 1)
 
     # ---- cut, scale, pack ---------------------------------------------------
     tiles = []
     # index[level][state][facing]; null where a level has no such state.
     index = [[[None] * FACINGS for _ in STATE_NAMES] for _ in LEVELS]
-    for li, (num, nf) in enumerate(LEVELS):
+    for li, (num, nf, nh) in enumerate(LEVELS):
         for fa in range(FACINGS):
             x0, y0, x1, y1 = cells[(li, fa)]
+            bx0, bx1 = body[(li, fa)][0], body[(li, fa)][1]
             w, h = x1 - x0 + 1, y1 - y0 + 1
             sw, sh = max(1, round(w * scale)), max(1, round(h * scale))
-            for fi in range(1, nf + 1):
-                t = sheets[(num, fi)][0].crop((x0, y0, x1 + 1, y1 + 1))
-                index[li][fi - 1][fa] = len(tiles)
+            for si in states_of(num, nf, nh):
+                t = sheets[(num, si)][0].crop((x0, y0, x1 + 1, y1 + 1))
+                index[li][si][fa] = len(tiles)
                 tiles.append({
                     'img': t.resize((sw, sh), Image.LANCZOS),
-                    # Shared by the cell's STATES: the drawn centre, and the
-                    # pack's one ground row. See the header on both.
-                    'ax': round((x0 + x1) / 2.0 - x0, 1) * scale,
+                    # ⚠️ THE DRAWN CENTRE OF THE **NORMAL** BODIES, NOT OF THE
+                    # CELL. `ax` is what the renderer subtracts from his ground
+                    # x, so it IS the cell's centre by construction -- and the
+                    # hit sheets widened some cells asymmetrically (up to 28
+                    # master px on one side). Measuring it off the cell would
+                    # have slid the whole boss a few pixels sideways the day the
+                    # recoils were added, in a change that is supposed to be
+                    # invisible until he is punched. Pinning it to the bodies
+                    # keeps every existing drawing on the exact pixel it was on.
+                    'ax': ((bx0 + bx1) / 2.0 - x0) * scale,
+                    # ...and the pack's one ground row. Independent of `y0`:
+                    # a taller cell raises `y0` and `ay` together and the drawn
+                    # position does not move. See the header.
                     'ay': (ground - y0) * scale,
                 })
 
-    # ONE ATLAS PER LEVEL. Roughly square, so neither dimension runs at the cap.
+    # ONE ATLAS PER LEVEL. ⚠️ THE COLUMN COUNT IS SEARCHED, NOT `sqrt(n)`, since
+    # the recoils went in: sqrt is only square when the tiles are, and at level 3
+    # a 6-column shelf packs to 3220 tall -- twenty pixels over MAX_DIM, for a
+    # pack that fits comfortably at 7. Trying every count and keeping the one
+    # with the smallest longest side costs nothing at build time.
     frames = [None] * len(tiles)
     sheets_out = []
     for li in range(len(LEVELS)):
         ids = [fid for st in index[li] for fid in st if fid is not None]
-        cols_n = max(1, int(round(len(ids) ** 0.5)))
-        x = y = rowh = W = 0
-        for n, fid in enumerate(ids):
-            if n % cols_n == 0 and n:
-                y += rowh + PAD
-                x, rowh = 0, 0
-            im = tiles[fid]['img']
-            tiles[fid]['x'], tiles[fid]['y'] = x, y
-            rowh = max(rowh, im.height)
-            x += im.width + PAD
-            W = max(W, x)
-        H = y + rowh + PAD
+
+        def shelf(cols_n):
+            x = y = rowh = W = 0
+            place = {}
+            for n, fid in enumerate(ids):
+                if n % cols_n == 0 and n:
+                    y += rowh + PAD
+                    x, rowh = 0, 0
+                im = tiles[fid]['img']
+                place[fid] = (x, y)
+                rowh = max(rowh, im.height)
+                x += im.width + PAD
+                W = max(W, x)
+            return W, y + rowh + PAD, place
+
+        best = min((shelf(c) for c in range(1, len(ids) + 1)),
+                   key=lambda r: (max(r[0], r[1]), r[0] * r[1]))
+        W, H, place = best
         if W > MAX_DIM or H > MAX_DIM:
             raise SystemExit(
                 f'level {li} atlas is {W}x{H}, over MAX_DIM {MAX_DIM}. '
@@ -224,8 +321,9 @@ def main():
         atlas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
         for fid in ids:
             t = tiles[fid]
-            atlas.paste(t['img'], (t['x'], t['y']))
-            frames[fid] = {'sheet': li, 'x': t['x'], 'y': t['y'],
+            x, y = place[fid]
+            atlas.paste(t['img'], (x, y))
+            frames[fid] = {'sheet': li, 'x': x, 'y': y,
                            'w': t['img'].width, 'h': t['img'].height,
                            'ax': round(t['ax'], 1), 'ay': round(t['ay'], 1)}
         name = f'{OUT}-L{li}'
@@ -243,12 +341,22 @@ def main():
     print(f'{len(frames)} frames over {len(sheets_out)} atlases, '
           f'{total / 1024 / 1024:.1f} MB total')
     print(f'  scale {scale:.5f}   ground row {ground}   TARGET_H {TARGET_H}')
-    for li, (num, nf) in enumerate(LEVELS):
+    # ⚠️ `bodyPx` IS WHAT `CONFIG.HORACIO_BOSS.sizeByLevel` TAKES, NOT the tile
+    # height beside it. The tile is the shared cell and now covers the recoils
+    # too, so it runs a few px taller than he is; sizeByLevel feeds the HURTBOX,
+    # and a hurtbox that grew because a hurt POSE reaches higher is a box around
+    # air. It is the body, at this scale, as it always was.
+    print('  sizeByLevel: [' + ', '.join(
+        str(round((body[(li, 0)][3] - body[(li, 0)][2] + 1) * scale))
+        for li in range(len(LEVELS))) + ']')
+    for li, (num, nf, nh) in enumerate(LEVELS):
         f0 = frames[index[li][0][0]]
+        bpx = round((body[(li, 0)][3] - body[(li, 0)][2] + 1) * scale)
         have = [STATE_NAMES[si] for si in range(len(STATE_NAMES))
                 if index[li][si][0] is not None]
-        print(f'  level {li} ({num})  facing0 {f0["w"]}x{f0["h"]}'
-              f'  anchor {f0["ax"]},{f0["ay"]}  states: {", ".join(have)}')
+        print(f'  level {li} ({num})  facing0 tile {f0["w"]}x{f0["h"]}'
+              f'  bodyPx {bpx}  anchor {f0["ax"]},{f0["ay"]}'
+              f'  states: {", ".join(have)}')
 
 
 if __name__ == '__main__':

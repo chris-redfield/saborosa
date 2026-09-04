@@ -4209,20 +4209,34 @@ const CONFIG = {
        it is read by combat._impact off the ATTACKER, so it is his property
        rather than a branch in the impact code. */
     fxColour: 'yellow',
-    /* THE DAMAGE TIERS, as fractions of health. Above `hurtAt` he wears the red
-       armoured body; below it the exposed one (the beige creature showing
-       through the shell); below `nakedAt` the shell-less body IF the level has
-       one. ⚠️ ONLY THE JOANINHA HAS A NAKED DRAWING -- see `_bodyState` in
-       horacio-boss.js for the two ways to close that and why neither was
-       chosen here. */
+    /* THE THREE DAMAGE TIERS, as fractions of health. Above `hurtAt` he wears
+       the red armoured body; below it the exposed one (the beige creature
+       showing through the shell); below `nakedAt` the shell-less body. */
     hurtAt: 0.5,
-    /* ⚠️ NULL MEANS OFF, AND THE READ SITE CHECKS FOR NULL BEFORE ITS DEFAULT
-       so that it really is off -- see `_bodyState`. Two tiers ship for now
-       ("lets use only these 2 stages for now, we will introduce the stage with
-       almost no armor only in the end"); put a fraction here to turn the third
-       one on, and read the note in horacio-boss.js first, because the naked
-       drawing only exists for the joaninha. */
-    nakedAt: null,
+    /* THE BOTTOM TIER, TURNED ON 2026-09-03: *"this file is supposed to be used
+       when the boss has 25% or less of HP"* -- batidao-boss-espeto-001-F4, the
+       one drawing in the pack that had never been on screen.
+       ⚠️ NULL MEANS OFF, AND THE READ SITE CHECKS FOR NULL BEFORE ITS DEFAULT
+       so that it really is off -- see `_shellGone` in horacio-boss.js. */
+    nakedAt: 0.25,
+    /* AND THE HALF THAT MAKES IT VISIBLE. ONLY THE JOANINHA HAS A NAKED
+       DRAWING -- a creature with no shell has no spike level -- so `index` is
+       null at [level>0][3] and `nakedAt` alone would have fallen back to the
+       armoured body at every level he actually fights in. Losing the last of
+       his health therefore IS losing his spikes: below `nakedAt` his body drops
+       to level 0 whatever the phase asked for, including the stab's grandao.
+       ⚠️ HIS SIZE AND HURTBOX FOLLOW IT (354 -> 324, `sizeByLevel[0]`), which
+       is deliberate -- see `bodyLevel()`. Set this to null to make the tier
+       inert again rather than half-applied. */
+    nakedLevel: 0,
+    /* HOW LONG HE HOLDS THE RECOIL -- the screwed-shut eyes and gritted teeth
+       drawn for every body except the ball (states 4/5/6 of his pack, added
+       2026-09-03). ⚠️ NULL MEANS "AS LONG AS THE BLINK", which is `hurtMs`
+       (300) and is the default on purpose: the pose and the flicker then say
+       the same thing over the same window rather than overlapping on two
+       different clocks. Put a number here to shorten the grimace without
+       touching the game-wide blink every other fighter shares. */
+    hitPoseMs: null,
     /* BEAT 8: the wall of charutobis. ⚠️ THE SIGNAL POSE IS A STAND-IN -- there
        is no pointing drawing yet -- so he holds the armoured front pose for the
        gesture. `signalState`/`signalFacing` are where the real one goes. */

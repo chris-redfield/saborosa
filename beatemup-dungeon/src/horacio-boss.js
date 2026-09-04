@@ -12,6 +12,7 @@
  *
  *   LEVEL   0 joaninha (no spikes) . 1 small . 2 medium . 3 grandao
  *   STATE   0 armoured . 1 exposed (beige body) . 2 ball . 3 naked (level 0 only)
+ *           4 armoured_hit . 5 exposed_hit . 6 naked_hit (level 0 only)
  *   FACING  8 drawn rotations, front / 45 / side / 135 / back and the mirrors
  *
  * ⚠️ AND THERE IS NOT ONE ANIMATION FRAME IN IT. No idle, no walk cycle, no
@@ -20,10 +21,22 @@
  * played row. Do not fake a cycle by alternating armoured/exposed; those are a
  * well body and a hurt one, and flipping between them reads as a bug.
  *
- * ⚠️ WHICH IS ALSO WHY `hurt` HAS REAL ART HERE AND THE HORSE'S DOES NOT. The
- * exposed drawing IS the hurt pose -- the shell stays and the creature under it
- * shows -- so he does not need the Mosca's blink to say a hit landed. He gets
- * the blink too, but the state change is the message.
+ * ⚠️ SO THE THREE `_hit` STATES ARE THE ONE EXCEPTION, AND THEY ARE NOT A ROW
+ * EITHER. 4/5/6 are the RECOIL of bodies 0/1/3 -- eyes screwed shut, gritted
+ * teeth -- and each is one drawing held for the length of `hurtT`, then
+ * dropped. Not a cycle, an interruption: `_drawState` swaps the body out for
+ * its recoil for the duration of the blink and puts it straight back.
+ *
+ * ⚠️ THERE IS NO RECOIL FOR THE BALL and there should not be: a tucked ball has
+ * no face. He is punchable while balled -- the peek is the fight's one reliable
+ * opening -- and there the blink alone says it, as it did everywhere before the
+ * recoils arrived.
+ *
+ * ⚠️ WHICH IS ALSO WHY `hurt` HAS REAL ART HERE AND THE HORSE'S DOES NOT. TWO
+ * kinds of it, and they say different things and must not be confused. The
+ * DAMAGE TIER (exposed, then naked) is durable and reads as how far through the
+ * fight he is; the RECOIL is 300ms and reads as *that punch*. `_bodyState`
+ * answers the first, `_drawState` layers the second on top.
  *
  * THE FIGHT, as specified. All nine beats:
  *
@@ -162,16 +175,73 @@ class HoracioBoss {
   /**
    * The one drawing for the current level, state and facing.
    *
+   * ⚠️ `bodyLevel()`, NOT `this.level`. Below `nakedAt` the shell is off and he
+   * IS the joaninha whatever the phase asked for -- see `bodyLevel`.
+   *
    * ⚠️ THE FALLBACK IS NOT DEFENSIVE, IT IS THE DATA. Only level 0 has a naked
    * drawing -- a creature with no shell has no spike level -- so `index` holds
    * null at [level>0][3] and a blind lookup would draw nothing at all rather
    * than fail loudly. Falling back to armoured keeps a body on screen.
    */
-  _frame(d) {
-    const lv = d.index[this.level] || d.index[0];
-    const st = (lv && lv[this.state]) || lv[0];
+  _frame(d, state) {
+    const lv = d.index[this.bodyLevel()] || d.index[0];
+    const st = (lv && lv[state != null ? state : this.state]) || lv[0];
     const id = st ? st[this.facing] : null;
     return (id == null) ? null : d.frames[id];
+  }
+
+  /**
+   * WHICH DRAWING IS ON SCREEN THIS FRAME -- the whole resolution, in one place.
+   *
+   * Three things decide it and they are layered, not mixed:
+   *
+   *   the PHASE   owns `this.state`, and the only thing it really insists on is
+   *               the BALL. Balled is a posture, not a wound, so a balled boss
+   *               stays balled however hurt he is.
+   *   his HEALTH  picks the body -- armoured / exposed / naked. `_bodyState`.
+   *   the LAST PUNCH  swaps that body for its recoil while `hurtT` runs.
+   *
+   * ⚠️ IT RESOLVES AT DRAW TIME AND WRITES NOTHING BACK. It used to be done by
+   * assigning `this.state`, drawing, and assigning it back -- which worked, and
+   * meant every phase had a field that was true for one statement in a method
+   * it does not call. Anything reading `state` between those two lines saw a
+   * value no phase had set.
+   *
+   * ⚠️ AND THE RECOIL IS CHECKED AGAINST THE DATA BEFORE IT IS USED. There is no
+   * hit ball at any level and no hit naked above level 0, so the lookup falls
+   * back to the body it was going to draw anyway rather than to a blank.
+   */
+  _drawState(d) {
+    const st = (this.state === 2) ? 2 : this._bodyState(d);
+    if (!this._recoiling()) return st;
+    const hit = HoracioBoss.HIT_STATE[st];
+    if (hit == null) return st;
+    const lv = d.index[this.bodyLevel()];
+    return (lv && lv[hit] && lv[hit][this.facing] != null) ? hit : st;
+  }
+
+  /**
+   * IS HE STILL WEARING THE FACE HE MADE WHEN THE PUNCH LANDED?
+   *
+   * ⚠️ OFF `hurtT`, WHICH COUNTS DOWN, so the elapsed time is `hurtMs` minus
+   * what is left -- getting that backwards holds the pose for everything BUT
+   * the moment of the hit. `hitPoseMs: null` means "as long as the blink", the
+   * default and the honest one: the recoil and the flicker then say the same
+   * thing over the same 300ms instead of two overlapping windows. A number here
+   * shortens (or lengthens) the pose alone.
+   *
+   * ⚠️ IT RUNS THROUGH THE FIRST 300ms OF HIS DEATH, deliberately, and that is
+   * the opposite of what the blink does. `hurtT` is set by the killing blow
+   * like any other and keeps ticking while `dead`; the blink is suppressed
+   * there because two flickers on different beats over one body is noise, and a
+   * held grimace under the death flash is not a flicker at all -- it is the
+   * blow that did it, still on his face.
+   */
+  _recoiling() {
+    if (this.hurtT <= 0) return false;
+    const ms = CONFIG.HORACIO_BOSS.hitPoseMs;
+    if (ms == null) return true;
+    return ((CONFIG.hurtMs || 300) - this.hurtT * 1000) < ms;
   }
 
   // --- the shared boss interface -------------------------------------------
@@ -197,15 +267,16 @@ class HoracioBoss {
    * for the JOANINHA ONLY (master 001). Levels 1, 2 and 3 have no naked
    * drawing, because a creature with no shell has no spike level.
    *
-   * ⚠️ SO THE THIRD TIER IS DELIBERATELY OFF (`nakedAt: null`), decided
-   * 2026-09-02: *"lets use only these 2 stages for now, we will introduce the
-   * stage with almost no armor only in the end"*. The code for it is complete
-   * and stays -- setting `nakedAt` to a fraction turns it on -- but with the
-   * drawing missing at his usual levels it would have shown up only in the one
-   * phase where he is the joaninha, which is an inconsistency rather than a
-   * feature. When it is wanted, either the naked body gets drawn for the other
-   * levels or he drops to level 0 at that threshold, so losing the last of his
-   * health IS losing his spikes. That is a look decision and it is not made.
+   * ⚠️ THE TIER IS NOW ON (`nakedAt: 0.25`) AND THE LOOK DECISION IS MADE --
+   * asked for 2026-09-03: *"this file is supposed to be used when the boss has
+   * 25% or less of HP"*. Of the two ways out this note used to list, the naked
+   * body was never going to be DRAWN for the other three levels, so the other
+   * one is what shipped: **HE DROPS TO LEVEL 0 AT THAT THRESHOLD, so losing the
+   * last of his health IS losing his spikes.** That is `bodyLevel()`, and
+   * without it this tier could not appear at all -- `index[level>0][3]` is null,
+   * so turning `nakedAt` on by itself would have fallen straight back to the
+   * armoured body and looked like a knob that does nothing. This project's own
+   * recurring trap, one layer up from the `||` version below.
    *
    * ⚠️ AND THIS REPLACED `hurt` AS THE USER OF THE EXPOSED DRAWING. It used to
    * flash on `hurtT`, which read as him flickering between well and wounded
@@ -216,18 +287,64 @@ class HoracioBoss {
     const C = CONFIG.HORACIO_BOSS;
     const f = this.maxHp ? this.hp / this.maxHp : 1;
     if (f > (C.hurtAt != null ? C.hurtAt : 0.5)) return 0;
-    /* ⚠️ `nakedAt: null` MEANS OFF, AND IT HAS TO BE READ THAT WAY EXPLICITLY.
-       Written as `C.nakedAt != null ? C.nakedAt : 0.18` -- which is how the
-       rest of this file reads its defaults -- switching the tier off by setting
-       it to null would have fallen through to the 0.18 default and left the
-       feature running. That is this project's own recurring trap: a knob set to
-       a disabling value that does nothing, because the READ SITE has a `||`
-       behind it. Off is checked before any default is applied. */
-    if (C.nakedAt != null && f <= C.nakedAt) {
-      const lv = d.index[this.level];
+    if (this._shellGone()) {
+      /* STILL GUARDED, EVEN THOUGH `bodyLevel()` HAS ALREADY PUT HIM SOMEWHERE
+         THE DRAWING EXISTS. `nakedLevel` is a knob and a future value of it --
+         or a re-cut that loses the frame -- must fall back to the exposed body
+         rather than to a blank. Cheap, and it is the check that would have
+         caught the null index the first time. */
+      const lv = d.index[this.bodyLevel()];
       if (lv && lv[3] && lv[3][this.facing] != null) return 3;
     }
     return 1;
+  }
+
+  /**
+   * IS THE SHELL OFF? The bottom damage tier, as one predicate, because THREE
+   * things ask it now -- the drawing (`_bodyState`), the level he wears
+   * (`bodyLevel`) and through that his size and hurtbox (`sizePx`) -- and they
+   * have to agree on the same frame or he is drawn as one body and punched as
+   * another.
+   *
+   * ⚠️ `nakedAt: null` MEANS OFF, AND IT IS READ THAT WAY EXPLICITLY. Written
+   * as `C.nakedAt != null ? C.nakedAt : 0.25` -- which is how the rest of this
+   * file reads its defaults -- switching the tier off by setting it to null
+   * would fall through to the default and leave the feature running. That is
+   * this project's own recurring trap: a knob set to a disabling value that
+   * does nothing, because the READ SITE has a `||` behind it. Off is checked
+   * before any default is applied.
+   */
+  _shellGone() {
+    const C = CONFIG.HORACIO_BOSS;
+    if (C.nakedAt == null) return false;
+    return (this.maxHp ? this.hp / this.maxHp : 1) <= C.nakedAt;
+  }
+
+  /**
+   * THE LEVEL HIS BODY IS IN, as opposed to the one the FIGHT put him in.
+   *
+   * `this.level` is the phase's business -- the theatre walks it 0/3/0/3/1 and
+   * the stab pops him to the grandao -- and for the whole fight above 25% the
+   * two are the same value. Below it they part: the shell is gone, and a
+   * creature with no shell has no spike level, so he is the joaninha (0) no
+   * matter what the phase asked for. THE ART SAYS THIS, it is not a taste call:
+   * master 001 is the only one with an F4.
+   *
+   * ⚠️ SO THE STAB LOSES ITS SPIKES DOWN HERE. Beat 9 sets level 3 "because the
+   * grandao does the stabbing" and at low health it will draw as the naked
+   * joaninha lunging. That is the honest read of losing your armour and it is
+   * what `nakedLevel` is for -- set it to null and the tier goes inert again
+   * rather than half-applying.
+   *
+   * ⚠️ AND `sizePx()` GOES THROUGH HERE TOO, WHICH IS THE POINT. The joaninha
+   * is 324 tall against level 1's 354, and a body that shrinks on screen while
+   * its hurtbox stays the old size is the bug where punches connect with air
+   * beside him. One resolver, both users.
+   */
+  bodyLevel() {
+    const C = CONFIG.HORACIO_BOSS;
+    if (C.nakedLevel != null && this._shellGone()) return C.nakedLevel;
+    return this.level;
   }
 
   /** How far into the ground he is right now, wherever that is driven from. */
@@ -319,7 +436,9 @@ class HoracioBoss {
 
   sizePx() {
     const C = CONFIG.HORACIO_BOSS;
-    return (C.sizeByLevel && C.sizeByLevel[this.level]) || C.sizePx;
+    /* ⚠️ `bodyLevel()`. The hurtbox has to measure the body that is DRAWN, and
+       below `nakedAt` that is the joaninha whatever the phase set. */
+    return (C.sizeByLevel && C.sizeByLevel[this.bodyLevel()]) || C.sizePx;
   }
   halfW() { return this.sizePx() * CONFIG.HORACIO_BOSS.hitWRel / 2; }
   halfZ() { return CONFIG.HORACIO_BOSS.hitZ / 2; }
@@ -1048,14 +1167,10 @@ class HoracioBoss {
     const d = this._packs(assets);
     if (!d) return;
 
-    /* THE BODY HE IS WEARING IS A FUNCTION OF HIS HEALTH -- see `_bodyState`.
-       `this.state` carries what the PHASE needs (balled or upright) and the
-       damage tier is resolved here, at the last moment, so no phase has to
-       remember to keep them in step. */
-    const wasState = this.state;
-    if (this.state !== 2) this.state = this._bodyState(d);
-    const f = this._frame(d);
-    this.state = wasState;
+    /* THE DRAWING IS THE PHASE, THE HEALTH AND THE LAST PUNCH TOGETHER, and all
+       three are resolved here at the last moment so that no phase has to
+       remember any of them -- see `_drawState`. */
+    const f = this._frame(d, this._drawState(d));
 
     const dsc = this.depthScale();
     const gx = this.groundX(camX);
@@ -1296,3 +1411,14 @@ class HoracioBoss {
     ctx.restore();
   }
 }
+
+/**
+ * BODY -> ITS RECOIL. The one place the pairing is written, and it mirrors
+ * `HIT_STATE` in tools/build-beat-horacio-defs.py -- if the cutter's state
+ * order ever changes, these two move together or he grimaces in the wrong body.
+ *
+ * ⚠️ THE BALL (2) IS ABSENT ON PURPOSE, NOT MISSING. `_drawState` reads a
+ * missing key as "no recoil for this body" and leaves the drawing alone, which
+ * is exactly what a tucked ball with no face wants.
+ */
+HoracioBoss.HIT_STATE = { 0: 4, 1: 5, 3: 6 };
