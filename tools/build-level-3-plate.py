@@ -167,28 +167,26 @@ def legs(cx, cy, n, dur):
 TRACK = 'assets-v2/beatemup-dungeon/level-3-wall-track.json'
 
 
-def _axis(c, n, L, scale, vertical):
-    """One axis of the wall track: it MOVES on its own legs and HOLDS on the
-    other axis's legs.
+def _axis(c, scale):
+    """One axis of the wall track: where the wall has got to, every frame.
 
-    ⚠️ THE HOLD IS THE WHOLE REASON THIS IS NOT JUST `cumsum * scale`. Each axis
-    accumulates only over the legs that belong to it, and carries its last value
-    across the legs that do not, so a patch of art welded to the wall resumes
-    exactly where it left off instead of teleporting at every leg boundary. x
-    holds flat through a rise; y holds flat through a pan.
+    ⚠️ NO HOLDS ANY MORE, AND THAT IS THE POINT (2026-09-04). Each axis used to
+    accumulate only over the legs it "belonged" to and hold flat across the
+    other's, on the reasoning that a pan does not move vertically. **The shot
+    disagrees.** The pan along shelf 2 slides DOWN 276 canvas px over its 14
+    seconds -- a third of the frame's height -- and the first rise slides 232 px
+    sideways. Holding an axis flat pins the art to a wall position the footage
+    has left, which is the one thing this file exists to prevent.
+
+    ⚠️ AND THAT DRIFT IS THE CAMERAMAN, NOT THIS MEASUREMENT. The correlation
+    runs at half size with the offsets doubled, so its quantum is 2 source px per
+    frame and a random walk over a 429-frame leg is worth about 62 canvas px --
+    the same order as the number being read. So it was measured AGAIN at full
+    resolution, quantum 1: leg 2 came back -276 against -274. The big slip is
+    real. Legs 0 and 4 (-48/-32, -66/-53) sit inside the noise bound and agree in
+    sign and size, so they are small real slips rather than a signal.
     """
-    segs = [(a, b) for (a, b, v) in L if bool(v) == vertical]
-    src = np.array(c, dtype=float) * scale
-    out = np.zeros(n)
-    held = 0.0
-    at = 0
-    for (a, b) in segs:
-        out[at:a] = held
-        out[a:b + 1] = held + (src[a:b + 1] - src[a])
-        held = out[b]
-        at = b + 1
-    out[at:] = held
-    return out
+    return np.array(c, dtype=float) * scale
 
 
 def write_track(cx, cy, n, fps, L):
@@ -213,13 +211,18 @@ def write_track(cx, cy, n, fps, L):
     (x, y) names a spot on the bookcase exactly once. Consumers can hold one
     field for the whole room rather than one per leg.
 
+    ⚠️ BOTH AXES MOVE ON EVERY LEG. There is no such thing here as a purely
+    horizontal leg; `legs()` labels a leg by which axis DOMINATES, which is the
+    right question for the room's `path` and the wrong one for art stuck to the
+    wall. See _axis.
+
     Both axes are in CANVAS px, already scaled by CANVAS_W / W and CANVAS_H / H,
     because every consumer draws to the canvas and the source size is this
     tool's business. ⚠️ The two scales are NOT the same number (1.5094 vs
     1.5063) and the difference is not worth a shared constant.
     """
-    x = _axis(cx, n, L, CANVAS_W / W, vertical=False)
-    y = _axis(cy, n, L, CANVAS_H / H, vertical=True)
+    x = _axis(cx, CANVAS_W / W)
+    y = _axis(cy, CANVAS_H / H)
     with open(TRACK, 'w') as fh:
         json.dump({'fps': round(fps, 6), 'frames': int(n),
                    'canvasW': CANVAS_W, 'canvasH': CANVAS_H,
@@ -229,8 +232,10 @@ def write_track(cx, cy, n, fps, L):
                    'y': [round(v, 2) for v in y]}, fh)
     print(f'\n{TRACK}  {n} samples at {fps:.3f} fps, '
           f'{os.path.getsize(TRACK) / 1024:.0f} KB')
-    print(f'  wall travel over the three horizontal legs: {x[-1]:+.0f} canvas px')
-    print(f'  wall travel over the two vertical legs:     {y[-1]:+.0f} canvas px')
+    print(f'  wall travel, total:  x {x[-1]:+.0f}  y {y[-1]:+.0f} canvas px')
+    for (a, b, v) in L:
+        print(f'    leg {a:4d}-{b:4d} {"VERTICAL  " if v else "horizontal"}'
+              f'  x {x[b] - x[a]:+8.0f}  y {y[b] - y[a]:+8.0f}')
 
 
 def main():

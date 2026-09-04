@@ -33,6 +33,38 @@ right: a tucked ball has no face to screw up. 4 levels x 2 + 1 = the nine files.
 He can still be punched while balled (the peek is the fight's one opening), and
 there he keeps the ball drawing and says the hit with the blink alone.
 
+THEN SEVEN MORE (2026-09-04), `-especial-<level>-F<n>`: THE SUMMON POSE, the
+hand he raises to call the charutobis -- the drawing beat 8 had been running
+without. Two things about them are not like the other two packs:
+
+    ⚠️ ONE FACING, NOT EIGHT. The master is the same 13443x2371 canvas but only
+    the FIRST cell is drawn; the other seven are empty. That is correct and not
+    a partial delivery -- he is scripted to turn and face the camera for this
+    beat (`SUMMON.signalFacing: 0`), so the seven he cannot be in were never
+    worth drawing. So these states exist at facing 0 and are null everywhere
+    else, and the loop below only offers them to facing 0.
+
+    ⚠️ THEIR F NUMBERING FOLLOWS THE **MAIN** PACK, NOT THE HIT PACK'S. F1
+    armoured, F2 exposed, **F4 naked** -- F3 is skipped rather than compacted,
+    because a tucked ball has no hand to raise, exactly as it has no face to
+    screw up. The hit pack compacts (its F3 IS the naked body); this one does
+    not. The two conventions sit in one folder and only the filenames tell them
+    apart.
+
+    ⚠️ AND THERE IS NO 004. The grandao does not summon -- `enterLevel` is 1 and
+    only the STAB borrows level 3 -- so the combinations that can actually reach
+    the summon are (1, armoured), (1, exposed) and (0, naked). 003's pair is
+    drawn ahead of a tier that does not exist yet; a missing one falls back to
+    the ordinary body rather than to a blank.
+
+⚠️ THE SUMMON POSE IS WIDER THAN THE BODY IT REPLACES -- about 70 master px
+further left and 90 further right, because the raised arm leaves the silhouette
+-- so it widens facing 0's cell in every level. That is safe for exactly the
+reason the recoils were: `ax` and `ground` are measured off the NORMAL bodies
+alone, so a wider cell adds transparent margin and moves nothing. Its FEET were
+checked against the normal facing-0 cell before any of this was wired: -5 to +6
+master px across all seven, so it shares the pack's ground line as drawn.
+
 ⚠️ AND THE HIT FRAMES DO NOT SHARE THE MAIN PACK'S CELL RUNS EXACTLY. Three of
 level 001's eight start up to 28 master px LEFT of the corresponding normal run
 -- the recoil leans -- so slicing them at the normal runs would shave a strip
@@ -87,10 +119,13 @@ Output (assets-v2/beatemup-dungeon/):
                          each frame carries `sheet`, the index into `sheets`
                         index[level][state][facing] -> one frame id.
                         state 0 armoured, 1 exposed, 2 ball, 3 naked,
-                              4 armoured_hit, 5 exposed_hit, 6 naked_hit.
-                        ⚠️ ONLY LEVEL 0 HAS STATES 3 AND 6, AND NO LEVEL HAS A
-                        HIT BALL; those hold null, so a lookup must fall back
-                        rather than index blindly.
+                              4 armoured_hit, 5 exposed_hit, 6 naked_hit,
+                              7 summon_armoured, 8 summon_exposed,
+                              9 summon_naked.
+                        ⚠️ ONLY LEVEL 0 HAS STATES 3, 6 AND 9; NO LEVEL HAS A
+                        HIT BALL OR A SUMMONING BALL; LEVEL 3 HAS NO SUMMON AT
+                        ALL; and 7/8/9 exist at FACING 0 ONLY. Those hold null,
+                        so a lookup must fall back rather than index blindly.
 """
 import json
 import os
@@ -101,6 +136,8 @@ from PIL import Image
 SRC = 'assets-v2/beatemup-dungeon/boss_horacio/batidao-boss-espeto-%s-F%d.png'
 HIT = ('assets-v2/beatemup-dungeon/boss_horacio/damage-sprites/'
        'batidao-boss-espeto-hit-%s-F%d.png')
+SPECIAL = ('assets-v2/beatemup-dungeon/boss_horacio/'
+           'batidao-boss-espeto-especial-%s-F%d.png')
 OUT = 'assets-v2/beatemup-dungeon/horacio'
 # (sheet number, how many BODIES it has, how many HIT bodies it has).
 # Order IS the level order.
@@ -110,9 +147,17 @@ LEVELS = [('001', 4, 3), ('002', 3, 2), ('003', 3, 2), ('004', 3, 2)]
 # `armoured` would renumber `ball` and `naked` and silently repoint every lookup
 # in that file. Adding on the end is the only edit that cannot do that.
 STATE_NAMES = ['armoured', 'exposed', 'ball', 'naked',
-               'armoured_hit', 'exposed_hit', 'naked_hit']
+               'armoured_hit', 'exposed_hit', 'naked_hit',
+               'summon_armoured', 'summon_exposed', 'summon_naked']
 # hit file F<n> -> state index. See the header: hit F3 is the NAKED recoil.
 HIT_STATE = {1: 4, 2: 5, 3: 6}
+# especial file F<n> -> state index. ⚠️ F4, NOT F3: this pack follows the MAIN
+# pack's numbering and skips the ball, where the hit pack compacts. See header.
+SPECIAL_STATE = {1: 7, 2: 8, 4: 9}
+# which especial files each level actually has. ⚠️ 004 HAS NONE, ON PURPOSE.
+SPECIAL_F = {'001': [1, 2, 4], '002': [1, 2], '003': [1, 2], '004': []}
+# ⚠️ THE SUMMON POSE IS DRAWN FOR ONE FACING. See the header.
+SPECIAL_FACING = 0
 FACINGS = 8
 ALPHA = 40
 COL_GAP = 80       # empty columns tolerated inside one facing
@@ -197,8 +242,20 @@ def main():
                 raise SystemExit(f'missing {path}')
             im = Image.open(path).convert('RGBA')
             sheets[(num, HIT_STATE[fi])] = (im, np.array(im)[:, :, 3] > ALPHA)
+        for fi in SPECIAL_F.get(num, []):
+            path = SPECIAL % (num, fi)
+            if not os.path.exists(path):
+                raise SystemExit(f'missing {path}')
+            im = Image.open(path).convert('RGBA')
+            sheets[(num, SPECIAL_STATE[fi])] = (im, np.array(im)[:, :, 3] > ALPHA)
 
     def states_of(num, nf, nh):
+        """The states that SHARE a level/facing cell: the bodies and their recoils.
+
+        ⚠️ THE SUMMON STATES ARE DELIBERATELY NOT IN HERE. They get their own
+        crop rect -- see `srects` below for why that is not a departure from the
+        one-rect-per-cell rule but the thing that rule was protecting.
+        """
         return [si for si in range(nf)] + [HIT_STATE[fi] for fi in range(1, nh + 1)]
 
     cells = {}          # (level, facing) -> (x0, y0, x1, y1) in master coords
@@ -246,6 +303,54 @@ def main():
             cells[(li, fa)] = (x0, y0, x1, y1)
             body[(li, fa)] = (bx0, bx1, by0, by1)
 
+    # ---- the summon poses get their OWN rect, and that is the point ---------
+    # ⚠️ THIS IS NOT A BREACH OF "ONE CROP RECT PER (LEVEL, FACING)", IT IS WHAT
+    # THAT RULE EXISTS FOR. The rule is there so a state change does not MOVE
+    # him -- and what actually holds him still is the shared BODY CENTRE and the
+    # shared GROUND ROW, both of which these tiles keep. The crop rect itself
+    # cancels out of the drawn position algebraically: the renderer puts ink at
+    # `(col - bodyCentre) * scale` and `(row - ground) * scale`, in which x0 and
+    # y0 appear once with each sign.
+    #
+    # ⚠️ AND SHARING THE CELL WAS TRIED FIRST AND MEASURABLY MOVED THE SHIPPED
+    # ART. The summon pose is ~70 px wider on each side, so folding it into
+    # facing 0's cell grew that cell -- and every OTHER state at facing 0 then
+    # resampled on a different sub-pixel phase. Measured against the committed
+    # atlases: the drawn ink shifted up to **3.5 px** on 17 frames, for a change
+    # that is supposed to be invisible until he summons. Its own rect is 0.00.
+    srects = {}
+    for li, (num, nf, nh) in enumerate(LEVELS):
+        for fi in SPECIAL_F.get(num, []):
+            si = SPECIAL_STATE[fi]
+            m = sheets[(num, si)][1]
+            r = facings_of(m)
+            if len(r) != 1:
+                raise SystemExit(f'{num} especial F{fi}: found {len(r)} runs, '
+                                 f'expected 1 -- is it an eight-facing master?')
+            cx0, cx1 = r[0]
+            rr = rows_of(m[:, cx0:cx1 + 1])
+            if rr is None:
+                raise SystemExit(f'{num} especial F{fi}: no ink')
+            srects[(li, si)] = (cx0, rr[0], cx1, rr[1])
+            # ⚠️ ITS FEET MUST MATCH THE ONES IT REPLACES, and this is the only
+            # thing that can silently ruin the pose: `ay` is measured down to the
+            # pack's ground row, so a master drawn 200 px higher would simply
+            # hang in the air with no error anywhere.
+            #
+            # ⚠️ AGAINST FACING 0's OWN FEET, **NOT** AGAINST `ground`, and
+            # writing it the other way is what this check caught first time out.
+            # `ground` (1874) is the pack-wide row -- the lowest legs in any
+            # facing of any level -- and facing 0 is a head-on pose whose legs
+            # sit about 53 px ABOVE it, exactly as the header says they should.
+            # Comparing the summon pose to `ground` flagged a 50 px error in art
+            # that is registered to within 3 px of what it replaces.
+            feet = body[(li, SPECIAL_FACING)][3]
+            if abs(rr[1] - feet) > 40:
+                raise SystemExit(
+                    f'{num} especial F{fi}: feet at row {rr[1]}, but facing '
+                    f'{SPECIAL_FACING} of this level stands on {feet} -- it '
+                    f'would float or sink')
+
     # ---- one scale, off level 1 (index 1), facing 0 -------------------------
     # ⚠️ OFF THE **BODY**, NOT THE CELL, AND THAT IS NOT A REFACTOR. It read the
     # cell until the recoils were added, and they reach 7 master rows higher
@@ -286,6 +391,21 @@ def main():
                     # position does not move. See the header.
                     'ay': (ground - y0) * scale,
                 })
+        # THE SUMMON POSES, at their own rect and at facing 0 only. Same shared
+        # body centre, same shared ground row -- see `srects`.
+        for fi in SPECIAL_F.get(num, []):
+            si = SPECIAL_STATE[fi]
+            sx0, sy0, sx1, sy1 = srects[(li, si)]
+            bx0, bx1 = body[(li, SPECIAL_FACING)][0], body[(li, SPECIAL_FACING)][1]
+            w, h = sx1 - sx0 + 1, sy1 - sy0 + 1
+            t = sheets[(num, si)][0].crop((sx0, sy0, sx1 + 1, sy1 + 1))
+            index[li][si][SPECIAL_FACING] = len(tiles)
+            tiles.append({
+                'img': t.resize((max(1, round(w * scale)), max(1, round(h * scale))),
+                                Image.LANCZOS),
+                'ax': ((bx0 + bx1) / 2.0 - sx0) * scale,
+                'ay': (ground - sy0) * scale,
+            })
 
     # ONE ATLAS PER LEVEL. ⚠️ THE COLUMN COUNT IS SEARCHED, NOT `sqrt(n)`, since
     # the recoils went in: sqrt is only square when the tiles are, and at level 3

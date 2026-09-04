@@ -47,15 +47,15 @@
  *   5. he can travel horizontally while balled                            BUILT
  *   6. the CHARGE, in one of three z lanes, either direction              BUILT
  *   7. sometimes he surfaces and walks, or laughs                         HALF *
- *   8. he signals and a WALL of charutobis crosses the screen             BUILT *
+ *   8. he signals and a WALL of charutobis crosses the screen             BUILT
  *   9. he surfaces next to you and stabs with the spikes                  BUILT
  *
- *   * THE TWO MISSING DRAWINGS: there is no laughing pose and no pointing pose
- *     ("nos sprites que temos até o momento, nao tem ele rindo, nem ele
- *     apontando"). 7's WALKING half is built because walking is translation;
- *     the laugh is not built and is waiting on art. 8 IS built, on an agreed
- *     STAND-IN pose for the signal -- see `_summon`. Neither is a look that has
- *     been approved; both are placeholders with the real drawing outstanding.
+ *   * ONE MISSING DRAWING, DOWN FROM TWO. ⚠️ THE POINTING POSE ARRIVED
+ *     2026-09-04 and beat 8 runs on the real gesture now -- seven
+ *     `-especial-` masters, one per (level, body), picked off his health by
+ *     `SUMMON_STATE`; see `_summon`. ⚠️ THE LAUGH IS STILL UNBUILT: 7's WALKING
+ *     half exists because walking is translation, and the laugh is waiting on
+ *     art that has not been drawn ("nao tem ele rindo").
  */
 class HoracioBoss {
   /* RAW `assets`, NOT `sheets`. His pack is level x state x facing and carries
@@ -229,6 +229,18 @@ class HoracioBoss {
   _drawState(d) {
     let st = this._bodyState(d);
     if (this.state === 2 && st !== 3) st = 2;
+    else if (this.state === HoracioBoss.SUMMON) {
+      /* ⚠️ MAPPED THROUGH THE BODY, NOT SUBSTITUTED FOR IT. The summon is a
+         pose, so a wounded HORACIO must summon in his wounded body -- exactly
+         what `HIT_STATE` does for the recoil, and the reason both are tables
+         rather than constants. Checked against the data first: level 3 has no
+         summon drawing at all and no level has a summoning ball, so a blind
+         lookup would draw nothing where the fallback draws the ordinary body
+         and merely loses the gesture. */
+      const su = HoracioBoss.SUMMON_STATE[st];
+      const lv = d.index[this.bodyLevel()];
+      if (su != null && lv && lv[su] && lv[su][this.facing] != null) st = su;
+    }
     if (!this._recoiling()) return st;
     const hit = HoracioBoss.HIT_STATE[st];
     if (hit == null) return st;
@@ -674,21 +686,40 @@ class HoracioBoss {
    * performs it, so the one place that knows how to put an enemy in the world
    * stays the one place that does it.
    *
-   * ⚠️ AND THE SIGNAL POSE IS A STAND-IN. There is no pointing drawing -- *"nao
-   * tem ele rindo, nem ele apontando"* -- so he holds the armoured front pose
-   * for the beat instead. That was agreed as a stand-in, not accepted as the
-   * look: when the drawing lands it replaces `signalState`/`signalFacing` and
-   * nothing else here changes.
+   * ⚠️ THE POINTING DRAWING LANDED 2026-09-04 and the stand-in is gone. Asked
+   * for as *"use the frame we have been using right now (facing front), then add
+   * this new frame, then hold this new frame for 1 second, then go back to
+   * whatever he did afterwards"* -- so the beat is two poses, not one:
+   *
+   *     0 .. signalMs      `signalState` -- the ordinary front body, winding up
+   *     signalMs           the arm goes up AND the wall leaves, on one beat
+   *     .. + recoverMs     he holds the summon pose (600ms, was asked at 1s
+   *                        and cut to 0.6 once it could be seen)
+   *     then               submerge, as before
+   *
+   * ⚠️ THE POSE IS NOT `signalState`'S REPLACEMENT, IT IS WHAT FOLLOWS IT. The
+   * old note here said the drawing would "replace signalState and nothing else
+   * changes"; it does not, because the ask was for the gesture to be a CHANGE
+   * the eye can catch. A pose held from the first frame of the phase is a
+   * different beat from an arm that goes up.
+   *
+   * ⚠️ AND `state` HOLDS A MARKER, NOT THE DRAWING. `_drawState` maps it onto
+   * whichever body his health has him in, so a wounded HORACIO summons in his
+   * wounded body and a level with no summon art keeps the ordinary one.
    */
   _summon(dt, bounds) {
     const S = CONFIG.HORACIO_BOSS.SUMMON;
-    this.state = (S.signalState != null) ? S.signalState : 0;
+    const signalMs = (S.signalMs != null) ? S.signalMs : 420;
+    const raised = this.t * 1000 >= signalMs;
+    this.state = raised ? HoracioBoss.SUMMON
+                        : ((S.signalState != null) ? S.signalState : 0);
     this.facing = (S.signalFacing != null) ? S.signalFacing : 0;
     this._sunk = 0;
     /* THE WAVE LEAVES ON THE SIGNAL'S BEAT, not on the phase's first frame, so
-       the gesture reads as causing it. Raised once -- `_summonReq` is cleared by
-       whoever takes it. */
-    if (!this._summonSent && this.t * 1000 >= (S.signalMs || 420)) {
+       the gesture reads as causing it -- and now the gesture IS the beat, since
+       the arm goes up on the same tick. Raised once -- `_summonReq` is cleared
+       by whoever takes it. */
+    if (!this._summonSent && raised) {
       this._summonSent = true;
       const lim = this._limits(bounds);
       const dir = (this._player && this._player.x < this.x) ? -1 : 1;
@@ -715,7 +746,7 @@ class HoracioBoss {
         stagger: S.staggerMs || 0,
       };
     }
-    if (this.t * 1000 >= (S.signalMs || 420) + (S.recoverMs || 700)) {
+    if (this.t * 1000 >= signalMs + (S.recoverMs != null ? S.recoverMs : 600)) {
       this._to('submerge');
     }
   }
@@ -1438,3 +1469,13 @@ class HoracioBoss {
  * is exactly what a tucked ball with no face wants.
  */
 HoracioBoss.HIT_STATE = { 0: 4, 1: 5, 3: 6 };
+/* THE POSE HE HOLDS WHILE HE CALLS THEM -- body -> its summoning drawing.
+   ⚠️ THE SAME SHAPE AS `HIT_STATE` AND FOR THE SAME REASON: the summon is a
+   pose the BODY takes, not a body, so it composes with the health tier instead
+   of replacing it. There is no entry for 2 because a tucked ball has no hand to
+   raise, exactly as it has no face to screw up. */
+HoracioBoss.SUMMON_STATE = { 0: 7, 1: 8, 3: 9 };
+/* WHAT `this.state` HOLDS WHILE THE ARM IS UP. Any of the three summon states
+   would do as the marker -- `_drawState` picks the right one off the body -- so
+   it is the armoured one by convention, the way 0 is the resting body. */
+HoracioBoss.SUMMON = 7;

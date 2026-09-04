@@ -4429,6 +4429,60 @@ is even. It reads denser than a walk leg **because on a walk leg most of every
 knot is clipped off the top of the screen**; the climb reveals what was always up
 there.
 
+### The drunk cameraman (2026-09-04, same day, second pass)
+
+*"sometimes the camera slips a little bit (sorry the cameraman was drunk), and it
+would be cool to also adjust vertically at some horizontal parts."* Asked as a
+question, then asked for. **Both axes now move on every leg; the track has no
+holds at all.**
+
+```
+leg 0  walk    x  +3647   y    -48
+leg 1  LIFT    x   +232   y  -4826
+leg 2  walk    x  -5515   y   -274    <- a third of the frame's height
+leg 3  LIFT    x     -9   y  -2296
+leg 4  walk    x  +3396   y    -66
+```
+
+> ⚠️ **THE HOLD WAS A MODELLING ASSUMPTION WEARING A MEASUREMENT'S CLOTHES.** The
+> writer held each axis flat across the other's legs because "a pan does not move
+> vertically" — reasonable, written the same day, and wrong about this shot by
+> 274 px. `legs()` labels a leg by which axis **dominates**, which is the right
+> question for the room's `path` and the wrong one for art glued to the wall.
+> The same family as the `progress` clamp that froze the plate: **a sentence that
+> explains why a value is held is not evidence anyone checked whether it moves.**
+
+> ⚠️ **AND THE FIRST THING TO ASK WAS WHETHER THE DRIFT WAS REAL.** The
+> correlation runs at half size with the offsets doubled — quantum 2 source px
+> per frame — so a random walk over a 429-frame leg is worth about 62 canvas px,
+> **the same order as the number about to be welded to.** Re-measured at full
+> resolution, quantum 1: leg 2 came back **-276 against -274**. Legs 0 and 4
+> (-48/-32, -66/-53) are inside the noise bound and agree in sign and size.
+> **Before you follow a measurement, work out what its noise floor is; this one
+> was one leg away from gluing the worms to my own rounding.**
+
+**The knock-on, and it was not optional.** The lift windows were cut against the
+lift's own endpoints, which was only right while a walk leg's wall y could not
+move. They are now cut against `_wallRange('y', …)` over the **neighbouring walk
+legs** — measure the neighbour, do not budget for it — and a lift's x field is
+laid over its x **range** rather than its starting x, because 232 px of sideways
+slide would come off one edge of the frame and leave the other bare.
+
+**What it looks like.** Shelf 2's worms end its pan 136 px lower on screen than
+they start it (mean y 123 -> 259) and **8.4 % of their pixels finish below the
+game's shelf line at y470**.
+
+> ⚠️ **THAT 8.4 % IS NOT WORMS ON THE FLOOR, AND THE METRIC IS WHAT WENT STALE.**
+> `beltTop` is a fixed game constant; the *footage's* plank has drifted below it
+> by the end of the leg. Rendered with the line drawn on: it crosses the middle of
+> the books, and the worms under it are on the black spine below the blue one.
+> **A pass/fail number measured against a constant stops meaning what it meant
+> the moment the thing it approximates starts moving.** The previous pass's
+> "zero below the shelf line" was a true statement about a wall that was assumed
+> not to drift.
+
+Boundaries re-checked at 0.1s steps: largest step 9 %, all ramps.
+
 ### And a bug the vertical work exposed: legs 2 and 4 were dressing wall the camera never reaches
 
 Anchoring the layout meant asking the track where each leg's wall **is**, and the
@@ -4471,6 +4525,26 @@ against the shipped class fetched with `git show HEAD:`.
 Boil noise sets the floor on any of these numbers: the same leg re-rendered
 seconds apart varies ~1.5 %, because `performance.now()` picks a different boil
 frame. Differences under a couple of per cent mean nothing here.
+
+**The track itself was then checked against the footage without accumulation** —
+two frames a fixed gap apart, one correlation, against the track's delta over the
+same gap. **11 of 14 windows agree within 6 canvas px**, across both lifts and
+all three walk legs.
+
+> ⚠️ **AND THE FIRST VERSION OF THAT CHECK FAILED, NOT THE TRACK.** At a
+> **1-second** gap a fast pan moves 300-560 px on an 848 px-wide frame, and phase
+> correlation wraps: it returned `dy = 0` against large track values and a
+> nonsense `dx` of 151 during a pure rise. Shortening the gap to 0.2s fixed
+> everything except three windows in the fastest part of the first climb, which
+> still wrap. **A validator that disagrees at speed and agrees at rest is usually
+> the validator.**
+
+> ⚠️ **ONE THING IS NOT RESOLVABLE AND IS WORTH KNOWING.** Half-res and full-res
+> integration disagree by ~5 % on the two lifts' y TOTALS (-4826 vs -4590). It
+> cannot be settled directly — the shot never revisits that wall, so nothing but
+> an integration can measure 4826 px of travel — and it does not touch the walk
+> legs. Its only consequence is how far a lift's own patches could slide against
+> the books over a 13.7s ride. The composites at 21.5 / 25 / 29s read as welded.
 
 ### The double entrance, fixed 2026-08-31
 

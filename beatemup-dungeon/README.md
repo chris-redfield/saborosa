@@ -1471,16 +1471,42 @@ the *shipped* mp4 in 13s and does not re-encode; the master is not needed.)
 
 ### The lifts, 2026-09-04 — one wall space, both axes
 
-The track carries **`x` and `y`** now, and each axis **moves on its own legs and
-holds on the other's**: x is flat through a rise, y is flat through a pan. So
-every patch lives in one `(x, y)` wall space and is drawn at
-`it.x − wallX(), it.y − wallY()` whichever leg the room is in. Measured travel:
+The track carries **`x` and `y`**, every frame, on **every** leg. So every patch
+lives in one `(x, y)` wall space and is drawn at `it.x − wallX(), it.y − wallY()`
+whichever leg the room is in. Measured travel, per leg, both axes:
 
 ```
-leg 0  walk   x +3647            leg 1  LIFT   y −4826
-leg 2  walk   x −5515            leg 3  LIFT   y −2296
-leg 4  walk   x +3396
+leg 0  walk       x  +3647   y    −48
+leg 1  LIFT       x   +232   y  −4826
+leg 2  walk       x  −5515   y   −274     <- the drunk cameraman
+leg 3  LIFT       x     −9   y  −2296
+leg 4  walk       x  +3396   y    −66
 ```
+
+> ⚠️ **BOTH AXES MOVE ON EVERY LEG, and holding one flat was wrong** (fixed
+> 2026-09-04, second pass). The track used to hold each axis flat across the
+> other's legs, on the reasoning that a pan does not move vertically. **This shot
+> does**: the pan along shelf 2 slides **down 274 canvas px** over its 14 seconds
+> — a third of the frame's height — and the first rise slides **232 px sideways**.
+> `legs()` labels a leg by which axis *dominates*, which is the right question for
+> the room's `path` and the wrong one for art glued to the wall.
+
+> ⚠️ **And that drift is the cameraman, not the measurement.** The correlation
+> runs at half size with the offsets doubled, so its quantum is 2 source px per
+> frame and a random walk over a 429-frame leg is worth ~62 canvas px — the same
+> order as the number being read off leg 2. Re-measured at **full resolution**,
+> quantum 1: leg 2 came back **−276 against −274**. Legs 0 and 4 (−48/−32,
+> −66/−53) sit inside the noise bound but agree in sign and size.
+
+> ⚠️ **The track was then checked against the footage, without accumulation** —
+> two frames a fixed gap apart, one correlation, compared with the track's delta
+> over the same gap. **11 of 14 windows agree within 6 canvas px**, across both
+> lifts and all three walk legs. ⚠️ **Use a SHORT gap**: at a 1-second gap a fast
+> pan moves 300–560 px on an 848 px-wide frame and the correlation wraps, which
+> reads as `dy = 0` against a large track value and looks exactly like a broken
+> track. Three windows in the fastest part of the first climb still fail that way
+> at 0.2s. **A validation that disagrees at speed and agrees at rest is usually
+> the validator.**
 
 > ⚠️ **This does not contradict "per leg, not per room" — it completes it.** That
 > rule was written against a **one-axis** wall space, where leg 2 walks back
@@ -1497,12 +1523,20 @@ leg 4  walk   x +3396
 > the old code went to **exactly zero**.
 
 > ⚠️ **A lift's own patches must not reach either end of its travel, and that is
-> not a nicety.** `wallY` is **constant** through a walk leg, so a patch on screen
-> at the moment a ride starts is on screen for **the whole walk leg before it** —
+> not a nicety.** A walk leg barely moves in y, so a patch on screen at the moment
+> a ride starts is on screen for very nearly **the whole walk leg before it** —
 > nailed over the shelf the player is walking along, on the floor `yTo` exists to
-> keep clear. A lift's window is therefore its travel minus a screen and a knot
-> at the near end and a knot at the far end; the two walk legs dress the rest,
-> because it is their wall.
+> keep clear. A lift's window therefore stops short at both ends and the two walk
+> legs dress the rest, because it is their wall.
+
+> ⚠️ **The stopping point is the NEIGHBOUR'S measured extreme, not the lift's own
+> end.** It used to be "the lift's endpoint minus a screen and a knot", which was
+> only right while a walk leg's wall y could not move. Now that shelf 2 slides
+> 274 px through its own leg, that margin is most of the way spent — so the window
+> is cut against `_wallRange('y', …)` over the **neighbouring walk legs**.
+> Measure the neighbour; do not budget for it. Same reason the lift's own x field
+> is laid over its x *range* rather than its starting x: 232 px of slide would
+> come off one edge of the frame and leave the other bare.
 
 > ⚠️ **`perLiftScreen` is patches ON SCREEN, not per lift.** The two rides climb
 > 4826 and 2296 px, so one count would make the short one a carpet or the long one
@@ -1525,6 +1559,10 @@ leg 4  walk   x +3396
 
 A leg's window is read off the **track** — where the wall stands at the leg's two
 film ends — not off `L.px` from an assumed zero.
+
+A leg scatters over `_wallRange` — the measured **extremes** of the axis over the
+leg, not its two endpoints, because a pan that ends where it began in y can still
+have wandered through the middle.
 
 > ⚠️ **The old layout ran every leg from `−GAME_W`** as though the wall started at
 > 0, which is true of leg 0 and of nothing else. Leg 2 *begins* at wall x 3647 and
@@ -5178,13 +5216,89 @@ always."*
 > box is `x ± reachX` — symmetric, reaching both ways whatever he faces — so the
 > facing there is cosmetic. ⚠️ **If a directional attack is ever added after a
 > rise, this is the first thing to check.** The three exits all outlast the hold
-> comfortably (stab 940 ms, summon 1120, walk 1700), so it never leaks into the
+> comfortably (stab 940 ms, summon 1020, walk 1700), so it never leaks into the
 > next peek.
 
 > ⚠️ **Its own knob, though it equals `SUMMON.signalFacing`.** The summon was
 > named as the reference, but they are different beats that happen to agree —
-> tying them would mean a pointing drawing (when one is finally made) silently
-> changing how he comes out of the ground.
+> tying them would mean the pointing drawing silently changing how he comes out
+> of the ground. ⚠️ **And `SUMMON.signalFacing` is no longer free to move**: the
+> summon pose is drawn for facing 0 only, so turning it loses the gesture (it
+> falls back to the ordinary body). Keeping the two knobs apart is what stops
+> that from reaching the rise as well.
+
+### The summon pose (2026-09-04) — the drawing beat 8 was missing
+
+Seven `-especial-<level>-F<n>` masters: the hand he raises to call the
+charutobis. The beat is **two poses**, asked for in those words — *"use the frame
+we have been using right now (facing front), then add this new frame, then hold
+this new frame for 1 second, then go back to whatever he did afterwards"*:
+
+```
+0 .. signalMs (420)    signalState — the ordinary front body, winding up
+signalMs               the arm goes up AND the wall leaves, on one beat
+.. + recoverMs (600)   he holds the summon pose
+then                   submerge, as before
+```
+
+> ⚠️ **`recoverMs` 700 → 1000 → 600, and it changed meaning on the way.** It used
+> to be dead air in a stand-in pose; with the drawing it became the beat the
+> gesture is on, asked for at *"1 second"*. ⚠️ **Then cut to 0.6 on sight of it** —
+> *"make it less than one second, make it 0.6 seconds"*. A second was long enough
+> that a held drawing with no animation in it read as a stall rather than a
+> gesture; the pack has no boil, so nothing moves during the hold. **Read the
+> first number as an estimate made without the art in front of you.**
+
+> ⚠️ **The pose is mapped through the body, not substituted for it.**
+> `HoracioBoss.SUMMON_STATE` (`{0:7, 1:8, 3:9}`) is the same shape as
+> `HIT_STATE` and for the same reason: a wounded HORÁCIO summons in his wounded
+> body. `this.state` holds a *marker* and `_drawState` resolves it against his
+> health. Verified by driving the real phase at 100 / 40 / 15 % HP: armoured →
+> `summon_armoured`, exposed → `summon_exposed`, naked → `summon_naked`, wave
+> raised at 420 ms, phase left at 1020 ms.
+
+> ⚠️ **One facing, and that is not a partial delivery.** Only the first cell of
+> each 13443×2371 master is drawn, because he is scripted to turn to the camera
+> for this beat. The states exist at facing 0 and are null everywhere else.
+
+> ⚠️ **Their `F` numbering follows the MAIN pack, not the hit pack's.** F1
+> armoured, F2 exposed, **F4 naked** — F3 skipped, because a tucked ball has no
+> hand to raise, just as it has no face to screw up. The hit pack *compacts*
+> (its F3 **is** the naked recoil). Two conventions in one folder.
+
+> ⚠️ **There is no 004, on purpose.** `enterLevel` is 1 and only the stab borrows
+> level 3, so the reachable combinations are (1, armoured), (1, exposed) and
+> (0, naked). 003's pair is drawn ahead of a tier that does not exist yet, and a
+> missing one falls back to the ordinary body rather than to a blank.
+
+> ⚠️ **A punch during the hold keeps the pose.** `HIT_STATE` has no entry for
+> 7/8/9, so the existing fallback runs and the hit is said by the blink alone —
+> the same answer the ball already gets, for the same reason: there is no recoil
+> drawing for the pose.
+
+#### Sharing facing 0's cell moved the shipped art by 3.5 px
+
+The summon pose is ~70 master px wider on each side, so folding it into facing
+0's shared cell **grew that cell** — and every other state at that facing then
+resampled on a different sub-pixel phase.
+
+> ⚠️ **Measured against the committed atlases: the drawn ink moved up to 3.5 px
+> on 17 frames**, for a change that is supposed to be invisible until he summons.
+> Giving the summon states **their own crop rect** (`srects`) is 0.00 px across
+> all 176 pre-existing frames.
+
+> ⚠️ **That is not a breach of "one crop rect per (level, facing)" — it is what
+> that rule protects.** What holds him still between states is the shared **body
+> centre** and the shared **ground row**, both of which these tiles keep. The
+> crop rect cancels out of the drawn position algebraically: ink lands at
+> `(col − bodyCentre) × scale` and `(row − ground) × scale`, in which `x0` and
+> `y0` each appear once with either sign.
+
+> ⚠️ **The feet check must compare against facing 0, not against `ground`.**
+> Written the other way it fired immediately: `ground` (1874) is the pack-wide
+> row — the lowest legs of any facing of any level — and facing 0 is a head-on
+> pose whose legs sit ~53 px above it, exactly as the pack intends. It flagged a
+> 50 px error in art that is registered to within 3 px of what it replaces.
 
 ### The third damage tier, and the recoil
 

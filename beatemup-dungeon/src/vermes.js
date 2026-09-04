@@ -38,10 +38,18 @@
  * ---------------------------------------------------------------------------
  * ⚠️ ONE WALL SPACE, BOTH AXES -- AND THAT IS WHAT MAKES THE LIFTS WORK
  * ---------------------------------------------------------------------------
- * The track carries `x` AND `y`, and each axis MOVES on its own legs and HOLDS
- * on the other's: x is flat through a rise, y is flat through a pan. So every
- * patch in the room can live in one (x, y) space and be drawn at
+ * The track carries `x` AND `y`, every frame, on every leg. So every patch in
+ * the room lives in one (x, y) space and is drawn at
  * `it.x - wallX(), it.y - wallY()`, whichever leg the room is in.
+ *
+ * ⚠️ BOTH AXES MOVE ON EVERY LEG, INCLUDING THE ONES NAMED AFTER THE OTHER AXIS
+ * (2026-09-04). The track used to hold each axis flat across the other's legs,
+ * because a pan "does not move vertically". This shot does: shelf 2's pan slides
+ * DOWN 274 canvas px over its 14 seconds -- a third of the frame -- and the
+ * first rise slides 232 px sideways. `legs()` labels a leg by which axis
+ * DOMINATES, which is the right question for the room's path and the wrong one
+ * for art glued to the wall. So the worms follow the drift, which is what makes
+ * them stay on their books rather than creep up them.
  *
  * ⚠️ THIS DOES NOT CONTRADICT THE OLD "PER-LEG, NOT PER-ROOM" RULE, IT
  * COMPLETES IT. That rule was written against a wall space with ONE axis, where
@@ -59,12 +67,19 @@
  * those two, which is what `perLiftScreen` is for.
  *
  * ⚠️ A LIFT LEG'S OWN PATCHES MUST NOT REACH EITHER END OF ITS TRAVEL, and that
- * is not a nicety. `wallY` is CONSTANT through a walk leg, so a patch that is on
- * screen at the moment a ride starts is on screen for the WHOLE of the walk leg
- * before it -- pinned over the shelf the player is walking along, on the floor
- * the walk layout deliberately keeps clear (`yTo`). So a lift's window is its
- * travel minus a screen and a knot at the near end, and minus a knot at the far
- * end; the two walk legs dress the rest, because it is their wall.
+ * is not a nicety. A walk leg barely moves in y, so a patch that is on screen at
+ * the moment a ride starts is on screen for very nearly the WHOLE of the walk
+ * leg before it -- pinned over the shelf the player is walking along, on the
+ * floor the walk layout deliberately keeps clear (`yTo`). So a lift's window
+ * stops short at both ends and the two walk legs dress the rest, because it is
+ * their wall.
+ *
+ * ⚠️ AND THE STOPPING POINT IS THE NEIGHBOUR'S MEASURED EXTREME, NOT THE LIFT'S
+ * OWN END. It used to be "the lift's endpoint minus a screen and a knot", which
+ * was only right while a walk leg's wall y could not move. Now that shelf 2
+ * slides 274 px through its own leg, the margin it was relying on is most of the
+ * way spent -- so the window is cut against the RANGE of wall y over the
+ * neighbouring walk legs. Measure the neighbour; do not budget for it.
  *
  * ⚠️ THE PACK IS NINE KNOTS, NOT TWO PATCHES, and that is the cigarettes'
  * lesson applied: the mound sheets are chopped into their pieces and the field
@@ -167,6 +182,35 @@ class Vermes {
   }
 
   /**
+   * The EXTREMES of one axis over a leg -- what the layout scatters between.
+   *
+   * ⚠️ NOT THE TWO ENDPOINTS. Both axes move on every leg now, so a pan that
+   * ends where it began in y can still have wandered 200 px through the middle,
+   * and a window built from endpoints would leave that wander bare. This is also
+   * what a lift's window is cut against: the measured reach of its NEIGHBOURS.
+   */
+  _wallRange(axis, sec0, sec1) {
+    const t = this.track;
+    if (!t || !t.fps) return { min: 0, max: 0 };
+    const a = Math.max(0, Math.round(sec0 * t.fps));
+    const b = Math.max(a, Math.round(sec1 * t.fps));
+    let lo = Infinity, hi = -Infinity;
+    for (let i = a; i <= b; i++) {
+      const v = this._at(axis, i);
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    return { min: lo, max: hi };
+  }
+
+  /** The nearest walk leg before (`step` -1) or after (`step` +1) index `li`. */
+  _neighbourWalk(legs, li, step) {
+    for (let i = li + step; i >= 0 && i < legs.length; i += step)
+      if (legs[i].kind === 'walk' && legs[i].film) return legs[i];
+    return null;
+  }
+
+  /**
    * Lay out every leg's patches -- WALKS AND LIFTS. Called once, on entering.
    *
    * Every item lands in the room's single (x, y) wall space, so the draw never
@@ -195,7 +239,8 @@ class Vermes {
       const L = legs[li];
       if (!L.film) continue;
       const w0 = this._wallAt(L.film[0]);
-      const w1 = this._wallAt(L.film[1]);
+      const rx = this._wallRange('x', L.film[0], L.film[1]);
+      const ry = this._wallRange('y', L.film[0], L.film[1]);
       const lift = L.kind !== 'walk';
 
       /* THE WINDOW THIS LEG SCATTERS OVER, in wall space.
@@ -215,8 +260,15 @@ class Vermes {
          would be nailed to the shelf for the whole of that walk. */
       let lo, span, count;
       if (lift) {
-        lo = Math.min(w0.y, w1.y) + GH + PAD;
-        span = Math.max(w0.y, w1.y) - PAD - lo;
+        /* ⚠️ CUT AGAINST THE NEIGHBOURS' MEASURED REACH, not against this leg's
+           own endpoints. A walk leg drifts in y as well now (shelf 2 by 274 px),
+           so the wall it will occupy is a RANGE, and anything of the lift's
+           inside that range is nailed to that shelf for the whole walk. */
+        const prev = this._neighbourWalk(legs, li, -1);
+        const next = this._neighbourWalk(legs, li, +1);
+        const hi = (prev ? this._wallRange('y', prev.film[0], prev.film[1]).min : ry.max) - PAD;
+        lo = (next ? this._wallRange('y', next.film[0], next.film[1]).max : ry.min) + GH + PAD;
+        span = hi - lo;
         /* HOW MANY, FROM HOW MANY SHOULD BE ON SCREEN. A knot is visible over
            GH + 2*PAD of travel, so this is the honest conversion from "patches
            in frame" to "patches over the whole climb". A short lift keeps the
@@ -224,8 +276,8 @@ class Vermes {
         count = Math.max(0, Math.round((C.perLiftScreen != null ? C.perLiftScreen : 22)
                                        * span / (GH + PAD * 2)));
       } else {
-        lo = Math.min(w0.x, w1.x) - GW;
-        span = Math.abs(w1.x - w0.x) + GW * 2;
+        lo = rx.min - GW;
+        span = (rx.max - rx.min) + GW * 2;
         count = Math.max(0, Math.round(C.perLeg != null ? C.perLeg : 12));
       }
       if (span <= 0 || count <= 0) continue;
@@ -242,9 +294,11 @@ class Vermes {
         let x, y;
         if (lift) {
           y = along;
-          /* ACROSS THE FRAME, not along a band: wall x is frozen for the whole
-             ride, so this is simply where in the visible screen it sits. */
-          x = w0.x - PAD + (GW + PAD * 2) * Vermes._h(n * 7.3 + li * 5.1);
+          /* ACROSS THE FRAME, not along a band. ⚠️ OVER THE RIDE'S WHOLE X
+             RANGE, not just its start: the first rise slides 232 px sideways,
+             and a field laid out at the starting x would come off one edge of
+             the frame and leave the other bare by the top. */
+          x = rx.min - PAD + ((rx.max - rx.min) + GW + PAD * 2) * Vermes._h(n * 7.3 + li * 5.1);
         } else {
           x = along;
           const yF = (C.yFrom != null ? C.yFrom : 0.05);

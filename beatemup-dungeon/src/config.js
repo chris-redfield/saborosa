@@ -4416,9 +4416,21 @@ const CONFIG = {
          -- *"they should blow as soon as they are close enough of the player"*. */
       triggerX: 72,
       triggerZ: 58,
+      /* ⚠️ `signalState` IS THE POSE HE WINDS UP IN, NOT THE GESTURE. The
+         pointing drawing arrived 2026-09-04 and it is picked automatically off
+         his body (`HoracioBoss.SUMMON_STATE`), so there is no config key naming
+         it: this is the ordinary front body he wears for the first `signalMs`,
+         before the arm goes up. `signalFacing: 0` is the front -- the summon
+         pose is drawn for that facing ONLY, so turning this is not a knob. */
       signalState: 0, signalFacing: 0,
-      signalMs: 420,     // the gesture, before they come
-      recoverMs: 700,    // and how long he stands there after
+      signalMs: 420,     // the wind-up, in the ordinary body
+      /* HOW LONG THE RAISED ARM IS HELD. ⚠️ 700 -> 1000 WITH THE DRAWING: at
+         700 this was dead air in a stand-in pose, and it became the beat the
+         gesture is actually on -- *"hold this new frame for 1 second"*. ⚠️ THEN
+         1000 -> 600 ON SIGHT OF IT: *"make it less than one second, make it 0.6
+         seconds"*. A second was long enough that the held drawing started to
+         read as a stall rather than a gesture. */
+      recoverMs: 600,
       offscreenPx: 260,  // how far out they start and how far past they run
       staggerMs: 0,      // per-slot delay; the ragged arrival comes from jitterXPx
       /* HOW HIGH THE PLAYER MUST BE TO CLEAR ONE. ⚠️ THIS IS THE ONLY REASON
