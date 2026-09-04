@@ -1364,12 +1364,79 @@ VERMES: {
   on: true,
   sheet: 'v2:beatemup-dungeon/vermes-fundo',
   track: 'v2:beatemup-dungeon/level-3-wall-track.json',
-  perLeg: 26,                        // patches per WALK leg — see below
-  bands: 3, bandScale: [0.90, 1.15, 1.45],
-  yFrom: 0.12, yTo: 0.50,            // fractions of the belt's top y (470)
+  perLeg: 58,                        // patches per WALK leg — see below
+  bands: 3, bandScale: 1.0,          // layers = draw order only; ONE size
+  yFrom: -0.32, yTo: -0.06,          // fractions of the belt's top y (470)
   jitterXRel: 0.8, denseShare: 0.5, boilMs: 200,
 },
 ```
+
+### Size: one knob, and it is in the cutter
+
+> ⚠️ **`SCALE` in `tools/build-beat-vermes-defs.py` is the size knob** (0.40),
+> **not `bandScale`.** The cigarettes multiply theirs at *draw* time because
+> their bands are deliberately different sizes — a depth cue that has to stay
+> live. These are all one size, so drawing a small tile at 3.5× would just
+> magnify art that had already been thrown away. Cut once, at the size it is
+> drawn; re-run the tool to change it.
+
+> ⚠️ **`bandScale` was `[0.90, 1.15, 1.45]` and is now `1.0`** — asked for as
+> *"make them all have the same size"*. The individual worms are **one size in
+> the source art** (A is simply a denser field than B), so a single scale makes
+> every worm on the wall identical **without rescaling any knot against another**
+> — which the pack rule forbids. `bands` stays, and still means the **draw
+> order**, which is the "we need the layers" half of the original ask.
+
+> ⚠️ **3× cost the single-column atlas**, exactly as the old note predicted: at
+> 0.40 one column is 417×8659, nearly three times `MAX_DIM`. It is a searched
+> grid now (1790×1931) and the art was not shrunk to fit.
+
+> ⚠️ **`perLeg` has moved four times and never linearly: 26 → 9 → 16 → 34.**
+> Three times the width is *nine* times the area, so 26 → 9 held coverage on
+> paper — and read as thin, lopsided clumps, because the knots differ so much in
+> size (93×139 to 408×610) that nine of them land unevenly. 16 evened it out.
+
+### "Higher, and 40% more worms"
+
+```js
+yFrom: 0.04 → -0.20,   yTo: 0.30 → 0.06,   perLeg: 16 → 34
+```
+
+> ⚠️ **Negative `yFrom` is legal and is the point.** The anchor is the **centre**
+> and a knot is up to 693px tall — more than twice the book band — so its centre
+> has to sit *above the top of the screen* for the mass to land on books.
+> Measured over nine frames across all three legs, this moved the mean worm from
+> **y209 to y145** and cut what falls below the shelf line from **25 % to 3 %**.
+
+> ⚠️ **40 % more worms is NOT `16 × 1.4`, and that is the trap.** Raising the
+> band clips the tall knots against the top of the screen, so at `perLeg: 22` —
+> the literal +40 % — the worms *on the books* actually went slightly **down**.
+> The target has to be measured where the worms are: **34** was 1.40× the
+> baseline's worm pixels above y300. **This knob is not linear in what you see** —
+> re-measure rather than scaling it, because the knot picker is a lottery over
+> nine very different sizes.
+
+### Higher again, and more (34 → 58, y → −0.32/−0.06)
+
+The measured sweep, nine frames across all three legs, against `perLeg: 34,
+y −0.20..0.06` (worms on the books = 1.00×, mean worm y136, 2.5 % below the
+shelf):
+
+| y band | perLeg 40 | 46 | 52 | 58 | mean y |
+|---|---|---|---|---|---|
+| −0.26 .. 0.00 | 1.13× | 1.27× | 1.42× | 1.50× | ~128 |
+| **−0.32 .. −0.06** | 0.99× | 1.13× | 1.27× | **1.33×** | **~119** |
+| −0.38 .. −0.12 | 0.87× | 1.00× | 1.11× | 1.16× | ~102 |
+
+**Shipped: `perLeg: 58`, `y −0.32..−0.06`** — 1.33× the worms, mean y136 → y119,
+and **zero** below the shelf line.
+
+> ⚠️ **Read the table down a column, not across a row.** Every step *up* costs
+> worms to the top edge — the −0.38 row needs `perLeg: 46` just to break even
+> with where it started. Higher and denser pull against each other, and past
+> about `perLeg: 58` at this height the extra knots are mostly landing offscreen:
+> **more worms from there means widening the band back down**, which is the thing
+> that was asked to stop.
 
 Two hand-drawn sheets, each with two boil frames, cut into **nine knots** by
 `tools/build-beat-vermes-defs.py`. `src/vermes.js` is the whole implementation —

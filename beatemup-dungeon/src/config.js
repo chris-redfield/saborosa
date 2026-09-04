@@ -3571,12 +3571,46 @@ const CONFIG = {
        -5515, then +3396), so leg 2 crosses wall x that leg 0 already used, at a
        different height in front of different books. One shared wall space would
        put the same patch on two shelves. See vermes.js. */
-    perLeg: 26,
-    /* THE PLANES. Three, far -> near, read as a CURVE and sampled at `bands` --
-       the same shape CONFIG.SCENERY uses, so a shorter list is a legal
-       interpolated shorthand rather than silently missing planes. */
+    /* ⚠️ 26 -> 9 WITH THE 3x SIZE, AND IT IS NOT A SEPARATE DECISION. Three
+       times the width is NINE times the area per knot, so holding the count
+       would have turned a scatter into a solid carpet of worms. Coverage is the
+       thing being held roughly still here, not the count. ⚠️ 9 WAS TOO FEW --
+       the arithmetic said so and the screen disagreed, because the knots differ
+       so much in size (93x139 to 408x610) that nine of them land unevenly. 16 is
+       what actually reads as an even infestation.
+
+       ⚠️ THEN 16 -> 34 FOR *"40% more worms"*, WHICH IS NOT 16 x 1.4 AND THAT
+       IS THE WHOLE POINT. The knots were raised up the wall in the same breath,
+       and a knot is 693px tall against a ~300px book band, so most of a tall one
+       now hangs off the TOP of the screen. At 22 -- the literal +40% -- the
+       worms ON THE BOOKS went slightly DOWN. The target has to be measured where
+       the worms actually are: 34 is 1.40x the baseline's worm pixels above y300,
+       measured over nine frames across all three legs.
+       ⚠️ SO THIS KNOB IS NOT LINEAR IN WHAT YOU SEE. Re-measure rather than
+       scaling it; the knot picker is a lottery over nine very different sizes.
+
+       THEN 34 -> 58 on *"bring them up a little bit more, add more worms"*,
+       measured the same way: 1.33x the worms on the books while the band moved
+       up again. ⚠️ AND THAT IS ABOUT THE CEILING AT THIS HEIGHT -- past ~58 the
+       extra knots are mostly landing off the top of the screen, so more worms
+       from here means widening the band DOWN, which is the thing that was just
+       asked to stop. Full sweep and the numbers are in README. */
+    perLeg: 58,
+    /* THE PLANES. ⚠️ THEY NO LONGER DIFFER IN SIZE, ON REQUEST 2026-09-04:
+       *"make them all have the same size"*. `bandScale` was [0.90, 1.15, 1.45]
+       -- a depth cue -- and is now one number for every band, so every worm on
+       the wall is the same worm.
+
+       ⚠️ AND THE NUMBER IS 1.0 BECAUSE THE SIZE MOVED INTO THE CUTTER. The pack
+       is cut at its drawn size (`SCALE` in tools/build-beat-vermes-defs.py, now
+       0.40); multiplying here would magnify art that had already been thrown
+       away. **THAT TOOL'S `SCALE` IS THE SIZE KNOB** -- this one is a trim.
+
+       `bands` STAYS, and still means something: it is the draw ORDER, near
+       planes painted over far ones, which is the "we need the layers" half of
+       the original ask. It is one list away from being a depth cue again. */
     bands: 3,
-    bandScale: [0.90, 1.15, 1.45],
+    bandScale: 1.0,
     /* WHERE ON THE WALL, as a fraction of the belt's top y (470 here): 0 is the
        top of the screen and 1 is the floor line.
        ⚠️ IT STOPS AT 0.50, WELL SHORT OF THE BELT, AND THAT IS MEASURED OFF THE
@@ -3585,11 +3619,19 @@ const CONFIG = {
        470 -- so a knot centred anywhere past about half the belt's height lands
        on bare plank. It read exactly like that at 0.78: worms on the floor, not
        stuck to anything.
-       ⚠️ AND `yFrom` IS NOT 0 BECAUSE THE ANCHOR IS THE CENTRE. A knot is up to
-       249px tall drawn, so one centred at y 20 spends most of itself above the
-       top of the screen. */
-    yFrom: 0.12,
-    yTo: 0.50,
+       ⚠️ THEY HAVE COME UP TWICE: 0.12/0.50 -> 0.04/0.30 with the 3x size, then
+       -> -0.20/0.06 on *"they are too low in the map, bring them higher"*.
+       NEGATIVE IS LEGAL AND IS THE POINT: the anchor is the CENTRE and a knot is
+       up to 693px tall drawn -- more than twice the book band -- so its centre
+       has to sit ABOVE the top of the screen for the mass to land on books.
+       Measured over nine frames across all three legs, that moved the mean worm
+       from y209 to y145 and cut what falls below the shelf line from 25% to 3%;
+       the second nudge (-0.20/0.06 -> -0.32/-0.06) took the mean to y119 and the
+       shelf spill to ZERO.
+       ⚠️ THE COST IS THAT TALL KNOTS ARE CLIPPED AT THE TOP, which is why
+       `perLeg` had to go up much further than either ask implied. */
+    yFrom: -0.32,
+    yTo: -0.06,
     /* HOW FAR OFF ITS SLOT A PATCH MAY SIT, as a fraction of the slot. Evenly
        spaced they read as wallpaper; past 1.0 they start clumping and leaving
        bare wall between. */

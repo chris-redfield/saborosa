@@ -72,15 +72,23 @@ WANT = 9           # the tool refuses to write anything else -- see the header
 ALPHA = 8
 COL_GAP = 10       # empty columns tolerated inside one knot of worms
 MIN_W = 200        # narrower than this is a speck, not a knot
-# ⚠️ MEASURED AGAINST THE WALL, NOT CHOSEN FOR THE FILE. Level 3's belt sits at
-# topY 470, so the wall is the ~470px above it. `A` is 2971 source px wide and
-# 1750 tall, so 0.115 puts one patch at 342 x 201 drawn -- about a quarter of the
-# screen wide and 43% of the wall's height. Several fit across without any one of
-# them being the wall.
+MAX_DIM = 3200     # this project's own bigTextureCap; the tool asserts on it
+# ⚠️ TRIPLED ON REQUEST 2026-09-04: *"make them all have the same size... and
+# make them be 3x bigger than what they are now."* It was 0.115 with the drawn
+# size varying per band (0.90 / 1.15 / 1.45), whose MEAN effective scale was
+# 0.115 x 1.1667 = 0.1342; three times that is 0.4025, rounded here to 0.40.
 #
-# QUALITY IS FREE HERE: an 8.7x downscale, so nothing is ever stretched. The
-# note on the cigarettes' SCALE applies -- the atlas grows by the SQUARE of this.
-SCALE = 0.115
+# ⚠️ THE SIZE MOVED HERE RATHER THAN INTO `bandScale`, AND THAT IS THE POINT.
+# The cigarettes multiply their scale at DRAW time because their bands are
+# deliberately different sizes -- a depth cue that has to stay live. These are
+# all one size now, so drawing a 0.115 tile at 3.5x would just magnify art that
+# had already been thrown away: 105x199 stretched to 367x696, soft. Cut once, at
+# the size it is drawn. **THIS IS THE SIZE KNOB NOW** -- re-run the tool.
+#
+# QUALITY IS STILL FREE: a 2.5x downscale from source, so nothing is stretched.
+# ⚠️ AND THE ATLAS GREW BY THE SQUARE OF IT -- which is exactly what the old note
+# here predicted would break the single-column layout, and it did. See the packer.
+SCALE = 0.40
 PAD = 2
 
 
@@ -140,23 +148,42 @@ def main():
     if len(variants) != WANT:
         raise SystemExit(f'expected {WANT} knots, found {len(variants)}')
 
-    # ONE COLUMN, like the mounds. ⚠️ THAT MAKES THE ATLAS TALL AND THIN --
-    # 119x2474 at SCALE 0.115 -- and the HEIGHT is what would hit a texture
-    # limit, not the width. It is well inside this project's `bigTextureCap`
-    # (3200) today, but raising SCALE much past 0.148 would not be: check the
-    # printed size if it moves, and go to a grid rather than shrinking the art.
-    W = max(t.width for t in tiles) + PAD
-    H = sum(t.height + PAD for t in tiles)
+    # ⚠️ A GRID, NOT ONE COLUMN, AND THE OLD NOTE HERE CALLED THIS EXACTLY. One
+    # column was right at SCALE 0.115 (119x2474) and it said "raising SCALE much
+    # past 0.148 would not be [inside the cap]; go to a grid rather than
+    # shrinking the art". At 0.40 a single column is 417x8659 -- nearly three
+    # times MAX_DIM -- so this is that grid, and the art was not shrunk.
+    #
+    # The column count is SEARCHED rather than sqrt(n): these tiles range from
+    # 93x140 to 411x698, and sqrt is only square when the tiles are. Trying every
+    # count and keeping the smallest longest side costs nothing at build time.
+    # Same packer as tools/build-beat-horacio-defs.py, for the same reason.
+    def shelf(cols_n):
+        x = y = rowh = W = 0
+        place = []
+        for i, t in enumerate(tiles):
+            if i % cols_n == 0 and i:
+                y += rowh + PAD
+                x, rowh = 0, 0
+            place.append((x, y))
+            rowh = max(rowh, t.height)
+            x += t.width + PAD
+            W = max(W, x)
+        return W, y + rowh + PAD, place
+
+    W, H, place = min((shelf(c) for c in range(1, len(tiles) + 1)),
+                      key=lambda r: (max(r[0], r[1]), r[0] * r[1]))
+    if W > MAX_DIM or H > MAX_DIM:
+        raise SystemExit(f'atlas is {W}x{H}, over MAX_DIM {MAX_DIM}. '
+                         f'Lower SCALE (now {SCALE}).')
     atlas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    y = 0
-    for t in tiles:
-        atlas.paste(t, (0, y))
-        frames.append({'x': 0, 'y': y, 'w': t.width, 'h': t.height,
+    for t, (x, y) in zip(tiles, place):
+        atlas.paste(t, (x, y))
+        frames.append({'x': x, 'y': y, 'w': t.width, 'h': t.height,
                        # CENTRE, not bottom-centre -- it is stuck to a wall and
                        # has no base to stand on. See the header.
                        'ax': round(t.width / 2, 1),
                        'ay': round(t.height / 2, 1)})
-        y += t.height + PAD
 
     atlas.save(OUT + '-game.png')
     with open(OUT + '-sprites.json', 'w') as fh:
