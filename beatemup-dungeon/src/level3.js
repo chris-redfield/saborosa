@@ -25,10 +25,18 @@
  *      frame to show. The two ideas have to come apart: PROGRESS (monotonic,
  *      drives the film) and CAMERA X (goes right, then left, then right).
  *
- * `Level3.progress` is that first number and it only ever increases. It is
- * measured in FILM SECONDS, so the mapping to the plate is the identity and
- * there is no second unit to keep in sync -- see `filmScroll()` for the one
- * multiplication that hands it to a backdrop expecting camera pixels.
+ * `Level3.progress` is that first number. It is measured in FILM SECONDS, so
+ * the mapping to the plate is the identity and there is no second unit to keep
+ * in sync -- see `filmScroll()` for the one multiplication that hands it to a
+ * backdrop expecting camera pixels.
+ *
+ * ⚠️ IT IS MONOTONIC **BETWEEN LEGS**, NOT WITHIN ONE, and the difference is
+ * what point 2 above actually needs. Each leg maps its own camera band into its
+ * own `film` window and the lifts drive it forward between them, so the windows
+ * stay ordered and no camX is ever ambiguous -- while inside a leg it follows
+ * the camera in both directions, because walking back has to run the shot back.
+ * It was clamped to rise only until 2026-09-04, and that clamp is what froze the
+ * plate whenever anyone walked left. See the note in `update`.
  *
  * ⚠️ THE LEGS ARE MEASURED, NOT DESIGNED. `CONFIG.LEVEL3.legs` comes out of
  * tools/build-level-3-plate.py, which phase-correlates the footage on BOTH axes
@@ -69,7 +77,7 @@
  *   game.js    the draw loop  -> Level3.drawPlatform() under the fighters
  */
 const Level3 = {
-  progress: 0,      // FILM SECONDS travelled. Monotonic; this is the whole trick.
+  progress: 0,      // FILM SECONDS. Monotonic BETWEEN legs -- see the header.
   _camX: 0,         // this room's camera, mirrored onto stage.camX each frame
   leg: 0,           // index into CONFIG.LEVEL3.legs
   legT: 0,          // seconds spent in the current leg (lifts are timed)
@@ -335,14 +343,39 @@ const Level3 = {
        camera already pinned at the end of the band, and the shelf would run out
        from under him.
 
-       ⚠️ AND IT ONLY EVER GOES UP. Backing up must not rewind the film: the
-       plate is a video, a backward step is a SEEK, and a seek decodes from the
-       previous keyframe -- the stutter GOP 12 exists to bound, not something to
-       spend on a player shuffling on the spot. Walk back and the shot waits. */
+       ⚠️ IT USED TO BE CLAMPED SO IT COULD ONLY GO UP, AND THAT WAS THE BUG.
+       The argument was that a backward step is a SEEK and a seek decodes from
+       the previous keyframe, so a player shuffling on the spot should not be
+       able to spend that. What it actually bought was the shot FREEZING the
+       moment anyone walked left, reported 2026-09-04 as *"a HUGE BUG... the
+       video won't play in reverse. It will just freeze. The character can still
+       move, but the video gets frozen."* Trading a decode nobody notices for a
+       dead backdrop everybody does is the wrong way round, and the cost was
+       never actually measured -- the clip already ships GOP 12 (checked:
+       keyframe every twelfth frame), so a step back decodes at most twelve.
+
+       ⚠️ AND `progress` IS STILL MONOTONIC WHERE IT MATTERS -- BETWEEN LEGS.
+       That is what the header means by "the whole trick": the switchback visits
+       the same camX three times, so the film position cannot be a function of
+       camX alone. It still is not. Each leg maps its own camera band into its
+       OWN `film` window (leg 0 into 0..18.98, leg 2 into 32.68..46.96) and the
+       lifts drive it forward between them, so the windows stay ordered and a
+       camX is never ambiguous. What was given up is monotonicity WITHIN one leg,
+       which was never what made this work.
+
+       ⚠️ NOR WAS THE CLAMP WHAT HANDED THE LIFT A FINISHED SHELF. That is the
+       camera being PINNED at the end of its band before the player can reach the
+       platform -- see the note on the platform's placement, which is where the
+       0.7s film jump was actually fixed. `f` reaches 1 because the camera is
+       pinned, not because the maximum was remembered.
+
+       Reverse is a seek, and the seeking is backdrop.js's business: the source
+       already declares `allowReverse: true` and its `camSpeed < -1` branch keeps
+       a frozen frame up while the seek lands. */
     const f = (L.dir < 0) ? (b.camHi - this._camX) / L.px
                           : (this._camX - b.camLo) / L.px;
-    const want = L.film[0] + (L.film[1] - L.film[0]) * Math.max(0, Math.min(1, f));
-    if (want > this.progress) this.progress = want;
+    this.progress = L.film[0]
+                  + (L.film[1] - L.film[0]) * Math.max(0, Math.min(1, f));
 
     // Reached the far end of the shelf: the lift is waiting.
     const arrived = (L.dir < 0) ? (player.x <= b.to) : (player.x >= b.to);

@@ -633,11 +633,17 @@ const CONFIG = {
       kind: 'video',
       src: 'v2:beatemup-dungeon/level-3-plate.mp4',
       worldPxPerSecond: 182.8,
-      /* ⚠️ NEVER ACTUALLY EXERCISED, AND KEPT ANYWAY. `progress` is monotonic,
-         so the scroll value this plate sees can only rise and the reverse branch
-         in `_drawVideo` cannot fire. The clip still ships at GOP 12 like the
-         others: the cost is small, and the day someone gives this room a
-         checkpoint that walks the film back, the encoding is already right. */
+      /* ⚠️ LOAD-BEARING SINCE 2026-09-04, HAVING BEEN DEAD UNTIL THEN. It used
+         to say it could never fire, because `progress` was clamped to rise --
+         and that clamp is exactly what made the shot FREEZE whenever the player
+         walked left (*"the video won't play in reverse. It will just freeze"*).
+         The clamp is gone, so the `camSpeed < -1` branch in `_drawVideo` now
+         runs here for real. The clip ships at GOP 12, so a step back decodes at
+         most twelve frames; the note that "the day someone gives this room a
+         checkpoint that walks the film back, the encoding is already right"
+         turned out to be true of ordinary backtracking, not just a checkpoint.
+         ⚠️ IF REVERSE EVER STUTTERS, GOP 12 IS THE KNOB (the boss plate uses 3)
+         -- it is `KEYINT` in tools/build-level-3-plate.py and costs file size. */
       allowReverse: true,
       resyncS: 6.0,
       trackGain: 1.2,

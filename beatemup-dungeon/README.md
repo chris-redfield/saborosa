@@ -1161,6 +1161,45 @@ reason, and hitting one of the three was the half that never worked.
 
 ## Level 3 — the bookcase (the room with its own logic)
 
+### Walking back runs the film back (fixed 2026-09-04)
+
+> ⚠️ **`progress` used to be clamped so it could only rise, and that clamp froze
+> the plate.** Reported as *"a HUGE BUG... the video won't play in reverse. It
+> will just freeze. The character can still move, but the video gets frozen."*
+> The argument for the clamp was that a backward step is a **seek** and a seek
+> decodes from the previous keyframe — but that cost was never measured, and what
+> it bought was a dead backdrop any time the player walked left. The clip already
+> ships **GOP 12** (checked: a keyframe every twelfth frame), so a step back
+> decodes at most twelve.
+
+```js
+// src/level3.js, the walk leg
+this.progress = L.film[0] + (L.film[1] - L.film[0]) * clamp01(f);   // was: if (want > progress)
+```
+
+> ⚠️ **`progress` is still monotonic BETWEEN legs, and that is what "the whole
+> trick" actually needs.** The switchback visits the same `camX` three times, so
+> the film position cannot be a function of `camX` alone — and it still is not.
+> Each leg maps its own camera band into its **own `film` window** (leg 0 into
+> 0–18.98, leg 2 into 32.68–46.96) and the lifts drive it forward between them,
+> so the windows stay ordered. What was given up is monotonicity *within* one leg.
+
+> ⚠️ **The clamp was not what handed the lift a finished shelf either.** That is
+> the camera being **pinned** at the end of its band before the player can reach
+> the platform — see the note on the platform's placement, which is where the
+> 0.7 s film jump was actually fixed. `f` reaches 1 because the camera is pinned,
+> not because a maximum was remembered.
+
+> ⚠️ **`allowReverse: true` on `level3Plate` was dead until now** and its comment
+> said so. It is load-bearing: `_drawVideo`'s `camSpeed < -1` branch pauses,
+> keeps a frozen frame up, and seeks — one seek at a time. **If reverse ever
+> stutters, GOP 12 is the knob** (`KEYINT` in `tools/build-level-3-plate.py`; the
+> boss plate uses 3) and it costs file size.
+
+> ⚠️ **`Vermes` follows for free.** The worms read the wall track at
+> `Level3.progress`, so running the film back runs them back with it — they stay
+> stuck to their books walking either way.
+
 > ⚠️ **`Level3.enterRoom(room, player, stage)` needs the stage, and the third
 > argument is not optional.** It places the camera as well as the player.
 > `Stage.enterRoom` sets `camX = 0`, which is right for every other room and
