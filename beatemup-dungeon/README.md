@@ -2295,12 +2295,17 @@ the number — nothing in `stage.js`.
 
 ```js
 ROOMS: [
-  { name: 'street',    plate: 'plate',       startX: 220, endX: 4704, reverse: true, segments: [...] },
-  { name: 'desert',    plate: 'desertPlate', startX: 220, endX: 6286, reverse: true, segments: [...] },
-  { name: 'boss-room', plate: 'bossPlate',   startX: 220, endX: 1617, reverse: true, segments: [...] },
+  { name: 'street',    plate: 'plate',       startX: 220, endX:  4704, reverse: true, segments: [...] },
+  { name: 'desert',    plate: 'desertPlate', startX: 220, endX:  6286, reverse: true, segments: [...] },
+  { name: 'boss-room', plate: 'bossPlate',   startX: 220, endX:  1617, reverse: true, segments: [...] },
+  { name: 'level-3',   plate: 'level3Plate', startX: 220, endX: 24500, level3: true,  segments: [...] },
 ],
 fadeMs: 900,   // the whole room-to-room fade; the swap happens at its midpoint
 ```
+
+**Order as of 2026-09-04: street → desert → HIPÓLITO → bookcase → ending.**
+The horse is a **mid-game** boss now; the bookcase is the last room and the one
+that rolls the ending card.
 
 Each room has its own footage and its own camera origin. To add one: add a
 `SOURCES` entry for its plate, a `ROOMS` entry pointing at it, and set `endX` so
@@ -2309,7 +2314,22 @@ the camera crosses exactly as much of the shot as exists.
 **A room's place in the game is its index in this array and nothing else.**
 No file reads a room number, so re-ordering the level is moving an entry — which
 is how the desert went in between the street and the horse on 2026-08-27 without
-touching the boss room at all.
+touching the boss room at all, and how HIPÓLITO was moved back into the MIDDLE on
+2026-09-04 (*"I want to make hipolito stage be between the stage2 and stage3"*)
+by swapping two blocks of config with **no code change at all**.
+
+> ⚠️ **Which room ends the game is decided by `hasNextRoom()`, not by any room
+> knowing it is last.** `stage._enter` and `Level3._finish` both ask it before
+> returning `'room'` (a door) or `'clear'` (the ending card). That is the whole
+> reason the swap needed no logic: the bookcase started returning `'clear'` and
+> the boss room started returning `'room'`, on their own.
+
+> ⚠️ **What the swap DID change is where the boss music stops.** `musicBoss` used
+> to be faded out by `endBossMusic()` over the ending card, because the horse's
+> room was last. It now ends on `'room'` like any other room, so the bed plays
+> under the walk-out and the fade's `roomMusic()` stops it at the blackest point
+> — the bookcase asks for silence (`music: false`). The ending's fade belongs to
+> the bookcase now.
 
 **`reverse: true` needs a plate that can be scrubbed backwards.** Video cannot
 play backwards, so reverse means seeking, and a seek decodes from the previous
@@ -2693,8 +2713,8 @@ late room stops getting tested.
 DEV: { startRoom: 1 },   // which room the game boots into
 ```
 
-The **number keys do the same thing live** — `1` for the street, `2` for the
-desert, `3` for the boss room — with no fade, because sitting through the fade is exactly the
+The **number keys do the same thing live** — `1` street, `2` desert, `3` the
+boss room, `4` the bookcase — with no fade, because sitting through the fade is exactly the
 waiting the shortcut exists to avoid. It rebuilds the player from scratch, so a
 key pressed mid-combo or on the death screen cannot carry that state into the
 new room. The marker shows which room you are in.

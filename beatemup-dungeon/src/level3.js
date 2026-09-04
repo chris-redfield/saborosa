@@ -402,14 +402,17 @@ const Level3 = {
   /**
    * Out of legs.
    *
-   * ⚠️ 'room' AND NOT 'clear', AND GETTING THAT WRONG ENDS THE GAME. game.js
-   * reads this room's return value with exactly the same switch it reads the
-   * shared stage's: 'room' is a door -- walk the player out, fade, load the next
-   * room -- and 'clear' is the end of the whole game, which rolls the ending
-   * card. The bookcase has the boss room after it, so it is a door. This asks
-   * `hasNextRoom()` rather than hard-coding either answer, so moving this room
-   * again (it was inserted to push the horse to the end) cannot silently turn
-   * the credits on in the middle of the game. */
+   * ⚠️ 'room' vs 'clear' DECIDES WHETHER THE GAME ENDS HERE, AND THIS ASKS
+   * RATHER THAN KNOWING. game.js reads this room's return value with exactly the
+   * same switch it reads the shared stage's: 'room' is a door -- walk the player
+   * out, fade, load the next room -- and 'clear' is the end of the whole game,
+   * which rolls the ending card.
+   *
+   * ⚠️ AND THE ANSWER HAS NOW FLIPPED, WITHOUT THIS LINE CHANGING. The bookcase
+   * used to have the boss room after it, so it was a door; since the 2026-09-04
+   * swap it is the LAST room and this returns 'clear'. That flip is the entire
+   * payoff of asking `hasNextRoom()` instead of hard-coding an answer -- the
+   * room order moved in config and no logic here did. */
   _finish(stage) {
     this.done = true;
     return (stage && stage.hasNextRoom && stage.hasNextRoom()) ? 'room' : 'clear';

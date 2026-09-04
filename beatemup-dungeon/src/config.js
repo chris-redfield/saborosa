@@ -107,24 +107,25 @@ const CONFIG = {
        by playing to it is how a late room stops getting tested; this is the
        shortcut.
 
-           0  street     1  desert     2  bookcase     3  boss room (HIPÓLITO)
+           0  street     1  desert     2  HIPÓLITO's room     3  bookcase
 
        The NUMBER KEYS do the same thing live, and they are **one-based** --
        `input.js` sets the jump to `n - 1`, so 1 is the street, 2 is the desert,
-       **3 is the bookcase** and **4 is the boss room**. Both are dev-only and
+       **3 is the boss room** and **4 is the bookcase**. Both are dev-only and
        dead when `on` is false.
 
        ⚠️ THE KEYS FOLLOW THE ARRAY AND NOTHING ELSE, which is why inserting the
        desert at index 1 on 2026-08-27 moved 2 off the boss room and on to it
-       without a line of input code changing, and why inserting the bookcase at
-       index 2 later the same day moved the boss room from 3 to 4. Re-order
+       without a line of input code changing, why inserting the bookcase at
+       index 2 later the same day moved the boss room from 3 to 4, and why
+       SWAPPING those two on 2026-09-04 moved it straight back to 3. Re-order
        ROOMS again and the keys re-order with it -- so THIS COMMENT is the thing
        that goes stale, not the behaviour.
 
-       ⚠️ IT HAS NOW GONE STALE TWICE, and both times it was predicting itself.
-       It said "1 the boss room" through the desert's insertion and "2 the boss
-       room" through the bookcase's. If a third room is inserted, this line is
-       the first thing to fix, not the last. */
+       ⚠️ IT HAS NOW GONE STALE THREE TIMES, every time predicting itself. It
+       said "1 the boss room" through the desert's insertion, "2 the boss room"
+       through the bookcase's, and "4 the boss room" through the swap that made
+       HIPÓLITO a mid-game stage. Touch the order and fix this line FIRST. */
     startRoom: 0,
   },
 
@@ -951,6 +952,11 @@ const CONFIG = {
        in this array and nothing else reads one, so moving it was inserting this
        entry above it.
 
+       ⚠️ "THE END OF EVERYTHING" IS HISTORY, NOT THE CURRENT ORDER. That was
+       true on 2026-08-27 and again after the bookcase went in; the 2026-09-04
+       swap put HIPÓLITO back in the MIDDLE, between this room and the bookcase.
+       The desert's own place — second — has never moved.
+
        IT IS THE STREET'S LOGIC AND NOT A NEW KIND OF PLACE, as asked. A filmed
        plate scrubbed by the camera, a camera that may run backwards, and a list
        of segments alternating walking with fighting. The only numbers that
@@ -1324,66 +1330,6 @@ const CONFIG = {
     /* THE BOSS ROOM. Small on purpose: 337px of camera travel, about a quarter
        of a screen, so the camera barely moves and mostly just breathes with the
        player. The fight is what the room is for, not the walk. */
-    /* =====================================================================
-       LEVEL 3 — THE BOOKCASE (2026-08-27)
-       =====================================================================
-       ⚠️ INSERTED ABOVE THE BOSS ROOM, WHICH IS HOW THE HORSE GOT PUSHED TO THE
-       END. A room's place in the game is its INDEX in this array and nothing
-       else reads a room number, so "put the boss last" is an insertion and not
-       a rename. The DEV number keys follow the array (`n - 1`), so they are now
-       1 = street, 2 = desert, 3 = bookcase, 4 = boss room -- and the stale thing
-       will be a COMMENT somewhere, never the behaviour.
-
-       ⚠️ THIS ROOM DOES NOT USE THE SEGMENT MACHINERY, AND THAT IS THE POINT.
-       `level3: true` hands it to src/level3.js at the top of `stage.update()`,
-       which owns its camera, its walls, its film clock and its lifts. The
-       `segments` list below is a single formality so that anything iterating
-       rooms finds a well-formed one; level3.js never reads it. Do not "fix" it
-       by adding scrolls and arenas -- the scroll branch completes on
-       `player.x >= toX`, which is exactly the rightward assumption shelf 2
-       breaks. Fights go in `CONFIG.LEVEL3.legs` when they arrive.
-
-       WHAT IT IS: a switchback climb of a comic-book bookcase, filmed. Walk
-       right along shelf 1, ride up, walk LEFT along shelf 2, ride up, walk
-       right along shelf 3. See CONFIG.LEVEL3 for the measured legs.
-
-       ⚠️ NO ENEMIES YET, DELIBERATELY. What was asked for was the level, the
-       reordering, a smaller video and a placeholder elevator to test -- so this
-       ships as a traversal. It is also the honest order to build it in: the
-       switchback and the lifts are the parts that could be wrong, and a fight
-       on top of them would only make that harder to see. */
-    {
-      name: 'level-3',
-      plate: 'level3Plate',
-      startX: 220,
-      level3: true,
-      /* ⚠️ SILENCE, LIKE THE DESERT'S. Leaving `music` out means *the level bed*,
-         which is the opposite of nothing: `playMusic(key)` opens with
-         `key || 'music'`, so a falsy key cannot express "none" and the decision
-         has to be made before the call. */
-      music: false,
-      /* THE BELT. The shelves are shallow -- a fighter stands on a plank, not in
-         a desert -- so this is nearer the street's 520/190 than the desert's
-         330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
-         changing one alone puts the near edge off the bottom of the canvas. */
-      /* ⚠️ `depth` IS ALSO THE ELEVATOR'S TOP FACE — 960 x 0.2080 — and the two
-         cannot drift apart without the player walking off the back of a drawn
-         platform. Move `LEVEL3.platform.widthPx` and this follows; the formula
-         and the reason are in the note on that block. */
-      belt: { topY: 470, depth: 200 },
-      /* ⚠️ NOT A REAL WALL, AND NOTHING READS IT. level3.js pens the player to
-         the current leg's band (`Level3.bounds`), so the room's own end is only
-         here so `stage.endX()` returns something sane if anything asks. It is
-         the far end of the last band; see the band layout in level3.js. */
-      endX: 24500,
-      /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
-         `progress` is monotonic by construction -- so the flag would claim a
-         capability the room does not use. The clip is still cut at GOP 12. */
-      segments: [
-        /* A formality; level3.js drives the room. See the note above. */
-        { kind: 'scroll', toX: 24000 },
-      ],
-    },
     {
       name: 'boss-room',
       plate: 'bossPlate',
@@ -1392,7 +1338,16 @@ const CONFIG = {
          NOT when the horse arrives. The room opens with a wave of roaches, and
          starting the song on the boss left that whole first fight playing under
          the street's bed with the door already shut behind you. See roomMusic()
-         in game.js; nothing ever stops it, so it carries the ending too. */
+         in game.js.
+
+         ⚠️ IT NO LONGER CARRIES THE ENDING. This used to say "nothing ever stops
+         it, so it carries the ending too", which was true only while this was
+         the LAST room: the win fired `endBossMusic()` and faded it out over the
+         card. Since the 2026-09-04 swap the horse is mid-game, so his fight ends
+         on 'room' instead -- the walk-out keeps playing under it and the fade's
+         `roomMusic()` stops it at the blackest point, because the bookcase asks
+         for silence (`music: false`). That is the ordinary room-change
+         behaviour; the ending's fade now belongs to the bookcase. */
       music: 'musicBoss',
       /* TWO BARRELS AND NOTHING ELSE -- the chicken that was here was removed on
          request the same day. This is the one room where the placement is
@@ -1456,6 +1411,78 @@ const CONFIG = {
            eleven seconds apart). Her backdrop does still freeze during her
            fight; that is the same cause and a separate decision. */
         { kind: 'boss', who: 'horse', lock: false },
+      ],
+    },
+
+    /* =====================================================================
+       LEVEL 3 — THE BOOKCASE (2026-08-27)
+       =====================================================================
+       ⚠️ IT IS THE LAST ROOM NOW, AND IT USED TO BE THE THIRD. Inserted above
+       the boss room on 2026-08-27 to push the horse to the end, then SWAPPED
+       back below it on 2026-09-04 -- *"I want to make hipolito stage be between
+       the stage2 and stage3, it will be a mini stage"*. So the bookcase is the
+       game's last room and HIPÓLITO is a mid-game boss.
+
+       A room's place in the game is its INDEX in this array and nothing else
+       reads a room number, so both the insertion and the swap were moves of a
+       block of config with no code change at all. The DEV number keys follow
+       the array (`n - 1`): 1 = street, 2 = desert, 3 = boss room, 4 = bookcase
+       -- and the stale thing is always a COMMENT somewhere, never the behaviour.
+
+       ⚠️ AND THE ROOM THAT ENDS THE GAME IS DECIDED BY `hasNextRoom()`, NOT BY
+       ANY ROOM KNOWING IT IS LAST. `stage._enter` and `Level3._finish` both ask
+       it before returning 'room' (a door) or 'clear' (the ending card), which is
+       exactly why this swap needed no logic: the bookcase started returning
+       'clear' and the boss room started returning 'room' on their own.
+
+       ⚠️ THIS ROOM DOES NOT USE THE SEGMENT MACHINERY, AND THAT IS THE POINT.
+       `level3: true` hands it to src/level3.js at the top of `stage.update()`,
+       which owns its camera, its walls, its film clock and its lifts. The
+       `segments` list below is a single formality so that anything iterating
+       rooms finds a well-formed one; level3.js never reads it. Do not "fix" it
+       by adding scrolls and arenas -- the scroll branch completes on
+       `player.x >= toX`, which is exactly the rightward assumption shelf 2
+       breaks. Fights go in `CONFIG.LEVEL3.legs` when they arrive.
+
+       WHAT IT IS: a switchback climb of a comic-book bookcase, filmed. Walk
+       right along shelf 1, ride up, walk LEFT along shelf 2, ride up, walk
+       right along shelf 3. See CONFIG.LEVEL3 for the measured legs.
+
+       ⚠️ NO ENEMIES YET, DELIBERATELY. What was asked for was the level, the
+       reordering, a smaller video and a placeholder elevator to test -- so this
+       ships as a traversal. It is also the honest order to build it in: the
+       switchback and the lifts are the parts that could be wrong, and a fight
+       on top of them would only make that harder to see. */
+    {
+      name: 'level-3',
+      plate: 'level3Plate',
+      startX: 220,
+      level3: true,
+      /* ⚠️ SILENCE, LIKE THE DESERT'S. Leaving `music` out means *the level bed*,
+         which is the opposite of nothing: `playMusic(key)` opens with
+         `key || 'music'`, so a falsy key cannot express "none" and the decision
+         has to be made before the call. */
+      music: false,
+      /* THE BELT. The shelves are shallow -- a fighter stands on a plank, not in
+         a desert -- so this is nearer the street's 520/190 than the desert's
+         330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
+         changing one alone puts the near edge off the bottom of the canvas. */
+      /* ⚠️ `depth` IS ALSO THE ELEVATOR'S TOP FACE — 960 x 0.2080 — and the two
+         cannot drift apart without the player walking off the back of a drawn
+         platform. Move `LEVEL3.platform.widthPx` and this follows; the formula
+         and the reason are in the note on that block. */
+      belt: { topY: 470, depth: 200 },
+      /* ⚠️ NOT A REAL WALL, AND NOTHING READS IT. level3.js pens the player to
+         the current leg's band (`Level3.bounds`), so the room's own end is only
+         here so `stage.endX()` returns something sane if anything asks. It is
+         the far end of the last band; see the band layout in level3.js. */
+      endX: 24500,
+      /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
+         `progress` is monotonic by construction -- so the flag would claim a
+         capability the room does not use. The clip is still cut at GOP 12. */
+      segments: [
+        /* A formality; level3.js drives the room. See the note above. */
+        { kind: 'scroll', toX: 24000 },
       ],
     },
   ],

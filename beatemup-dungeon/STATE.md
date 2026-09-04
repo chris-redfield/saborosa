@@ -4369,6 +4369,48 @@ yet, and both are one flag away from off: `spawnBehindScenery` for the depth,
 
 ---
 
+## HIPÓLITO moves to the middle (2026-09-04)
+
+*"I want to make hipolito stage be between the stage2 and stage3, it will be a
+mini stage (it is already a mini stage)... so its stage1 - stage 2 - hipolito
+stage - stage 4 (library) -> game ending."*
+
+**Order is now street / desert / HIPÓLITO / bookcase**, and the bookcase rolls
+the ending. DEV keys 1/2/3/4 follow, as always.
+
+⚠️ **IT WAS TWO BLOCKS OF CONFIG AND NOT ONE LINE OF LOGIC**, and that is worth
+recording as a result rather than as a shrug. Every ingredient that could have
+made this a refactor had already been built to ask instead of to know:
+
+* `stage.hasNextRoom()` decides `'room'` (a door) vs `'clear'` (the ending card)
+  in BOTH `stage._enter` and `Level3._finish`. The bookcase started returning
+  `'clear'` and the boss room started returning `'room'` on their own. The
+  `_finish` comment predicting exactly this -- *"moving this room again cannot
+  silently turn the credits on in the middle of the game"* -- is now a thing that
+  happened.
+* Nothing reads a room number. Grepped for it before moving anything: no
+  `roomIndex ===`, no room-name test outside `config.js`, no index literal. The
+  only readers are `stage.roomIndex + 1` and a debug label.
+* Every per-room property -- `music`, `reverse`, `belt`, `scenery`, `grade`,
+  `props`, `level3` -- travels inside the entry, so a block move carries them.
+
+⚠️ **ONE BEHAVIOUR DID CHANGE, AND IT WAS ONLY EVER TRUE BECAUSE HE WAS LAST.**
+`musicBoss` was faded out by `endBossMusic()` over the ending card -- the config
+said in as many words *"nothing ever stops it, so it carries the ending too"*.
+Mid-game, his fight ends on `'room'`, so the bed plays under the walk-out and the
+fade's `roomMusic()` stops it at the blackest point, because the bookcase asks
+for silence (`music: false`). That is ordinary room-change behaviour and reads
+fine, but it is the shape of thing a reorder breaks: **a property that was a
+consequence of position, written down as a property of the room.** The victory
+fanfare and the music fade are the BOOKCASE's now; they were never the horse's.
+
+⚠️ **THE STRANDED COMMENT.** The `/* THE BOSS ROOM. Small on purpose... */`
+header had been orphaned above level 3's banner since the bookcase was inserted
+between it and its entry -- it was documenting the room two blocks below it. The
+swap put it back on top of the room it describes. Worth a look whenever a block
+is inserted into a list of documented entries: **the entry moves, its header does
+not.**
+
 ## Level 3 — the bookcase (2026-08-27)
 
 ### The worms ride the lifts (2026-09-04)
@@ -4685,11 +4727,16 @@ matters, because this room was itself INSERTED to push the horse to the end.
 
 ⚠️ **THE HORSE WAS PUSHED TO THE END BY INSERTION, WHICH IS THE ONLY MECHANISM
 THERE IS.** A room's place in the game is its index in `CONFIG.ROOMS`; nothing
-reads a room number. Order is now street / desert / bookcase / boss room, and the
-DEV number keys followed the array without a line of input code changing —
-**1/2/3/4**. The stale thing was, again, the COMMENT: it had already gone stale
-once through the desert's insertion and has now done it twice, both times while
-containing a warning that it would.
+reads a room number. The DEV number keys followed the array without a line of
+input code changing. The stale thing was, again, the COMMENT: it had already gone
+stale once through the desert's insertion and has now done it twice, both times
+while containing a warning that it would.
+
+⚠️ **AND THE ORDER IN THIS PARAGRAPH IS ITSELF OUT OF DATE — see *HIPÓLITO moves
+to the middle (2026-09-04)*.** It said "street / desert / bookcase / boss room",
+which was true for eight days. **Left standing rather than corrected in place**,
+because a note about a comment that keeps going stale is worth more with its own
+third failure attached than it is quietly fixed.
 
 ### The lift became a place instead of an event (2026-08-28)
 
