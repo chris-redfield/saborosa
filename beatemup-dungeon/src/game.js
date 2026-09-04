@@ -76,6 +76,10 @@
      and the props are -- it belongs to a ROOM, and the shell is what changes
      rooms. Pure scenery: nothing else in this file asks it anything. */
   const scenery = new Scenery(assets);
+  /* THE BOOKCASE'S WORMS. Level 3 only -- `enterRoom` lays out nothing anywhere
+     else -- and pure scenery like the mounds: nothing in this file ever asks one
+     a question. See src/vermes.js for why they need a measured track. */
+  const vermes = new Vermes(assets);
   /* The day passing over the desert. Owned here for the reason the flies, the
      props and the mounds are -- it belongs to a ROOM, and the shell is what
      changes rooms. Nothing else in this file asks it anything. */
@@ -509,6 +513,7 @@
     flies.enterRoom(stage.room(), stage.camX);
     // ...and so does the ground it walks on. See CONFIG.SCENERY.
     scenery.enterRoom(stage.room());
+    vermes.enterRoom(stage.room());
     grade.enterRoom(stage.room(), stage);
     /* How the player finds what is within reach. Handed over rather than looked
        up globally, so a Player built for the ending screen or a test has none
@@ -695,6 +700,7 @@
       props.enterRoom(stage.room(), player);
       flies.enterRoom(stage.room(), stage.camX);
       scenery.enterRoom(stage.room());
+      vermes.enterRoom(stage.room());
       grade.enterRoom(stage.room(), stage);
       roomMusic();
       phase = 'play';
@@ -803,6 +809,7 @@
            visible. */
         flies.enterRoom(stage.room(), stage.camX);
         scenery.enterRoom(stage.room());
+        vermes.enterRoom(stage.room());
         grade.enterRoom(stage.room(), stage);
         roomMusic();
         input.flush();
@@ -1144,6 +1151,10 @@
         continue;
       }
       if (layer.scenery) { drawScenery(camX); continue; }
+      /* ⚠️ NO `camX`. They are welded to the FOOTAGE, not to the camera, and
+         handing them a camera offset is the exact mistake vermes.js exists to
+         document. It reads `Level3.progress` itself. */
+      if (layer.vermes) { vermes.draw(ctx); continue; }
       if (layer.flies) { flies.draw(ctx, camX); continue; }
       backdrop.drawLayer(ctx, layer, filmX, CONFIG.GAME_W, CONFIG.GAME_H, 1 / 60);
     }

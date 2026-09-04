@@ -56,6 +56,7 @@ from the previous keyframe. A backward step costs at most twelve frames.
 Output (assets-v2/beatemup-dungeon/):
   level-3-plate.mp4   848x478, keyframe every 12 frames, no audio, same duration
 """
+import json
 import os
 import subprocess
 import sys
@@ -163,11 +164,62 @@ def legs(cx, cy, n, dur):
     return merged, fps
 
 
+TRACK = 'assets-v2/beatemup-dungeon/level-3-wall-track.json'
+
+
+def write_track(cx, n, fps, L):
+    """The wall's own horizontal travel, per frame, for anything DRAWN ON IT.
+
+    ⚠️ THIS EXISTS BECAUSE THE PLATE DOES NOT MOVE ON SCREEN. It is a video
+    blitted to fill the canvas and the pan lives INSIDE the footage, so a sprite
+    meant to be stuck to the bookcase cannot simply be offset by the camera --
+    there is no camera offset to use. The only thing that says where the wall
+    has got to is the footage itself, which is what `motion()` already measures.
+
+    ⚠️ AND ONE RATE PER LEG IS NOT ENOUGH, WHICH IS WHY THIS IS A TRACK AND NOT
+    THREE NUMBERS. The shot was panned by hand: fitting a constant rate to each
+    horizontal leg leaves up to 12% of that leg unaccounted for, which at this
+    scale is around 580 screen px -- most of a screen of slide, on art whose
+    whole job is to look stuck down. Sampled per frame, there is nothing to
+    drift.
+
+    ⚠️ VERTICAL LEGS ARE WRITTEN AS FLAT. Nothing is drawn on the wall during a
+    lift ("don't add worms to the background of the elevator parts, just when
+    movement is horizontal"), and holding the value across a rise means whatever
+    IS drawn later resumes where it left off instead of teleporting.
+
+    x is in CANVAS px, already scaled by CANVAS_W / W, because every consumer is
+    drawing to the canvas and the source width is this tool's business.
+    """
+    scale = CANVAS_W / W
+    horiz = [(a, b) for (a, b, v) in L if not v]
+    x = np.array(cx, dtype=float) * scale
+    out = np.zeros(n)
+    held = 0.0
+    at = 0
+    for (a, b) in horiz:
+        out[at:a] = held                     # a lift: the wall holds still
+        out[a:b + 1] = held + (x[a:b + 1] - x[a])
+        held = out[b]
+        at = b + 1
+    out[at:] = held
+    with open(TRACK, 'w') as fh:
+        json.dump({'fps': round(fps, 6), 'frames': int(n),
+                   'canvasW': CANVAS_W, 'sourceW': W,
+                   'legs': [[int(a), int(b), bool(v)] for (a, b, v) in L],
+                   'x': [round(v, 2) for v in out]}, fh)
+    print(f'\n{TRACK}  {n} samples at {fps:.3f} fps, '
+          f'{os.path.getsize(TRACK) / 1024:.0f} KB')
+    print(f'  wall travel over the three horizontal legs: {out[-1]:+.0f} canvas px')
+
+
 def main():
     # `--measure` re-reads the shot and prints the legs without re-encoding --
     # the encode is the slow half and the legs are what get iterated on.
-    argv = [a for a in sys.argv[1:] if a != '--measure']
+    # `--track` writes the wall track beside it; see write_track.
+    argv = [a for a in sys.argv[1:] if a not in ('--measure', '--track')]
     measure_only = '--measure' in sys.argv
+    track = '--track' in sys.argv
     src = argv[0] if argv else DEFAULT_SRC
     if not os.path.exists(src):
         raise SystemExit(f'missing master: {src}\n'
@@ -187,6 +239,9 @@ def main():
         scale = CANVAS_H / H if v else CANVAS_W / W
         print(f'  {i}  {a:4d}-{b:4d}  {a / fps:5.2f}-{b / fps:5.2f}  '
               f'{"VERTICAL" if v else "horizontal"}  {d:+8.0f}  {d * scale:+9.0f}')
+
+    if track:
+        write_track(cx, n, fps, L)
 
     if measure_only:
         return

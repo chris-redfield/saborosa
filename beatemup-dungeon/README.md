@@ -1318,6 +1318,114 @@ instead of silently desyncing them.
 
 ---
 
+## The worms on the bookcase's wall (level 3)
+
+```js
+VERMES: {
+  on: true,
+  sheet: 'v2:beatemup-dungeon/vermes-fundo',
+  track: 'v2:beatemup-dungeon/level-3-wall-track.json',
+  perLeg: 26,                        // patches per WALK leg — see below
+  bands: 3, bandScale: [0.90, 1.15, 1.45],
+  yFrom: 0.12, yTo: 0.50,            // fractions of the belt's top y (470)
+  jitterXRel: 0.8, denseShare: 0.5, boilMs: 200,
+},
+```
+
+Two hand-drawn sheets, each with two boil frames, cut into **nine knots** by
+`tools/build-beat-vermes-defs.py`. `src/vermes.js` is the whole implementation —
+a separate file, not a mode of `scenery.js`, because level 3's standing rule is
+that it *replaces* shared systems for itself and touches nothing else.
+
+### Why it needed a measured track
+
+> ⚠️ **`x - camX` does not work here, and that is the whole problem.** The
+> desert's plate *scrolls* — it is an image drawn at an offset, so a mound at
+> parallax 1.0 is welded to the sand for free. **Level 3's plate is a video that
+> fills the frame** and the pan lives inside the footage, so the plate never
+> moves on screen and there is no camera offset meaning "where the wall has got
+> to". A worm at a fixed screen position is painted on the **lens**.
+
+So it was measured. `tools/build-level-3-plate.py --track` phase-correlates the
+shot it already correlates for the legs and writes `level-3-wall-track.json`:
+the wall's own horizontal travel in canvas px, **one sample per film frame**.
+`vermes.js` samples it at `Level3.progress`.
+
+> ⚠️ **A rate per leg is not enough, which is why this is a track.** The shot was
+> panned by hand — fitting a constant speed to each horizontal leg leaves up to
+> **12 % of that leg** unaccounted for, about **580 canvas px** of slide on art
+> whose entire job is to look stuck down. Three numbers would have looked right
+> in the config and wrong on the screen.
+
+> ⚠️ **Sampled, not interpolated.** The track is one value per film frame and the
+> film is the thing being drawn, so the sample the plate is showing is the sample
+> the worms want.
+
+### Nothing during a lift
+
+*"for now don't add worms to the background of the elevator parts, just when
+movement is horizontal, lets keep that for later."* The layout is per **walk**
+leg and `draw()` returns early on a rise.
+
+> ⚠️ **That leaves a pop at each leg boundary** — a known, accepted edge. Done
+> properly they would ride the wall *down* out of frame as the film pans up, and
+> the vertical track is already measured and sitting in the same tool. Fading
+> them would be inventing a look nobody asked for.
+
+### Per leg, not per room
+
+> ⚠️ **Wall x is not monotonic**: the shot goes +3647, back −5515, then +3396, so
+> leg 2 walks back across wall x that leg 0 already used — at a different height,
+> in front of different books. One shared wall space would put the same knot on
+> two different shelves. That is the switchback ambiguity `Level3.progress`
+> exists to avoid, in a second costume.
+
+### Layers without parallax
+
+Asked for in those words. `bands` still splits the field into planes, and they
+differ in **scale and draw order** (near over far) — but **every band reads the
+track at the same rate**, because a band that scrolled slower would come unstuck
+from the wall, which is the one thing this feature is for. The desert's mounds do
+the opposite deliberately; see *The ground cover*.
+
+### Cutting them
+
+```
+python3 tools/build-beat-vermes-defs.py
+```
+
+> ⚠️ **Cut on COLUMN gaps — the cigarette cutter cuts on ROW bands.** Same idea,
+> different axis, and the axis is a property of the sheet rather than a choice:
+> the mound sheets stack two drifts vertically, so a row band is one mound. These
+> sheets **do not band by row at all** (measured — `A` is one unbroken band at
+> every gap from 20 to 140) because the worms run right across the width. They
+> separate by column: 4 knots off the dense sheet, 5 off the sparse one.
+
+> ⚠️ **The runs are found on the UNION of the two boil frames.** Worms at a
+> knot's edge wander between frames, so runs found on frame 01 alone would put a
+> slightly different cut on frame 02 and the two halves of one piece would stop
+> being the same object. One run list, both frames, one rect each — which is also
+> what stops a patch **jumping** every time it boils.
+
+> ⚠️ **One piece is not always a knot.** The sparse sheet also yields a 91×109
+> speck; `MIN_W` drops it and the tool asserts the final count (9), so a sheet
+> that gains or loses a knot fails at build time rather than shipping a smudge as
+> level art. Same problem and same answer as the cigarettes' stray 143×906 mark.
+
+> ⚠️ **`yTo` stops at 0.50 and that is measured, not chosen.** The books occupy
+> only the top of the frame — the shelf's own plank starts around y 250, the belt
+> line is at 470 — so a knot centred past about half the belt's height lands on
+> bare wood. At 0.78 it read exactly like that: worms on the floor. And `yFrom` is
+> not 0 because **the anchor is the centre**, so a knot centred at y 20 spends
+> most of itself off the top of the screen.
+
+> ⚠️ **The atlas is tall and thin** (119×2474 at `SCALE` 0.115) and the *height*
+> is what would hit a texture limit. Well inside `bigTextureCap` (3200) today;
+> past `SCALE` ≈ 0.148 it would not be. Go to a grid rather than shrinking the
+> art.
+
+---
+
 ## The ground cover (the desert's cigarette floor)
 
 ```js

@@ -397,6 +397,12 @@ const CONFIG = {
        sits in the stack is level data, not a line buried in render(). Off with
        `CONFIG.SCENERY.on`, and per room with `ROOMS[n].scenery`. */
     { name: 'scenery',    scenery: true },
+    /* THE BOOKCASE'S WORMS, between the plate and everything in front of it.
+       ⚠️ IT IS A LAYER EVEN THOUGH ONLY ONE ROOM HAS ANY, for the reason the
+       scenery and the flies are: where a thing sits in the stack is level data,
+       not a line buried in render(). `Vermes.enterRoom` lays out nothing
+       anywhere but level 3, so this costs every other room one `if`. */
+    { name: 'vermes',     vermes: true },
     { name: 'flies',      flies: true },
     { name: 'fighters',   entities: true },
     /* The plane in front of everything. Off until there is art for it — the
@@ -3528,6 +3534,66 @@ const CONFIG = {
        ⚠️ ITS OWN STRING RATHER THAN `word + ' MODE'`, so that renaming the code
        does not rewrite the label and vice versa. They only happen to agree. */
     label: 'SABOROSA MODE',
+  },
+
+  /* =========================================================================
+     THE WORMS ON THE BOOKCASE'S WALL  (level 3 only, 2026-09-04)
+     =========================================================================
+     Two hand-drawn patches, each with two boil frames, cut by
+     tools/build-beat-vermes-defs.py. They are SCENERY in the strict sense --
+     no hitbox, no z-sort, nothing asks them anything -- and src/vermes.js is
+     their whole implementation.
+
+     ⚠️ THE HARD PART IS NOT THE SCATTER, IT IS THE WELD, and the reason is in
+     vermes.js: level 3's plate is a VIDEO THAT FILLS THE FRAME, so the pan is
+     inside the footage and there is no camera offset that means "where the wall
+     has got to". `track` is that number, measured per film frame by
+     tools/build-level-3-plate.py --track. Without it the worms are painted on
+     the lens.
+
+     ⚠️ "NO PARALLAX, BUT LAYERS", as asked. `bands` still splits the field into
+     planes and they differ in SCALE and draw order -- but every band reads the
+     track at the same rate, because a band that scrolled slower would come
+     unstuck from the wall, which is the one thing this feature is for. The
+     desert's mounds do the opposite deliberately; see CONFIG.SCENERY. */
+  VERMES: {
+    on: true,
+    sheet: 'v2:beatemup-dungeon/vermes-fundo',
+    track: 'v2:beatemup-dungeon/level-3-wall-track.json',
+    /* HOW MANY PATCHES PER WALK LEG. ⚠️ PER LEG, NOT PER ROOM, and the layout
+       is per leg too -- wall x is not monotonic (the shot goes +3647, back
+       -5515, then +3396), so leg 2 crosses wall x that leg 0 already used, at a
+       different height in front of different books. One shared wall space would
+       put the same patch on two shelves. See vermes.js. */
+    perLeg: 26,
+    /* THE PLANES. Three, far -> near, read as a CURVE and sampled at `bands` --
+       the same shape CONFIG.SCENERY uses, so a shorter list is a legal
+       interpolated shorthand rather than silently missing planes. */
+    bands: 3,
+    bandScale: [0.90, 1.15, 1.45],
+    /* WHERE ON THE WALL, as a fraction of the belt's top y (470 here): 0 is the
+       top of the screen and 1 is the floor line.
+       ⚠️ IT STOPS AT 0.50, WELL SHORT OF THE BELT, AND THAT IS MEASURED OFF THE
+       FOOTAGE RATHER THAN CHOSEN. The books only occupy the top of the frame --
+       the shelf's own wooden floor starts around y 250 and the belt line is at
+       470 -- so a knot centred anywhere past about half the belt's height lands
+       on bare plank. It read exactly like that at 0.78: worms on the floor, not
+       stuck to anything.
+       ⚠️ AND `yFrom` IS NOT 0 BECAUSE THE ANCHOR IS THE CENTRE. A knot is up to
+       249px tall drawn, so one centred at y 20 spends most of itself above the
+       top of the screen. */
+    yFrom: 0.12,
+    yTo: 0.50,
+    /* HOW FAR OFF ITS SLOT A PATCH MAY SIT, as a fraction of the slot. Evenly
+       spaced they read as wallpaper; past 1.0 they start clumping and leaving
+       bare wall between. */
+    jitterXRel: 0.8,
+    /* HOW OFTEN THE DENSE PATCH (A) IS PICKED OVER THE SPARSE ONE (B). */
+    denseShare: 0.5,
+    /* THE BOIL. Two frames, alternating. ⚠️ EACH PATCH CARRIES ITS OWN PHASE
+       (see vermes.js) -- every patch flipping on the same frame is one big
+       shudder rather than a wall of worms. */
+    boilMs: 200,
   },
 
   PAUSE: {

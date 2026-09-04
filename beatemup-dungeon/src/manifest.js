@@ -248,6 +248,21 @@ function assetManifest() {
     out.push({ key: 'horacio', src: h + '-sprites.json', how: 'json' });
   }
 
+  /* THE BOOKCASE'S WORMS, and the WALL TRACK that welds them to it.
+     ⚠️ THE TRACK IS AN ASSET, NOT A CONFIG BLOCK, and that is on purpose: it is
+     2219 measured samples of the footage's own pan, written by
+     tools/build-level-3-plate.py --track. Pasting it into config.js would put a
+     20KB array of numbers nobody can read or check into the file that is
+     supposed to be the tunables. Re-cut the clip and it is re-measured, like the
+     legs beside it. */
+  if (CONFIG.VERMES && CONFIG.VERMES.on !== false) {
+    out.push({ key: 'vermes', src: CONFIG.VERMES.sheet + '-game.png', how: 'image' });
+    out.push({ key: 'vermes', src: CONFIG.VERMES.sheet + '-sprites.json', how: 'json' });
+    if (CONFIG.VERMES.track) {
+      out.push({ key: 'level3Track', src: CONFIG.VERMES.track, how: 'json' });
+    }
+  }
+
   // STILL LIFE's hand-drawn health bar, and the Mosca Boss's two flap sheets.
   out.push({ key: 'lifeBar', src: CONFIG.BAR_SHEET, how: 'image' });
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>
