@@ -167,8 +167,32 @@ def legs(cx, cy, n, dur):
 TRACK = 'assets-v2/beatemup-dungeon/level-3-wall-track.json'
 
 
-def write_track(cx, n, fps, L):
-    """The wall's own horizontal travel, per frame, for anything DRAWN ON IT.
+def _axis(c, n, L, scale, vertical):
+    """One axis of the wall track: it MOVES on its own legs and HOLDS on the
+    other axis's legs.
+
+    ⚠️ THE HOLD IS THE WHOLE REASON THIS IS NOT JUST `cumsum * scale`. Each axis
+    accumulates only over the legs that belong to it, and carries its last value
+    across the legs that do not, so a patch of art welded to the wall resumes
+    exactly where it left off instead of teleporting at every leg boundary. x
+    holds flat through a rise; y holds flat through a pan.
+    """
+    segs = [(a, b) for (a, b, v) in L if bool(v) == vertical]
+    src = np.array(c, dtype=float) * scale
+    out = np.zeros(n)
+    held = 0.0
+    at = 0
+    for (a, b) in segs:
+        out[at:a] = held
+        out[a:b + 1] = held + (src[a:b + 1] - src[a])
+        held = out[b]
+        at = b + 1
+    out[at:] = held
+    return out
+
+
+def write_track(cx, cy, n, fps, L):
+    """The wall's own travel, per frame, on BOTH axes, for anything DRAWN ON IT.
 
     ⚠️ THIS EXISTS BECAUSE THE PLATE DOES NOT MOVE ON SCREEN. It is a video
     blitted to fill the canvas and the pan lives INSIDE the footage, so a sprite
@@ -183,34 +207,30 @@ def write_track(cx, n, fps, L):
     whole job is to look stuck down. Sampled per frame, there is nothing to
     drift.
 
-    ⚠️ VERTICAL LEGS ARE WRITTEN AS FLAT. Nothing is drawn on the wall during a
-    lift ("don't add worms to the background of the elevator parts, just when
-    movement is horizontal"), and holding the value across a rise means whatever
-    IS drawn later resumes where it left off instead of teleporting.
+    ⚠️ THE TWO AXES TOGETHER ARE ONE WALL SPACE, and that is what makes the
+    switchback unambiguous. Wall x alone is not monotonic -- leg 2 walks back
+    across x that leg 0 already covered -- but it does so 4826 px HIGHER, so
+    (x, y) names a spot on the bookcase exactly once. Consumers can hold one
+    field for the whole room rather than one per leg.
 
-    x is in CANVAS px, already scaled by CANVAS_W / W, because every consumer is
-    drawing to the canvas and the source width is this tool's business.
+    Both axes are in CANVAS px, already scaled by CANVAS_W / W and CANVAS_H / H,
+    because every consumer draws to the canvas and the source size is this
+    tool's business. ⚠️ The two scales are NOT the same number (1.5094 vs
+    1.5063) and the difference is not worth a shared constant.
     """
-    scale = CANVAS_W / W
-    horiz = [(a, b) for (a, b, v) in L if not v]
-    x = np.array(cx, dtype=float) * scale
-    out = np.zeros(n)
-    held = 0.0
-    at = 0
-    for (a, b) in horiz:
-        out[at:a] = held                     # a lift: the wall holds still
-        out[a:b + 1] = held + (x[a:b + 1] - x[a])
-        held = out[b]
-        at = b + 1
-    out[at:] = held
+    x = _axis(cx, n, L, CANVAS_W / W, vertical=False)
+    y = _axis(cy, n, L, CANVAS_H / H, vertical=True)
     with open(TRACK, 'w') as fh:
         json.dump({'fps': round(fps, 6), 'frames': int(n),
-                   'canvasW': CANVAS_W, 'sourceW': W,
+                   'canvasW': CANVAS_W, 'canvasH': CANVAS_H,
+                   'sourceW': W, 'sourceH': H,
                    'legs': [[int(a), int(b), bool(v)] for (a, b, v) in L],
-                   'x': [round(v, 2) for v in out]}, fh)
+                   'x': [round(v, 2) for v in x],
+                   'y': [round(v, 2) for v in y]}, fh)
     print(f'\n{TRACK}  {n} samples at {fps:.3f} fps, '
           f'{os.path.getsize(TRACK) / 1024:.0f} KB')
-    print(f'  wall travel over the three horizontal legs: {out[-1]:+.0f} canvas px')
+    print(f'  wall travel over the three horizontal legs: {x[-1]:+.0f} canvas px')
+    print(f'  wall travel over the two vertical legs:     {y[-1]:+.0f} canvas px')
 
 
 def main():
@@ -241,7 +261,7 @@ def main():
               f'{"VERTICAL" if v else "horizontal"}  {d:+8.0f}  {d * scale:+9.0f}')
 
     if track:
-        write_track(cx, n, fps, L)
+        write_track(cx, cy, n, fps, L)
 
     if measure_only:
         return

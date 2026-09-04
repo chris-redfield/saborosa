@@ -4371,6 +4371,107 @@ yet, and both are one flag away from off: `spawnBehindScenery` for the depth,
 
 ## Level 3 — the bookcase (2026-08-27)
 
+### The worms ride the lifts (2026-09-04)
+
+*"we want to make them available as well when the elevators are moving, and we
+want them to move vertically accordingly."* The deferred half of the wall worms,
+and it turned out to be a smaller job than the horizontal half was, because the
+hard part — measuring a wall that never moves on screen — was already paid for.
+
+**The measurement existed and was being thrown away.** `motion()` in
+`tools/build-level-3-plate.py` has always phase-correlated **both** axes: it
+returns `cx, cy, n`, and `legs()` needs `cy` to find the rises at all. It was
+`write_track` that wrote only x. It now writes both through one `_axis()` helper,
+and the shape is the thing to understand:
+
+> ⚠️ **EACH AXIS MOVES ON ITS OWN LEGS AND HOLDS ON THE OTHER'S.** x accumulates
+> over the three pans and holds flat through the two rises; y accumulates over
+> the two rises and holds flat through the pans. Nothing teleports at a boundary
+> because both axes are continuous across it. Measured: x +3647 / −5515 / +3396,
+> y **−4826** and **−2296** canvas px.
+
+Re-running it is 13 seconds against the **shipped** mp4 (`--measure --track`), and
+the x array came back **byte-identical** to the one on disk — which is the check
+that says the horizontal weld cannot have moved.
+
+**One wall space, both axes.** Every patch now lives in one `(x, y)` space and is
+drawn at `it.x − wallX(), it.y − wallY()`. `draw()` no longer tests the leg at
+all; the cull does, on both axes.
+
+> ⚠️ **THIS LOOKED LIKE IT CONTRADICTED THE FILE'S OWN STANDING RULE, AND DID
+> NOT.** *"One shared wall space would put the same knot on two shelves"* was
+> written about a wall space with **one axis**. Leg 2 does walk back across x that
+> leg 0 already used — **4826 px higher**. Adding y is what makes the shared space
+> legal, and the switchback ambiguity `Level3.progress` exists to avoid never
+> arises. **A rule written against a one-dimensional model is not automatically a
+> rule about the two-dimensional one; check what it was actually protecting.**
+
+> ⚠️ **THE POP FIX IS THE ABSENCE OF CODE.** Shelf 1's patches keep being drawn
+> as the film climbs, ride down the frame and leave out of the bottom; shelf 2's
+> arrive from the top before the ride ends. No fade, no cross-over, nothing to
+> time. Measured at 0.1s steps across all four boundaries, the largest step in
+> worm pixels is **11 %** and it is a ramp — against **exactly zero** on the
+> shipped code, which is what the pop was.
+
+> ⚠️ **A LIFT'S OWN PATCHES MUST NOT REACH EITHER END OF ITS TRAVEL.** `wallY` is
+> **constant** through a walk leg, so a patch that is on screen when a ride starts
+> is on screen for the **whole walk leg before it** — pinned over the shelf the
+> player walks along, on the floor `yTo` was tuned to keep clear. Its window is
+> the travel minus a screen and a knot at the near end and a knot at the far end.
+> **The trap is that a lift leg is not just "another leg with a different axis":
+> the leg either side of it holds the axis it moves on, so its ends leak.**
+
+**`perLiftScreen: 22`** — patches **on screen**, not per lift, because the two
+rides are 4826 and 2296 px (52 and 13 patches). Swept 10 / 14 / 22 composited
+over the real plate: 10 and 14 leave bald mid-ride patches — the knot lottery
+again, 6.9k worm px at t=25 against 14.6k at t=29 on the *same* setting — and 22
+is even. It reads denser than a walk leg **because on a walk leg most of every
+knot is clipped off the top of the screen**; the climb reveals what was always up
+there.
+
+### And a bug the vertical work exposed: legs 2 and 4 were dressing wall the camera never reaches
+
+Anchoring the layout meant asking the track where each leg's wall **is**, and the
+answer showed the old layout had been guessing.
+
+> ⚠️ **EVERY LEG STARTED AT `−GAME_W` AS THOUGH THE WALL STARTED AT 0**, which is
+> true of leg 0 and of nothing else. Leg 2 *begins* at wall x 3647 and walks
+> **down** to −1869. Measured consequence: **half a screen of bare wall** at the
+> far end of legs 2 and 4, and **43 % of leg 4's patches** laid on wall the camera
+> never gets to. Same `perLeg`, same knots, now on the visible part: leg 4 went
+> **10.6k → 16.6k worm pixels**, and leg 2's mean worm y came back to 121, in line
+> with the other two.
+
+> ⚠️ **IT WAS INVISIBLE TO THE CHECK THAT SHIPPED IT.** Last session verified
+> *"worms on legs 0/2/4, nothing on 1 and 3"* — a **presence** count, which a
+> half-empty leg passes. A per-leg check that only asks "is anything there" cannot
+> see a leg that is two-thirds dressed.
+
+### How it was verified, and the two things that lied first
+
+Composited over the **real plate frame** — worms drawn by `Vermes.draw` on top of
+the video seeked to that film second — at eleven film times, plus a before/after
+against the shipped class fetched with `git show HEAD:`.
+
+> ⚠️ **`python3 -m http.server` DOES NOT SERVE `Range`, AND A VIDEO THAT CANNOT
+> SEEK FAILS SILENTLY.** The clip loaded, decoded, reported `readyState 4` and the
+> right dimensions — and every `currentTime = t` was **ignored**, leaving
+> `currentTime` at 0.000. The first contact sheet was eleven different worm
+> layouts over **the same frame of film**, which looks exactly like a weld that
+> works. The tell was that the bookshelf never changed. There is a Range-capable
+> server in the scratchpad now; a preview that seeks video needs it.
+
+> ⚠️ **`class X` FROM `eval` DOES NOT REPLACE `class X` FROM A SCRIPT TAG.** The
+> first before/after printed the *same* class twice — the redeclaration went into
+> the eval's own lexical scope and was silently discarded, so "OLD" and "NEW" were
+> both NEW and leg 0 matched to the pixel. The fix is to rename the class in the
+> fetched text and hang it on `window`. **Two runs agreeing perfectly is a reason
+> to check they are two runs.**
+
+Boil noise sets the floor on any of these numbers: the same leg re-rendered
+seconds apart varies ~1.5 %, because `performance.now()` picks a different boil
+frame. Differences under a couple of per cent mean nothing here.
+
 ### The double entrance, fixed 2026-08-31
 
 *"when we enter stage 3... the player character is already at the room, but then

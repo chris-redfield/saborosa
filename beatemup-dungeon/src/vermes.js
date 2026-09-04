@@ -36,17 +36,35 @@
  * would have looked right in the config and wrong on the screen.
  *
  * ---------------------------------------------------------------------------
- * ⚠️ NOTHING IS DRAWN DURING A LIFT, ON REQUEST
+ * ⚠️ ONE WALL SPACE, BOTH AXES -- AND THAT IS WHAT MAKES THE LIFTS WORK
  * ---------------------------------------------------------------------------
- * *"for now don't add worms to the background of the elevator parts, just when
- * movement is horizontal, lets keep that for later."* So the layout is per
- * WALK LEG and the draw returns early on a rise.
+ * The track carries `x` AND `y`, and each axis MOVES on its own legs and HOLDS
+ * on the other's: x is flat through a rise, y is flat through a pan. So every
+ * patch in the room can live in one (x, y) space and be drawn at
+ * `it.x - wallX(), it.y - wallY()`, whichever leg the room is in.
  *
- * ⚠️ THAT LEAVES A POP AT EACH LEG BOUNDARY and it is a known, accepted edge,
- * not an oversight. Done properly the patches would ride the wall DOWN out of
- * frame as the film pans up -- the vertical track is measured and sitting in
- * the same tool -- which is the "later" the request defers. Fading them would
- * be inventing a look nobody asked for, so they simply are not there.
+ * ⚠️ THIS DOES NOT CONTRADICT THE OLD "PER-LEG, NOT PER-ROOM" RULE, IT
+ * COMPLETES IT. That rule was written against a wall space with ONE axis, where
+ * leg 2 walks back across x leg 0 already used and the same patch would land on
+ * two shelves. It does -- but 4826 px HIGHER. With y in the space, (x, y) names
+ * a spot on the bookcase exactly once and the ambiguity is gone. The layout is
+ * still done a leg at a time, because each leg still decides its own span; the
+ * COORDINATES are now shared.
+ *
+ * ⚠️ AND THAT IS THE WHOLE FIX FOR THE POP. The worms used to vanish at every
+ * leg boundary because a lift drew nothing. Now shelf 1's patches simply keep
+ * being drawn as the film climbs, ride DOWN the frame and leave out of the
+ * bottom, and shelf 2's arrive from the top before the ride ends -- no fade, no
+ * hand-off, nothing to time. The lift legs only have to dress the wall BETWEEN
+ * those two, which is what `perLiftScreen` is for.
+ *
+ * ⚠️ A LIFT LEG'S OWN PATCHES MUST NOT REACH EITHER END OF ITS TRAVEL, and that
+ * is not a nicety. `wallY` is CONSTANT through a walk leg, so a patch that is on
+ * screen at the moment a ride starts is on screen for the WHOLE of the walk leg
+ * before it -- pinned over the shelf the player is walking along, on the floor
+ * the walk layout deliberately keeps clear (`yTo`). So a lift's window is its
+ * travel minus a screen and a knot at the near end, and minus a knot at the far
+ * end; the two walk legs dress the rest, because it is their wall.
  *
  * ⚠️ THE PACK IS NINE KNOTS, NOT TWO PATCHES, and that is the cigarettes'
  * lesson applied: the mound sheets are chopped into their pieces and the field
@@ -57,14 +75,20 @@
  * needs to bias the scatter one way or the other.
  *
  * ---------------------------------------------------------------------------
- * ⚠️ THE LAYOUT IS PER LEG, AND THAT IS NOT AN OPTIMISATION
+ * ⚠️ EVERY LEG IS SCATTERED OVER THE WALL IT ACTUALLY SHOWS
  * ---------------------------------------------------------------------------
- * Wall x is NOT monotonic: the shot goes +3647, back -5515, then +3396, so leg
- * 2 walks back across wall x that leg 0 already covered -- at a different
- * HEIGHT, in front of different books. Laying the field out in one wall-x space
- * would put the same patch of worms at the same place on two different shelves,
- * which is the switchback ambiguity that `Level3.progress` exists to avoid, in
- * a second costume. Each leg gets its own patches over its own span.
+ * A leg's window is read off the TRACK -- where the wall stands when the leg
+ * starts and where it stands when it ends -- not off `L.px` from an assumed
+ * zero.
+ *
+ * ⚠️ AND THAT IS A FIX, NOT A REFACTOR. The old layout ran every leg from
+ * `-GAME_W` as though the wall started at 0, which is true of leg 0 and of
+ * nothing else. Leg 2 begins at wall x 3647 and walks DOWN to -1869, so its
+ * patches were laid across x it never reaches: measured, half a screen of bare
+ * wall at the far end of legs 2 and 4, and 43% of leg 4's patches scattered
+ * onto wall the camera never gets to. Same count, same knots, same `perLeg` --
+ * they are simply on the part of the bookcase you can see now, which is worth
+ * about a third more worms on shelves 2 and 3.
  *
  * THE LAYOUT IS HASHED, not random: the player can be carried back down past a
  * shelf they have seen, and a re-rolled infestation would be a different wall.
@@ -81,12 +105,12 @@
 class Vermes {
   constructor(assets) {
     this.assets = assets;
-    /* {leg,x,y,v,s,b} -- which leg it belongs to, its position in that leg's
-       wall space, which patch, drawn scale, and its band. */
+    /* {leg,x,y,v,s,b} -- which leg laid it down (debug only; the draw does not
+       filter on it any more), its position in the ROOM'S wall space, which
+       patch, drawn scale, and its band. */
     this.items = [];
     this.defs = null;
     this.track = null;
-    this.leg = -1;
   }
 
   /** The same hash scenery.js uses -- same room, same wall, every time. */
@@ -106,7 +130,7 @@ class Vermes {
   }
 
   /**
-   * WHERE THE WALL HAS GOT TO, in canvas px, right now.
+   * WHERE THE WALL HAS GOT TO, in canvas px, right now -- on both axes.
    *
    * ⚠️ SAMPLED, NOT INTERPOLATED, and that is not laziness: the track is one
    * value per FILM FRAME and the film is the thing being drawn, so the sample
@@ -115,17 +139,43 @@ class Vermes {
    * currently displaying -- a sub-frame lead or lag against the only thing they
    * are supposed to match.
    */
-  wallX() {
+  _at(axis, i) {
     const t = this.track;
-    if (!t || !t.x || !t.x.length) return 0;
-    const i = Math.round(Level3.progress * t.fps);
-    return t.x[Math.max(0, Math.min(t.x.length - 1, i))];
+    const a = t && t[axis];
+    if (!a || !a.length) return 0;
+    return a[Math.max(0, Math.min(a.length - 1, i))];
   }
 
-  /** Lay out every walk leg's patches. Called once, on entering the room. */
+  /** The film frame the plate is showing. Both axes read the same one. */
+  _frame() {
+    const t = this.track;
+    return t && t.fps ? Math.round(Level3.progress * t.fps) : 0;
+  }
+
+  wallX() { return this._at('x', this._frame()); }
+  wallY() { return this._at('y', this._frame()); }
+
+  /**
+   * Where the wall stood at a given FILM SECOND. This is what anchors a leg:
+   * the layout asks the track where the wall is at the leg's two ends and
+   * scatters between them, rather than assuming a leg starts at zero.
+   */
+  _wallAt(sec) {
+    const t = this.track;
+    const i = t && t.fps ? Math.round(sec * t.fps) : 0;
+    return { x: this._at('x', i), y: this._at('y', i) };
+  }
+
+  /**
+   * Lay out every leg's patches -- WALKS AND LIFTS. Called once, on entering.
+   *
+   * Every item lands in the room's single (x, y) wall space, so the draw never
+   * has to know which leg is on screen. What each leg decides is its own WINDOW:
+   * a walk spreads along the wall x it pans across, a lift along the wall y it
+   * climbs.
+   */
   enterRoom(room) {
     this.items = [];
-    this.leg = -1;
     const C = CONFIG.VERMES;
     if (!C || C.on === false) return;
     if (!Level3.owns(room)) return;
@@ -135,17 +185,51 @@ class Vermes {
     const legs = (CONFIG.LEVEL3 && CONFIG.LEVEL3.legs) || [];
     const bands = Math.max(1, C.bands || 1);
     const beltTop = (room.belt && room.belt.topY) || CONFIG.beltTopY;
+    const GW = CONFIG.GAME_W, GH = CONFIG.GAME_H;
+    /* HALF THE TALLEST KNOT DRAWN (693/2, rounded up), which is what "off the
+       screen" has to mean for art anchored at its CENTRE. Used as the margin at
+       both ends of a lift's window and across a lift's width. */
+    const PAD = 360;
     let n = 0;
     for (let li = 0; li < legs.length; li++) {
       const L = legs[li];
-      if (L.kind !== 'walk') continue;      // no worms on a lift -- see header
-      /* HOW WIDE THIS LEG'S WALL IS. `px` is the world distance the player
-         walks, and the wall travels within a few percent of it (measured:
-         1.02-1.15 canvas px of wall per world px), so it is the right span to
-         scatter over -- plus a screen at each end so a patch is never born
-         half-visible at a leg's edge. */
-      const span = (L.px || 0) + CONFIG.GAME_W * 2;
-      const count = Math.max(0, Math.round((C.perLeg != null ? C.perLeg : 12)));
+      if (!L.film) continue;
+      const w0 = this._wallAt(L.film[0]);
+      const w1 = this._wallAt(L.film[1]);
+      const lift = L.kind !== 'walk';
+
+      /* THE WINDOW THIS LEG SCATTERS OVER, in wall space.
+
+         A WALK moves in x and holds y: the wall it shows is everything between
+         its two ends plus one screen (the frame is a screen wide), plus a
+         screen of margin so a patch is never born half-visible at the edge. Its
+         y is the book band, exactly as before -- `yFrom`/`yTo` are fractions of
+         the belt's top, now measured from the leg's own wall y instead of from
+         an implied zero.
+
+         ⚠️ A LIFT IS THE OTHER WAY ROUND AND ITS WINDOW IS SHORTER THAN ITS
+         TRAVEL. It spreads along y and holds x, and it must stop a screen-plus-
+         a-knot short of the wall the NEXT walk leg stands on and a knot short of
+         the one the PREVIOUS walk leg stands on -- see the header. Those two
+         ends are already dressed by those legs, and anything the lift put there
+         would be nailed to the shelf for the whole of that walk. */
+      let lo, span, count;
+      if (lift) {
+        lo = Math.min(w0.y, w1.y) + GH + PAD;
+        span = Math.max(w0.y, w1.y) - PAD - lo;
+        /* HOW MANY, FROM HOW MANY SHOULD BE ON SCREEN. A knot is visible over
+           GH + 2*PAD of travel, so this is the honest conversion from "patches
+           in frame" to "patches over the whole climb". A short lift keeps the
+           density and simply gets fewer. */
+        count = Math.max(0, Math.round((C.perLiftScreen != null ? C.perLiftScreen : 22)
+                                       * span / (GH + PAD * 2)));
+      } else {
+        lo = Math.min(w0.x, w1.x) - GW;
+        span = Math.abs(w1.x - w0.x) + GW * 2;
+        count = Math.max(0, Math.round(C.perLeg != null ? C.perLeg : 12));
+      }
+      if (span <= 0 || count <= 0) continue;
+
       for (let i = 0; i < count; i++, n++) {
         const b = i % bands;
         const sc = Vermes._band(C.bandScale, bands, b);
@@ -153,11 +237,20 @@ class Vermes {
            wallpaper; the jitter is a fraction of a slot so they still cover the
            leg rather than clumping. Same shape as the summon wave's. */
         const slot = span / count;
-        const x = -CONFIG.GAME_W + slot * (i + 0.5)
-                + (Vermes._h(n * 3.1 + li * 17.7) - 0.5) * slot * (C.jitterXRel != null ? C.jitterXRel : 0.8);
-        const yF = (C.yFrom != null ? C.yFrom : 0.05);
-        const yT = (C.yTo != null ? C.yTo : 0.80);
-        const y = beltTop * (yF + (yT - yF) * Vermes._h(n * 7.3 + li * 5.1));
+        const along = lo + slot * (i + 0.5)
+                    + (Vermes._h(n * 3.1 + li * 17.7) - 0.5) * slot * (C.jitterXRel != null ? C.jitterXRel : 0.8);
+        let x, y;
+        if (lift) {
+          y = along;
+          /* ACROSS THE FRAME, not along a band: wall x is frozen for the whole
+             ride, so this is simply where in the visible screen it sits. */
+          x = w0.x - PAD + (GW + PAD * 2) * Vermes._h(n * 7.3 + li * 5.1);
+        } else {
+          x = along;
+          const yF = (C.yFrom != null ? C.yFrom : 0.05);
+          const yT = (C.yTo != null ? C.yTo : 0.80);
+          y = w0.y + beltTop * (yF + (yT - yF) * Vermes._h(n * 7.3 + li * 5.1));
+        }
         /* WHICH KNOT. Two rolls, not one: the first picks the SHEET (dense or
            sparse) so `denseShare` means what it says, the second picks a knot
            from that sheet. Rolling once over all nine would make the share a
@@ -216,24 +309,25 @@ class Vermes {
     if (!d) return;
     const img = this.assets.getDrawable('vermes');
     if (!img) return;
-    /* ⚠️ NOT DURING A LIFT, ON REQUEST -- see the header. `Level3.current()` is
-       the leg the room is in, and it is asked every frame rather than cached:
-       the room changes leg without telling anybody. */
-    const L = Level3.current();
-    if (!L || L.kind !== 'walk') return;
-    const li = Level3.leg;
 
-    const wall = this.wallX();
+    /* ⚠️ NO LEG TEST. Every patch is in one wall space and the cull below is
+       what decides -- which is the entire reason a rise no longer blanks the
+       wall. During a lift the shelf you just left is still being drawn, sliding
+       out of the bottom of frame, and the next one arrives before you do. */
+    const fi = this._frame();
+    const wx = this._at('x', fi), wy = this._at('y', fi);
     const boil = (C.boilMs != null ? C.boilMs : 200);
     const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     for (const it of this.items) {
-      if (it.leg !== li) continue;
-      const sx = it.x - wall;
       const fr = d.variants[it.v];
       const f = d.frames[fr[Math.floor(now / boil + it.ph * fr.length) % fr.length]];
       const w = f.w * it.s, h = f.h * it.s;
-      const dx = sx - f.ax * it.s, dy = it.y - f.ay * it.s;
-      if (dx > CONFIG.GAME_W || dx + w < 0) continue;   // the only cull it needs
+      const dx = (it.x - wx) - f.ax * it.s, dy = (it.y - wy) - f.ay * it.s;
+      /* THE ONLY CULL IT NEEDS, and it is on BOTH axes now: the far shelves are
+         separated from the near one by 4826 px of wall y, so y is what keeps
+         leg 2's infestation off leg 0's screen. */
+      if (dx > CONFIG.GAME_W || dx + w < 0) continue;
+      if (dy > CONFIG.GAME_H || dy + h < 0) continue;
       ctx.drawImage(img, f.x, f.y, f.w, f.h, dx, dy, w, h);
     }
   }

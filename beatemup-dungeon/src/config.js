@@ -3566,11 +3566,13 @@ const CONFIG = {
     on: true,
     sheet: 'v2:beatemup-dungeon/vermes-fundo',
     track: 'v2:beatemup-dungeon/level-3-wall-track.json',
-    /* HOW MANY PATCHES PER WALK LEG. ⚠️ PER LEG, NOT PER ROOM, and the layout
-       is per leg too -- wall x is not monotonic (the shot goes +3647, back
-       -5515, then +3396), so leg 2 crosses wall x that leg 0 already used, at a
-       different height in front of different books. One shared wall space would
-       put the same patch on two shelves. See vermes.js. */
+    /* HOW MANY PATCHES PER WALK LEG. ⚠️ PER LEG, NOT PER ROOM: wall x is not
+       monotonic (the shot goes +3647, back -5515, then +3396), so leg 2 crosses
+       wall x that leg 0 already used -- at a different height, in front of
+       different books. ⚠️ THE PATCHES NOW SHARE ONE (x, y) WALL SPACE, which is
+       what lets a lift keep drawing them, and that is not a contradiction: with
+       y in the space the two shelves are 4826 px apart and a coordinate names
+       one spot on the bookcase. It is the COUNT that is per leg. See vermes.js. */
     /* ⚠️ 26 -> 9 WITH THE 3x SIZE, AND IT IS NOT A SEPARATE DECISION. Three
        times the width is NINE times the area per knot, so holding the count
        would have turned a scatter into a solid carpet of worms. Coverage is the
@@ -3596,6 +3598,17 @@ const CONFIG = {
        from here means widening the band DOWN, which is the thing that was just
        asked to stop. Full sweep and the numbers are in README. */
     perLeg: 58,
+    /* HOW MANY PATCHES ARE ON SCREEN DURING A RIDE. ⚠️ NOT A COUNT PER LIFT --
+       the two lifts climb 4826 and 2296 canvas px, so one count would make the
+       short one a carpet or the long one a desert. vermes.js turns this into a
+       count by asking how much of the climb a knot is visible for.
+
+       ⚠️ AND IT DRESSES ONLY THE WALL BETWEEN THE TWO SHELVES. The start and the
+       end of a ride are the walk legs' own wall and they are already infested --
+       shelf 1's worms ride down out of frame as the film climbs and shelf 2's
+       arrive before you get there. This is what fills the middle, which is why
+       it is smaller than `perLeg` and is not the same kind of number. */
+    perLiftScreen: 22,
     /* THE PLANES. ⚠️ THEY NO LONGER DIFFER IN SIZE, ON REQUEST 2026-09-04:
        *"make them all have the same size"*. `bandScale` was [0.90, 1.15, 1.45]
        -- a depth cue -- and is now one number for every band, so every worm on

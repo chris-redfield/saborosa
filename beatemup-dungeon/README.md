@@ -1365,6 +1365,7 @@ VERMES: {
   sheet: 'v2:beatemup-dungeon/vermes-fundo',
   track: 'v2:beatemup-dungeon/level-3-wall-track.json',
   perLeg: 58,                        // patches per WALK leg — see below
+  perLiftScreen: 22,                 // patches ON SCREEN during a ride
   bands: 3, bandScale: 1.0,          // layers = draw order only; ONE size
   yFrom: -0.32, yTo: -0.06,          // fractions of the belt's top y (470)
   jitterXRel: 0.8, denseShare: 0.5, boilMs: 200,
@@ -1454,8 +1455,9 @@ that it *replaces* shared systems for itself and touches nothing else.
 
 So it was measured. `tools/build-level-3-plate.py --track` phase-correlates the
 shot it already correlates for the legs and writes `level-3-wall-track.json`:
-the wall's own horizontal travel in canvas px, **one sample per film frame**.
-`vermes.js` samples it at `Level3.progress`.
+the wall's own travel in canvas px on **both axes**, **one sample per film
+frame**. `vermes.js` samples it at `Level3.progress`. (`--measure --track` reads
+the *shipped* mp4 in 13s and does not re-encode; the master is not needed.)
 
 > ⚠️ **A rate per leg is not enough, which is why this is a track.** The shot was
 > panned by hand — fitting a constant speed to each horizontal leg leaves up to
@@ -1467,24 +1469,70 @@ the wall's own horizontal travel in canvas px, **one sample per film frame**.
 > film is the thing being drawn, so the sample the plate is showing is the sample
 > the worms want.
 
-### Nothing during a lift
+### The lifts, 2026-09-04 — one wall space, both axes
 
-*"for now don't add worms to the background of the elevator parts, just when
-movement is horizontal, lets keep that for later."* The layout is per **walk**
-leg and `draw()` returns early on a rise.
+The track carries **`x` and `y`** now, and each axis **moves on its own legs and
+holds on the other's**: x is flat through a rise, y is flat through a pan. So
+every patch lives in one `(x, y)` wall space and is drawn at
+`it.x − wallX(), it.y − wallY()` whichever leg the room is in. Measured travel:
 
-> ⚠️ **That leaves a pop at each leg boundary** — a known, accepted edge. Done
-> properly they would ride the wall *down* out of frame as the film pans up, and
-> the vertical track is already measured and sitting in the same tool. Fading
-> them would be inventing a look nobody asked for.
+```
+leg 0  walk   x +3647            leg 1  LIFT   y −4826
+leg 2  walk   x −5515            leg 3  LIFT   y −2296
+leg 4  walk   x +3396
+```
 
-### Per leg, not per room
+> ⚠️ **This does not contradict "per leg, not per room" — it completes it.** That
+> rule was written against a **one-axis** wall space, where leg 2 walks back
+> across x leg 0 already used and the same knot lands on two shelves. It does —
+> but **4826 px higher**. With y in the space, `(x, y)` names a spot on the
+> bookcase exactly once. The **count** is still per leg; the **coordinates** are
+> shared.
+
+> ⚠️ **And that is the whole fix for the pop, with nothing to time.** Shelf 1's
+> patches simply keep being drawn as the film climbs, ride down the frame and
+> leave out of the bottom; shelf 2's arrive from the top before the ride ends. No
+> fade, no hand-off. Measured across all four leg boundaries at 0.1s steps, the
+> largest step in worm pixels is **11 %**, and it is a ramp, not a step — where
+> the old code went to **exactly zero**.
+
+> ⚠️ **A lift's own patches must not reach either end of its travel, and that is
+> not a nicety.** `wallY` is **constant** through a walk leg, so a patch on screen
+> at the moment a ride starts is on screen for **the whole walk leg before it** —
+> nailed over the shelf the player is walking along, on the floor `yTo` exists to
+> keep clear. A lift's window is therefore its travel minus a screen and a knot
+> at the near end and a knot at the far end; the two walk legs dress the rest,
+> because it is their wall.
+
+> ⚠️ **`perLiftScreen` is patches ON SCREEN, not per lift.** The two rides climb
+> 4826 and 2296 px, so one count would make the short one a carpet or the long one
+> a desert. `vermes.js` converts it by how much of the climb a knot is visible for
+> (`GAME_H + 2 × 360`), which gives 52 patches on lift 1 and 13 on lift 3.
+> Swept 10 / 14 / 22 against the plate: **10 and 14 leave bald patches** mid-ride
+> (the knot lottery again — 6.9k worm px at t=25 against 14.6k at t=29 on the same
+> setting). **22 is even.** It reads denser than a walk leg because on a walk leg
+> most of every knot is clipped off the top of the screen; the climb reveals what
+> was always up there.
+
+### Per leg, not per room — the COUNT
 
 > ⚠️ **Wall x is not monotonic**: the shot goes +3647, back −5515, then +3396, so
 > leg 2 walks back across wall x that leg 0 already used — at a different height,
-> in front of different books. One shared wall space would put the same knot on
-> two different shelves. That is the switchback ambiguity `Level3.progress`
-> exists to avoid, in a second costume.
+> in front of different books. `perLeg` is therefore per leg. The **coordinates**
+> are now shared across the room; see *The lifts* above for why that is safe.
+
+### A leg is scattered over the wall it actually shows (fixed 2026-09-04)
+
+A leg's window is read off the **track** — where the wall stands at the leg's two
+film ends — not off `L.px` from an assumed zero.
+
+> ⚠️ **The old layout ran every leg from `−GAME_W`** as though the wall started at
+> 0, which is true of leg 0 and of nothing else. Leg 2 *begins* at wall x 3647 and
+> walks **down** to −1869, so its patches were laid across x it never reaches:
+> measured, **half a screen of bare wall** at the far end of legs 2 and 4, and
+> **43 % of leg 4's patches** scattered onto wall the camera never gets to. Same
+> count, same knots, same `perLeg` — leg 4 went from 10.6k worm px to 16.6k
+> because they are now on the part of the bookcase you can see.
 
 ### Layers without parallax
 
