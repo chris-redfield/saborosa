@@ -1334,6 +1334,18 @@ const CONFIG = {
       name: 'boss-room',
       plate: 'bossPlate',
       startX: 220,
+      /* ⚠️ HE DOES NOT WALK OUT OF THIS ONE, HE RIDES. Asked for 2026-09-04:
+         kill HIPÓLITO and the character is taken away -- he walks to a mark, an
+         elevator comes down in front of him, he steps on and it carries him up
+         out of frame. The room event is still 'room' (a door); only the beat
+         that plays through it changes. Timings are in CONFIG.LIFT_RIDE and the
+         marks may be overridden here; see src/lift-ride.js.
+
+         ⚠️ IT PAIRS WITH `enterByLift` ON THE BOOKCASE. They are the two ends of
+         one shot -- he goes up out of this room and comes down into that one --
+         so changing one without the other leaves him arriving on foot from a
+         lift he never got off. */
+      exitByLift: true,
       /* THE ROOM'S OWN MUSIC, and it starts the moment the player walks in --
          NOT when the horse arrives. The room opens with a wave of roaches, and
          starting the song on the boss left that whole first fight playing under
@@ -1458,6 +1470,16 @@ const CONFIG = {
       plate: 'level3Plate',
       startX: 220,
       level3: true,
+      /* ⚠️ HE ARRIVES ON THE LIFT HE LEFT THE BOSS ROOM ON, rather than walking
+         in from the left -- *"ele chega via elevador, ao invés de vir caminhando
+         pela esquerda"*. The other end of `boss-room`'s `exitByLift`.
+
+         ⚠️ HIS WORLD X NEVER MOVES AT ALL, which is what keeps this out of
+         level3.js's way. He is set down at the centre of the screen and the beat
+         ends there -- no room-space movement anywhere in it, so an arrival
+         cannot disagree with a room that owns its own camera and walls. He stays
+         locked on the slab until the PLAYER walks him off it. */
+      enterByLift: true,
       /* ⚠️ SILENCE, LIKE THE DESERT'S. Leaving `music` out means *the level bed*,
          which is the opposite of nothing: `playMusic(key)` opens with
          `key || 'music'`, so a falsy key cannot express "none" and the decision
@@ -3682,6 +3704,91 @@ const CONFIG = {
        (see vermes.js) -- every patch flipping on the same frame is one big
        shudder rather than a wall of worms. */
     boilMs: 200,
+  },
+
+  /* ===== THE LIFT BETWEEN ROOMS (2026-09-04) ==============================
+     The elevator that takes the player out of HIPÓLITO's room and delivers him
+     into the library. One shot cut in half by the room fade; src/lift-ride.js
+     has the why. Rooms opt in with `exitByLift` / `enterByLift`, and those may
+     carry their own `markX`/`liftX` because the marks are room GEOGRAPHY --
+     everything here is the shot's timing, which is shared. */
+  LIFT_RIDE: {
+    /* HOW FAR ABOVE THE BELT LINE IT STARTS, and the same number is how far
+       above he arrives from. It only has to clear the top of the frame with the
+       slab's own height to spare; 900 does on a 720 screen. */
+    dropPx: 900,
+    /* THE DESCENT, IN THE BOSS ROOM ONLY. ⚠️ EASED OUT (see `_easeOut`), so it
+       arrives rather than stops -- a linear drop reads as a lift switched off. */
+    descendMs: 1500,
+    /* HOW FAR BELOW THE BELT LINE HE ARRIVES FROM. ⚠️ HE COMES UP FROM BELOW,
+       CENTRED -- *"deveria vir de baixo, e centralizado, como uma continuacao do
+       movimento da cena anterior"*. He rode UP out of the boss room, so he has
+       to still be going up when the next room fades in; coming down reads as a
+       second, unrelated ride, or as him going back.
+
+       ⚠️ IT IS **NOT** `dropPx`, AND THE DIFFERENCE IS MEASURED. Going up he has
+       a whole 720px screen to clear; coming up he only has to start under the
+       bottom edge, and 900 put the lift out of sight for 76% of the climb before
+       it hurried into place. 420 is derived from the worst case rather than
+       picked: his feet sit at `beltTopY + z`, he is ~137px tall, and z can be 0
+       (the back of the belt), so 470 + 0 + drop - 137 must clear 720 -> 387.
+       420 is that with a margin for a taller pack.
+
+       ⚠️ AND THE CLIMB IS LINEAR AT `risePxPerSec`, not eased -- see the note in
+       lift-ride.js `_arrive`. An eased curve spends its speed below the frame. */
+    arriveDropPx: 420,
+    /* WHERE HE ARRIVES, IN SCREEN X. ⚠️ 640 IS THE MIDDLE **AND** THE ONLY PLACE
+       THE CAMERA WILL TOLERATE HIM: the follow has a dead band of
+       `focus +/- deadzone` (407.6..667.6), and landing outside it lurches the
+       camera on the first played frame -- which in level 3 drags the film with
+       it. Centred was the ask; it is also the safe answer. */
+    arriveScreenX: 640,
+    /* THE BEAT HE STANDS THERE BEFORE IT GOES. Without it the rise starts on
+       the frame he steps aboard and the boarding never reads. */
+    boardHoldMs: 420,
+    /* AND THE CLIMB. Slower than the descent on purpose: coming down is the
+       lift arriving for him and going up is the last shot of the level.
+       ⚠️ THIS IS THE KNOB FOR HOW LONG THE WHOLE BEAT TAKES. At 320 the rise is
+       about 3.1s and the sequence from the last punch to the fade is about 7.5s
+       -- walk, 1.5s descent, the board walk, a 0.42s beat, then the climb. If it
+       drags in play, raise this before touching anything else. */
+    risePxPerSec: 320,
+    /* HOW FAR PAST THE TOP OF THE FRAME THE **SLAB** GOES BEFORE THE FADE.
+       ⚠️ MEASURED ON THE SLAB AND NOT ON THE RIDER -- he stands on it, so his
+       feet leave frame first and the platform is still crossing the top for a
+       moment after he has gone. *"ele desaparece com o elevador"*. */
+    exitPadPx: 260,
+    /* ⚠️ `stepOffPx` IS GONE, AND ITS ABSENCE IS THE POINT. The arrival used to
+       walk him off the slab so the room would not "start with him on a
+       platform" -- which nobody asked for: *"he should keep locked at the middle
+       of the elevator, right now he starts walking to the right by himself, the
+       player should [do] that, not the animation"*. He lands at the centre and
+       the beat ENDS; stepping off is play. */
+    /* WHERE THE SHOT HAPPENS, IN **SCREEN** X. ⚠️ NOT WORLD X, and the reason is
+       in lift-ride.js `startExit`: the boss segment does not lock the camera, so
+       it ends wherever the fight left it and a fixed world mark would put "the
+       middle" a third of a screen off on some runs. These are resolved against
+       `camX` once, at the moment the ride starts and the camera stops.
+         `liftScreenX` 640 IS the middle of a 1280 frame -- *"descer do meio"*.
+         `markScreenX` is where he stands to wait, 250px to its RIGHT, so the
+       slab comes down in FRONT of him (he is facing left) rather than on top of
+       him -- *"vai pousar na frente do player"*. He then walks the 250 onto it. */
+    liftScreenX: 640,
+    /* ⚠️ `markScreenX` IS DERIVED, NOT SET -- null means "the slab's right edge
+       plus `markGapPx`". A mark picked by eye lands INSIDE the slab: it is 960
+       wide and anchored on its lip's centre, so at 640 it spans 160..1120 and
+       the obvious-looking 890 puts the elevator down on top of him. Set a number
+       here only to overrule that, and check it against `widthPx` if you do. */
+    markScreenX: null,
+    markGapPx: 70,
+    /* THE SLAB'S OWN LOOK. ⚠️ THE SAME TWO NUMBERS LEVEL 3 USES for its lifts
+       (`LEVEL3.platform.widthPx` / `boilMs`) and deliberately NOT a reference to
+       them: this lift is in other rooms, whose belts are a different size, and
+       tying them would mean tuning the bookcase's shelves to fix the boss
+       room's exit. Same value today, free to differ. */
+    widthPx: 960,
+    boilMs: 110,
+    offsetX: 0,
   },
 
   PAUSE: {

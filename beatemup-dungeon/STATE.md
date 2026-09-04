@@ -4411,6 +4411,178 @@ swap put it back on top of the room it describes. Worth a look whenever a block
 is inserted into a list of documented entries: **the entry moves, its header does
 not.**
 
+## He leaves the boss room by lift (2026-09-04)
+
+*"matou o boss? o player perde o controle do boneco, ele caminha para a esquerda
+para o mesmo ponto sempre, e um elevador vai descer do meio, vai pousar na frente
+do player, o player entra no elevador (anda até o meio do elevador) e o elevador
+sobe e a tela fica parada, até ele sumir da tela, ele desaparece com o elevador"*
+— and its other half, *"quando ele chega na fase da biblioteca, ele chega via
+elevador, ao invés de vir caminhando pela esquerda"*.
+
+`src/lift-ride.js` (new), `src/elevador.js` (new), `CONFIG.LIFT_RIDE`, plus
+`exitByLift` on the boss room and `enterByLift` on the bookcase.
+
+⚠️ **THE TWO HALVES ARE ONE FILE BECAUSE THEY ARE ONE SHOT, CUT IN THE MIDDLE.**
+He steps on at the bottom of one room and off at the top of the next; the room
+change is the fade in between. Written as a boss-room outro and a level-3
+entrance they would have been two files sharing a lift, a rider and a rise, and
+they would have drifted the first time either was tuned. `mode` is the only thing
+that differs between them.
+
+⚠️ **IT REPLACES THE WALK-IN AND WALK-OUT RATHER THAN DECORATING THEM.** The
+ordinary transition is `player.walkOut()` right and `player.enterWalk()` from the
+left; a room that opts in gets this instead, at the two points game.js already
+had for the purpose. Two new phases (`liftout`, `liftin`) sit beside `outro` and
+do the same job. Nothing else in the game learns that lifts between rooms exist.
+
+### `jumpY` was already the right field, and it was checked before it was used
+
+Fighter's `jumpY` is documented as *"height off the floor. DRAWN ONLY — never
+touches x or z"*, which is precisely a rider standing on a platform: he is still
+at his world x on the belt, he is merely drawn further up. Moving `z` instead
+would have dropped him into a different depth lane the moment the ride ended, and
+z is what the whole game sorts and collides on.
+
+⚠️ **IT IS ONLY SAFE BECAUSE NOTHING ELSE WRITES IT** — assigned in exactly two
+places (`_updateJump` while `jumping`, the knockdown arc while `state === 'down'`)
+and a scripted player is in neither. **Grepped for the writers before building on
+it**, which is the cheap version of the bug where two systems own one field.
+
+### The elevator moved out of level3.js, because a second user turned up
+
+The art landed for the bookcase and lived in `level3.js`, which was right while
+the bookcase was the only room with a lift. The alternative here was the boss
+room's cutscene calling `Level3._drawSlab(...)` — **exactly backwards**: level 3's
+standing rule is that it replaces shared systems *for itself* and touches nothing
+else, and a room reaching INTO it is the same coupling wearing the other coat.
+
+What moved is only the part that was never about the bookcase: how to turn "the
+front lip's centre is here, this wide" into pixels. What stayed is where level 3's
+lifts stand, which are on screen, and its boil clock. Verified by ink: level 3's
+own path paints **29793 samples** through the delegation, and the ride's paints
+**29793** at the same spot — the same slab, one owner.
+
+### ⚠️ THE MARK CANNOT BE CHOSEN, AND CHOOSING IT WAS A REAL BUG
+
+*"vai pousar na frente do player"*. I set `markScreenX: 890` against a lift at
+screen 640, rendered it, and the feet marker was **inside the slab**: it is 960
+wide and anchored on its lip's CENTRE, so it spans 160..1120 and the elevator
+comes down **on top of him**, with nothing left to walk onto.
+
+It is derived now — half the slab plus `markGapPx` (70) — so `widthPx` and the
+mark cannot drift apart. **The number that looked reasonable was wrong by the
+half-width of an asset, which is not a thing arithmetic in your head catches.**
+
+### ⚠️ THE MARKS ARE SCREEN X, NOT WORLD X
+
+*"descer do meio"* is a statement about the SCREEN and *"o mesmo ponto sempre"* is
+about what you see. Those only agree if the camera is where you expect, and here
+it is not guaranteed to be: the boss segment does **not** lock (`lock: false`), so
+the camera ends wherever the last exchange left it, anywhere in the room's 337px.
+A fixed world mark would put "the middle" a third of a screen off on some runs and
+read as a bug in the cutscene. Resolved against `camX` once, at the moment the
+ride starts — which is the last time the camera moves, because nothing ticks it
+from there.
+
+### ⚠️ AND THE PREVIEW LIED AGAIN, THE SAME WAY
+
+The first render of the corrected mark still showed the old geometry, because
+**the page was loaded before the edit**. The sources are cache-busted per page
+LOAD (`?v=Date.now()` on each script tag) — which does nothing at all if you
+never reload. The tell was the printed marks: `markX` still read 890 next to a
+picture I was about to accept. **Print the state you are asserting about, in the
+same breath as the picture**; it is the second time this session that caught a
+stale preview and the screenshot would not have.
+
+⚠️ **A SECOND FALSE ALARM, IN THE OTHER DIRECTION:** a room-jump smoke test
+captured three frames of a wall and one of the street, which read as the reorder
+being broken. It was a capture taken before the game had finished starting. Re-run
+with a longer settle it reads street / desert / boss-room / level-3 cleanly.
+**A harness that is too fast fails in both directions.**
+
+### Three bugs, reported after the first play, and one of them was a phase boundary
+
+*"o player se move para cima, mas depois um frame dele aparece no chao de novo,
+antes da transicao... quando chegando na proxima fase ele vem de cima, deveria
+vir de baixo, e centralizado, como uma continuacao do movimento da cena
+anterior."*
+
+⚠️ **THE GROUND FRAME WAS A FADE THAT DRAWS THE WORLD.** The ride ended by
+resetting `jumpY` to 0 and handing to `fade` -- and a fade paints the world for
+its FIRST HALF, going black only at the midpoint. So the rider was dropped 900px
+onto the floor, in shot, for ~450ms of visible frames. **The reset was correct and
+its LOCATION was not**: it happens at the room swap now, which is the one moment
+nothing is drawn. Same family as the double entrance (*a value that was going to
+be corrected by the next tick, in a phase that does not tick*) with the sign
+flipped -- **a value corrected at a moment that is still being LOOKED at.**
+
+⚠️ **HE HAD TO ARRIVE FROM BELOW, AND THAT IS ABOUT CONTINUITY, NOT DIRECTION.**
+He rode UP out of the boss room; descending into the next room reads as a second,
+unrelated ride, or as him going back down. `rise` means "how far above the belt
+line", so below the floor is a minus sign and no other code changed. **Centred at
+screen 640 is also the only place the camera tolerates**: the follow's dead band
+is 407.6..667.6, and landing outside it lurches the camera on the first played
+frame -- which in level 3 drags the film with it. The look note and the safe
+answer happened to be the same number.
+
+⚠️ **AND THE EASE HAD TO GO, WHICH THE RENDER FOUND AND THE CODE DID NOT.**
+Reusing the descent's ease-out put most of the travel at the START -- which, on
+an arrival from below, is the part still under the frame. Measured off the
+render: at `dropPx` 900 the lift was invisible for **76% of the climb** and then
+hurried into place in the last 350ms, the exact opposite of a continuation. It is
+linear at `risePxPerSec` now, the exit's own speed, over an `arriveDropPx` of 420
+-- derived from the worst case (feet at `beltTopY + z`, ~137px tall, z can be 0,
+so 470 + 0 + drop - 137 must clear 720) rather than chosen. **An easing curve is
+a claim about where the motion is spent, and it was being spent off-screen.**
+
+⚠️ **AND A FOURTH, FOUND WHILE FIXING THOSE:** the slab he steps off BLINKED OUT,
+because ending the ride stopped drawing it. It is `parked` now and scrolls away
+with the camera like every other lift. Its boil had to move to the wall clock:
+once the ride hands back **nothing calls `update()` any more**, so a ticked timer
+would freeze it on one frame while level 3's own lifts boiled beside it.
+
+⚠️ **THE PREVIEW OMITTED THE PLAYER SPRITE, AND THAT FLATTERED THE PROBLEM.** The
+harness draws the slab and a marker for his feet, so "invisible for 76% of the
+climb" is true of the LIFT and pessimistic for the shot -- his head clears the
+bottom edge about 400ms before the slab does. Right conclusion, wrong margin.
+Both of [[preview_before_playing]]'s failure modes in one picture: what is
+omitted, and what that omission does to the number you read off it.
+
+### Two more, and both were the cutscene overstaying
+
+⚠️ **HIS SHADOW ARRIVED BEFORE HE DID.** `drawShadow` paints at `Belt.topY + z` --
+the GROUND -- whatever `jumpY` says, which is right for a jump and wrong for a
+rider still below the frame. The climb set `noShadow` on its first tick, but
+`startArrive` runs at the fade's MIDPOINT and the climb does not begin until the
+fade FINISHES: that left ~450ms of fading-up world with his shadow already lying
+on the library floor waiting for him. It is set at setup now, not on the first
+tick.
+
+⚠️ **AND THAT IS THE SAME BOUNDARY AS THE GROUND-FRAME BUG, FROM THE OTHER SIDE.**
+Both halves of a fade are PAINTED and nothing is ticking through them, so a
+rider's state has to be right at the two instants the ride is set up and torn
+down. Anything a cutscene establishes in its first `update()` is already half a
+second late; anything it tears down in its last one is half a second early.
+**This room's fade has now produced the same bug twice, at both of its ends.**
+
+⚠️ **AND THE ARRIVAL WAS WALKING HIM OFF THE LIFT, WHICH NOBODY ASKED FOR.**
+*"he should keep locked at the middle of the elevator, right now he starts
+walking to the right by himself, the player should [do] that, not the
+animation."* I had added a `stepOffPx` step so the room "would not start with him
+standing on a platform" -- a problem I invented and then solved. The arrival ends
+the moment he lands; **stepping off is play, and play begins the instant the ride
+hands back.** The knob is deleted rather than set to 0.
+
+### What has NOT been played
+
+⚠️ The cutscene was driven through its real classes (`LiftRide`, `Player`,
+`Belt`, `Elevador`) and rendered, and the game boots and loads all four rooms
+with the new files. **The in-game trigger — actually killing HIPÓLITO and riding
+it — has not been played**, because winning a fight is not something the harness
+can do. The beats, the timings and the geometry are verified; how it FEELS after
+a real fight is not.
+
 ## Level 3 — the bookcase (2026-08-27)
 
 ### The worms ride the lifts (2026-09-04)

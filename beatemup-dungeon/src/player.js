@@ -417,4 +417,39 @@ class Player extends Fighter {
     this.walk(dt, 1, 0, null, 1);
     super.update(dt, null);
   }
+
+  /**
+   * Walk in a given direction under the game's control. `walkOut` generalised,
+   * for the lift cutscenes (src/lift-ride.js).
+   *
+   * ⚠️ IT DOES NOT REPLACE `walkOut`, WHICH IS NOT THE SAME THING WEARING A
+   * PARAMETER. That one is the level's last beat and always goes right, out of
+   * the frame, past every wall; this one walks him to a MARK inside the room and
+   * stops. Folding them together would mean one of the two callers passing
+   * arguments that mean nothing to it.
+   *
+   * ⚠️ NO BOUNDS, LIKE `walkOut` AND FOR THE SAME REASON. The mark the caller is
+   * walking him to is its own limit, and clamping to the room's walls mid-
+   * cutscene would fight it — a lift that stands where a wall is (which is
+   * exactly where the boss room's does) could never be reached.
+   *
+   * `iz` IS ZERO ON PURPOSE: depth stays where the fight left it, so the walk is
+   * a straight line across the belt rather than a drift into a tidier lane.
+   */
+  scriptWalk(dt, ix) {
+    this.walk(dt, ix, 0, null, 1);
+    super.update(dt, null);
+  }
+
+  /**
+   * Stand still under the game's control — the animation ticks, nothing moves.
+   *
+   * ⚠️ THE ANIMATION HAS TO KEEP TICKING, which is the whole reason this is not
+   * simply "do nothing". A frozen fighter holds frame one, and the beats where
+   * he waits for the lift are the ones where he is the only thing on screen.
+   */
+  scriptIdle(dt) {
+    if (this.state === 'walk') { this.state = 'idle'; this.stateT = 0; }
+    super.update(dt, null);
+  }
 }

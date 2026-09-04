@@ -80,6 +80,10 @@
      else -- and pure scenery like the mounds: nothing in this file ever asks one
      a question. See src/vermes.js for why they need a measured track. */
   const vermes = new Vermes(assets);
+  /* THE LIFT BETWEEN ROOMS. Not a `new` -- it is a singleton like Level3, for
+     the same reason: there is exactly one of it and it is a script, not an
+     entity. See src/lift-ride.js. */
+  const liftRide = LiftRide;
   /* The day passing over the desert. Owned here for the reason the flies, the
      props and the mounds are -- it belongs to a ROOM, and the shell is what
      changes rooms. Nothing else in this file asks it anything. */
@@ -474,6 +478,11 @@
 
   function start() {
     stage.reset();
+    /* ⚠️ A RIDE MUST NOT OUTLIVE ITS ROOM. It is a singleton, so a run abandoned
+       mid-cutscene (a death screen, a DEV jump, a return to the title) would
+       otherwise leave `active` true and the next room would open with a slab
+       hanging in it and the player's shadow off. */
+    liftRide.reset();
     crowd.clear();
     props.clear(player);
     stats.reset();
@@ -690,6 +699,7 @@
       crowd.clear();
       player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
       player.props = props;
+      liftRide.reset();          // see start() -- a jump abandons any ride
       stage.enterRoom(jump, player);
       /* AND HE WALKS IN HERE TOO, like the fade and like the start of a run.
          ⚠️ NOT ONLY FOR TIDINESS: the number keys are how a room gets LOOKED AT,
@@ -730,7 +740,8 @@
        -- so there is no order to get wrong here and nothing that can be left
        mid-state by a phase change. That is the whole licence for ticking them
        outside the machine. */
-    if (phase === 'play' || phase === 'outro' || phase === 'fade') {
+    if (phase === 'play' || phase === 'outro' || phase === 'fade'
+        || phase === 'liftout' || phase === 'liftin') {
       flies.update(dt, stage.camX);
     }
 
@@ -765,6 +776,22 @@
           faded = false;
         }
       }
+    } else if (phase === 'liftout') {
+      /* THE LIFT OUT OF THE BOSS ROOM. The same shape as the outro above and
+         for the same reasons -- the camera is NOT advanced (*"a tela fica
+         parada"*), and the crowd is still ticked because the last body to fall
+         is still falling when the fight is declared over. */
+      phaseT += dt;
+      const done = liftRide.update(dt, player, stage);
+      crowd.update(dt, player, stage.bounds(), sheets);
+      combat.tick(dt);
+      if (done) { phase = 'fade'; phaseT = 0; faded = false; }
+    } else if (phase === 'liftin') {
+      /* AND THE ARRIVAL, which is the same journey's other end. Nothing else is
+         ticked: the room has just been entered, its crowd is empty, and the
+         only thing happening is a slab rising into frame from below. */
+      phaseT += dt;
+      if (liftRide.update(dt, player, stage)) { phase = 'play'; phaseT = 0; }
     } else if (phase === 'ending') {
       /* THE WON SCREEN. Nothing else is ticked: the fight is over, the crowd is
          gone and there is no world left to advance -- this is the one phase in
@@ -783,6 +810,12 @@
         faded = true;
         crowd.clear();
         stage.enterRoom(stage.roomIndex + 1, player);
+        /* ⚠️ PUT THE RIDER BACK ON THE FLOOR **HERE**, at the blackest point,
+           and nowhere earlier. A room left by lift ends with the player 900px
+           above it, and the fade DRAWS THE WORLD for its first half -- dropping
+           him when the ride finished put him back on the ground in shot for
+           ~450ms before the black. This is the one moment nothing is visible. */
+        liftRide.clearRider(player);
         /* HE WALKS INTO A NEW ROOM, exactly as he walks on at the start of a
            run -- asked for 2026-08-27, "the character should enter level 2 in
            the same way he did for level 1". He used to simply BE at the room's
@@ -801,7 +834,14 @@
            walk in. He is untouchable while `state === 'enter'` and the wave
            takes its own beat to arrive, so the two overlap rather than collide.
            If it reads wrong there, this line is the whole of it. */
-        player.enterWalk(CONFIG.playerEnterPx);
+        /* ⚠️ THE WALK-IN IS NOT UNIVERSAL ANY MORE. A room may declare that it
+           is ARRIVED IN rather than walked into (`enterByLift`), and the library
+           does: he rises into it on the lift he left the boss room on. The note
+           below still holds for every other room -- and for this one too, since
+           the lift lands him on the mark `enterWalk` would have walked him to.
+           The phase is picked up when the fade lifts; see `liftin`. */
+        if (stage.room() && stage.room().enterByLift) liftRide.startArrive(player, stage);
+        else player.enterWalk(CONFIG.playerEnterPx);
         props.enterRoom(stage.room(), player);
         /* ⚠️ AT THE BLACKEST POINT WITH EVERYTHING ELSE. The street has flies
            and the boss room does not, so swapping them a moment early or late
@@ -814,7 +854,10 @@
         roomMusic();
         input.flush();
       }
-      if (phaseT >= (CONFIG.fadeMs || 900) / 1000) { phase = 'play'; phaseT = 0; }
+      if (phaseT >= (CONFIG.fadeMs || 900) / 1000) {
+        phase = liftRide.active ? 'liftin' : 'play';
+        phaseT = 0;
+      }
     } else {
       phaseT += dt;
       /* THE WORLD IS STOPPED, BUT THE CORPSE IS NOT. Freezing everything the
@@ -1007,7 +1050,20 @@
        walking him off the edge on 'clear' would be "walking him out of the
        level into nothing" -- true until there was an ending screen for him to
        arrive on. `outroTo` is what the walk-out hands to. */
-    if (ev === 'room') { phase = 'outro'; outroTo = 'fade'; phaseT = 0; endScreen(); }
+    if (ev === 'room') {
+      /* ⚠️ A ROOM MAY LEAVE BY LIFT INSTEAD OF WALKING OUT. HIPÓLITO's does:
+         the player loses the character, walks to a mark and rides up out of
+         frame. It is the SAME event -- 'room' is still a door -- only the beat
+         that plays through it changes, which is why this is a branch here and
+         not a second event. See src/lift-ride.js. */
+      if (stage.room() && stage.room().exitByLift) {
+        liftRide.startExit(player, stage);
+        phase = 'liftout';
+      } else {
+        phase = 'outro'; outroTo = 'fade';
+      }
+      phaseT = 0; endScreen();
+    }
     else if (ev === 'clear') {
       phase = 'outro'; outroTo = 'ending'; phaseT = 0; endScreen();
       // The fight is over. See endBossMusic() for why it is not the other outro.
@@ -1147,6 +1203,9 @@
       if (layer.entities) {
         // The lift is drawn UNDER the fighters, like scenery: he stands on it.
         if (l3) Level3.drawPlatform(ctx, stage, assets);
+        /* THE BETWEEN-ROOMS LIFT, under the fighters like the room's own -- he
+           stands ON it. It draws nothing unless a ride is running. */
+        liftRide.draw(ctx, stage, assets, camX);
         drawEntities(camX);
         continue;
       }

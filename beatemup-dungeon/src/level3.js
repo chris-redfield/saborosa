@@ -542,16 +542,12 @@ const Level3 = {
    * failure than an empty shelf -- it reads as the placeholder coming back.
    */
   art() {
-    if (this._art) return this._art;
-    /* ⚠️ A MISS IS NOT CACHED, and that is the point of the guard rather than a
-       style choice. This is first asked on the frame the room is drawn, which
-       can be before the loader has the pack; caching the null would answer
-       "there is no elevator" for the rest of the run, and the room would play
-       through with the lifts invisible and nothing in the log. */
-    const a = this._assets;
-    const d = (a && a.getJSON) ? a.getJSON('elevador') : null;
-    if (d && d.frames && d.frames.length) this._art = d;
-    return this._art || null;
+    /* ⚠️ IT MOVED TO src/elevador.js ON 2026-09-04, when HIPÓLITO's room got a
+       lift of its own. What stayed here is everything about WHERE this room's
+       lifts stand and which are on screen; what left is how to draw one, which
+       was never about the bookcase. The miss-is-not-cached rule went with it --
+       see that file. */
+    return Elevador.art(this._assets);
   },
 
   /**
@@ -652,17 +648,6 @@ const Level3 = {
 
   /** One slab. Split out so the draw loop above stays about WHICH lifts. */
   _drawSlab(ctx, A, f, r) {
-    const img = this._assets && this._assets.getDrawable
-      ? this._assets.getDrawable('elevador') : null;
-    if (!img) return;
-    const fr = A.frames[f] || A.frames[0];
-    const w = fr.w * r.scale, h = fr.h * r.scale;
-    /* THE ANCHOR IS THE FRONT LIP'S CENTRE (see the cutter's header), so the
-       front face hangs BELOW the belt's near edge the way a body hangs above
-       it. Anchoring on the image's bottom would sink the whole slab by its own
-       thickness and put the player's feet in mid-air. */
-    const x = Math.round(r.cx - A.ax * r.scale);
-    const y = Math.round(r.y - A.ay * r.scale);
-    ctx.drawImage(img, fr.x, fr.y, fr.w, fr.h, x, y, Math.round(w), Math.round(h));
+    Elevador.draw(ctx, this._assets, f, r);
   },
 };

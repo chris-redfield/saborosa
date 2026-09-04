@@ -2307,6 +2307,105 @@ fadeMs: 900,   // the whole room-to-room fade; the swap happens at its midpoint
 The horse is a **mid-game** boss now; the bookcase is the last room and the one
 that rolls the ending card.
 
+### The lift between the boss room and the library
+
+```js
+exitByLift: true,    // on boss-room  — he rides OUT instead of walking out
+enterByLift: true,   // on level-3    — he rides IN instead of walking in
+LIFT_RIDE: {
+  dropPx: 900, descendMs: 1500, boardHoldMs: 420,          // the exit
+  risePxPerSec: 320, exitPadPx: 260,
+  arriveDropPx: 420, arriveScreenX: 640,                    // the arrival
+  liftScreenX: 640, markScreenX: null, markGapPx: 70,
+  widthPx: 960, boilMs: 110, offsetX: 0,
+},
+```
+
+Kill HIPÓLITO and the player loses the character: he walks to a mark, an
+elevator comes down in front of him, he walks onto its middle, and it carries
+him up out of frame with the camera frozen. The fade follows, and he comes
+**up** into the library on the same lift instead of walking in from the left,
+and is left standing on it — **stepping off is play, not animation**.
+`src/lift-ride.js` is the whole of it; `src/elevador.js` is the drawing, shared
+with level 3's own lifts.
+
+> ⚠️ **The arrival ends the moment he lands.** It used to walk him clear of the
+> slab so the room "would not start with him on a platform" — which nobody asked
+> for: *"he should keep locked at the middle of the elevator... the player should
+> [do] that, not the animation"*. A cutscene that ends by moving the character
+> somewhere the player did not ask for is the cutscene overstaying.
+
+> ⚠️ **The two halves are one file because they are one shot, cut in the
+> middle.** He steps on at the bottom of one room and off at the top of the next;
+> the room change is the fade in between. Split across a boss-room outro and a
+> level-3 entrance they would share a lift, a rider and a rise — and drift the
+> first time either was tuned.
+
+> ⚠️ **`jumpY` is how he rides.** Fighter's own field, documented as "height off
+> the floor, DRAWN ONLY — never touches x or z", which is exactly a rider on a
+> platform. Moving `z` instead would have put him in a different depth lane the
+> moment the ride ended, and z is what the game sorts and collides on. It is only
+> safe because nothing else writes it: `jumpY` is assigned in exactly two places
+> (the jump arc while `jumping`, the knockdown arc while `state === 'down'`) and
+> a scripted player is in neither. Checked before relying on it.
+
+> ⚠️ **`markScreenX` is derived, not chosen — and picking it by eye is a real
+> bug.** The slab is 960 wide and anchored on its lip's **centre**, so at
+> `liftScreenX` 640 it spans 160..1120. The obvious-looking 890 puts the mark
+> *inside* it and the elevator comes down **on top of him**, with nothing to walk
+> onto. Rendered it, saw exactly that, and derived the mark instead: half the
+> slab plus `markGapPx`. Change `widthPx` and the mark follows.
+
+> ⚠️ **The marks are SCREEN x, resolved once against the frozen camera.** *"descer
+> do meio"* is a statement about the screen and *"o mesmo ponto sempre"* about
+> what you see — and the boss segment does **not** lock the camera (`lock: false`),
+> so it ends wherever the last exchange left it, anywhere in the room's 337px of
+> travel. Fixed **world** marks would land the lift a third of a screen off centre
+> on some runs.
+
+> ⚠️ **The camera is not frozen, it is simply not ticked.** The `liftout` /
+> `liftin` phases advance the ride, the crowd and the FX and nothing else, so the
+> camera holds where the last played frame left it. A lift that froze the camera
+> itself would be a second opinion about where the camera is.
+
+> ⚠️ **`risePxPerSec` is the knob for how long the whole beat takes.** At 320 the
+> climb is ~3.1s and the sequence from the last punch to the fade is ~7s. If it
+> drags in play, raise this before touching anything else. **It also sets the
+> arrival's speed**, which is the point — see below.
+
+#### Three things the first build got wrong (fixed 2026-09-04)
+
+> ⚠️ **A frame of him back on the ground before the transition.** The ride ended
+> by putting `jumpY` back to 0 — and the game then moves to `fade`, which **draws
+> the world for its first half** and only goes black at the midpoint. So he was
+> dropped 900px onto the floor, in shot, for ~450ms of visible frames. The exit
+> now leaves the rider exactly where the ride left him (`_release(player, true)`)
+> and `liftRide.clearRider()` resets him **at the room swap**, which is the one
+> moment nothing is drawn.
+
+> ⚠️ **He arrived from ABOVE, and had to arrive from BELOW** — *"deveria vir de
+> baixo... como uma continuação do movimento da cena anterior"*. He rode **up**
+> out of the boss room, so he must still be going up when the next room fades in;
+> descending reads as a second, unrelated ride, or as him going back down. `rise`
+> simply starts negative — it means "how far above the belt line", so below the
+> floor is a minus sign and no other code changes.
+
+> ⚠️ **And the climb had to stop being eased.** Reusing the descent's ease-out put
+> most of the travel at the *start*, which here is the part still below the frame:
+> at `dropPx` 900 the lift was out of sight for **76% of the climb** and then
+> hurried into place in the last 350ms. It is **linear at `risePxPerSec`** now —
+> the exit's own speed, which is what makes the two halves one movement — over
+> `arriveDropPx` 420. That number is derived, not picked: his feet sit at
+> `beltTopY + z`, he is ~137px tall and `z` can be 0, so 470 + 0 + drop − 137 must
+> clear 720 → 387, plus margin.
+
+> ⚠️ **The slab he steps off used to blink out.** Ending the ride stopped drawing
+> it. It is `parked` now: still painted at its world x, scrolling away with the
+> camera like every other lift in the game, until the next room swap clears it.
+> Its boil runs off the wall clock rather than a ticked timer, because once the
+> ride hands back **nothing calls `update()` any more** — a ticked clock would
+> freeze it on one frame while level 3's own lifts boiled beside it.
+
 Each room has its own footage and its own camera origin. To add one: add a
 `SOURCES` entry for its plate, a `ROOMS` entry pointing at it, and set `endX` so
 the camera crosses exactly as much of the shot as exists.
