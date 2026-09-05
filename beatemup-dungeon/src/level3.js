@@ -68,11 +68,12 @@
  * cannot stand, because centring it in the frame and boarding it are different
  * x. See `drawPlatform` and the band loop.
  *
- * THE HOOKS. Six of them, all one line, all guarded by `Level3.owns(room)`:
+ * THE HOOKS. Seven of them, all one line, all guarded by `Level3.owns(room)`:
  *   stage.js   reset()        -> Level3.reset()
  *   stage.js   enterRoom()    -> Level3.enterRoom(room, player, stage)
  *   stage.js   update()       -> returns Level3.update(...)   (before anything)
  *   stage.js   bounds()       -> returns Level3.bounds(...)
+ *   stage.js   dayClock01()   -> returns Level3.progress01()  (the colour grade)
  *   game.js    the draw loop  -> the backdrop gets filmScroll() in place of camX
  *   game.js    the draw loop  -> Level3.drawPlatform() under the fighters
  */
@@ -295,6 +296,40 @@ const Level3 = {
   },
 
   /**
+   * The same number as `filmScroll`, normalised to 0..1 across the whole climb
+   * — what `Stage.dayClock01` hands the colour grade.
+   *
+   * ⚠️ IT IS `progress` AND NOT `camX`, WHICH IS THE ONLY REASON A GRADE CAN
+   * WORK IN THIS ROOM AT ALL. The switchback visits the same camX three times
+   * at three different heights (see the header), so a camera-driven clock reads
+   * the same value on shelf 1 and shelf 3 -- and on shelf 2, which walks LEFT,
+   * it runs BACKWARDS for a whole leg while the player is plainly climbing. The
+   * film position has none of that: each leg maps into its own ordered window.
+   *
+   * ⚠️ THE RANGE IS DERIVED FROM THE LEGS, NOT WRITTEN DOWN. `film` windows are
+   * data and get re-cut whenever the plate is re-timed; a hard-coded end would
+   * quietly stop the day short of dusk, or reach it two shelves early, with
+   * nothing in the log. Reading the extremes back is one loop and cannot drift.
+   *
+   * ⚠️ AND IT IS ALLOWED TO GO DOWN. Backward steps rewind the film -- that is
+   * deliberate, see the clamp note in `update` -- so this is not monotonic
+   * WITHIN a leg. Grade's high-water mark is what decides the evening does not
+   * run backwards; making the promise here would take that choice away from
+   * every future reader.
+   */
+  progress01() {
+    const legs = this.legs() || [];
+    let lo = Infinity, hi = -Infinity;
+    for (const L of legs) {
+      if (!L || !L.film) continue;
+      lo = Math.min(lo, L.film[0], L.film[1]);
+      hi = Math.max(hi, L.film[0], L.film[1]);
+    }
+    if (!(hi > lo)) return 0;
+    return Math.max(0, Math.min(1, (this.progress - lo) / (hi - lo)));
+  },
+
+  /**
    * Drive the room. Returns 'clear' on the frame the last leg finishes, which
    * is the same contract stage.update() has with game.js.
    */
@@ -504,7 +539,6 @@ const Level3 = {
    */
   platformRect(worldX, camX) {
     const P = (this.cfg() && this.cfg().platform) || {};
-    const A = this.art();
     const wFront = P.widthPx || 1010;
     /* ⚠️ THE NEAR LIP SITS ON THE BELT'S NEAR EDGE, and that is now the whole
        of the placement -- the `zRel`/`depthRel` pair it used to take is gone.
@@ -513,12 +547,15 @@ const Level3 = {
        the front edge lands follows from the belt. See the config note on why
        the two depths are one number. */
     const y = Belt.topY + Belt.depth;
-    return {
-      cx: worldX - camX + (P.offsetX || 0),   // screen x of the lip's centre
-      y,                                      // screen y of the lip
-      wFront,
-      scale: A ? wFront / A.frontW : 1,
-    };
+    /* ⚠️ THROUGH `Elevador.rect` AND NOT BUILT BY HAND, WHICH IT USED TO BE.
+       The four fields were identical, so the duplicate cost nothing until the
+       height nudge landed on 2026-09-05 (CONFIG.ELEVADOR.liftPx) -- that is
+       applied inside `rect`, and a hand-built copy of it silently opted this
+       room out while the cutscene's lift rose. The rule the header states about
+       WHERE a lift stands being level 3's business and HOW it is drawn being
+       elevador.js's is exactly this: `worldX - camX` is ours, the rect is not. */
+    return Elevador.rect(this._assets, worldX - camX + (P.offsetX || 0),
+                         y, wFront);
   },
 
   /**

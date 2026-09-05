@@ -7457,6 +7457,124 @@ reader is the shape to look for.
 
 ---
 
+## And then on 2026-09-05: three small asks, and one of them was not small
+
+Three things, in the order they were asked:
+
+1. *"subir a posição do elevador 1 dedo em relação à tela (1 dedinho)"*
+2. *"adicionar filtro de cor na fase da biblioteca, do mesmo jeito que foi feito
+   na fase 2"*
+3. *"remover o HP que aparece dos inimigos quando eles estão levando socos"*
+
+### The enemy HP bars are off (3)
+
+`CONFIG.enemyBars: false`, read at the top of `hud.drawEnemy`. **The drawing is
+kept.** The reason to want the bars back — tuning a new enemy's HP, where the
+slab is the only thing on screen that says "nearly down" — is a different
+question from the reason they went, which is that they clutter a fight.
+
+It reaches **mooks only**. Bosses draw the big hand-lettered bar through
+`hud.drawBoss`, a separate call with its own rule, and are not in `crowd.list`
+at all. `showBarT` is still ticked and still set on every hit by `enemy.js` and
+`fly-boss.js`; nothing reads it now, and leaving it alone is what keeps the flag
+a pure DRAW decision instead of a two-file job to undo.
+
+### The library is graded (2)
+
+`ROOMS[3].grade: true`, and **the same stops the desert uses** — that was the
+ask, *"do mesmo jeito"*, so `CONFIG.GRADE` is shared rather than forked.
+
+⚠️ **ONE WORD OF CONFIG WAS NOT ENOUGH, BECAUSE THE CLOCK WAS WRONG.** Grade ran
+on `camX`, and level 3 has no progress in `camX`: the switchback visits the same
+camera position on shelf 1 and on shelf 3, and shelf 2 walks LEFT, so a
+high-water mark on `camX` would have **frozen the evening for a whole shelf and
+then jumped**. The film position has none of that — each leg maps into its own
+ordered window — so:
+
+* `Stage.dayClock01()` is new: the 0..1 clock for anything that changes ACROSS a
+  room. Ordinary rooms get exactly the camera fraction grade.js used to compute
+  itself; the bookcase gets `Level3.progress01()`. **LEVEL 3 HOOK 5/5**, and it
+  is in stage.js for the reason the other four are — level3.js is reached from
+  that file and from nowhere else.
+* `Level3.progress01()` normalises `progress` over the legs' film windows,
+  **read back off the legs rather than written down**: those windows get re-cut
+  whenever the plate is re-timed, and a hard-coded 73.97 would quietly stop the
+  day short of dusk with nothing in the log.
+* Grade kept the **high-water mark** and gave up the span. Whether walking back
+  rewinds an effect is the effect's question, not the stage's.
+
+⚠️ **AND THE `span` MEASUREMENT ON THE WAY IN IS GONE**, which is worth more than
+it looks. It was read off the stage in `enterRoom`, which was fine while the
+clock was the camera and load-bearing on ordering the moment it was not —
+level3.js lays its bands out in its own `enterRoom`. Asking every frame instead
+removes the ordering question entirely.
+
+**Previewed, not played** (`tools`-less: ffmpeg frames off `level-3-plate.mp4`,
+composited in Python with grade.js's own maths). It reads, but the arc is
+quieter here than in the desert and that is the plate's fault, not the grade's:
+the shelf is already warm wood and there is no sky in the shot, so the orange
+end adds little and the purple end lands as a mild cooling rather than as dusk.
+⚠️ **`strength` IS SHARED WITH THE DESERT** — 0.70 is tuned against sand, and
+pushing it for the library moves stage 2 too. A per-room override defaulting to
+the global is one line if that turns out to be wanted.
+
+### The elevator sits a finger higher (1) — and the rider had to come with it
+
+`CONFIG.ELEVADOR.liftPx: 24`, applied inside `Elevador.rect`, so **both** lifts
+move on one number: level 3's shelf-climb and the ride out of HIPÓLITO's room.
+
+⚠️ **`Level3.platformRect` WAS BUILDING ITS OWN RECT BY HAND** — four fields
+identical to `Elevador.rect`'s — so the nudge reached the cutscene's lift and
+silently skipped the bookcase's. It goes through `rect` now. A duplicate that
+costs nothing is a duplicate waiting for the first line that changes.
+
+⚠️ **THE SLAB'S TOP FACE IS THE WALKABLE BELT, AND THAT IS WHY "só o desenho"
+WAS NOT AN OPTION.** That identity is what stops the player walking off the back
+of the drawing (see `ROOMS[3].belt` and `LEVEL3.platform`); lifting the picture
+alone sinks him into it by `liftPx`. So `Elevador.tickRider` raises whoever is
+standing on a slab by the same number — `Fighter.riseY`, folded into
+`groundY()`, which this game uses for **drawing only**. No hitbox moves, and the
+shadow deliberately stays on the ground, exactly as it does for `jumpY`.
+
+⚠️ **WHICH MEANS THERE IS A STEP ON AND OFF, AND IT IS EASED.** A raised platform
+meeting flat ground has an edge by definition, and he crosses it in view four
+times: off the parked slab he arrives in the library on, onto the lift at the
+end of each shelf, off it at the start of the next, and boarding in the boss
+room. Snapped, that reads as a teleport; over ~0.15s (`riseSpeed` 160 px/s, a
+SPEED so the pace survives a change to `liftPx`) it reads as stepping up.
+
+⚠️ **HOW THE RIDER TEST KNOWS WHERE A LIFT IS: THE SLABS REGISTER THEMSELVES.**
+Two different objects put lifts on screen, and the awkward one is the cutscene's
+— it stays PARKED under the player after the ride has handed back and level 3
+has taken over, which is a slab level 3 has never heard of. Either the test
+learns both (and every future one), or it asks the thing that already knows
+because it just painted it. `Elevador.draw` records each slab's screen span and
+`tickRider` reads it back one frame later, which over a 0.15s ease is invisible.
+
+Two traps inside that, both real:
+
+* ⚠️ **AN x-OVERLAP ALONE LIFTS HIM OFF THE FLOOR OF THE BOSS ROOM.** He walks to
+  his mark and then stands still for the 1.5s descent, dead centre under a slab
+  up to 900px above his head. Every geometric "is it at rest?" test either failed
+  during the RIDE (slab far off the belt line, and he is genuinely on it) or
+  during a JUMP taken on a parked one. So `draw` takes a `standable` flag and the
+  drawer answers: `LiftRide` says no during `walk` and `descend`, and level 3 —
+  whose slabs are always at rest — passes nothing and gets the default.
+* ⚠️ **THE REGISTRY IS CLEARED BY THE RENDERER, NOT BY THE TICK.** Consuming what
+  you read is tidier and wrong: the pause card DRAWS the world every frame and
+  ticks nothing, so the list would grow for as long as the game sat paused. It
+  is cleared in `renderFrame` — which also covers the title and the logo, so a
+  new run after a game over cannot inherit the last played frame's slabs.
+
+And `LiftRide.clearRider` zeroes `riseY` **without** the ease, because the room
+swap is the blackest point of the fade and anything still easing when the picture
+comes back is easing in shot. Same rule `jumpY` is reset there for.
+
+**NOT PLAYED.** The wiring is traced and the game boots clean; the four step
+moments and the 24px itself are eye calls.
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**
@@ -7599,5 +7717,8 @@ reader is the shape to look for.
   starburst is gone. What is still open is a taste call rather than a gap: the
   colour is currently part of the random draw, and `HIT_FX.colorByRole` flips it
   to yellow-for-landed / red-for-taken in one line. Decide by playing it.
-- **Enemy bars stay plain slabs.** The hand-drawn bar is 11 inked squares in a
-  333px frame; at the ~50px a floating bar occupies they turn to mush.
+- ~~**Enemy bars stay plain slabs.**~~ **THE BARS ARE OFF ENTIRELY** as of
+  2026-09-05 — `CONFIG.enemyBars: false`. The note below is why they were never
+  the hand-drawn bar, and it still applies to whatever turns them back on: the
+  hand-drawn bar is 11 inked squares in a 333px frame, and at the ~50px a
+  floating bar occupies they turn to mush.

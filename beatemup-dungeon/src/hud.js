@@ -228,6 +228,11 @@ class Hud {
    * treatment flattens that.
    */
   drawEnemy(ctx, e, sheets, camX) {
+    /* ⚠️ OFF BY CONFIG SINCE 2026-09-05 -- `CONFIG.enemyBars` is false and the
+       bars do not appear at all. The drawing below is kept because the flag is
+       the whole change; see the note on the knob for why it is not a deletion.
+       This guard is FIRST so nothing below it is a cost while it is off. */
+    if (!CONFIG.enemyBars) return;
     if (e.dead || e.showBarT <= 0) return;
     const fade = Math.min(1, e.showBarT / 0.4);
     const size = sheets.size(e.kind, e.pose(sheets), e.frameStep(sheets));

@@ -743,6 +743,20 @@
     if (phase === 'play' || phase === 'outro' || phase === 'fade'
         || phase === 'liftout' || phase === 'liftin') {
       flies.update(dt, stage.camX);
+      /* THE RIDER'S HEIGHT, and it is ticked here for the same reason the flies
+         are: the elevator is on screen in phases `update()` never runs in.
+         `liftout` and `liftin` are both cutscenes with their own branch below,
+         and those are the two where he is most obviously standing on a lift.
+
+         ⚠️ IT MUST RUN EVERY FRAME THE WORLD IS DRAWN, NOT EVERY FRAME A LIFT
+         IS. It consumes the slab registry src/elevador.js fills at draw time,
+         so a frame that skips it would leave last frame's slabs standing and
+         hold him up over a room that no longer has one. See Elevador.tickRider.
+
+         ⚠️ AND NOT WHILE PAUSED -- the early return above already sees to that,
+         which is right: the pause card draws the frame the player stopped on
+         and easing him upward under it would be motion on a still screen. */
+      Elevador.tickRider(dt, player, stage.camX);
     }
 
     if (phase === 'play') {
@@ -1163,6 +1177,21 @@
    * (deleted 2026-08-27, "this is badness from the past").
    */
   function renderFrame(body) {
+    /* OPEN THE ELEVATOR'S SLAB REGISTRY. Every lift painted below records where
+       it landed, and `Elevador.tickRider` reads that back next frame to decide
+       whether the player is standing on one.
+
+       ⚠️ CLEARED HERE, ON THE SIDE THAT RUNS EVERY PAINTED FRAME, and not in
+       the tick. The pause card draws the world without ticking anything, so a
+       tick-side clear would let the list grow for as long as the game sat
+       paused.
+
+       ⚠️ AND IN `renderFrame` RATHER THAN IN `render`, so the title and the logo
+       clear it too. They paint no lifts and tick no rider, but they are the only
+       frames between a game over and the next run -- leaving the last played
+       frame's slabs standing would hand the new run one frame of a lift that is
+       not there. */
+    Elevador.beginFrame();
     ctx.save();
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, CONFIG.GAME_W, CONFIG.GAME_H);

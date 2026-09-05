@@ -1499,6 +1499,22 @@ const CONFIG = {
          here so `stage.endX()` returns something sane if anything asks. It is
          the far end of the last band; see the band layout in level3.js. */
       endX: 24500,
+      /* THE SAME COLOUR GRADE THE DESERT RUNS, and deliberately the same stops
+         rather than a second palette -- *"do mesmo jeito que foi feito na fase
+         2"*, 2026-09-05. `CONFIG.GRADE` is shared, so opting in is the whole
+         change and the library walks orange to purple exactly as the sea of
+         cigarettes does.
+
+         ⚠️ ITS CLOCK IS NOT THE CAMERA, AND THAT IS THE ONLY REASON THIS ONE
+         WORD IS ENOUGH. The grade asks `stage.dayClock01()`, which for this room
+         answers with `Level3.progress01()` -- the FILM position -- because the
+         shot is a switchback: `camX` visits the same value on shelf 1 and shelf
+         3, and runs backwards for the whole of shelf 2. On a camera clock the
+         evening here would stall for an entire shelf and then jump.
+
+         ⚠️ AND IT REACHES PURPLE ACROSS THE WHOLE CLIMB, not per shelf, since
+         `progress01` spans every leg's film window end to end. */
+      grade: true,
       /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
          `progress` is monotonic by construction -- so the flag would claim a
          capability the room does not use. The clip is still cut at GOP 12. */
@@ -3712,6 +3728,59 @@ const CONFIG = {
      has the why. Rooms opt in with `exitByLift` / `enterByLift`, and those may
      carry their own `markX`/`liftX` because the marks are room GEOGRAPHY --
      everything here is the shot's timing, which is shared. */
+  /* =========================================================================
+     THE ELEVATOR'S HEIGHT ON SCREEN  (src/elevador.js -- BOTH lifts read it)
+     =========================================================================
+     Asked for 2026-09-05: *"subir a posicao do elevador 1 dedo em relacao a
+     tela (1 dedinho)"*, and *"o personagem sobe junto"*.
+
+     ⚠️ IT IS ONE NUMBER FOR BOTH LIFTS BECAUSE THERE IS ONE DRAWING. `Elevador`
+     already owns how a slab is painted for level 3's shelf-climb AND for the
+     ride out of HIPOLITO's room; the height belongs with it, not duplicated in
+     `LEVEL3.platform` and `LIFT_RIDE` where the two could drift apart and the
+     same lift would sit at two heights in two rooms.
+
+     ⚠️ AND THE RIDER GOES WITH IT, WHICH IS THE WHOLE COST OF THIS KNOB. The
+     slab's top face IS the walkable belt -- that identity is what stops the
+     player walking off the back of the drawing (see the note on
+     `LEVEL3.platform`, and on `ROOMS[3].belt`). Lifting the picture alone would
+     break it and sink him into the slab by `liftPx`. So `Elevador.tickRider`
+     raises anyone standing on a slab by the same number, which restores the
+     relationship rather than preserving the old one.
+
+     ⚠️ WHICH MEANS THERE IS A STEP ON AND OFF, and `riseSpeed` is why it does
+     not read as a teleport. A raised platform meeting flat ground has an edge
+     by definition, and he crosses it in view four times: walking off the parked
+     slab he arrives in the library on, walking onto the lift at the end of each
+     shelf, off it at the start of the next, and boarding in the boss room. An
+     instant snap at those moments reads as a glitch; eased over ~0.15s it reads
+     as stepping up onto a platform, which is what it is.
+
+     ⚠️ NOTHING ELSE IS RAISED. Enemies never stand on a lift, the shadow stays
+     on the GROUND (`drawShadow` paints at `Belt.topY + z` and ignores this the
+     same way it ignores `jumpY`), and no hitbox moves -- `riseY` is folded into
+     `groundY()`, which this game uses for DRAWING only. */
+  ELEVADOR: {
+    /* HOW FAR UP THE SLAB IS DRAWN, in canvas px. "1 dedinho" -- a nudge, not a
+       floor change. ⚠️ AT 0 EVERY LINE OF THIS FEATURE COLLAPSES TO THE OLD
+       BEHAVIOUR: the rect is unshifted, the rider test still runs but always
+       eases toward 0, and nothing moves. That is the way to rule it out. */
+    liftPx: 24,
+    /* HOW FAST THE RIDER CATCHES UP, in px per second. At `liftPx` 24 this is
+       0.15s from floor to platform. ⚠️ IT IS A SPEED, NOT A DURATION, so the
+       step keeps its pace if `liftPx` changes -- a duration would make a bigger
+       lift look slower and a smaller one snap. */
+    riseSpeed: 160,
+    /* HOW MUCH OF THE NEAR LIP COUNTS AS STANDING ON IT, each way -- the same
+       0.35 `LEVEL3.platform.standHalfRel` pens him with, restated here because
+       the cutscene lift has no `LEVEL3` block to read and the two must agree:
+       the walls decide where he MAY stand and this decides where he is HELD UP.
+       ⚠️ IF THEY DISAGREE, THE NARROWER ONE WINS AND THE WIDER ONE IS A BUG --
+       walls wider than this let him stand on the slab at floor height; this
+       wider than the walls raises him over thin air beside it. */
+    standHalfRel: 0.35,
+  },
+
   LIFT_RIDE: {
     /* HOW FAR ABOVE THE BELT LINE IT STARTS, and the same number is how far
        above he arrives from. It only has to clear the top of the frame with the
@@ -7346,6 +7415,23 @@ const CONFIG = {
   // wide and the hand-drawn bar's 11 squares are illegible at that size.
   hudBarW: 300,
   hudBarH: 18,
+  /* ⚠️ OFF SINCE 2026-09-05, AND THE DRAWING IS STILL HERE ON PURPOSE.
+     Asked for as *"remover o HP que aparece dos inimigos quando eles estao
+     levando socos"* -- the little red slab that popped over a mook's head for
+     1.4s after every punch. Turning it off is a knob rather than a deletion
+     because the reason to want it back is a DIFFERENT question from the reason
+     it went: it is the only readout that says a mook is nearly down, and the
+     first thing anyone will reach for while tuning a new enemy's HP.
+
+     ⚠️ IT DOES NOT REACH THE BOSSES. They draw the big hand-drawn bar through
+     `hud.drawBoss`, which is a separate call with a separate rule (up only once
+     the boss has arrived and is not fleeing). Only `hud.drawEnemy` reads this.
+
+     ⚠️ AND `showBarT` IS STILL TICKED AND STILL SET on every hit -- by
+     `enemy.js` and by `fly-boss.js`. Nothing else reads it, so leaving it alone
+     costs a float per enemy per frame and keeps the flag a pure DRAW decision;
+     ripping it out would make turning the bars back on a two-file job. */
+  enemyBars: false,
   enemyBarW: 62 * BODY_SCALE,
   enemyBarH: 6,
   enemyBarLift: 14 * BODY_SCALE, // px above the sprite's top

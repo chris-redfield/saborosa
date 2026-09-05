@@ -20,6 +20,16 @@
  * already crossed, and a raw `camX / span` would rewind the sunset while they
  * did it. Evenings do not do that. `peak` only ever goes up.
  *
+ * ⚠️ THE CLOCK COMES FROM `stage.dayClock01()` AND NOT FROM `camX` DIRECTLY,
+ * which is what let the library take the same effect on 2026-09-05. Every
+ * ordinary room answers it with exactly the camera fraction this file used to
+ * compute; the bookcase answers with its FILM position, because its shot is a
+ * switchback that visits the same camX three times at three different heights
+ * -- a camera clock reads the same value on shelf 1 and shelf 3 there, and runs
+ * backwards for the whole of shelf 2, which walks left. What stayed here is the
+ * high-water mark: the stage says where the shot has got to, and this file
+ * decides that an evening does not run backwards.
+ *
  * ⚠️ THE RAMP HAS STOPS BECAUSE ORANGE TO PURPLE IS NOT A STRAIGHT LINE. Lerped
  * channel-wise in one hop, #ffa24a -> #6b3fa0 passes through a dead grey-brown
  * around the middle -- the two colours sit on opposite sides of the wheel, so
@@ -44,8 +54,7 @@
 class Grade {
   constructor() {
     this.on = false;
-    this.peak = 0;      // furthest the camera has been in this room
-    this.span = 1;      // how far it can go
+    this.peak = 0;      // furthest through the room the shot has been, 0..1
     this.t = 0;         // 0..1 through the day
     this.stops = null;  // parsed once per room
   }
@@ -69,19 +78,21 @@ class Grade {
     this.peak = 0; this.t = 0; this.stops = null;
     if (!this.on) return;
     this.stops = G.stops.map(s => ({ t: s.t, rgb: Grade._rgb(s.color), a: s.alpha }));
-    /* THE SAME SPAN THE CAMERA IS CLAMPED TO, so t reaches exactly 1 when the
-       camera reaches the end of the room and not a pixel before -- `stage.js`
-       clamps camX to `endX() - GAME_W`. Deriving it from `endX` alone would
-       leave the last screen's worth of room permanently short of purple. */
-    this.span = Math.max(1, stage.endX() - CONFIG.GAME_W);
+    /* ⚠️ NOTHING IS MEASURED HERE ANY MORE. The span used to be read off the
+       stage on the way in, which was fine while the clock was the camera and
+       wrong the moment it was not: level3.js lays its bands out in its OWN
+       `enterRoom`, and the order of the two is stage.js's business rather than
+       something this file should be relying on. `dayClock01()` is asked every
+       frame instead and answers whatever the room is by then. */
   }
 
   clear() { this.on = false; }
 
   update(stage) {
     if (!this.on) return;
-    if (stage.camX > this.peak) this.peak = stage.camX;
-    this.t = Math.min(1, this.peak / this.span);
+    const c = stage.dayClock01();
+    if (c > this.peak) this.peak = c;
+    this.t = Math.min(1, this.peak);
   }
 
   /** The colour and strength for the current t, walked along the stops. */

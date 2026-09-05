@@ -8,6 +8,11 @@
  *     x       along the belt, world px. The level is thousands of these.
  *     z       across the belt, 0 (far) .. Belt.depth (near).
  *     jumpY   height off the floor. DRAWN ONLY — see below.
+ *     riseY   how far a PLATFORM is holding it up. Drawn only, same as jumpY,
+ *             and added on top of it: a jump taken on a lift arcs from the
+ *             lift. Owned by src/elevador.js (CONFIG.ELEVADOR) and 0 for every
+ *             fighter that is not standing on one, which is all of them except
+ *             the player on an elevator.
  *
  * `jumpY` NEVER TOUCHES x OR z, and that is a rule rather than an
  * implementation detail. If a jump moved a fighter in world space it could
@@ -37,6 +42,11 @@ class Fighter {
     this.x = x;
     this.z = z;
     this.jumpY = 0;
+    /* HELD UP BY A PLATFORM. See the world model above and src/elevador.js:
+       the elevator is drawn a nudge above the belt line, so whoever is standing
+       on it has to be drawn the same nudge up or the belt and the slab's top
+       face -- which are meant to be the same line -- come apart. */
+    this.riseY = 0;
     /* Banked remainder of a STEPPED knockback -- see _drift(). Zero except
        while `state === 'hurt'` with `hurtStepPx` on. */
     this._driftAcc = 0;
@@ -146,7 +156,7 @@ class Fighter {
 
   /** Screen position of the point its feet stand on. */
   groundX(camX) { return this.x - camX; }
-  groundY() { return Belt.topY + this.z - this.jumpY; }
+  groundY() { return Belt.topY + this.z - this.jumpY - (this.riseY || 0); }
 
   /** Depth scale — 1 at the near edge, CONFIG.beltFarScale at the far one. */
   depthScale() {

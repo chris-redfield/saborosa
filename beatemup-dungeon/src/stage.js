@@ -61,7 +61,7 @@ class Stage {
        back to the start of the level and the distance between the two is not a
        walk. See _followCamera. */
     this.lastPlayerX = null;
-    // LEVEL 3 HOOK 1/4 -- see src/level3.js. Unconditional because resetting a
+    // LEVEL 3 HOOK 1/5 -- see src/level3.js. Unconditional because resetting a
     // module that is not in play costs nothing and forgetting it would carry a
     // half-climbed bookcase into a restart.
     if (typeof Level3 !== 'undefined') Level3.reset();
@@ -79,6 +79,37 @@ class Stage {
   endX() {
     const r = this.room();
     return (r && r.endX) || CONFIG.GAME_W;
+  }
+
+  /**
+   * HOW FAR THROUGH THE ROOM THE SHOT HAS GOT, 0..1 — the clock for anything
+   * that is meant to change ACROSS a room rather than over time. The colour
+   * grade is the only reader today (src/grade.js).
+   *
+   * ⚠️ THE SPAN IS WHAT THE CAMERA CAN ACTUALLY REACH, not `endX()`. `camX` is
+   * clamped to `endX() - GAME_W`, so dividing by the room's end would leave the
+   * last screen's worth of it permanently short of 1 and the sunset would never
+   * finish.
+   *
+   * ⚠️ IT IS NOT MONOTONIC AND IT IS NOT THIS METHOD'S JOB TO MAKE IT SO. The
+   * desert reverses and the bookcase switchbacks; whether walking back should
+   * rewind the effect is the EFFECT's question, and Grade answers it with a
+   * high-water mark. A clock that only counted up would force that answer on
+   * every future reader.
+   *
+   * LEVEL 3 HOOK 5/5, and it is here rather than in grade.js for the reason all
+   * four of the others are: the bookcase's own module is reached from THIS file
+   * and from nowhere else. A shot that visits the same camX three times at three
+   * different heights has no progress in `camX` to read -- see the header of
+   * src/level3.js -- so it answers with the film position it already computes
+   * for the backdrop, which is ordered across the whole climb by construction.
+   */
+  dayClock01() {
+    if (typeof Level3 !== 'undefined' && Level3.owns(this.room())) {
+      return Level3.progress01();
+    }
+    const span = Math.max(1, this.endX() - CONFIG.GAME_W);
+    return Math.max(0, Math.min(1, this.camX / span));
   }
 
   /**
@@ -112,7 +143,7 @@ class Stage {
       player.x = r.startX != null ? r.startX : 220;
       player.z = Belt.depth * CONFIG.playerStartZRel;
     }
-    /* LEVEL 3 HOOK 2/4. AFTER the player is placed, because level3.js lays out
+    /* LEVEL 3 HOOK 2/5. AFTER the player is placed, because level3.js lays out
        its own world-x bands and moves him to the first one -- doing it earlier
        would have this line put him straight back.
 
@@ -132,7 +163,7 @@ class Stage {
 
   /** The walls the player may not walk past, in world x. */
   bounds() {
-    // LEVEL 3 HOOK 4/4 -- per-leg walls, closing to the platform on a lift.
+    // LEVEL 3 HOOK 4/5 -- per-leg walls, closing to the platform on a lift.
     if (Level3.owns(this.room())) return Level3.bounds(this);
     const w = CONFIG.GAME_W;
     const s = this.segment();
@@ -155,7 +186,7 @@ class Stage {
    * finished, so game.js can run the win state without polling.
    */
   update(dt, player, crowd) {
-    /* LEVEL 3 HOOK 3/4, AND IT IS THE LOAD-BEARING ONE. The bookcase never
+    /* LEVEL 3 HOOK 3/5, AND IT IS THE LOAD-BEARING ONE. The bookcase never
        reaches the segment machinery below: its shot is a switchback, and the
        scroll branch completes on `player.x >= toX` -- the rightward assumption
        shelf 2 breaks. One early return rather than a direction threaded through

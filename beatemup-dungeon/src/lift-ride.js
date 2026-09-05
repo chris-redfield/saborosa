@@ -250,6 +250,12 @@ const LiftRide = {
   clearRider(player) {
     if (!player) return;
     player.jumpY = 0;
+    /* ⚠️ AND THE PLATFORM HEIGHT WITH IT, WITHOUT THE EASE. `Elevador.tickRider`
+       would walk him back down over ~0.15s, and this is the one moment that
+       cannot afford it: the room swap is the blackest point of the fade, so
+       anything still easing when the picture comes back is easing IN SHOT. The
+       same reasoning `jumpY` is reset here for -- see the note above. */
+    Elevador.clearRider(player);
     player.noShadow = this._wasNoShadow;
   },
 
@@ -410,6 +416,16 @@ const LiftRide = {
     const r = Elevador.rect(assets, worldX - camX + this._n('offsetX', 0),
                             y, this._n('widthPx', 960));
     if (r.cx + r.wFront < 0 || r.cx - r.wFront > CONFIG.GAME_W) return;
-    Elevador.draw(ctx, assets, f, r);
+    /* ⚠️ HE IS NOT ON IT UNTIL HE HAS BOARDED IT, and the two beats this
+       excludes are the ones where the slab is directly OVER HIS HEAD: he walks
+       to his mark and then stands still for the 1.5s descent, dead centre under
+       a lift that is up to 900px above him. Without this the rider test -- which
+       is an x-overlap -- would lift him off the floor of the boss room while
+       waiting for the elevator. Every other beat he is aboard: the arrival is a
+       ride from below, and the parked slab is what he is left standing on. */
+    const aboard = this.parked || this.mode !== 'exit'
+                || this.step === 'board' || this.step === 'hold'
+                || this.step === 'rise';
+    Elevador.draw(ctx, assets, f, r, aboard);
   },
 };

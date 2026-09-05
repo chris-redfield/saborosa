@@ -227,6 +227,83 @@ of it.
 > coming back on. One `grade: true` plus a stops list that opens where this one
 > closes is the fix if that cut looks wrong in play.
 
+### The library runs the same grade (2026-09-05)
+
+`ROOMS[3].grade: true`, and deliberately **the same stops** — the ask was *"do
+mesmo jeito que foi feito na fase 2"*, so `CONFIG.GRADE` is shared, not forked.
+
+> ⚠️ **`strength` is shared with the desert.** 0.70 was tuned against sand. If
+> the library wants more weight, a per-room override defaulting to the global is
+> one line — do not just raise the number, or stage 2 moves with it.
+
+Its clock is **not the camera**, and that is the only reason one word of config
+was enough:
+
+```js
+Stage.dayClock01()            // 0..1 through the room — what Grade asks
+  -> ordinary rooms:  camX / (endX - GAME_W)     // what grade.js used to do
+  -> the bookcase:    Level3.progress01()        // the FILM position
+```
+
+> ⚠️ **A camera clock cannot work in level 3.** The shot is a switchback: `camX`
+> reads the same on shelf 1 and shelf 3, and shelf 2 walks LEFT. On a high-water
+> mark the evening would freeze for a whole shelf and then jump. `progress01()`
+> normalises the film position over the legs' `film` windows — read back off the
+> legs, so re-timing the plate cannot leave the day short of dusk.
+
+Grade keeps the high-water mark either way: whether walking back rewinds the
+effect is the *effect's* question, not the stage's.
+
+---
+
+## The elevator's height on screen
+
+```js
+ELEVADOR: {
+  liftPx: 24,         // <- how far UP the slab is drawn. "1 dedinho". 0 = off
+  riseSpeed: 160,     // px/s the rider catches up. a SPEED, not a duration
+  standHalfRel: 0.35, // how much of the near lip counts as standing on it
+},
+```
+
+**One number, both lifts** — level 3's shelf-climb and the ride out of
+HIPÓLITO's room. It is applied inside `Elevador.rect`, so neither caller had to
+change and a third one gets it for free.
+
+> ⚠️ **The rider goes up with it, and that is not optional.** The slab's top face
+> *is* the walkable belt — that identity is what stops the player walking off the
+> back of the drawing (see `ROOMS[3].belt`). Lifting the picture alone sinks him
+> into the slab by `liftPx`. `Elevador.tickRider` raises whoever is standing on
+> one via `Fighter.riseY`, which is folded into `groundY()` — **drawing only**.
+> No hitbox moves, and the shadow stays on the ground exactly as it does for
+> `jumpY`.
+
+> ⚠️ **So there is a step on and off, and `riseSpeed` is why it is not a
+> teleport.** He crosses that edge in view four times: off the parked slab he
+> arrives in the library on, onto the lift at the end of each shelf, off it at
+> the start of the next, and boarding in the boss room. At 24px / 160px/s that is
+> 0.15s and reads as stepping up onto a platform.
+
+### How it knows he is on one
+
+Slabs **register themselves as they are painted** (`Elevador.draw` records a
+screen span; `tickRider` reads it back one frame later). The reason it is not a
+question put to the rooms: the cutscene's slab stays parked under the player
+after the ride hands back and level 3 has taken over — a slab level 3 has never
+heard of.
+
+> ⚠️ **`Elevador.draw(..., standable)`.** An x-overlap alone lifts him off the
+> floor of the boss room: he stands on his mark, dead centre, for the 1.5s the
+> lift takes to come down 900px onto him. `LiftRide` passes `false` during
+> `walk` and `descend`; level 3's slabs are always at rest and pass nothing.
+
+> ⚠️ **The registry is cleared in `renderFrame`, not in the tick.** The pause card
+> draws the world and ticks nothing, so a tick-side clear would grow the list for
+> as long as the game sat paused.
+
+To rule the whole feature out: **`liftPx: 0`**. Everything collapses to the old
+behaviour — the rect is unshifted and the rider always eases toward zero.
+
 ---
 
 ## The backdrop
@@ -361,6 +438,24 @@ goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
 
 So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
 place, size, bob and fade are the other `go*` knobs in the same block.
+
+## The enemy HP bars — OFF (2026-09-05)
+
+```js
+enemyBars: false,   // the little red slab over a mook's head after a punch
+```
+
+Asked for as *"remover o HP que aparece dos inimigos quando eles estão levando
+socos"*. **The drawing is kept**, because the reason to want it back — tuning a
+new enemy's HP, where that slab is the only thing on screen saying "nearly
+down" — is a different question from the reason it went.
+
+> ⚠️ **Mooks only.** Bosses draw the big hand-lettered bar through
+> `hud.drawBoss`, which is a separate call with its own rule and is not in
+> `crowd.list`. `showBarT` is still set on every hit and now read by nothing,
+> which is what keeps this a one-line DRAW decision to undo.
+
+---
 
 ## Lives
 
