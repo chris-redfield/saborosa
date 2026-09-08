@@ -7936,6 +7936,73 @@ what it omits. Here it omits the drop, the bounce and the highlight.
 
 ---
 
+## And then, same day: the pause card became a drawing
+
+Two sheets arrived, `batidao-letter-pause-001.png` and `-002.png`, with an
+instruction attached: *"Ignore the first 2 rows of the
+batidao-letter-pause-002.png file: SABOROSA APRESENTA and BATIDÃO DE CÔCO. now
+the other words, all have around the same size: PAUSA, PAROU, PARADO, PARÔ,
+ALTAS, TEMPO. this 6 words should be randomly shuffled when the player pauses.
+the same way that the death words do... Also, underneath the word PAROU, there
+is MODO SABOROSA LIGADO, also pick that up and replace the current letters that
+we make appear when pause is on."*
+
+So this is the game over words' feature, done again on the screen next door, and
+it was built as that on purpose: `tools/build-pause-words.py` is
+`build-gameover-words.py`, `src/pause.js` is `GameOver.roll()` plus a caption,
+and the type path survives as the fallback in both. Knobs in README (*Six ways of
+saying it stopped*).
+
+**THE SEVEN BANDS ARE SIX WORDS AND ONE CAPTION, AND THAT DISTINCTION IS THE
+WHOLE JOB.** `MODO SABOROSA LIGADO` sits 45 master px under PAROU, drawn small
+and wide. It is not a way of saying "paused" — it is the cheat's name, and it
+appears only while `DEV.on` is true. ⚠️ **It is kept out of `frames` by the
+CUTTER, in its own `sub` key**, rather than by a condition in the draw. The bag
+is `frames.length` long, so a caption in that list would eventually be dealt as
+the pause word itself: `MODO SABOROSA LIGADO` alone in the middle of the screen,
+on an ordinary pause, with the cheat off. A rule enforced by the file's SHAPE
+cannot be forgotten by the next reader of the draw code.
+
+⚠️ **THE WIDEST FRAME IN THE FILE IS THE ONE THAT MUST NOT SET THE SCALE.** The
+standing rule for a pack here is one scale, taken from the widest frame — and
+following it literally would have handed the card's scale to the caption (1238px
+against TEMPO's 888), shrinking every word to make room for a line that is
+usually not on screen at all. `pause.js` measures `maxW` over `frames` alone and
+draws the caption at that same ratio. **The rule is "one scale, as drawn"; "the
+widest frame" was only ever how you find it**, and this pack is the case where
+the two come apart.
+
+**THE SIZE CAME FROM THE SCREEN NEXT DOOR, AND NOT BY MATCHING WIDTHS.** The game
+over words land ~190px tall at their `wRel` 0.80. These letters are drawn far
+chunkier — PAUSA is 2.6 wide per tall against `PERDEU!`'s 3.9 — so matching the
+two packs by width would have made the pause word the biggest lettering in the
+game. `wRel` 0.44 matches them by HEIGHT: TEMPO lands 563×203.
+
+⚠️ **THE CAPTION HANGS OFF THE WORD'S DRAWN BOTTOM.** `PARÔ!` is 365px in the
+atlas against `PAROU`'s 266 (the circumflex, and the exclamation mark's dot), so
+a fixed caption y collides with the tall picks and floats under the short ones.
+And the word does NOT move when the mode is toggled — the block is not
+re-centred, the line is simply added, so typing the code at this screen changes
+one thing on it.
+
+⚠️ **THE PICK IS ON THE PAUSE EDGE, WHICH MATTERS MORE HERE THAN ON THE DEATH
+PANEL.** The card is redrawn every frame (the world under it is drawn and not
+ticked), so a pick made in `draw` is six words flickering at 60Hz. `roll()` is
+called only when the pause goes ON — which also means **typing SABOROSA does not
+deal a new word**. And the bag's seam is worth more here than on the game over
+screen: a player pauses many times a session and will actually SEE the cycle
+repeat, where a death is rare. Verified over 300,000 draws against the real
+`roll()` — zero back-to-back repeats, every cycle of six complete, counts even to
+the draw.
+
+**Previewed, not played.** The six cards and the caption were rendered by the
+real `Pause.draw` against a plate frame, in headless Chrome, at the real config
+numbers. ⚠️ What that omits: the fighters, the HUD, and the wash over a MOVING
+frame rather than a still one. The sizes and positions are honest; how it reads
+mid-fight is not settled until someone pauses mid-fight.
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**

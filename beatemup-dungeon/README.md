@@ -4565,14 +4565,81 @@ be broken the moment a run starts. The *kind* is still the honest 50/50.
   bound to keydown for the autoplay unlock, so the very press that opens the
   pause screen would otherwise un-suspend it a moment later.
 
-`PAUSE.LINES` is the text — line 0 is drawn big, the rest evenly. It is **just
-`['PAUSA']`**: a control list was put here and taken back out the same day.
-⚠️ **The card appends its own line when dev mode is on** (and after the code
-turns it off) — see *Unlocking it in game*. It appends to a **copy**: pushing
-onto `CONFIG.PAUSE.LINES` itself would stack a `SABOROSA MODE ON` per pause.
+⚠️ **The word is a drawing now** — see *Six ways of saying it stopped* below.
+`PAUSE.LINES` is the **fallback**: line 0 is drawn big, the rest evenly, reached
+only if the lettering pack fails to load. It is **just `['PAUSA']`**: a control
+list was put here and taken back out the same day. ⚠️ **The fallback card appends
+its own line when dev mode is on** (and after the code turns it off) — see
+*Unlocking it in game*. It appends to a **copy**: pushing onto
+`CONFIG.PAUSE.LINES` itself would stack a `SABOROSA MODE ON` per pause.
 ⚠️ Which means the game now tells the player nothing about its controls
 anywhere — a decision made twice, in two places, in one day. The itch page is
 what is left.
+
+### Six ways of saying it stopped
+
+`PAUSA` · `PAROU` · `PARADO` · `PARÔ!` · `ALTAS` · `TEMPO` — one per pause,
+**sampled without replacement**, from `batidao-pause-words-game.png` + its
+`-sprites.json`, cut out of the two `batidao-letter-pause-00N.png` sheets by
+`tools/build-pause-words.py`. Drawn by `src/pause.js`, which is the game over
+panel's word logic with a caption bolted under it.
+
+```js
+PAUSE: {
+  SHEET: 'v2:beatemup-dungeon/batidao-pause-words',
+  wRel: 0.44,        // the widest WORD, as a fraction of canvas width
+  yPct: 47,          // the word's centre, down the canvas
+  subGapPx: 8,       // the caption's gap under the word's drawn bottom
+  LINES: ['PAUSA'],  // the TYPE fallback — NOT the picture
+}
+```
+
+> ⚠️ **The seventh frame is not a word.** `MODO SABOROSA LIGADO` is drawn small
+> and wide under PAROU on the first sheet, and it **replaces the typed
+> `SABOROSA MODE ON`** line — it appears only while dev mode is on. The cutter
+> writes it to its **own `sub` key** rather than into `frames`, and that is the
+> point: the bag is `frames.length` long, so a caption in that list would
+> eventually be drawn *as* the pause word. **It still has no OFF line** — the
+> absence of the line is the off state, refused on sight 2026-09-04.
+
+> ⚠️ **`wRel` is the pack's one scale and it is set by the widest WORD, not the
+> widest frame.** The caption is the widest thing in the file (1238px against
+> TEMPO's 888), so measuring over everything would hand the card's scale to a
+> line that is usually not even on screen and shrink every word to make room for
+> it. `pause.js` measures over `frames` alone. Every other frame — the caption
+> included — is drawn at that same px-per-source ratio, so the short words land
+> short and the caption lands at the third of their height it was drawn at.
+> Never fit each word to `wRel` in turn. Standing rule for a pack here.
+
+> **0.44, and it came from the game over pack.** These letters are drawn much
+> chunkier than that sheet's (PAUSA is 2.6 wide per tall, `PERDEU!` is 3.9), so
+> matching the two by *width* would have made the pause word the biggest
+> lettering in the game. 0.44 matches them by **height** instead — TEMPO lands
+> 563×203 against that pack's ~190 tall.
+
+> ⚠️ **The caption hangs off the word's drawn bottom**, not at a fixed y, because
+> `PARÔ!` is 365px in the atlas against `PAROU`'s 266 — the circumflex and the
+> exclamation's dot. A fixed y collides with the tall picks and floats under the
+> short ones. And the **word does not move** when the mode is toggled: the block
+> is not re-centred, the caption is simply added.
+
+> ⚠️ **It is a shuffle bag, not a fresh `random()` each time**, exactly as the
+> game over words are: all six are seen before any repeats, and a refill that
+> would open on the last-shown word is nudged so two bags cannot meet on the same
+> one. ⚠️ **A pause is far more frequent than a death**, which is the one way this
+> differs in practice — a player empties this bag several times a session and
+> *sees* the cycle, so the seam matters more here than there. Verified over
+> 300,000 draws against the real `roll()`: zero back-to-back repeats, every cycle
+> of six complete, counts even to the draw. The bag is per-session.
+
+> ⚠️ **The pick is made on the pause EDGE, not in `draw`.** The card is redrawn
+> every frame — the world under it is drawn and not ticked — so a pick made in
+> `draw` is six words flickering rather than one. `pauseCard.roll()`, and only
+> when the pause goes **on**. ⚠️ Which also means **typing SABOROSA does not deal
+> a new word**: the caption appears under the word already on screen.
+
+> **The fallback is the old card**, `Hud.drawCard` with `PAUSE.LINES` and the
+> typed cheat line. A missing sheet costs the lettering's look, not the screen.
 
 **Controls:** *pickup* (L / E / pad B) lifts a barrel in range — or **puts down**
 the one he is holding. *punch* (J / Z / Space) **throws** it.

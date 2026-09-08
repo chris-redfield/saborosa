@@ -148,6 +148,21 @@ function assetManifest() {
     out.push({ key: 'goWords', src: S + '-sprites.json', how: 'json' });
   }
 
+  /* THE SIX WAYS OF SAYING THE GAME IS STOPPED -- the pause card's lettering,
+     which is a drawing now rather than type, plus the cheat's caption in the
+     same file. Same two-file shape as the game over words above.
+
+     `image` rather than `big`: the atlas is 1238x1979 and the widest word is
+     drawn at 563, so a downscale would throw away pixels the card still wants --
+     and the CAPTION is drawn at 774, which is the frame that actually needs the
+     resolution. ⚠️ GATED ON THE PAUSE SCREEN ITSELF: `PAUSE.on: false` takes the
+     screen away, and there is then nothing to letter. */
+  if (CONFIG.PAUSE && CONFIG.PAUSE.on !== false && CONFIG.PAUSE.SHEET) {
+    const P = CONFIG.PAUSE.SHEET;
+    out.push({ key: 'pauseWords', src: P + '-game.png', how: 'image' });
+    out.push({ key: 'pauseWords', src: P + '-sprites.json', how: 'json' });
+  }
+
   /* The SABOROSA logo, for the front door. `image` rather than `big`: it is
      705x166 and drawn at 666 wide, so there is nothing to downscale. */
   if (CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.SHEET) {

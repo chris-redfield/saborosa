@@ -44,6 +44,10 @@
   title.sound = sound;
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
+  /* The pause card's lettering and its shuffle bag. See pause.js: the pick is
+     the card's only state, and it is made on the EDGE below rather than in
+     draw -- the card redraws every frame, so a pick in draw is a flicker. */
+  const pauseCard = new Pause(assets);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
   const cont = new Continue(assets);
@@ -546,6 +550,11 @@
     if (input.takePause() && CONFIG.PAUSE && CONFIG.PAUSE.on !== false
         && (phase === 'play' || paused)) {
       paused = !paused;
+      /* THE WORD, PICKED ONCE, ON THE WAY IN. ⚠️ NOT ON THE WAY OUT and not in
+         the draw below: see pause.js. And deliberately not touched by the cheat
+         unlock either, so typing SABOROSA at this screen adds the caption under
+         the word the player is already looking at rather than dealing a new one. */
+      if (paused) pauseCard.roll();
       /* ⚠️ AND THE SOUND STOPS WITH IT -- the CONTEXT is suspended, not the
          track stopped, so everything resumes on the sample it left off. See
          Sound.setPaused(): stopping the music would restart the horse's 4m39s
@@ -583,26 +592,32 @@
         CONFIG.DEV.on = !CONFIG.DEV.on;
       }
       renderFrame(render);
-      /* ⚠️ A COPY, NEVER `CONFIG.PAUSE.LINES` ITSELF. Pushing onto the config
-         array would append a line to it permanently and once per pause, so the
-         card would grow a stack of these over a session. */
-      const lines = (CONFIG.PAUSE.LINES || ['PAUSA']).slice();
-      /* ⚠️ "SABOROSA MODE", NOT "DEV MODE", ON REQUEST -- this is the only place
-         in the game a PLAYER is told about it, so it wears the game's name and
-         not the developer's. The corner marker stays `DEV`: that one exists to
-         stop a forgotten flag being mistaken for a balance problem, and the
-         person reading it is not a player.
+      /* THE CARD IS A DRAWING FIRST (2026-09-08). `Pause.draw` returns false only
+         when the lettering pack is missing, and the typed card below is then set
+         exactly as it always was -- including the cheat line, which the pack
+         replaces with a hand-drawn `MODO SABOROSA LIGADO`. */
+      if (!pauseCard.draw(ctx)) {
+        /* ⚠️ A COPY, NEVER `CONFIG.PAUSE.LINES` ITSELF. Pushing onto the config
+           array would append a line to it permanently and once per pause, so the
+           card would grow a stack of these over a session. */
+        const lines = (CONFIG.PAUSE.LINES || ['PAUSA']).slice();
+        /* ⚠️ "SABOROSA MODE", NOT "DEV MODE", ON REQUEST -- this is the only place
+           in the game a PLAYER is told about it, so it wears the game's name and
+           not the developer's. The corner marker stays `DEV`: that one exists to
+           stop a forgotten flag being mistaken for a balance problem, and the
+           person reading it is not a player.
 
-         ⚠️ AND THERE IS NO "OFF" LINE. There was one, for the half a session
-         between this being built and being played: switching the mode off said
-         so on the card, because off otherwise looks exactly like a code that
-         was never typed. It was refused on sight -- *"remove the SABOROSA MODE
-         OFF text, don't ever make that appear"* -- and it is DELETED rather
-         than held behind a flag, which is what this project does with a look
-         that was turned down. **The absence of the line IS the off state.** */
-      const label = (CONFIG.DEV_UNLOCK && CONFIG.DEV_UNLOCK.label) || 'DEV MODE';
-      if (CONFIG.DEV && CONFIG.DEV.on) lines.push(label + ' ON');
-      hud.drawCard(ctx, lines, 1, CONFIG.hudColor, CONFIG.PAUSE.dimAlpha);
+           ⚠️ AND THERE IS NO "OFF" LINE. There was one, for the half a session
+           between this being built and being played: switching the mode off said
+           so on the card, because off otherwise looks exactly like a code that
+           was never typed. It was refused on sight -- *"remove the SABOROSA MODE
+           OFF text, don't ever make that appear"* -- and it is DELETED rather
+           than held behind a flag, which is what this project does with a look
+           that was turned down. **The absence of the line IS the off state.** */
+        const label = (CONFIG.DEV_UNLOCK && CONFIG.DEV_UNLOCK.label) || 'DEV MODE';
+        if (CONFIG.DEV && CONFIG.DEV.on) lines.push(label + ' ON');
+        hud.drawCard(ctx, lines, 1, CONFIG.hudColor, CONFIG.PAUSE.dimAlpha);
+      }
       requestAnimationFrame(loop);
       return;
     }

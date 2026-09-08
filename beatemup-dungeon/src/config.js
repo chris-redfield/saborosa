@@ -3890,12 +3890,61 @@ const CONFIG = {
 
   PAUSE: {
     on: true,
+    /* ⚠️ THE TYPED WORD IS THE FALLBACK NOW, not the card. Since 2026-09-08 the
+       pause draws one of SIX hand-lettered words picked at random -- see `SHEET`
+       below and src/pause.js. `LINES` is only reached when that pack fails to
+       load, and it stays here for exactly that: a missing sheet must cost the
+       lettering's look and not the screen. LINE 0 is drawn big by
+       `Hud.drawCard`; anything after it is drawn small underneath. */
     LINES: ['PAUSA'],
     /* HOW BLACK THE WASH OVER THE FROZEN FRAME IS, 0..1. 0.72 was what
        `Hud.drawCard` was written with; 0.50 is that 30% more transparent, asked
        for 2026-08-24 -- the shot behind the word is worth seeing, which is the
-       whole reason the pause draws the world rather than a black screen. */
+       whole reason the pause draws the world rather than a black screen.
+       ⚠️ READ BY BOTH PATHS -- pause.js washes with it too, so the picture and
+       the type sit on the same grey. */
     dimAlpha: 0.5,
+
+    /* --- THE SIX WORDS (2026-09-08) ---------------------------------------
+       PAUSA / PAROU / PARADO / PARÔ! / ALTAS / TEMPO, one per band across
+       `batidao-letter-pause-001.png` and `-002.png`, cut by
+       tools/build-pause-words.py. Picked WITHOUT REPLACEMENT: all six are seen
+       before any is seen twice, and the bag's seam is guarded so two bags cannot
+       meet on the same word. The bag lives in src/pause.js.
+
+       ⚠️ THE SEVENTH FRAME IS NOT A WORD. `MODO SABOROSA LIGADO` is the cheat's
+       caption -- it replaces the typed `DEV_UNLOCK.label + ' ON'` line and is
+       drawn only while `DEV.on` is true. It is kept OUT of `frames` by the
+       cutter, in its own `sub` key, so the shuffle cannot draw it as a pause
+       word. See the header of pause.js. */
+    SHEET: 'v2:beatemup-dungeon/batidao-pause-words',
+    /* ⚠️ `wRel` IS THE PACK'S ONE SCALE AND IT IS SET BY THE WIDEST WORD --
+       TEMPO, 888px in the atlas -- NOT by the widest frame. The caption is
+       1238px and would take the scale over if it were counted, shrinking every
+       word on the card to make room for a line that is usually not on screen.
+       Every other frame is drawn at the same px-per-source ratio, so the short
+       words land short and the caption lands at the third of their height the
+       artist drew it. Never fit each word to `wRel` in turn.
+
+       0.44 puts TEMPO at 563px and ~200px tall, which is the game over pack's
+       on-screen height (its words land ~190) -- these letters are drawn chunkier
+       than those, so matching by WIDTH would have made the pause word the
+       biggest lettering in the game. */
+    wRel: 0.44,
+    /* The word's CENTRE, down the canvas. 47 is where the 92px type sat
+       (`Hud.drawCard` draws line 0 at the middle minus 20 of 720). */
+    yPct: 47,
+    offX: 0,
+    offY: 0,
+    /* THE GAP UNDER THE WORD BEFORE THE CHEAT CAPTION, in canvas px, measured
+       from the word's DRAWN BOTTOM -- so it does not collide with the tall picks
+       (PARÔ! is 365px in the atlas against PAROU's 266) and the word does not
+       move when the mode is toggled. The artist drew the caption 45 master px
+       under PAROU, which is ~8 canvas px at this `wRel`; that is where this came
+       from. In canvas px rather than source px so it can be nudged by eye. */
+    subGapPx: 8,
+    subOffX: 0,
+    subOffY: 0,
   },
 
   /* ⚠️ THE WHITE HIT FLASH, AND IT IS THE FIGHTERS' ONLY. `false` since
