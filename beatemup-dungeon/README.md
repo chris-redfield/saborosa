@@ -5799,6 +5799,116 @@ python3 tools/build-beat-horacio-defs.py
 
 ---
 
+## TIME ATTACK — the minigame between the desert and HORÁCIO
+
+Sonic 2's special stages, flown in Still Life's plane. `CONFIG.TIME_ATTACK`,
+`src/time-attack.js`, and three files ported from that game — `ta-plane.js`,
+`ta-fly.js`, `ta-coin.js`.
+
+```
+kill a fly     -> coinsPerFly toward this round's quota
+shoot a clock  -> clockAddMs back on the timer
+quota met      -> next round, which wants MORE
+timer out      -> the mode ends, he walks on to HORÁCIO
+```
+
+| knob | what it does |
+|---|---|
+| `on` | `false` removes it entirely |
+| `ROOMS[n].timeAttackOnExit` | which room plays it **as it hands over**. The desert's, so: HORÁCIO → walk-out → minigame → HIPÓLITO's room |
+| `ROUNDS` | `{coins, timeMs, flies, clocks}` per round — **the only untuned numbers in the block** |
+| `coinsPerFly` | what a fly is worth. At 1 the quota *is* a fly count |
+| `clockAddMs` | what shooting a clock buys |
+| `carryTime` | `true` carries leftover time into the next round (off: the quota rises and the clock does not — that *is* the difficulty curve) |
+| `CHARACTERS` | `['lebron','ipaneima']` — positional with `PLAYER_PACKS`, so whoever you were punching with is who flies |
+| `pointsPerCoin` / `pointsPerRound` | what it pays. ⚠️ **Nothing consumes these yet** |
+
+> **DEV number keys** (`CONFIG.DEV.JUMPS`, key 1 = first entry):
+> `1` street · `2` desert/HORÁCIO · `3` **TIME ATTACK** · `4` HIPÓLITO · `5` the
+> library. ⚠️ **It is a table, not arithmetic.** The key used to *be* the room
+> index (`key - 1`, in input.js); the minigame is not a room, so any arithmetic
+> that made space for it would put a silent off-by-one between what a key is
+> called and what it opens. ⚠️ Key 3 **enters the desert first** and then opens
+> the mode, because the mode's exit is a room *change* — it fades to the room
+> after whichever one it was entered from. The desert is found by its
+> `timeAttackOnExit` flag, not an index, so reordering rooms cannot break it.
+
+> **Hold C** for the debug view: fly boxes (cyan), clock boxes (yellow), the
+> plane's hitbox (green), the fly field and the spawn window, a one-line state
+> readout, and the **scanline** in red at its real `rayThickness`. ⚠️ **Every box
+> is the same `boxes()` call the resolver makes and the line is the very `ray`
+> object `_shoot()` built** — an overlay that recomputes what it inspects can
+> agree with itself while disagreeing with the game. ⚠️ Things that *cannot* be
+> hit (a dying fly, a spent clock) are drawn **dim rather than absent**, so "why
+> didn't that react?" is answered on screen.
+
+> ⚠️ **It is a ROOM-EXIT flag, not a segment.** A segment only sits between two
+> segments of the *same* room; this belongs in the seam between two ROOMS, which
+> in this game is the walk-out. So the desert's fight and walk-out are untouched
+> and the mode is spliced into the handover. **It always leads to the next room,
+> win or lose** — running the clock out is not a failure state.
+
+> ⚠️ **The planes are drop-ins, not a pack to cut.** They are 660×507 with six
+> PITCH poses in Still Life's own order and registration — verified by
+> compositing them against `saborosa-plane-lemon-NN.png` — so they are
+> `CHARACTERS` entries. `CH_REST: 3` is the level pose.
+
+> ⚠️ **Everything under "INHERITED" is Still Life's tuned value.** The three
+> classes are config-injected (`constructor(assets, cfg)`, no global CONFIG), so
+> the port was a copy and its 100 knobs were *extracted* from
+> `flying-dungeon/src/config.js`, not retyped. A number that differs from that
+> game's is a decision and is commented as one.
+
+> ⚠️ **The clocks are drawn by the coin sprite, on purpose.**
+> `saborosa-coin-time.json` already names a `clockFace` range (frames 1–11 of
+> 22) against a `fruitFace` — the coin was cut with a clock on one side for
+> Still Life's shoot-a-coin-to-rewind mechanic. A dedicated clock sprite would
+> be one asset swap and no code.
+
+> ⚠️ **It cannot be lost and it grants no extra life.** Running the clock out
+> ends the mode; nothing about lives, continues or game over is reachable from
+> inside it. `planeHealth: 0` says the same about the plane — nothing here shoots
+> back, so the ported hurt/fall/wear path is never entered.
+
+> ⚠️ **Asset keys are `ta:`-prefixed because `fly` was already taken** by the
+> scenery swarm — loading over it would silently repaint the background flies of
+> every level. `boom` is deliberately **not** prefixed: same file, identical
+> rects, and this game has a VRAM history.
+
+> ⚠️ **The plane frames are in `manifest.js` even though `TaPlane` can fetch
+> them.** `package.sh` copies what the manifest names; art a class fetches for
+> itself works in dev and 404s in the build. So `TimeAttack.load()` does not
+> call `plane.load()`, and the key/filename shapes in the two places must track
+> each other — a mismatch is silent.
+
+### The background loops, and it took measuring
+
+`tools/build-time-attack-plate.py`. The brief was to find where the camera
+returns to its start — **there is no such frame, and that was measured**: the
+distance from frame 0 never comes back down (min 1.29 after 35s against **0.39**
+for two adjacent frames), and a full self-similarity search over every pair
+20–60s apart found nothing better than 1.22 against a 1.40 average. It couldn't:
+the shot is a close-up of stones with no landmark, so "the same position" means
+centimetre precision from a hand-held phone.
+
+**So velocity is what matches, not position.** The pan is a steady ~1.0 px/frame
+leftward — and the real problem was that **the camera is dead still for the
+first 2.6s and last 2.8s**, which reads as the shot stopping. Cut to
+[5.5s, 47.5s] (both ends at cruise) and wrap-crossfaded into a **41.40s clip
+that loops on itself**. A dissolve works *because* the shot is featureless; a
+ping-pong was rejected because the pan is monotonic and reversing reads as the
+camera walking back.
+
+| | wrap step | vs a normal frame |
+|---|---|---|
+| **wrap-crossfade 0.6s** | 0.452 | **1.09× — seamless** |
+| hard cut, same points | 1.294 | 3.1× |
+| the source looped as-is | 1.353 | 3.5× |
+
+Audio stripped, 14.02MB → 5.67MB at CRF 30. ⚠️ **It is a plain `<video loop>`,
+not `Backdrop`** — that class scrubs a plate by camera position and this mode has
+no camera, so handing it the plate would freeze the shot on frame one.
+
 ## Masters arrive too big
 
 Artist exports come at print resolution — the horse boss landed at 27329x7922

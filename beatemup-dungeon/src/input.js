@@ -25,6 +25,16 @@ class Input {
     this.left = this.right = this.up = this.down = false;
     this.debug = false;              // hold C: boxes
     this._attackQueued = false;
+    /* ⚠️ HELD, ALONGSIDE THE EDGE, AND THE TWO ARE NOT THE SAME SIGNAL. The
+       punch is an EDGE on purpose -- see the header: a held punch would either
+       mash or eat the combo. TIME ATTACK's plane needs the opposite, a hitscan
+       beam that is on for as long as the button is down, so it reads `firing`
+       and the fighting keeps reading `takeAttack()`. Additive: nothing about
+       the edge changed when this was put in (2026-09-08).
+       ⚠️ `flush()` CLEARS IT TOO, or a pause taken mid-burst would resume with
+       the gun stuck on. */
+    this._attackHeld = false;
+    this.firing = false;
     this._jumpQueued = false;
     this._pauseQueued = false;
     this._muteQueued = false;
@@ -85,6 +95,12 @@ class Input {
       }
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this._kb[m] = true; return; }
+      /* ⚠️ THE HELD FLAG IS SET BEFORE THE `e.repeat` GUARD, and that is the
+         point of putting it here: autorepeat is exactly what a HOLD looks like
+         to the DOM, so a flag set after the guard would never be re-armed and a
+         hold would read as a single frame. The guard still protects the edge
+         below, which is what it was written for. */
+      if (e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Space') this._attackHeld = true;
       // `e.repeat` is the guard that makes these presses rather than holds:
       // held keys autorepeat at the OS rate, and without this a resting finger
       // would drum the combo out on its own.
@@ -143,6 +159,7 @@ class Input {
     t.addEventListener('keyup', e => {
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this._kb[m] = false; return; }
+      if (e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Space') this._attackHeld = false;
       if (e.code === 'KeyC') this.debug = false;
     });
     if (typeof window !== 'undefined') {
@@ -221,6 +238,10 @@ class Input {
   poll() {
     const pad = this._pad;
     pad.left = pad.right = pad.up = pad.down = false;
+    /* ⚠️ RE-DERIVED EVERY POLL, never accumulated: a pad that is unplugged
+       mid-hold leaves no button down, and the `else` branch below is reached
+       with this already false. */
+    let padLift = false;
 
     const gp = this._firstPad();
     if (gp) {
@@ -250,6 +271,7 @@ class Input {
           else if (act === 'pause') this._pauseQueued = true;
         }
         this._padPrev[i] = down;
+        if (act === 'lift') padLift = padLift || down;
         if (!down) continue;
         if (act === 'up' || act === 'down' || act === 'left' || act === 'right') {
           pad[act] = true;
@@ -258,12 +280,17 @@ class Input {
     } else {
       this._padPrev = {};
     }
+    this._padHeldLift = padLift;
 
     const kb = this._kb;
     this.left = kb.left || pad.left;
     this.right = kb.right || pad.right;
     this.up = kb.up || pad.up;
     this.down = kb.down || pad.down;
+    /* ⚠️ THE PAD'S HELD FIRE COMES FROM `padHeld`, NOT FROM THE EDGE ABOVE.
+       `_padPrev` is a rising-edge memory; "is the button down right now" is a
+       different question and is answered in the button loop. */
+    this.firing = this._attackHeld || !!this._padHeldLift;
   }
 
   // Each true once per press, then consumed — an unread press is PENDING, not
@@ -314,6 +341,10 @@ class Input {
       way out of one state does not act on the state it lands in. */
   flush() {
     this._attackQueued = this._jumpQueued = this._pickupQueued = false;
+    /* ⚠️ THE HOLD GOES TOO. A pause taken mid-burst would otherwise resume with
+       the gun still on, because no keyup ever arrives for a key released while
+       the card was up. Same reason the queued edges are dropped here. */
+    this._attackHeld = false; this._padHeldLift = false; this.firing = false;
     this._pauseQueued = this._anyPress = false;
     this._roomJump = -1;
   }

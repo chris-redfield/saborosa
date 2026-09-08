@@ -48,6 +48,10 @@
      the card's only state, and it is made on the EDGE below rather than in
      draw -- the card redraws every frame, so a pick in draw is a flicker. */
   const pauseCard = new Pause(assets);
+  /* TIME ATTACK -- the minigame between the desert and HORÁCIO. It owns the
+     whole canvas while it runs, so it is a PHASE and not something drawn over
+     the level; see src/time-attack.js. */
+  const timeAttack = new TimeAttack(assets, input);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
   const cont = new Continue(assets);
@@ -172,6 +176,15 @@
     await Promise.all(jobs);
     clearInterval(tick);
     if (bar) bar.style.display = 'none';
+
+    /* ⚠️ THE MINIGAME'S PLANES LOAD HERE AND NOT THROUGH manifest.js.
+       `TaPlane.load()` walks CHARACTERS x CH_FRAMES and builds its own asset
+       keys -- and `manifest.js` now fills exactly those keys, so this only
+       CONSTRUCTS the plane and fetches nothing. The frames had to go in the
+       manifest because package.sh copies what the manifest names; art a class
+       fetches for itself is read from the repo in dev and is absent from the
+       build. `TimeAttack.enabled()` false makes this a no-op. */
+    timeAttack.load();
 
     for (const kind of Object.keys(CONFIG.CHARACTERS)) sheets.build(kind);
     hitFX.build();
@@ -683,7 +696,39 @@
        faded — this is a shortcut for testing, and sitting through the fade is
        exactly the waiting it exists to avoid. Consumed either way so the key
        cannot queue up and fire later in a shipping build. */
-    const jump = input.takeRoomJump();
+    const slot = input.takeRoomJump();
+    /* ⚠️ THE KEY IS A SLOT IN `DEV.JUMPS`, NOT A ROOM INDEX. input.js still
+       hands back `key - 1`; what that MEANS is decided here, because since
+       2026-09-08 one of the keys opens the minigame, which is not a room. */
+    const J = (CONFIG.DEV && CONFIG.DEV.JUMPS) || null;
+    const target = (slot >= 0 && J && slot < J.length) ? J[slot] : (slot >= 0 ? slot : -1);
+    if (CONFIG.DEV && CONFIG.DEV.on && target === 'timeattack' && TimeAttack.enabled()) {
+      /* THE MINIGAME, FROM A NUMBER KEY. ⚠️ THE DESERT IS ENTERED FIRST and the
+         mode opened on top of it: the mode's exit is a room CHANGE -- it fades
+         to the room AFTER the one it was entered from -- so opening it with the
+         stage sitting anywhere else would fade into the wrong room. The desert
+         is found by its `timeAttackOnExit` flag, not by an index, so this
+         survives the rooms being reordered. */
+      crowd.clear();
+      player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
+      player.props = props;
+      liftRide.reset();
+      let host = CONFIG.ROOMS.findIndex(r => r && r.timeAttackOnExit);
+      if (host < 0) host = 0;
+      stage.enterRoom(host, player);
+      props.enterRoom(stage.room(), player);
+      flies.enterRoom(stage.room(), stage.camX);
+      scenery.enterRoom(stage.room());
+      vermes.enterRoom(stage.room());
+      grade.enterRoom(stage.room(), stage);
+      roomMusic();
+      timeAttack.enter(PlayerPick.i);
+      phase = 'timeattack';
+      phaseT = 0;
+      requestAnimationFrame(loop);
+      return;
+    }
+    const jump = typeof target === 'number' ? target : -1;
     if (CONFIG.DEV && CONFIG.DEV.on && jump >= 0 && CONFIG.ROOMS[jump]) {
       /* A FRESH PLAYER, not the one standing there. The key can be pressed
          mid-combo, mid-knockdown or on the death screen, and carrying any of
@@ -752,6 +797,52 @@
       Elevador.tickRider(dt, player, stage.camX);
     }
 
+    if (phase === 'timeattack') {
+      /* ⚠️ IT DRAWS ITSELF AND RETURNS, so `render()` -- the level, the crowd,
+         the HUD, the backdrop -- never runs this frame. The mode has no camera,
+         no belt and no player in it, and drawing the desert underneath would be
+         two games fighting for the frame.
+
+         ⚠️ THE WORLD IS NOT TICKED EITHER, which is the same call the pause card
+         makes. Nothing is waiting on it: the desert is finished -- HORÁCIO is
+         dead and the walk-out is over -- and the room this hands to has not been
+         entered yet. It is entered by the `fade` below, exactly as it would have
+         been if the minigame were not here at all.
+
+         ⚠️ AND IT SCHEDULES A FRAME. Leaving loop() without one is this game's
+         recurring bug and here it would look like the minigame hanging. */
+      timeAttack.update(dt);
+      if (timeAttack.isDone()) {
+        timeAttack.leave();
+        /* ⚠️ ON TO THE NEXT ROOM, WIN OR LOSE, AND NEVER BACK TO THIS ONE --
+           *"after the time attack is over, I must go to the NEXT stage, not
+           back to this one."* Running the clock out is not a failure state
+           (there isn't one), so both endings arrive here. `fade` is exactly
+           where the walk-out would have gone on its own, so the room swap and
+           everything after it is the ordinary path. */
+        phase = 'fade';
+        faded = false;
+        /* ⚠️ THE FADE IS ENTERED AT ITS HALFWAY POINT, NOT AT ZERO, AND THAT IS
+           THE FIX FOR *"the screen goes back to the second stage, I see it
+           briefly, like for half a second, and then I move to the next stage."*
+           `fade` DRAWS THE WORLD for its first half and swaps rooms at the
+           blackest point -- which is right for a walk-out, where that half is
+           the level dimming behind the player. Coming out of the minigame there
+           is nothing to dim: the desert is finished and showing it again is a
+           flash of a room the player has left. Starting at `half` means the
+           swap happens on the very first fade frame and only the fade-IN to
+           HIPÓLITO's room is left. ⚠️ The number is read the same way the fade
+           itself reads it, so re-timing `fadeMs` moves both together. */
+        phaseT = (CONFIG.fadeMs || 900) / 2000;
+        requestAnimationFrame(loop);
+        return;
+      }
+
+      renderFrame(() => timeAttack.render(ctx));
+      requestAnimationFrame(loop);
+      return;
+    }
+
     if (phase === 'play') {
       update(dt);
     } else if (phase === 'outro') {
@@ -797,6 +888,16 @@
           if (CONFIG.MUSIC_TRACKS && CONFIG.MUSIC_TRACKS.musicEnding) {
             sound.playMusic('musicEnding');
           }
+        } else if (timeAttackDue()) {
+          /* ⚠️ THE MINIGAME IS SPLICED INTO THE HANDOVER BETWEEN TWO ROOMS, and
+             this is the only place it can be. The walk-out has finished, the
+             room is done with, and the fade below is the room swap -- so this
+             is the one frame that is "between stage 2 and HIPÓLITO's substage".
+             ⚠️ AFTER THE FIGHT AND AFTER THE WALK-OUT, both of which are
+             untouched: *"the player should still beat the horacio boss, and
+             leave the stage walking, like he did before."* */
+          timeAttack.enter(PlayerPick.i);
+          phase = 'timeattack';
         } else {
           phase = 'fade';
           faded = false;
@@ -1137,6 +1238,20 @@
    * its blackest point, and stopping the bed here would leave the walk-out
    * silent for no reason.
    */
+  /**
+   * Is the room that is handing over the one the minigame plays out of?
+   *
+   * ⚠️ ASKED OF THE ROOM, NOT OF A SEGMENT. Time Attack sits in the seam BETWEEN
+   * two rooms -- after HORÁCIO, after the walk-out, before the swap into
+   * HIPÓLITO's -- and a segment cannot express that: a segment only ever sits
+   * between two other segments of the SAME room, which is what put the first
+   * version between the last arena and HORÁCIO.
+   */
+  function timeAttackDue() {
+    const r = stage.room();
+    return !!(r && r.timeAttackOnExit && TimeAttack.enabled());
+  }
+
   function endBossMusic() {
     /* ⚠️ THIS USED TO BE GATED ON `VICTORY_STING.on`, WHICH WAS A BUG WAITING
        FOR SOMEONE TO SWITCH THE FANFARE OFF. The flag read as "play the win

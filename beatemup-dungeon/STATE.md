@@ -8179,6 +8179,323 @@ whole fight has been in since it was built.
 
 ---
 
+## TIME ATTACK — the minigame inside the minigame (2026-09-08)
+
+*"time attack will basically be still life but with a different background,
+different assets etc... this minigame should be between stage2 and horacio's
+substage."* It exists, end to end, and has **never been played** — see Open.
+
+### The finding that made it small: the assets were drawn to Still Life's spec
+
+`batidao-plane-lebron-01..06` and `-ipaneima-01..06` are **660x507, six frames,
+frame-for-frame the same poses and registration as `saborosa-plane-lemon-NN.png`**
+— Still Life's `CH_FRAMES: 6` PITCH poses, `CH_REST: 3` level. Verified by
+compositing the two sets side by side, not assumed. So they are two more
+`CHARACTERS` entries and not a pack to cut, and there are exactly two because
+they are the game's two PLAYER packs (coconut/LEBRON, coconutStrong/IPANEIMA —
+checked against `CONFIG.CHARACTERS[k].name`).
+
+⚠️ **AND STILL LIFE'S ENTITIES ARE CONFIG-INJECTED, WHICH IS WHY THIS WAS A PORT
+AND NOT A REWRITE.** `Plane`, `Fly` and `Coin` are `constructor(assets, cfg)`
+with **zero** references to a global CONFIG and zero to `window`/`document` (the
+greps that look like hits are all the word "window" in prose). They copied
+across as `ta-plane.js`, `ta-fly.js`, `ta-coin.js` — renamed only — and take
+`CONFIG.TIME_ATTACK` while Still Life's copies take their own. **Do not reach
+for a global CONFIG in those three files**; that one line ends the arrangement.
+
+⚠️ **THE 100 INHERITED KNOBS WERE EXTRACTED, NOT RETYPED.** Every `cfg.X` the
+three classes read was pulled out of the ported files, looked up in
+`flying-dungeon/src/config.js` and written into `CONFIG.TIME_ATTACK`
+programmatically. All 100 resolved. So the mode's feel is Still Life's TUNED
+feel; the only untuned numbers in the block are the five in `ROUNDS`.
+
+### The rules, as asked for — Sonic 2's special stages
+
+    kill a fly     -> coinsPerFly toward the round's quota
+    shoot a clock  -> clockAddMs back on the timer
+    quota met      -> next round, which wants MORE (8 -> 14 -> 22)
+    timer out      -> the mode ends and he walks on to HORÁCIO
+
+⚠️ **THE CLOCKS ARE DRAWN BY THE COIN SPRITE AND THAT IS NOT A BODGE.**
+`saborosa-coin-time.json` already names a `clockFace` range (frames 1-11 of 22)
+against a `fruitFace` — the coin was cut with a CLOCK on one side, for Still
+Life's shoot-a-coin-to-rewind mechanic, and nothing over there ever read those
+ranges. So *"os relógios"* are drawn by art that already exists and already
+means time. **A dedicated clock sprite is one asset swap and no code.**
+
+⚠️ **IT CANNOT BE LOST AND IT GRANTS NO EXTRA LIFE** — *"don't add extra lifes
+please, the game doesn't need it."* Running the clock out is not a failure
+state, it is the end of the mode. Nothing about lives, continues or game over is
+reachable from inside it, and that is worth keeping true: the moment it can cost
+something it becomes a wall in front of a boss. `planeHealth: 0` says the same
+thing about the plane — nothing here shoots back, so the whole ported
+hurt/fall/wear path is simply never entered.
+
+### Where it sits — and it is a ROOM EXIT, not a segment
+
+    desert arenas -> HORÁCIO -> walk-out -> [ TIME ATTACK ] -> fade -> HIPÓLITO's room
+
+⚠️ **THE FIRST ASK SAID "HORÁCIO" AND MEANT "HIPÓLITO".** *"this minigame should
+be between stage2 and horacio's substage"*, corrected the same day to
+*"i MEANT HIPOPLITO substage"*. HORÁCIO is stage 2's OWN boss — inside the desert
+room — so that reading put the minigame between the last arena and him, and
+produced the two complaints that followed: *"as soon as I beat the last enemy
+from the final arena of stage2, I get teleported to the time attack stage"* and
+*"the player should still beat the horacio boss, and leave the stage walking,
+like he did before."*
+
+⚠️ **AND THAT IS WHY IT CANNOT BE A SEGMENT.** A segment only ever sits between
+two segments of the SAME room. What was wanted is the seam between two ROOMS,
+and in this game that seam is the walk-out — which is a PHASE. So
+`ROOMS[1].timeAttackOnExit` is a room flag, and `game.js` splices the mode in at
+the one frame where the walk-out has finished and the fade has not started.
+**The fight, the walk-out and every part of the desert are untouched.**
+
+⚠️ **AND IT LEADS TO THE NEXT ROOM, WIN OR LOSE, NEVER BACK TO THIS ONE** —
+*"after the time attack is over, I must go to the NEXT stage, not back to this
+one."* Running the clock out is not a failure state, so both endings go to
+`fade`, which is exactly where the walk-out would have gone on its own.
+
+⚠️ **THE RESULT IS THAT `stage.js` IS BYTE-IDENTICAL TO WHAT IT WAS.** The first
+version added a segment kind and a `finishTimeAttack()` to it; both are gone.
+Across the whole feature the only line REPLACED anywhere in the game is
+`index.html`'s script list — everything else is pure addition. That is the honest
+answer to *"I think your changes might have broken the rest of the game."*
+
+### Four things that were caught before they shipped
+
+1. ⚠️ **`fly` WAS ALREADY TAKEN.** This game has a `fly` key — the scenery
+   swarm, `FLIES.SHEET`, drawn in every level — so loading Still Life's mosca
+   under it would have silently repainted the background flies of the whole game
+   with a different insect. The ports read their keys from config now
+   (`keyFly`/`keyFlyDead`/`keyCoin`), defaulting to Still Life's.
+   ⚠️ **`boom` IS DELIBERATELY SHARED**: it is the same file with byte-identical
+   `BOOM_RECTS` (checked), and this game has a VRAM history — a duplicate atlas
+   for a tidy prefix is the wrong trade.
+2. ⚠️ **THE BUILD WOULD NOT HAVE BUILT.** `TIME_ATTACK.ASSET_BASE` started as
+   `'../assets-v2/beatemup-dungeon/'`, and `package.sh` **refuses to ship** if
+   any `KEY: '../assets…'` assignment survives its rewrite. They are `v2:`
+   prefixes now, which go through `Assets.resolve` and follow the rewrite free.
+3. ⚠️ **THE PLANES WOULD HAVE 404'd IN THE BUILT GAME ONLY.** `TaPlane.load()`
+   fetches its own frames, and **package.sh copies what the MANIFEST names** —
+   art a class fetches for itself is read from the repo in dev and is absent
+   from dist. That exact bug has shipped from this repo before (a build with no
+   fly sprites). The 12 planes and 6 flash frames are in `manifest.js` now,
+   under the keys `TaPlane` looks for, and `TimeAttack.load()` deliberately does
+   **not** call `plane.load()` — the key/filename shapes in the two places must
+   track each other, and a mismatch is silent.
+4. ⚠️ **THE RENAME MISSED THE STATIC REFERENCES.** `class Plane` and `new Plane(`
+   were rewritten; `Plane.NO_INPUT` and `Coin._widest` were not, and the mode
+   threw `ReferenceError` on its first update. Found by rendering it, not by
+   reading it — a regex rename is not a rename.
+
+### A held trigger, which the fighting deliberately does not have
+
+`Input` gained `firing` beside `takeAttack()`. The punch is an EDGE on purpose
+(a held punch mashes or eats the combo); a hitscan beam is the opposite. ⚠️ **The
+held flag is set BEFORE the `e.repeat` guard** — autorepeat is exactly what a
+hold looks like to the DOM, so a flag set after it would never be re-armed and a
+hold would read as one frame. Proven additive: on autorepeat `firing` stays true
+while `takeAttack()` stays false. `flush()` clears it, or a pause taken
+mid-burst would resume with the gun stuck on.
+
+### ⚠️ IT SHIPPED BROKEN, AND ALL OF IT WAS ONE UNIT AND ONE ORDERING
+
+Reported within the hour: *"time attack is completely bugged, I get this screen,
+I can't see any plane, the flyes are all stuck in the left"*, *"after playing the
+time attack stage, stage 2 camera was completely busted"*, and *"you switch
+stages even before the boss horacio coming in."*
+
+**1. ⚠️ THE TWO GAMES DISAGREE ABOUT WHAT `dt` IS.** Still Life's loop is
+`const dt = now - last` -- **milliseconds** -- and every ported entity divides by
+1000 internally (`const s = dt / 1000`). This game's is
+`Math.min(0.05,(now-last)/1000)` -- **seconds**. Handing one to the other ran the
+whole mode **1000x too slow**, and it presented as four unrelated bugs: the intro
+card was a 900-SECOND card, the clock sat unmoving on 30.0, the plane was still
+off-screen in a 1035-SECOND fly-in, and the flies barely crawled. **One number.**
+The conversion now lives at the boundary in `TimeAttack.update`, which takes
+SECONDS like every other update in this game and speaks MILLISECONDS inward,
+where every knob is already named `...Ms`.
+
+⚠️ **AND THE PREVIEW COULD NOT SEE IT, BECAUSE THE PREVIEW FED IT 16.67 BY
+HAND.** The harness passed milliseconds directly, so every frame looked perfect
+while the real caller was passing 0.0167. **A preview that supplies its own
+timebase is not testing the timebase.** Drive a ported system with the HOST's
+own dt or do not believe the picture. Cf. *preview_before_playing*: this is a new
+way for a preview to lie and it is the most expensive one so far.
+
+**2. ⚠️ STILL LIFE'S WORLD IS A TORUS.** `TaFly`/`TaCoin` wrap `x` modulo the
+`worldW` they are handed, and the render draws the ±worldW copies. `worldW` here
+is the CANVAS, so spawning "just off the right edge" at `GAME_W + 90` was wrapped
+to **x = 90** on the entity's own first update -- every fly pinned to the left of
+the screen. The field is a wrap-around SCREEN now and spawns inside it
+(`spawnFromRel`/`spawnToRel`). ⚠️ The old `x < -200` cull could never fire on a
+torus, which would have quietly capped the field at its first population.
+
+**3. ⚠️ THE SEGMENT ENTERED HORÁCIO BEFORE THE MINIGAME RAN, AND THAT WAS BOTH
+REMAINING BUGS.** The first version did `index++` and `_enter` on the frame the
+segment fired, on the reasoning that "the arena is built and waiting". It is the
+wrong reasoning: `_enter` resolves the boss arena's `lockX` against a player
+position that is about to stop meaning anything, and it spawns into a world then
+frozen for the length of a minigame -- hence a busted stage 2 camera. And it
+returned `r || 'timeattack'`, so **any event `_enter` produced was returned
+INSTEAD of the minigame's** and `game.js` read it as a room change -- hence
+switching stages before the boss. The stage now stays PUT while the mode runs and
+`game.js` calls `Stage.finishTimeAttack()` on the way out, which does exactly
+what the `scroll` branch does when it completes. HORÁCIO is fought and walked out
+of as he always was.
+
+**THE STANDING LESSON: a ported system's CONTRACT is not just its function
+signatures.** All three of these were contracts the classes never state in their
+parameter lists -- what a `dt` means, what a `worldW` means, and when a segment
+may be entered. The signature matched perfectly in every case, which is exactly
+why the port looked finished.
+
+### The pass after it was played (2026-09-08)
+
+*"make the flyes 50% smaller only in the time attack. also when they die, the
+fall of the screen, don't keep showing them. Also, a lot of flyes are off screen
+... can you like 'unzoom' the video and show everything on screen?"* and *"when
+the time attack ends, the screen goes back to the second stage, I see it briefly,
+like for half a second."*
+
+* **`flyScale` 0.091 -> 0.0455**, in TIME ATTACK's block only -- Still Life's is
+  untouched, which is what the config-injected port is for. ⚠️ The hitbox follows
+  for free: `_scale()` derives from this and `boxes()` from that.
+* ⚠️ **THE CORPSES WERE THE "OFF SCREEN" BUG, AND THEY WERE TWO QUESTIONS.** In
+  Still Life a landed body is deliberately **not dead** -- `isLanded()` and
+  `isDead()` are separate states so the corpse PILE on the dungeon floor keeps
+  being drawn. Here `corpsePlaneTop/Bottom` (0.899..1.0 of the world) put every
+  kill on the bottom edge of the screen, half out of frame, for ever. The floor
+  is now **below the canvas** (1.15..1.3) so the body finishes its arc out of
+  shot, and the mode drops `isLanded()` as well as `isDead()`. **The fall is
+  kept, the pile is not.**
+* ⚠️ **AND NOTHING ELSE WAS OFF-SCREEN -- MEASURED, NOT ASSUMED.** A 15-second
+  probe run with the gun held down: **zero** frames with a live fly outside
+  [0, 720], max y **680**, which is exactly the `m = 40` bound `TaFly` enforces
+  against `worldH`. The vertical camera the report suspected does not exist here
+  (`camY` is 0 and there is no pan); the browsable world was Still Life's.
+* ⚠️ **THE VIDEO IS NOT ZOOMED, AND THE NUMBERS SAY SO.** `_drawPlate` covers:
+  the plate is 848x478 (1.7741) against a 1280x720 canvas (1.7778), so the cover
+  scale is 1.5094 and it crops **1.5px of height -- 0.21% of the frame**. And
+  `fit()` uses `Math.min(sx, sy)`, so the browser letterboxes the canvas and
+  never crops it either. There was nothing to unzoom; the frame was always all
+  there. What made it read as cropped was the row of corpses on the bottom edge.
+* ⚠️ **THE FLASH OF THE DESERT WAS THE FADE DRAWING THE WORLD.** `fade` renders
+  the level for its first half and swaps rooms at the blackest point -- correct
+  for a walk-out, where that half is the level dimming behind the player, and
+  wrong coming out of a minigame, where it is a room the player has already left.
+  It is now entered at `phaseT = fadeMs/2000`, so the swap happens on the first
+  fade frame and only the fade-IN remains. The number is read the same way the
+  fade reads it, so re-timing `fadeMs` moves both.
+
+⚠️ **AND THE PROBE FOUND A BUG NOBODY HAD REPORTED YET: the clocks paid per
+DAMAGE TICK.** `TaCoin.hit()` returns true on every tick that lands and a coin
+has `coinHealth` 7 of them, so one clock was worth 7 x `clockAddMs` = **35
+seconds**, and a held trigger took a 30s round to **97s** in twelve seconds of
+play. The i-frames rate-limit DAMAGE, which is all they were ever for; they are
+not a payout policy. It pays once now, on the transition from shootable to
+destroyed. **This is what a probe run buys that a screenshot does not** -- it was
+invisible in every still.
+
+### ⚠️ "A lot of flies are off screen" was the HUD, not the flies
+
+The report was *"the time attack has 8 flies, but I only saw 4, I navigated to
+all corners of the stage and didn't see any new flies, so my conclusion is, they
+must be flying off screen."* **Nothing was off screen.** The corner read
+`0 / 8` and that is the round's KILL QUOTA -- round 1 wants 8 kills and keeps
+`ROUNDS[0].flies` (4) in the air at once, topping up as they die. Read as a
+census it says eight flies exist and four are missing, which is a perfectly
+reasonable reading of two numbers with no noun between them.
+
+⚠️ **A NUMBER ON A HUD WITH NO NOUN GETS GIVEN ONE BY THE PLAYER**, and the one
+they pick will be the one that fits what is on screen. It reads `MOSCAS 4/8` now
+and the opening card states the goal outright -- `TIME ATTACK / MATE 8 MOSCAS` --
+so the target is known before the round starts instead of inferred from a counter
+in the corner. `quotaLabel` is config, and ⚠️ it must be changed in the same edit
+as `coinsPerFly`: at 1 a coin IS a fly and MOSCAS is true; above 1 the counter
+would be counting coins while calling them flies.
+
+⚠️ **AND I FIXED THE WRONG BUG FIRST.** The same words -- "off screen" -- had
+already been answered with the corpse pile, which was real and was a different
+thing. The measurement that closed it (zero live flies outside the frame) was
+correct and did not answer what was actually being asked. **A confirmed
+measurement can still be an answer to the wrong question; the report said EIGHT,
+and nothing in that investigation ever accounted for the eight.**
+
+If a busier field is wanted, `ROUNDS[n].flies` is the knob (4 / 5 / 6 now) and it
+is independent of the quota.
+
+### ⚠️ The beam hit EVERYTHING, and it was the one function I retyped
+
+*"when I fire, I hit everything on screen, not only things on the same Y position
+as the aircraft."*
+
+`TaFly.boxes()` and `TaCoin.boxes()` return **`{x, y, w, h}`**. The ray test in
+time-attack.js was hand-written against **`{x0, y0, x1, y1}`** — so every
+comparison was `undefined > number`, every one was false, and the guard, being a
+negation of an OR, inverted to **always true**. The beam hit every fly and every
+clock on screen no matter where the plane was pointing. ⚠️ **Nothing errored,
+because reading a missing property is not an error — it just quietly makes a
+boolean say yes.** Fixed by copying Still Life's `rayHitsBox` verbatim, which is
+what should have happened in the first place.
+
+Measured before and after, 15s with the trigger held and the plane never moved:
+**31 kills → 2**. And a direct table on the function itself: on the line ahead
+hits; behind the nose, 200px above, 200px below and 40px off the line all miss;
+the edge of the beam's thickness hits.
+
+⚠️⚠️ **THIS IS THE THIRD TIME THE SAME LESSON HAS COST A SESSION, AND IT IS
+GETTING SHARPER EACH TIME.** Three whole classes ported across untouched and
+behaved perfectly. What broke, every time, was a contract that is not in a
+signature: what a `dt` MEANS (ms vs s), what a `worldW` MEANS (a torus), and now
+what a box's FIELDS are called. **The four-line function I rewrote from memory is
+the one that broke, while the 1300 lines I copied did not.** Port the small
+pieces too — especially the small pieces, because they are the ones that look too
+trivial to be worth copying.
+
+### The DEV keys became a table, and C got its scanline
+
+*"create a key so I can access the time attack stage in dev mode, like add it to
+3 ... so hipolito substage goes to 4, then stage 3 goes to 5"* and *"add the
+debug scanline that we had in still life, so we can see it with the C debug
+key."*
+
+`CONFIG.DEV.JUMPS` = `[0, 1, 'timeattack', 2, 3]`. ⚠️ **A TABLE, NOT ARITHMETIC.**
+The key WAS the room index — `key - 1`, computed in input.js — and the minigame
+is not a room, so any arithmetic that made space for it puts a silent off-by-one
+between what a key is called and what it opens. input.js still hands back a
+SLOT; what a slot means is decided in game.js, which is where the one thing that
+is not a room can be handled. ⚠️ Key 3 enters the DESERT first and then opens the
+mode, because the mode's exit is a room CHANGE — it fades to the room after the
+one it was entered from — and the desert is found by its `timeAttackOnExit` flag
+rather than an index.
+
+The C overlay is Still Life's, ported with everything else: fly boxes, clock
+boxes, the plane's hitbox, the fly field and spawn window, a state readout, and
+the scanline at its true `rayThickness`. ⚠️ **The line drawn is the very `ray`
+object `_shoot()` built**, kept on the instance for exactly that — an overlay
+that recomputes what it inspects can agree with itself while disagreeing with the
+game, which is the one thing it exists to rule out. ⚠️ **And it would have shown
+the beam bug in one second**: the line was visibly nowhere near the flies that
+were dying. Non-geometric conditions are drawn dim rather than omitted, so a fly
+that cannot be hit because it is already dying looks different from one that is
+simply out of the line.
+
+### Previewed, not played
+
+Rendered by the mode's own classes, from the real config, loading **exactly what
+`assetManifest()` emits** — 23 entries, zero missing, zero errors, the clock
+observed rising past its start because a shot clock paid out.
+⚠️ **What the preview could NOT do is play the video**: headless Chrome here
+will not decode h264 (`readyState` sticks at 1 = metadata) and the plate blit
+draws nothing from that, silently. One real frame of the plate stood in, wearing
+the two properties `_drawPlate` reads, so the cover maths and the draw order are
+the mode's own code and only the stream is fake. **Motion is exactly what it
+cannot show.**
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**

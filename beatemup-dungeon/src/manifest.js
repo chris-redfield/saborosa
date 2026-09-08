@@ -163,6 +163,55 @@ function assetManifest() {
     out.push({ key: 'pauseWords', src: P + '-sprites.json', how: 'json' });
   }
 
+  /* TIME ATTACK -- the minigame between the desert and HORÁCIO. The PLANE art
+     is NOT here: `TaPlane.load()` walks CHARACTERS x CH_FRAMES and builds its
+     own keys, which is how Still Life has always loaded it. What the manifest
+     needs is everything a BUILD has to copy, so the plate is listed here and the
+     planes are handled by `package.sh` copying the folder they live in.
+
+     ⚠️ THE KEYS ARE `ta:`-PREFIXED because `fly` is already taken by the scenery
+     swarm -- see the note in CONFIG.TIME_ATTACK. ⚠️ AND `boom` IS NOT LISTED
+     AGAIN: the mode reads the one this game already loads, on purpose. */
+  if (CONFIG.TIME_ATTACK && CONFIG.TIME_ATTACK.on !== false) {
+    const T = CONFIG.TIME_ATTACK;
+    if (T.PLATE) out.push({ key: 'taPlate', src: T.PLATE, how: 'video' });
+    /* ⚠️ THE PLANE FRAMES ARE LISTED HERE EVEN THOUGH `TaPlane.load()` CAN
+       FETCH THEM ITSELF, and that is the whole point. `package.sh` copies what
+       the MANIFEST names; art loaded by a class at runtime is read straight out
+       of the repo in dev and is simply absent from the build. That exact bug has
+       shipped from this repo before -- a built game with no fly sprites -- and
+       it cannot be caught by playing the dev version.
+
+       ⚠️ SO `TimeAttack.load()` DOES NOT CALL `plane.load()`: these keys are
+       what `TaPlane` looks for, so the boot loader filling them is enough, and
+       calling both would decode every frame twice.
+
+       ⚠️ THE KEY AND FILENAME SHAPES ARE COPIED FROM `TaPlane.load()` AND MUST
+       TRACK IT -- `plane_<name>_<i>` and `<prefix><name>-<NN>.png`. A mismatch
+       is silent: the loader fills keys nothing reads and the plane draws
+       nothing. `planeWearSheets` is false and has no art, so only the pristine
+       pack is listed; that is the same condition the class applies. */
+    const dir = (T.ASSET_BASE || '') + (T.planeDir || 'character-sheets/');
+    const pre = T.planeFilePrefix != null ? T.planeFilePrefix : 'saborosa-plane-';
+    for (const nm of (T.CHARACTERS || [])) {
+      for (let i = 0; i < (T.CH_FRAMES || 0); i++) {
+        const n = String(i + 1).padStart(2, '0');
+        out.push({ key: 'plane_' + nm + '_' + i, src: dir + pre + nm + '-' + n + '.png', how: 'image' });
+      }
+    }
+    /* THE MUZZLE FLASH, still Still Life's -- there is no TIME ATTACK fire art
+       and the flash is welded to the nose by gunAnchorX/Y, measured against a
+       660x507 plane, which these are. */
+    for (let i = 0; i < (T.GUN_FRAMES || 0); i++) {
+      const n = String(i + 1).padStart(2, '0');
+      out.push({ key: 'gun_' + i, src: (T.gunBase || dir) + 'saborosa-plane-fire-' + n + '.png', how: 'image' });
+    }
+    if (T.FLY_SHEET) out.push({ key: T.keyFly || 'fly', src: T.FLY_SHEET, how: 'image' });
+    if (T.FLY_DEAD_SHEET) out.push({ key: T.keyFlyDead || 'flyDead', src: T.FLY_DEAD_SHEET, how: 'image' });
+    for (const k in (T.COIN_SHEETS || {}))
+      out.push({ key: (T.keyCoin || 'coin_') + k, src: T.COIN_SHEETS[k], how: 'image' });
+  }
+
   /* The SABOROSA logo, for the front door. `image` rather than `big`: it is
      705x166 and drawn at 666 wide, so there is nothing to downscale. */
   if (CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.SHEET) {

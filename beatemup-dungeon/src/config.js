@@ -127,6 +127,28 @@ const CONFIG = {
        through the bookcase's, and "4 the boss room" through the swap that made
        HIPÓLITO a mid-game stage. Touch the order and fix this line FIRST. */
     startRoom: 0,
+    /* ⚠️ WHAT EACH NUMBER KEY JUMPS TO, BY KEY -- 1 is the first entry. A number
+       is a `ROOMS` index; the string `'timeattack'` opens the minigame instead.
+       Asked for 2026-09-08: *"create a key so I can access the time attack stage
+       in dev mode, like add it to 3 ... so hipolito substage goes to 4, then
+       stage 3 goes to 5."*
+
+           1  street        2  desert (HORÁCIO)   3  TIME ATTACK
+           4  HIPÓLITO      5  the library
+
+       ⚠️ IT IS A TABLE BECAUSE THE KEYS AND THE ROOMS NO LONGER LINE UP. It used
+       to be arithmetic -- `key - 1` WAS the room index, in input.js -- and the
+       minigame is not a room, so any arithmetic that made room for it would put
+       a silent off-by-one between what a key is called and what it opens. A
+       list says outright what each key does and is one edit when a room moves.
+
+       ⚠️ `'timeattack'` PUTS THE PLAYER IN THE DESERT FIRST and then opens the
+       mode, because the mode's exit is a room CHANGE -- it fades to the room
+       after whichever one it was entered from. Jumping straight into it from
+       nowhere would fade into whatever room the stage happened to be sitting on.
+       game.js finds the desert by its `timeAttackOnExit` flag rather than by an
+       index, so this stays right if the rooms are ever reordered. */
+    JUMPS: [0, 1, 'timeattack', 2, 3],
   },
 
   /* The MAIN GAME's assets — the character packs live here, and we read them
@@ -987,6 +1009,27 @@ const CONFIG = {
       name: 'desert',
       plate: 'desertPlate',
       startX: 220,
+      /* ⚠️⚠️ TIME ATTACK PLAYS AS THIS ROOM HANDS OVER -- after HORÁCIO is
+         beaten and after the walk-out, and before the fade into HIPÓLITO's
+         room. *"this minigame should be between stage2 and HIPOLITO substage"*,
+         corrected 2026-09-08 (the first ask said HORÁCIO and it was a slip).
+
+         ⚠️ IT IS A ROOM-EXIT FLAG AND **NOT A SEGMENT**, and the first version
+         was a segment -- which put it between the last arena and HORÁCIO and
+         produced exactly the two complaints that followed: *"as soon as I beat
+         the last enemy from the final arena of stage2, I get teleported to the
+         time attack stage"* and *"the player should still beat the horacio
+         boss, and leave the stage walking, like he did before."* A segment can
+         only ever sit BETWEEN two segments; what was wanted is the seam BETWEEN
+         TWO ROOMS, and that seam is the walk-out, which is a phase and not a
+         segment. So the fight, the walk-out and everything about this room are
+         untouched, and the minigame is spliced into the handover.
+
+         ⚠️ AND IT LEADS TO THE NEXT ROOM, NEVER BACK TO THIS ONE -- win or
+         lose. *"after the time attack is over, I must go to the NEXT stage, not
+         back to this one."* game.js goes straight to `fade` from it, which is
+         the same room swap the walk-out would have reached on its own. */
+      timeAttackOnExit: true,
       /* ⚠️ SILENT, AND THAT IS `false` RATHER THAN AN ABSENT FIELD. Requested
          2026-08-27: "remove the main song from the desert level, we will use
          other songs later". Leaving `music` out is the OTHER thing — it means
@@ -3575,6 +3618,340 @@ const CONFIG = {
      is perfectly predictable -- every other knockdown the same sound -- which
      is the pattern an ear finds fastest. */
   ENEMY_HIT_SFX: ['enemyHit'],
+
+
+  /* =========================================================================
+     TIME ATTACK  (2026-09-08) -- the minigame inside the minigame
+     =========================================================================
+     *"time attack will basically be still life but with a different
+     background, different assets etc."* -- and it is literally that: the plane,
+     the flies and the coins are STILL LIFE'S OWN CLASSES, ported into
+     `src/ta-plane.js`, `ta-fly.js` and `ta-coin.js`, driven by this block.
+
+     ⚠️ EVERY NUMBER BELOW UNDER "INHERITED" IS STILL LIFE'S TUNED VALUE, NOT A
+     GUESS. The three classes are config-injected -- `constructor(assets, cfg)`,
+     no global CONFIG anywhere in them -- so the port was a copy and the knobs
+     came across with it, read out of `flying-dungeon/src/config.js` rather than
+     retyped. That is the whole reason this was cheap. **A number here that
+     differs from that game's is a DECISION and is commented as one.**
+
+     WHERE IT HAPPENS: `ROOMS[1].segments`, between the last desert arena and
+     HORÁCIO -- *"this minigame should be between stage2 and horacio's
+     substage"*. It is a segment `{kind:'timeattack'}`, which is how the desert
+     already sequences its walks, arenas and its boss; `stage.js` returns the
+     event and `game.js` runs it as a PHASE, the same shape the lift ride uses.
+
+     THE RULES, AS ASKED FOR -- Sonic 2's special stages:
+       *"Varios rounds cada um vc precisa pegar mais moedas em comparacao ao
+       round anterior. Tem que matar as moscas dentro do limite de tempo. Pode
+       ganhar mais tempo acertando os relogios."*
+
+       * ROUNDS, each wanting MORE coins than the one before -- `ROUNDS` below.
+       * COINS COME FROM KILLING FLIES (`coinsPerFly`). That is what reconciles
+         the two sentences: the goal is counted in coins, and flies are how you
+         earn them.
+       * CLOCKS BUY TIME (`clockAddMs`). ⚠️ AND THEY ARE DRAWN WITH THE COIN
+         SPRITE, which is not a bodge: `saborosa-coin-time.json` already names a
+         `clockFace` range (frames 1-11 of the 22) against a `fruitFace` -- the
+         coin was cut with a CLOCK on one side, for Still Life's shoot-a-coin-to-
+         rewind mechanic. So "os relogios" are drawn by art that already exists
+         and already means time. ⚠️ IF A DEDICATED CLOCK SPRITE IS EVER DRAWN it
+         is one asset swap here and no code.
+       * ⚠️ IT CANNOT BE LOST, AND IT GRANTS NO EXTRA LIFE. Ruled 2026-09-08:
+         *"don't add extra lifes please, the game doesn't need it."* Running the
+         clock out ends the mode and the player walks on to HORÁCIO. What it
+         pays is POINTS -- *"os pontos podem dar a nota A e o zeramento da
+         cerveja no final"*.
+       * ⚠️ THE PLANE CANNOT DIE HERE EITHER, and that is `planeHealth: 0`
+         below rather than a branch: nothing in this mode shoots back, so its
+         damage path is simply never entered. See the note there.
+
+     THE BACKGROUND is `time-attack-1-plate.mp4`, cut by
+     tools/build-time-attack-plate.py from the filmed stone orbit. ⚠️ IT LOOPS
+     ON ITSELF -- the camera never returns to its start (measured; there IS no
+     matching position in that footage) so it is trimmed to constant pan speed
+     and wrap-crossfaded. Read that tool's header before recutting it.
+     ⚠️ AND IT IS A PLAIN `<video loop>`, NOT the game's `Backdrop`: that class
+     scrubs a plate by CAMERA POSITION and this mode has no camera to scrub
+     with. See src/time-attack.js. */
+  TIME_ATTACK: {
+    on: true,
+
+    /* --- WHAT THE PLAYER FLIES ------------------------------------------
+       ⚠️ THE TWO PLANE PACKS ARE THE TWO PLAYER PACKS -- LEBRON and IPANEIMA,
+       the same pair Tab swaps between in the beat 'em up, which is why the
+       artist drew exactly two. They are 660x507 with SIX PITCH POSES in Still
+       Life's own order and registration (verified by compositing them against
+       `saborosa-plane-lemon-NN.png`), so they are `CHARACTERS` entries and not
+       a pack to cut. `CH_REST: 3` is the level pose. */
+    CHARACTERS: ['lebron', 'ipaneima'],
+    CH_FRAMES: 6,
+    CH_REST: 3,
+    /* ⚠️ WHICH PLANE FLIES IS THE PLAYER'S CURRENT PACK, not a pick: the
+       minigame interrupts a fight, so asking them to choose here would be a
+       menu in the middle of a level. `null` follows the pack; an index forces
+       one. */
+    character: null,
+
+    /* --- WHERE THE ART IS ------------------------------------------------
+       ⚠️ THE PLANES AND THE PLATE ARE THIS GAME'S; THE MUZZLE FLASH, THE FLIES,
+       THE COINS AND THE BURST ARE STILL LIFE'S, READ IN PLACE out of that
+       game's folder exactly as the health bar, the gamepad map and the game
+       over vermin already are. There is no TIME ATTACK fire art and the flash
+       is welded to the nose by `gunAnchorX/Y`, measured against a 660x507
+       plane -- which these planes are. */
+    /* ⚠️ `v2:` PREFIXES, NOT `../assets-v2/...`. Two reasons, and the first one
+       is a build that would not have built: `package.sh` rewrites the two
+       ASSET*_BASE assignments for the dist folder and then REFUSES TO SHIP if
+       any `KEY: '../assets…'` assignment is left in config.js. A hardcoded path
+       here trips that guard. `v2:` goes through `Assets.resolve`, which reads
+       `ASSET_V2_BASE` -- so these follow the rewrite for free, in dev and in the
+       build. See the note at the top of package.sh. */
+    ASSET_BASE: 'v2:beatemup-dungeon/',
+    planeDir: 'time-attack/',
+    planeFilePrefix: 'batidao-plane-',
+    gunBase: 'v2:flying-dungeon/character-sheets/',
+    PLATE: 'v2:beatemup-dungeon/time-attack/time-attack-1-plate.mp4',
+    /* THE FLIES AND THE COINS, read in place out of Still Life's folder. */
+    FLY_SHEET:      'v2:flying-dungeon/enemy-sheets/saborosa-mosca.png',
+    FLY_DEAD_SHEET: 'v2:flying-dungeon/enemy-sheets/saborosa-mosca dead.png',
+    COIN_SHEETS: { '01': 'v2:flying-dungeon/coin/saborosa-coin-time-01.webp' },
+    /* ⚠️ THE ASSET KEYS ARE NAMESPACED, AND THAT IS A COLLISION FIX. This game
+       ALREADY has a `fly` key -- its scenery swarm, `FLIES.SHEET`, drawn by
+       src/flies.js in every level -- so loading Still Life's mosca under that
+       name would silently repaint the background flies of the whole game with a
+       different insect. Nothing would error. The ported classes read these
+       names from config and default to Still Life's, so that game is untouched.
+
+       ⚠️ `keyBoom` IS DELIBERATELY *NOT* NAMESPACED. This game's `BOOM_SHEET`
+       is the very same `v2:flying-dungeon/saborosa-boom.webp` with
+       byte-identical `BOOM_RECTS` (checked, not assumed), so pointing at the
+       loaded one shares a texture instead of paying for a second copy of it.
+       This game has a history of running out of VRAM on old cards -- see
+       PERFORMANCE.md -- and a duplicate atlas for the sake of a tidy prefix is
+       exactly the wrong trade. */
+    keyFly:     'ta:fly',
+    keyFlyDead: 'ta:flyDead',
+    keyCoin:    'ta:coin_',
+    keyBoom:    'boom',
+
+    /* --- THE ROUNDS ------------------------------------------------------
+       Sonic 2's shape: clear the quota and the next round wants more. `coins`
+       is the quota, `timeMs` is what you get to do it in, `flies` is how many
+       are in the air at once and `clocks` how many time pickups are out.
+
+       ⚠️ THE QUOTA RISES AND THE CLOCK DOES NOT. That is the difficulty curve
+       and it is the whole design -- a round that gave more time for more coins
+       would be the same round three times. `clockAddMs` is the player's answer
+       to it.
+
+       ⚠️ THESE FIVE NUMBERS ARE THE ONLY UNTUNED THINGS IN THIS BLOCK. Everything
+       else came from Still Life already balanced; this is new and has never been
+       played. Expect to move it. */
+    ROUNDS: [
+      { coins:  8, timeMs: 30000, flies: 4, clocks: 1 },
+      { coins: 14, timeMs: 30000, flies: 5, clocks: 2 },
+      { coins: 22, timeMs: 30000, flies: 6, clocks: 2 },
+    ],
+    /* ⚠️ WHAT A FLY IS WORTH, and the reason the quota is in coins at all.
+       At 1 the quota IS a fly count; above 1 the two come apart and `ROUNDS`
+       has to be re-read. */
+    coinsPerFly: 1,
+    /* WHAT THE HUD CALLS THE QUOTA. ⚠️ IT MUST AGREE WITH `coinsPerFly`: at 1 a
+       coin IS a fly and MOSCAS is the truth, which is why the card reads "MATE 8
+       MOSCAS". Set `coinsPerFly` above 1 and the two come apart -- the counter
+       would be counting coins while calling them flies -- so change this to
+       MOEDAS in the same edit. The bare `0 / 8` this replaced was read as "8
+       flies exist, you have found 0"; a number on a HUD with no noun gets given
+       one by the player. */
+    quotaLabel: 'MOSCAS',
+    /* WHAT SHOOTING A CLOCK BUYS. ⚠️ Rate-limited for free by the coin's own
+       160ms i-frames (`coinHurtMs`) -- the beam is a hitscan re-tested EVERY
+       FRAME, so without that a held trigger would buy a minute a second. That
+       is Still Life's own lesson and the reason `hit()` returns a boolean. */
+    clockAddMs: 5000,
+    /* Time left on the board when a round is cleared, carried into the next.
+       false = every round starts on its own full `timeMs`. */
+    carryTime: false,
+    /* THE BEAT BETWEEN ROUNDS -- the board is held with the round's result on
+       it before the next one spawns. */
+    roundCardMs: 1600,
+    /* THE BEAT BEFORE THE FIRST ROUND and after the last, so the mode does not
+       start and end on a cut. */
+    inMs: 900,
+    outMs: 1200,
+
+    /* --- WHAT IT PAYS ----------------------------------------------------
+       ⚠️ POINTS ONLY -- NO EXTRA LIFE, ruled 2026-09-08. `pointsPerCoin` for
+       every coin banked and `pointsPerRound` for each quota met, so clearing
+       rounds is worth more than farming one. Read by the CLEAR board's tally.
+       ⚠️ NOTHING CONSUMES THESE YET: the rank is accuracy/health/time weighted
+       (see stats.js `rank()`), and folding a points term into it is a change to
+       a curve that was tuned in play -- deliberately NOT bundled in here. */
+    pointsPerCoin: 100,
+    pointsPerRound: 1000,
+
+    /* --- THE FIELD -------------------------------------------------------
+       Flies and clocks are spawned into the canvas, not a world: there is no
+       camera in this mode, so `worldW` is the canvas and camX/camY are 0. The
+       entities take those as arguments, which is why they needed no edit. */
+    /* ⚠️ THE FIELD IS A WRAP-AROUND SCREEN, NOT A SCROLLING WORLD, and these
+       spawn INSIDE it. `TaFly`/`TaCoin` wrap `x` modulo the `worldW` they are
+       handed -- Still Life's world is a TORUS and its render even draws the
+       ±worldW copies -- and `worldW` here is the canvas. So the first version's
+       "spawn just off the right edge" at GAME_W + 90 was wrapped to x = 90 on
+       the entity's own first update, and every fly appeared pinned to the LEFT
+       of the screen. Reported as *"the flyes are all stuck in the left"*.
+       `spawnFrom/ToRel` open the field well right of the plane's `startX`
+       (0.35) so a new one never materialises in the player's face. */
+    spawnFromRel: 0.58,
+    spawnToRel: 0.98,
+    spawnTopRel: 0.14,     // fraction of the canvas the field starts at
+    spawnBotRel: 0.86,     // and ends at
+    respawnMs: 450,        // beat before a killed fly is replaced
+    rayThickness: 14,      // Still Life's beam width
+    rayDamage: 1,
+
+    /* --- INHERITED FROM STILL LIFE, VERBATIM -----------------------------
+       ⚠️ DO NOT "TIDY" THESE. Each one is read by name in ta-plane.js,
+       ta-fly.js or ta-coin.js -- the classes were copied unchanged, so their
+       config surface came with them. They were pulled out of
+       flying-dungeon/src/config.js programmatically, not retyped.
+       The exceptions, which ARE decisions:
+         GAME_H      720 either way, so it agrees by luck rather than by copy.
+         planeHealth 0 -- see below.
+         timeOverMs  gone: this mode's clock is `ROUNDS[n].timeMs`.
+         planeWearSheets stays false; there is no wear art for these planes. */
+    GAME_H: 720,
+    /* ⚠️ 0, AND IT IS NOT A DISABLED FEATURE. Still Life's plane has 3 health
+       and a fall-out-of-the-sky death; nothing in TIME ATTACK shoots back, so
+       `hurt()` is never called and the value is simply never read. It is 0 to
+       say so out loud: if anything here is ever given a weapon, this is the
+       line that decides whether the plane can be knocked down, and the whole
+       fall/wear/drain path below is already ported and waiting. */
+    planeHealth: 0,
+    /* --- THE PLANE -- position, entry, feel ------------------------*/
+    planeScale: 0.30720000000000003,
+    planeOffsetY: 0,
+    startX: 0.35,
+    startY: 0.7611111111111111,
+    moveSpeed: 0.3,
+    tiltMs: 110,
+    planeEntry: true,
+    planeEntryFromX: -0.55,
+    planeEntryHoldMs: 150,
+    planeEntryMs: 1035,
+    stepped: true,
+    steppedMs: 43.47826086956522,
+    /* --- THE PLANE -- damage, shake, fall --------------------------*/
+    planeHitWRel: 0.35,
+    planeHitHRel: 0.5,
+    planeHurtMs: 1100,
+    planeBlinkMs: 100,
+    planeShakeAmp: 12,
+    planeShakeFreq: 90,
+    planeShakeMs: 260,
+    planeShakeYRel: 0.55,
+    planeShakeYFreqRel: 0.7,
+    planeFallMaxMs: 3000,
+    planeFallSpin: 2.4,
+    planeFallVy0: -150,
+    planeWearSheets: false,
+    planeWearFilter: ["", "sepia(0.55) contrast(0.9) brightness(0.94)", "sepia(0.9) contrast(0.72) brightness(0.8)"],
+    planeDrainOn: true,
+    planeDrainStartMs: 60000,
+    planeDrainFullMs: 0,
+    planeDrainMax: 0.5,
+    planeDrainCurve: 1,
+    /* --- THE GUN ---------------------------------------------------*/
+    GUN_FRAMES: 6,
+    fireMs: 70,
+    gunScale: 1.3,
+    gunOffX: 12,
+    gunOffY: 5,
+    gunOffRefScale: 0.32,
+    gunAnchorX: 0.655,
+    gunAnchorY: 0.564,
+    rayOffsetY: 15,
+    /* --- THE FLIES -------------------------------------------------*/
+    FLY_RECTS: [[20, 98, 168, 181], [245, 92, 181, 192], [447, 80, 188, 222], [707, 84, 238, 225], [1002, 54, 273, 263]],
+    FLY_DEAD_RECT: [547, 102, 189, 178],
+    /* ⚠️ HALF STILL LIFE'S 0.091, ASKED FOR 2026-09-08: *"make the flyes 50%
+       smaller only in the time attack."* ⚠️ AND IT IS ONLY HERE -- that game's
+       own config is untouched, which is the entire point of the ported classes
+       being config-injected. The hit box follows it for free: `TaFly._scale()`
+       derives from this and `boxes()` derives from that, so the target shrinks
+       with the drawing and there is no second number to keep in step. */
+    flyScale: 0.0455,
+    flyHealth: 3,
+    flySpeed: 200,
+    flyVSpeed: 300,
+    flyHurtMs: 180,
+    flyHurtAlpha: 0.35,
+    flyHurtBlinkMs: 45,
+    flyKnockback: 260,
+    flyMaxTilt: 15,
+    flyTiltEase: 9,
+    flyWobbleAmp: 6,
+    flyWobbleFreq: 13,
+    flyRetargetMin: 0.25,
+    flyRetargetMax: 0.9,
+    flyLegMemory: 12,
+    flyBurstMs: 70,
+    flyGravity: 900,
+    flyHitScale: 0.8,
+    flyHitBurstFrames: 4,
+    flyHitBurstMs: 70,
+    flyHitBurstScale: 1,
+    flyCorpseLead: 500,
+    corpseBallistic: true,
+    corpseTiltDeg: 25,
+    /* ⚠️ BELOW THE CANVAS, ON PURPOSE, AND THIS IS WHERE THE CORPSES GO.
+       Asked for 2026-09-08: *"when they die, the fall of the screen, don't keep
+       showing them."* In Still Life these are the floor plane of a dungeon --
+       0.899..1.0 of the world height -- and a body that reaches it LANDS and is
+       drawn for ever, which is that game's corpse pile. Here it put a dead fly
+       on the bottom edge of the screen, half out of frame, and left it there;
+       every kill added another. That was also most of *"a lot of flyes are off
+       screen"*.
+
+       Above 1.0 the "floor" is below the visible frame, so the body finishes its
+       ballistic arc, falls out of shot, and `_land()` fires where nobody can see
+       it -- at which point `isLanded()` is true and time-attack.js drops it from
+       the list. **The fall is kept, the pile is not.** */
+    corpsePlaneTop: 1.15,
+    corpsePlaneBottom: 1.3,
+    /* --- THE CLOCK COINS -------------------------------------------*/
+    COIN_CELL: 160,
+    COIN_FRAMES: 22,
+    coinSizePx: 76,
+    coinHealth: 7,
+    coinSpeed: 120,
+    coinSpeedVar: 0.25,
+    coinHurtMs: 160,
+    coinHoldMs: 60,
+    coinHitScale: 0.72,
+    coinHitFxFrames: 4,
+    coinHitFxMs: 70,
+    coinHitFxSize: 1.3,
+    coinBoomSize: 1.7,
+    coinSpasmMs: 140,
+    coinSpasmAmp: 5,
+    coinSpasmFreq: 13,
+    coinSpasmScale: 0.12,
+    coinBobRel: 0.05,
+    coinBobMin: 6,
+    coinBobFreq: 2.52,
+    /* --- SHARED BURST/BOB ------------------------------------------*/
+    BOOM_RECTS: [[243, 234, 93, 86], [438, 179, 134, 134], [638, 143, 162, 156], [844, 128, 173, 158], [210, 380, 190, 162], [431, 363, 182, 164], [642, 347, 179, 155], [851, 335, 160, 151], [233, 619, 129, 120], [448, 610, 97, 112], [663, 616, 99, 84], [901, 615, 56, 67]],
+    boomMs: 70.9090909090909,
+    bobRel: 0.05,
+    bobMin: 6,
+    bobFreq: 2.52,
+    /* --- the rest, inherited verbatim ------------------------------*/
+    CH_FRAMES: 6,
+    CH_REST: 3,
+  },
 
   /* --- THE PAUSE SCREEN -----------------------------------------------------
      ENTER, or START on the pad. Added 2026-08-24. `on: false` takes it away and
