@@ -3476,11 +3476,11 @@ Three knobs and three pipelines.
 
 | knob | what it does |
 |---|---|
-| `MUSIC_TRACK` | **fase 1's song — Dance Saborosa** (was the six-second bed until 2026-09-08). Loaded under the key `music` |
+| `MUSIC_TRACK` | **fase 1's song — Arrocha da Serpente** (the six-second bed until 2026-09-08, then Dance Saborosa, then swapped with fase 3's later the same day). Loaded under the key `music` |
 | `BOSS_TRACK` | HIPÓLITO's song — 4m39s, played whole. Loaded under the key `musicBoss` |
 | `TITLE_TRACK` | **the title AND menu theme — Coco Nha Nha** (was MIKE). Key `musicTitle`. Unset = silent title screen |
 | `MOSCA_TRACK` | **NARUTÃO's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
-| `MUSIC_TRACKS` | **asset key → file, for every song that is not one of the four roles above** (new 2026-09-08). `musicDesert` (Sucuri), `musicLevel3` (Arrocha da Serpente), `musicEnding` (Pode Me Chamar). manifest.js walks it, so adding a song is one line here plus one `music:` on a room |
+| `MUSIC_TRACKS` | **asset key → file, for every song that is not one of the four roles above** (new 2026-09-08). `musicDesert` (Sucuri), `musicLevel3` (Dance Saborosa), `musicEnding` (Pode Me Chamar). manifest.js walks it, so adding a song is one line here plus one `music:` on a room |
 | `MUSIC_LAYERS` | **extra voices started with a track and stopped with it**, by track key. ⚠️ **Empty since 2026-09-08** — its only user was the baratas' whistle, now removed. The machinery is kept; a future layer is one entry |
 | `MUSIC_LOOP` | **where each track wraps, by asset key** — now only `musicMosca` 14.452. ⚠️ **An entry describes the FILE, not the role**: `music` and `musicTitle` were dropped on 2026-09-08 because those keys now hold finished songs. A track with no entry loops at its own end |
 | `MUSIC_GAIN` | per-track level on the music bus, by asset key. **0.72** for every in-play bed (`music`, `musicDesert`, `musicLevel3`), **0.92** for the still screens (`musicTitle`, `musicEnding`), `musicBoss` 0.85, `musicMosca` 0.68. Above 1 is allowed |
@@ -3501,21 +3501,40 @@ Three knobs and three pipelines.
 ```
 LOGO            silent -- already was
 TITLE + MENU    Coco Nha Nha          TITLE_TRACK
-FASE 1 lixao    Dance Saborosa        MUSIC_TRACK
+FASE 1 lixao    Arrocha da Serpente   MUSIC_TRACK
 NARUTAO         unchanged             MOSCA_TRACK
 FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
 HORACIO         Sucuri -- the room's own track, uninterrupted
 HIPOLITO        unchanged             BOSS_TRACK
-FASE 3 estante  Arrocha da Serpente   MUSIC_TRACKS.musicLevel3
+FASE 3 estante  Dance Saborosa        MUSIC_TRACKS.musicLevel3
 ZERAMENTO       Pode Me Chamar        MUSIC_TRACKS.musicEnding
 MISTER STOP     Cumbia Corazon -- DOCUMENTED, NOT WIRED (he does not exist)
 TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED (it does not exist)
 ```
 
+> ⚠️ **FASE 1 AND FASE 3 TRADED SONGS** later on 2026-09-08, on request. Two
+> file paths, nothing else: the keys are **roles** (`music` is the street's slot,
+> `musicLevel3` is the bookcase's), so the rooms, the gains and the loop pins all
+> stayed where they were. ⚠️ **Both landmines were checked and both were already
+> clear** — `MUSIC_LOOP` pins neither key, so each song loops at its own end, and
+> both trims are `0.72`, which holds because the six songs were normalised
+> together (Arrocha is −17.7 dBFS RMS against Dance Saborosa's −17.3, 0.25 dB
+> inside a spread the single trim already covers). **Nothing was re-derived.**
+
+> ⚠️ **THE SWAP MOVED A 67-SECOND SONG ONTO THE LONGEST LEVEL.** Dance Saborosa
+> is 66.8s and Arrocha da Serpente is 303s, so the loop that used to be on the
+> street — which the old song reached often and the new one may never reach at
+> all — is now on the **bookcase**, which is a slow climb with a 13.7s lift in
+> it. Both wraps were measured and neither is a splice: Dance Saborosa eases off
+> over its last ~200ms (−17.7 dB → −23.2) and restarts on a downbeat (−14.6 dB in
+> the first 100ms); Arrocha fades right out (−43.6 dB across its last second) and
+> comes back at −18.4. **If a loop is ever going to be noticed in this game, it
+> is Dance Saborosa's on fase 3** — that is the thing to listen for.
+
 > ⚠️ **A boss shares its room's song by declaring NOTHING.** `bossMusic()`
 > switches only for a boss carrying a `musicKey`, so HORÁCIO's arena runs the
 > desert's track straight through the fight with no fade. MISTER STOP will be the
-> other shape — his own key, because Cumbia differs from Arrocha.
+> other shape — his own key, because Cumbia differs from the room's song.
 
 > ⚠️ **THE WHISTLE WAS REMOVED THE SAME DAY IT WAS FLAGGED.** `MUSIC_LAYERS`
 > hung it off the key `music`, which became a finished song rather than the

@@ -7662,12 +7662,12 @@ the payoff of normalising — a per-track figure would pretend to a precision a
 
     LOGO            silent -- already was
     TITLE + MENU    Coco Nha Nha          TITLE_TRACK
-    FASE 1 lixao    Dance Saborosa        MUSIC_TRACK
+    FASE 1 lixao    Arrocha da Serpente   MUSIC_TRACK   <- swapped, see below
     NARUTAO         unchanged             MOSCA_TRACK
     FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
     HORACIO         Sucuri -- no theme of his own, the room's runs through
     HIPOLITO        unchanged             BOSS_TRACK
-    FASE 3 estante  Arrocha da Serpente   MUSIC_TRACKS.musicLevel3
+    FASE 3 estante  Dance Saborosa        MUSIC_TRACKS.musicLevel3  <- swapped
     ZERAMENTO       Pode Me Chamar        MUSIC_TRACKS.musicEnding
     MISTER STOP     Cumbia Corazon -- DOCUMENTED, NOT WIRED
     TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED
@@ -8000,6 +8000,58 @@ real `Pause.draw` against a plate frame, in headless Chrome, at the real config
 numbers. ⚠️ What that omits: the fighters, the HUD, and the wash over a MOVING
 frame rather than a still one. The sizes and positions are honest; how it reads
 mid-fight is not settled until someone pauses mid-fight.
+
+---
+
+## And then, same day: fase 1 and fase 3 traded songs
+
+*"at the first stage we have the song that plays there, I want you to switch that
+song with the o arrocha da serpente song, and add the song for this map wherever
+the arrocha da serpente is currently playing."* So the street plays **Arrocha da
+Serpente** and the bookcase plays **Dance Saborosa**.
+
+**IT WAS TWO FILE PATHS AND NOTHING ELSE, AND THAT IS THE POINT OF THE KEYS BEING
+ROLES.** `music` is the street's slot and `musicLevel3` is the bookcase's; the
+rooms ask for a key, the gains are keyed, the loop map is keyed. Swap the files
+behind two keys and every other spelling of the name stays correct. Had the keys
+been named for the songs, this would have been a rename across four places with
+a silent failure behind each -- a track that simply never plays, or plays at flat
+`musicVolume`.
+
+**BOTH OF THE SOUNDTRACK'S LANDMINES WERE CHECKED AND BOTH WERE ALREADY CLEAR**,
+which is the first time that has been true:
+
+* **`MUSIC_LOOP` pins neither key** -- the pins were removed when the beds became
+  finished songs, so each song loops at its own end and nothing described the old
+  file. This is exactly the failure the map exists to catch, and the map worked.
+* **Both trims are 0.72 and NEITHER WAS RE-DERIVED.** Arrocha measures −17.7 dBFS
+  RMS against Dance Saborosa's −17.3, so it arrives 0.25 dB low -- inside the
+  0.9 dB spread the block already says one trim serves. ⚠️ **Levelling the six
+  files to −16 LUFS is what made this swap free**; before that pass they spanned
+  7.7 dB and a swap would have meant re-deriving two numbers.
+
+⚠️ **WHAT THE SWAP DID CHANGE IS WHICH LEVEL HEARS A LOOP.** Dance Saborosa is
+66.8s; Arrocha da Serpente is 303s. So a 67-second song has moved onto the
+**longest level in the game** -- the bookcase climb, which has a 13.7s lift in it
+-- while the street got a five-minute song it may never wrap at all. Both wraps
+were measured at the swap and neither is a splice:
+
+    DANCE SABOROSA   66.8s   eases off over the last ~200ms (-17.7 dB -> -23.2)
+                             and restarts ON a downbeat (-14.6 dB, first 100ms).
+    ARROCHA          303s    fades right out (-43.6 dB across the last second),
+                             returns at -18.4. A genuine breath.
+
+**If a loop is ever going to be noticed in this game it is Dance Saborosa's on
+fase 3**, and that is the thing to listen for. It is a consequence of what was
+asked for, not an objection to it.
+
+⚠️ **AND THE OLD SEAM NOTE WAS HALF ABOUT A DIFFERENT QUESTION.** `MUSIC_LOOP`
+carried *"the last second decays and the first builds... the seam step is 0.0019
+against a head that is near-silent anyway"*. The 0.0019 is SAMPLE CONTINUITY --
+it says there is no click, and it stands. The prose around it does not: the last
+*second* averages −17.7 dB (full programme level; the decay is in the last
+200ms), and the head is the LOUDEST part of the file. Both numbers are true and
+they answer different questions; the comment now says which is which.
 
 ---
 

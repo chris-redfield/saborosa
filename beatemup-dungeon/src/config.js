@@ -8697,12 +8697,12 @@ const CONFIG = {
 
          LOGO            silent -- and already was; see game.js titleMusic()
          TITLE + MENU    Coco Nha Nha        TITLE_TRACK
-         FASE 1 lixao    Dance Saborosa      MUSIC_TRACK  <- here
+         FASE 1 lixao    Arrocha da Serpente MUSIC_TRACK  <- here
          NARUTAO         unchanged (Still Life's)         MOSCA_TRACK
          FASE 2 cigarro  Sucuri - Samuraio   MUSIC_TRACKS.musicDesert
          HORACIO         Sucuri -- the room's own track, uninterrupted
          HIPOLITO        unchanged                        BOSS_TRACK
-         FASE 3 estante  Arrocha da Serpente MUSIC_TRACKS.musicLevel3
+         FASE 3 estante  Dance Saborosa      MUSIC_TRACKS.musicLevel3
          ZERAMENTO       Pode Me Chamar      MUSIC_TRACKS.musicEnding
          MISTER STOP     Cumbia Corazon -- NOT WIRED, he does not exist
          TIME ATTACK     Cumbia Corazon -- NOT WIRED, it does not exist
@@ -8711,7 +8711,7 @@ const CONFIG = {
      pinned at 5.115s; this is a 66.8s song that loops at its own end. Leaving
      the pin behind would have cut the street's music off after five seconds --
      see the note on that map. */
-  MUSIC_TRACK: 'v2:beatemup-dungeon/soundtrack/Dance Saborosa.mp3',
+  MUSIC_TRACK: 'v2:beatemup-dungeon/soundtrack/Arrocha da Serpente.mp3',
   musicVolume: 0.55,
 
   /* --- The title screen's theme --------------------------------------------
@@ -8787,8 +8787,15 @@ const CONFIG = {
        the same shape HIPOLITO's room already uses -- the ROOM owns the song, so
        a boss who shares it declares nothing. */
     musicDesert: 'v2:beatemup-dungeon/soundtrack/Sucuri - Samuraio.mp3',
-    /* FASE 3, the bookcase. */
-    musicLevel3: 'v2:beatemup-dungeon/soundtrack/Arrocha da Serpente.mp3',
+    /* FASE 3, the bookcase. ⚠️ SWAPPED WITH THE STREET'S ON 2026-09-08 -- this
+       key held Arrocha da Serpente and now holds Dance Saborosa. The KEY is the
+       role and the file behind it changed; see the warning on MUSIC_LOOP, which
+       is the same rule stated from the other side. ⚠️ AND IT IS A 66.8s SONG ON
+       THE LONGEST LEVEL IN THE GAME, where the one it swapped with was 303s: the
+       bookcase will hear this wrap several times over a climb, and the street
+       almost certainly never reached the other one. If a loop is ever going to
+       be noticed, it is this one -- see the seam note in MUSIC_LOOP. */
+    musicLevel3: 'v2:beatemup-dungeon/soundtrack/Dance Saborosa.mp3',
     /* ZERAMENTO -- the ending photograph and the results board after it.
        ⚠️ NOT A ROOM, SO IT IS A `playMusic` CALL rather than a `music:` entry;
        game.js starts it where the ending phase begins. It plays UNDER the
@@ -8851,8 +8858,12 @@ const CONFIG = {
   MUSIC_LOOP: {
     /* ⚠️ `music` AND `musicTitle` WERE PINNED HERE AND ARE NOT ANY MORE
        (2026-09-08). Both keys now hold FINISHED SONGS off the soundtrack --
-       Dance Saborosa on the street, Coco Nha Nha on the title -- and a finished
-       song loops at its own end, which is what an absence means in this map.
+       Arrocha da Serpente on the street, Coco Nha Nha on the title -- and a
+       finished song loops at its own end, which is what an absence means here.
+       ⚠️ THE STREET'S SONG WAS SWAPPED WITH LEVEL 3's LATER THE SAME DAY and
+       this line was updated with it, which is the entire discipline this map
+       asks for: the key says the role, the prose says the FILE, so the prose is
+       stale the moment a `*_TRACK` moves.
 
        ⚠️ THIS IS THE TRAP THIS WHOLE MAP EXISTS TO SET, AND IT NEARLY FIRED.
        The old numbers described the files that used to be behind those keys: a
@@ -8864,13 +8875,28 @@ const CONFIG = {
 
            the rule: a key here describes the FILE, not the ROLE.
            repoint a *_TRACK constant and this entry is stale by definition. */
-    /* THE WHOLE FILE, uncut. It loops on itself acceptably as delivered: the
-       last second decays and the first builds, so the wrap is a breath rather
-       than a splice -- measured, the seam step is 0.0019 against a head that is
-       near-silent anyway, and the longest quiet stretch across it is 380ms. No
-       crop tool was run on it and none is wanted; a cut through a
-       through-composed melody has nowhere good to land (the best 5.115s window
-       in it scores 0.23 for seam similarity, against 0.64 for MIKE). */
+    /* NEITHER IS CROPPED, AND NEITHER WANTS TO BE. A cut through a
+       through-composed melody has nowhere good to land -- the best 5.115s window
+       in DANCE SABOROSA scores 0.23 for seam similarity against MIKE's 0.64 --
+       so both play whole and wrap at their own end.
+
+       BOTH WRAPS WERE MEASURED (2026-09-08, at the swap) and neither is a
+       splice, but they are not the same shape and the swap moved each onto a
+       level that treats it differently:
+
+         DANCE SABOROSA  66.8s.  Runs at programme level to the end, eases off
+           over the last ~200ms (-17.7 dB average -> -23.2) and restarts ON a
+           downbeat (-14.6 dB in the first 100ms). A tail into a hit: fine, and
+           ⚠️ NOW ON THE BOOKCASE, which is long enough to hear it several times.
+         ARROCHA DA SERPENTE  303s.  Fades right out (-43.6 dB across the last
+           second) and comes back at -18.4. A genuine breath -- and ⚠️ NOW ON THE
+           STREET, which the old 66.8s song looped on and this one may never
+           reach at all.
+
+       ⚠️ THE SEAM STEP QUOTED HERE BEFORE (0.0019, "a head that is near-silent")
+       WAS ABOUT SAMPLE CONTINUITY, NOT LEVEL -- it says there is no CLICK. The
+       head is in fact the loudest part of Dance Saborosa. Both things are true;
+       they answer different questions. */
     /* ⚠️ NOT OURS TO RE-DERIVE: this is `loopMs` out of tools/music-lab.html,
        which is the flying dungeon's arrangement, in seconds. That mix is
        14.452s and the Opus container says 14.4585 -- 6.5ms of padding, which
@@ -8974,12 +9000,21 @@ const CONFIG = {
        is 3.3dB and takes it from -16.9 to -20.3 dBFS. See the warnings above --
        this number moving is not free, and it has now moved twice. */
     /* ⚠️ 0.72 SINCE 2026-09-08, AND THE OLD 0.68 IS NOT A HISTORY OF THIS
-       NUMBER -- IT BELONGED TO A DIFFERENT FILE. This key is Dance Saborosa
-       now, not the six-second bed, so the trim was re-derived rather than
-       carried over: the song measures -17.3 dBFS RMS and 0.72 lands it at
-       -20.3, which is exactly where the bed it replaced was arriving. The LEVEL
-       is inherited, in other words, not the multiplier -- and the level is the
-       part that was tuned in play over three sessions.
+       NUMBER -- IT BELONGED TO A DIFFERENT FILE. This key stopped being the
+       six-second bed that day, so the trim was re-derived rather than carried
+       over: 0.72 lands a -17.3 dBFS RMS song at -20.3, which is exactly where
+       the bed it replaced was arriving. The LEVEL is inherited, in other words,
+       not the multiplier -- and the level is the part that was tuned in play
+       over three sessions.
+
+       ⚠️ AND THE FILE CHANGED AGAIN LATER THE SAME DAY -- this key is ARROCHA DA
+       SERPENTE now, swapped with level 3's. **0.72 STANDS AND WAS NOT
+       RE-DERIVED**, deliberately: Arrocha measures -17.7 dBFS RMS against Dance
+       Saborosa's -17.3, so it arrives 0.25 dB lower than the target and that is
+       inside the 0.9 dB spread the note below says a single trim serves. Moving
+       it would be pretending to a precision the set does not have. The two songs
+       simply traded places at the same number, which is what normalising the
+       files bought.
 
        ⚠️ THE `musicMosca` COUPLING BELOW IS NOW BROKEN, ON PURPOSE. The old rule
        was "move one, move the other", because both keys held tracks that
