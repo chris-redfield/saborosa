@@ -89,16 +89,27 @@ class FlyBoss {
     this.fleeHp = (opts && opts.fleeAt > 0) ? this.maxHp * opts.fleeAt : 0;
     this.fleeing = false;
     this.fleeDir = 1;           // always RIGHT -- see _beginFlee()
-    /* THE MUSIC SHE BRINGS WITH HER, by asset key. Declared as a PROPERTY OF
-       THE BOSS rather than tested for in game.js, because that is the bargain
-       every other thing about a boss makes here: `combat.js` and the overlay
-       talk to an interface and never ask which boss this is. The horse simply
-       does not declare one, which is exactly what "his theme belongs to the
-       ROOM" should look like from the outside.
+    /* ⚠️⚠️ SHE HAS NO THEME, AND THAT IS THE FEATURE (2026-09-08). She used to
+       bring Still Life's `trilha-mix.ogg` with her: the street's song stopped on
+       her arrival, hers played, and the bed came back when she died or broke
+       off. Removed on request -- *"I want to completely remove the still life
+       song, lets keep only the regular song for stage 1"* -- and `null` here is
+       the ENTIRE removal at the runtime end.
 
-       ⚠️ NULL WITHOUT THE CONFIG ENTRY, or game.js would ask Sound for a key
-       the manifest never loaded -- `manifest.js` gates on the same field. */
-    this.musicKey = CONFIG.MOSCA_TRACK ? 'musicMosca' : null;
+       BECAUSE A BOSS SHARES ITS ROOM'S SONG BY DECLARING NOTHING. `bossMusic()`
+       in game.js switches only for a boss carrying a `musicKey`, so a null one
+       means the street's track runs through her arrival, her fight, her flight
+       and her death with no switch and no fade. That is the same idiom HORÁCIO
+       has always used, not a special case for her -- and it is why the fix is a
+       field rather than a condition in game.js: `combat.js` and the overlay talk
+       to an interface and never ask which boss this is.
+
+       ⚠️ A LITERAL `null`, NOT `CONFIG.MOSCA_TRACK ? ... : null`. That constant
+       is deleted, so the test would read as a feature that still exists and is
+       merely switched off -- and this project deletes what is turned down rather
+       than holding it behind a flag. Restoring her theme means putting the
+       constant back in config, the push back in manifest.js, and a key here. */
+    this.musicKey = null;
     /* ⚠️ NO VOICE. The crowd's grunt and death cry are for MOOKS: a boss taking
        a hit is announced by its own art, its own health bar and, here, by an
        explosion when it goes. Asked for 2026-08-24 -- "I want just the punch

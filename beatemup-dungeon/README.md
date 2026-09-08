@@ -3502,7 +3502,7 @@ Three knobs and three pipelines.
 LOGO            silent -- already was
 TITLE + MENU    Coco Nha Nha          TITLE_TRACK
 FASE 1 lixao    Arrocha da Serpente   MUSIC_TRACK
-NARUTAO         unchanged             MOSCA_TRACK
+NARUTAO         the street's song -- no theme of her own
 FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
 HORACIO         Sucuri -- the room's own track, uninterrupted
 HIPOLITO        unchanged             BOSS_TRACK
@@ -3531,10 +3531,48 @@ TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED (it does not exist)
 > comes back at −18.4. **If a loop is ever going to be noticed in this game, it
 > is Dance Saborosa's on fase 3** — that is the thing to listen for.
 
+> ⚠️ **FASE 2 IS THE ONE SONG WITH ITS OWN TRIM** — `musicDesert: 0.81`, +1.0 dB
+> over the 0.72 the other in-play beds share, from 2026-09-08. Not because the
+> file is quiet: all five songs measure **−16.0 LUFS integrated**. Sucuri is just
+> the most dynamic of them (**LRA 4.0 LU** against 1.1–2.9) and it **opens on its
+> quietest stretch** — −18.0 LUFS over the first 30s, reaching its own average
+> only around four minutes in, with its loudest section (−14.5) at 3:00. Over the
+> first 90s it is −17.0 against Arrocha's −16.2 and Dance Saborosa's −15.9.
+> ⚠️ **Normalising the files made the whole songs agree and not the openings, and
+> a stage only ever plays an opening** — which is why no measurement of the file
+> shows this and it is a gain fix, not a re-encode. ⚠️ **+1.0 dB and not the full
+> 2.0 the first half-minute is down:** correcting the opening exactly would put
+> the 2:30–3:30 section 3.5 LU over the other stages, and that section is
+> HORÁCIO's fight — he declares no theme, so this key *is* his fight's volume.
+
+> ⚠️ **AND 0.81 WAS STILL TOO LOW — it is `0.97` now**, `0.81 × 1.2` on the same
+> linear convention the sfx cut used, **+2.59 dB in total** over the 0.72 the
+> other beds share. So the desert is deliberately the loudest stage in the game
+> and HORÁCIO's fight runs ~4 LU over the rest. **That is judged, not overlooked**
+> — it was played twice and asked for twice. ⚠️ **It does not clip:** Sucuri peaks
+> at −5.0 dBFS, so with `musicVolume` 0.55 the bus peaks at 0.300, 10.5 dB below
+> full scale. **The ceiling on this number is taste, not headroom.**
+
 > ⚠️ **A boss shares its room's song by declaring NOTHING.** `bossMusic()`
 > switches only for a boss carrying a `musicKey`, so HORÁCIO's arena runs the
 > desert's track straight through the fight with no fade. MISTER STOP will be the
 > other shape — his own key, because Cumbia differs from the room's song.
+
+> ⚠️ **NARUTÃO'S THEME WAS REMOVED (2026-09-08) AND SHE NOW USES THAT SAME
+> IDIOM.** She used to bring Still Life's `trilha-mix.ogg` with her — the
+> street's song stopped on her arrival and came back when she died or broke off.
+> *"I want to completely remove the still life song, lets keep only the regular
+> song for stage 1."* `FlyBoss.musicKey` is a literal `null` now, which is the
+> whole removal at the runtime end: **`bossMusic()` is a no-op for every boss in
+> the game**, so the street's track runs through her arrival, fight, flight and
+> death with no switch and no fade. ⚠️ **`bossMusic()` is KEPT** — MISTER STOP is
+> specified to carry his own key, so it is the mechanism waiting for him, inert
+> exactly like `MUSIC_LAYERS: {}`. ⚠️ **Four other spellings went with it**:
+> `MOSCA_TRACK`, the manifest push, `MUSIC_LOOP.musicMosca` (14.452) and
+> `MUSIC_GAIN.musicMosca` (0.68) — an asset key lives in up to four places and
+> every mismatch is silent. The 240KB file is untouched; the flying dungeon still
+> ships and plays it. **`MUSIC_LOOP` is now empty**, which is correct: every song
+> in the game is a finished track that loops at its own end.
 
 > ⚠️ **THE WHISTLE WAS REMOVED THE SAME DAY IT WAS FLAGGED.** `MUSIC_LAYERS`
 > hung it off the key `music`, which became a finished song rather than the

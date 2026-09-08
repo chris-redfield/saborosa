@@ -314,10 +314,13 @@ function assetManifest() {
      silently unpins the loop and drops it back to `musicVolume` flat -- neither
      of which errors, and both of which are audible. */
   if (CONFIG.TITLE_TRACK) out.push({ key: 'musicTitle', src: CONFIG.TITLE_TRACK, how: 'audio' });
-  /* The Mosca's theme -- Still Life's soundtrack, read in place out of that
-     game's folder the way her sprite sheets are. ⚠️ ASSET KEY `musicMosca`,
-     spelled again in CONFIG.MUSIC_LOOP and in FlyBoss's `musicKey`. */
-  if (CONFIG.MOSCA_TRACK) out.push({ key: 'musicMosca', src: CONFIG.MOSCA_TRACK, how: 'audio' });
+  /* ⚠️ THE MOSCA'S THEME IS NOT LOADED ANY MORE (2026-09-08). `musicMosca` was
+     Still Life's `trilha-mix.ogg`, read in place out of that game's folder the
+     way her sprite sheets still are; NARUTÃO now shares the street's song by
+     declaring no `musicKey` at all. The push is DELETED rather than left gated
+     on a constant that no longer exists -- see CONFIG's MOSCA_TRACK note and
+     FlyBoss's `musicKey`. The file itself is untouched; the flying dungeon still
+     ships and plays it. */
   /* THE REST OF THE SOUNDTRACK -- a song per stage, walked out of
      CONFIG.MUSIC_TRACKS so adding one is a line THERE and nothing here. The four
      constants above are named ROLES (the bed, the boss, the title, the Mosca)

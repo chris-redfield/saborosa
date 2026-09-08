@@ -8698,7 +8698,7 @@ const CONFIG = {
          LOGO            silent -- and already was; see game.js titleMusic()
          TITLE + MENU    Coco Nha Nha        TITLE_TRACK
          FASE 1 lixao    Arrocha da Serpente MUSIC_TRACK  <- here
-         NARUTAO         unchanged (Still Life's)         MOSCA_TRACK
+         NARUTAO         the street's song -- NO theme of her own (2026-09-08)
          FASE 2 cigarro  Sucuri - Samuraio   MUSIC_TRACKS.musicDesert
          HORACIO         Sucuri -- the room's own track, uninterrupted
          HIPOLITO        unchanged                        BOSS_TRACK
@@ -8897,12 +8897,16 @@ const CONFIG = {
        WAS ABOUT SAMPLE CONTINUITY, NOT LEVEL -- it says there is no CLICK. The
        head is in fact the loudest part of Dance Saborosa. Both things are true;
        they answer different questions. */
-    /* ⚠️ NOT OURS TO RE-DERIVE: this is `loopMs` out of tools/music-lab.html,
-       which is the flying dungeon's arrangement, in seconds. That mix is
-       14.452s and the Opus container says 14.4585 -- 6.5ms of padding, which
-       unpinned is a tick every fourteen seconds. The number lives there;
-       re-bake that game's trilha and move this with it. */
-    musicMosca: 14.452,
+    /* ⚠️ `musicMosca` WAS THE LAST PIN AND IT WENT WITH THE TRACK (2026-09-08).
+       It held 14.452 -- `loopMs` out of tools/music-lab.html, the flying
+       dungeon's own arrangement -- and NARUTÃO no longer has a theme to pin.
+       See MOSCA_TRACK's removal note below.
+
+       ⚠️ SO THIS MAP IS EMPTY, AND IT STAYS. Every song in the game is now a
+       finished track that loops at its own end, which is exactly what an absence
+       means here -- the map is empty because nothing needs it, not because the
+       feature went away. It is one line to pin a future crop, and the rule
+       above is the reason to read this block before repointing anything. */
   },
 
   /* --- The horse's theme ---------------------------------------------------
@@ -8941,25 +8945,36 @@ const CONFIG = {
      boss, and the fight should be able to change there and change here. The
      file is that game's shipped `trilha-mix.ogg`, 14.45s, 240KB.
 
-     ⚠️ IT IS THE ONLY BOSS-SCOPED TRACK IN THE GAME, and that is the exception
-     rather than a second way of doing things. `ROOMS[n].music` exists because
-     the horse's room OPENS with a wave of roaches -- the room is the unit the
-     player experiences there, and hanging the song on the boss made it arrive a
-     minute late. The Mosca is a SUB-BOSS mid-street: the bed is already
-     playing, she flies in, and the SWITCH IS THE EVENT. Nothing about the room
-     changed, so nothing room-scoped could express it.
+     ⚠️⚠️ REMOVED 2026-09-08, AND THE CONSTANT IS GONE RATHER THAN NULLED:
+     *"when the narutão boss enters the game at stage 1, the music stops, a
+     specific song plays (from still life), and then when he runs away, or is
+     defeated, the regular song restarts playing. I want to completely remove the
+     still life song, lets keep only the regular song for stage 1."*
 
-     ⚠️ AND IT ENDS WHEN SHE DIES, which is the other half of the request and
-     the opposite of the horse's rule ("⚠️ AND NOTHING EVER STOPS IT", above).
-     The horse's theme runs through his death and the ending because his death
-     IS the end of the game; the Mosca's ends because the street carries on
-     without her. game.js reverts to `roomMusic()`, which for the street is the
-     bed.
+     SO NARUTÃO NOW SHARES THE STREET'S SONG BY DECLARING NOTHING, which is the
+     same idiom HORÁCIO already used and not a new mechanism: `bossMusic()`
+     switches only for a boss carrying a `musicKey`, `FlyBoss` no longer sets
+     one, and the street's track simply runs through her arrival, her fight, her
+     flight and her death without a fade. **The switch was the only thing that
+     ever stopped it.**
 
-     NO `MUSIC_GAIN` ENTRY, AND THAT IS MEASURED, NOT ASSUMED: this track's RMS
-     is -17.2 dBFS against our bed's -16.9, so it already sits where the bed
-     sits and the punches stay balanced against it. */
-  MOSCA_TRACK: 'v2:flying-dungeon/audio/trilha-mix.ogg',
+     ⚠️ `bossMusic()` IS KEPT AND IS NOW INERT FOR EVERY BOSS IN THE GAME. Do not
+     delete it: MISTER STOP is specified to have his own `musicKey` (his song
+     differs from his room's), so this is the mechanism waiting for him, and it
+     is documented where he is. Same call as `MUSIC_LAYERS: {}` -- the machinery
+     is the hard part and it is inert with nothing declared.
+
+     ⚠️ AND FOUR OTHER SPELLINGS WENT WITH IT, because an asset key lives in up
+     to four places and every mismatch here is silent: `FlyBoss.musicKey`
+     (fly-boss.js), the manifest push, `MUSIC_LOOP.musicMosca` (14.452) and
+     `MUSIC_GAIN.musicMosca` (0.68). The FILE is untouched --
+     `v2:flying-dungeon/audio/trilha-mix.ogg` is the flying dungeon's own shipped
+     track and that game still plays it; it is simply no longer in THIS build.
+
+     What it was, for the record: that game's `trilha-mix.ogg`, 14.45s, 240KB,
+     read in place like MOSCA_SHEETS. It was the only boss-scoped track in the
+     game -- the Mosca being a SUB-BOSS mid-street, where the switch itself was
+     the event, with no room change to hang a song on. */
   /* Per-track level on the music bus, by ASSET KEY. Anything unlisted plays at
      `musicVolume` flat. It trims AND it lifts -- above 1 is allowed and the
      title theme needs it.
@@ -8970,13 +8985,14 @@ const CONFIG = {
      the two absolute derivations: `musicBoss` and `musicTitle` were each brought
      to a level of their own in dBFS, not to the bed, so they are untouched.
 
-     ⚠️ AND `musicMosca` MOVED WITH IT, which is the whole reason that entry now
-     exists. It had none for a while, precisely BECAUSE it measured within 0.3dB
-     of the bed and 1.0 was therefore already the right answer -- a level
-     expressed as an ABSENCE. The moment the bed moved, the absence stopped
-     meaning "level with the bed" and started meaning "3dB above it". It is 0.68
-     now: the same trim, so the pair are level again wherever the bed goes next.
-     ⚠️ Move one, move the other.
+     ⚠️ `musicMosca` USED TO BE THE CAUTIONARY TALE HERE AND IT IS GONE
+     (2026-09-08, with NARUTÃO's theme). The lesson outlives the entry and is
+     worth keeping: it had NO entry for a while, precisely because it measured
+     within 0.3 dB of the bed, so 1.0 was already right -- **a level expressed as
+     an ABSENCE**. The moment the bed came down 20%, that absence stopped meaning
+     "level with the bed" and started meaning "3 dB above it", silently. **An
+     absence that means "the same as X" is a dependency on X with nothing to
+     grep.**
 
      ⚠️ A LAYER WOULD FOLLOW ITS TRACK FOR FREE, and that is worth knowing if one
      is ever added again: a layer's own gain node feeds the music bus that the
@@ -9016,12 +9032,10 @@ const CONFIG = {
        simply traded places at the same number, which is what normalising the
        files bought.
 
-       ⚠️ THE `musicMosca` COUPLING BELOW IS NOW BROKEN, ON PURPOSE. The old rule
-       was "move one, move the other", because both keys held tracks that
-       measured within 0.3 dB and 0.68 kept them level. Her track has NOT
-       changed; this one has. They are two independent levels that happen to
-       arrive in the same place, and pairing them again would mean a future
-       change to the street's song silently moving Still Life's. */
+       ⚠️ THE `musicMosca` COUPLING THIS ENTRY USED TO CARRY IS GONE ENTIRELY --
+       NARUTÃO's theme was removed on 2026-09-08 and took its key with it. This
+       key is now free to move without dragging anything behind it, which it was
+       not for most of the game's life. */
     music: 0.72,
     musicBoss: 0.85,
     /* ⚠️ 0.92, DOWN FROM 2.6, AND THE 2.6 WAS ABOUT MIKE. That number existed to
@@ -9037,18 +9051,70 @@ const CONFIG = {
        all of them and a per-track number would be pretending to a precision the
        spread does not contain. If ONE of them turns out wrong in play, give that
        one its own entry; do not re-derive the set. */
-    musicDesert: 0.72,
+    /* ⚠️ 0.81, NOT 0.72, AND IT IS THE EXCEPTION THE NOTE ABOVE INVITES. Asked
+       for 2026-09-08: *"it seems as if the song for the stage 2 is lower than
+       the one from the other stages"* -- and it is, measurably, even though the
+       FILE is not. All five songs are -16.0 LUFS integrated; Sucuri is simply
+       the most dynamic of them (LRA 4.0 LU against 1.1-2.9) and it OPENS on its
+       quietest stretch:
+
+           0-30s  -18.0     90-120s  -15.8     180-210s  -14.5   <- its loudest
+          30-60s  -16.5    120-150s  -16.8     210-240s  -15.6
+          60-90s  -16.8    150-180s  -14.6     cumulative 240s: -15.9
+
+       ⚠️ SO NORMALISING THE FILES MADE THE WHOLE SONGS AGREE AND NOT THE PARTS
+       ANYONE HEARS. A stage only ever plays an opening: over its first 90s
+       Sucuri is -17.0 against Arrocha's -16.2 and Dance Saborosa's -15.9. That
+       is the ~1 LU the desert sounds down by, and no measurement of the file
+       shows it -- which is why this is a MUSIC_GAIN fix and not a re-encode.
+
+       ⚠️ 0.81 WAS A FIRST PASS AND IT WAS STILL TOO LOW. It went 0.72 -> 0.81
+       (+1.0 dB) on the reasoning below, was played, and came back *"I still think
+       the volume of this song could be increased by like 20%, its still too
+       low"*. **0.81 x 1.2 = 0.97**, the same linear convention `sfxVolume`'s 10%
+       cut used, and **+2.59 dB in total over the 0.72 the other beds share**.
+
+       The reasoning the first pass held back for -- and it was told, not
+       discovered, so it is recorded rather than re-argued: Sucuri's loudest
+       stretch is its 150-210s section (-14.5 LUFS), and that section is
+       HORÁCIO's fight, because he declares no `musicKey` and this key IS his
+       fight's volume. At +2.59 dB his fight now runs ~4 LU over the other
+       stages. ⚠️ THAT IS THE INTENDED STATE, NOT AN OVERSIGHT: the desert was
+       judged twice by ear against the rest of the game, and an ear beats an
+       integrated LUFS reading here -- that is the whole lesson of this entry.
+
+       ⚠️ IT DOES NOT CLIP AND THAT WAS CHECKED. Sucuri peaks at -5.0 dBFS; times
+       `musicVolume` 0.55 and this gain the bus peaks at 0.300, which is 10.5 dB
+       below full scale. There is room for another 3x before the question is even
+       live. The ceiling on this number is TASTE, not headroom.
+
+       ⚠️⚠️ ONE VOLUME FOR THE WHOLE STAGE, HORÁCIO INCLUDED -- RULED, 2026-09-08:
+       *"just let the song the same volume for the entire stage, don't make
+       horacios louder or more silent."* **This is already how it works and it is
+       to STAY that way.** The desert is ONE room with one `music` key, so:
+
+         * `bossMusic()` does nothing at HORÁCIO -- he declares no `musicKey`,
+           which is the whole way *"BOSS - HORACIO - SUCURI"* is expressed;
+         * `playMusic()` is a no-op on a track already playing, so crossing
+           between the desert's arenas cannot restart it;
+         * `endBossMusic()` fires only on `clear` -- the win at the end of level
+           3 -- so nothing fades here;
+         * there is no duck anywhere on the music bus.
+
+       ⚠️ AND THE ~4 LU SWING ACROSS HIS FIGHT IS THE SONG'S OWN ARRANGEMENT, NOT
+       THE GAME'S. Sucuri builds and peaks at 150-210s, which is where his fight
+       happens to land. **Do not add a per-boss trim, a duck or a fade to flatten
+       it** -- flattening it means processing the FILE, and that has not been
+       asked for. This note exists because describing that swing once already
+       made it sound like something the engine was doing. */
+    musicDesert: 0.97,
     musicLevel3: 0.72,
     /* THE ZERAMENTO. At the title's level rather than the beds', because like
        the title it plays over a still screen with no effects on top of it. */
     musicEnding: 0.92,
-    /* STILL LIFE'S, ON THE MOSCA. ⚠️ IT IS THE BED'S TRIM AND NOT A LEVEL OF ITS
-       OWN -- her track measures -17.2 dBFS against the bed's -16.9, so the two
-       were already level and the job of this number is only to keep them that
-       way while the bed moves. It had no entry at all until the bed came down;
-       an absence meant "level with the bed" right up to the moment that stopped
-       being true. Move the bed, move this. */
-    musicMosca: 0.68,
+    /* ⚠️ `musicMosca` REMOVED 2026-09-08 with NARUTÃO's theme. It was 0.68 --
+       the bed's trim rather than a level of its own -- and there is no longer a
+       track behind the key. See MOSCA_TRACK above for the whole removal. */
   },
 
   /* --- Sound effects -------------------------------------------------------

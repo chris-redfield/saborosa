@@ -7663,7 +7663,7 @@ the payoff of normalising — a per-track figure would pretend to a precision a
     LOGO            silent -- already was
     TITLE + MENU    Coco Nha Nha          TITLE_TRACK
     FASE 1 lixao    Arrocha da Serpente   MUSIC_TRACK   <- swapped, see below
-    NARUTAO         unchanged             MOSCA_TRACK
+    NARUTAO         the street's song -- theme REMOVED, see below
     FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
     HORACIO         Sucuri -- no theme of his own, the room's runs through
     HIPOLITO        unchanged             BOSS_TRACK
@@ -8052,6 +8052,106 @@ it says there is no click, and it stands. The prose around it does not: the last
 *second* averages −17.7 dB (full programme level; the decay is in the last
 200ms), and the head is the LOUDEST part of the file. Both numbers are true and
 they answer different questions; the comment now says which is which.
+
+## Same day: the desert's song was down ~1 LU, and the FILE was not
+
+*"it seems as if the song for the stage 2 is lower than the one from the other
+stages, can you double check on that? make it slightly louder please."* Checked,
+and they were right -- but nothing about the file says so.
+
+**ALL FIVE SONGS MEASURE −16.0 LUFS INTEGRATED.** By the number the loudness pass
+was built around, they are identical. The difference is DYNAMICS: Sucuri has an
+LRA of **4.0 LU** against 1.1-2.9 for the rest, and it opens on its quietest
+stretch.
+
+    Sucuri, 30s windows:   0-30  -18.0    90-120  -15.8   180-210  -14.5
+                          30-60  -16.5   120-150  -16.8   210-240  -15.6
+                          60-90  -16.8   150-180  -14.6
+    first 90s:  Sucuri -17.0  |  Arrocha -16.2  |  Dance Saborosa -15.9
+
+⚠️ **NORMALISING THE FILES MADE THE WHOLE SONGS AGREE AND NOT THE PARTS ANYONE
+HEARS.** A stage plays an OPENING, never a whole track -- so a −16 LUFS
+measurement over five minutes is a fact about a file and not about the game. The
+2026-09-08 pass was still right to run (it closed a 7.7 dB spread); this is the
+half of the problem an integrated number cannot see, and the tell was a listener
+saying so before any measurement did.
+
+**Fixed in `MUSIC_GAIN.musicDesert`**, which is the exception the block already
+invited (*"if ONE of them turns out wrong in play, give that one its own entry;
+do not re-derive the set"*). **It took two passes:**
+
+    0.72 -> 0.81   +1.00 dB   half the intro's deficit, holding back on purpose
+    0.81 -> 0.97   +1.57 dB   *"still too low"*  ->  +2.59 dB in total
+
+⚠️ **THE FIRST PASS HELD BACK AND THE SECOND ONE WAS THE ANSWER.** 0.81 was
+reasoned rather than heard: correcting the intro in full would put Sucuri's
+loudest stretch (150-210s, -14.5 LUFS) well over the other stages, and that
+stretch is HORÁCIO's fight -- he declares no `musicKey`, so this key IS his
+fight's volume. The caution was stated and the game was played and the answer came
+back *"still too low"*. **An ear that has heard it twice beats an integrated LUFS
+reading and a projection about a fight, and this entry is the case that proves
+it.** The desert is now deliberately the loudest stage in the game and HORÁCIO's
+fight runs ~4 LU over the rest; that is the intended state.
+
+⚠️ **20% MEANS THE LINEAR MULTIPLIER HERE**, the same convention `sfxVolume`'s
+"reduce by 10%" used (0.9 -> 0.81). 0.81 x 1.2 = 0.972, written 0.97.
+
+⚠️ **AND IT DOES NOT CLIP, WHICH WAS CHECKED RATHER THAN ASSUMED.** Sucuri peaks
+at -5.0 dBFS; times `musicVolume` 0.55 and this gain the bus peaks at **0.300**,
+10.5 dB below full scale -- room for another 3x before the question is even live.
+**The ceiling on this number is taste, not headroom**, which is worth knowing if
+it is asked for again.
+
+⚠️ **THE FILES WERE NOT RE-ENCODED, AND THAT IS THE STANDING RULE HERE**: the
+files were made to agree with each other once and permanently; `MUSIC_GAIN`
+decides how each sits under the effects in play. Baking a play-balance judgement
+into the asset takes the knob away -- and the masters are deleted.
+
+---
+
+## Same day: NARUTÃO's theme was removed, and it cost one `null`
+
+*"when the narutão boss enters the game at stage 1, the music stops, a specific
+song plays (from still life), and then when he runs away, or is defeated, the
+regular song restarts playing. I want to completely remove the still life song,
+lets keep only the regular song for stage 1."*
+
+**THE ENTIRE RUNTIME CHANGE IS `FlyBoss.musicKey = null`.** A boss shares its
+room's song by declaring nothing -- `bossMusic()` switches only for a boss
+carrying a `musicKey` -- so a null key means the street's track runs through her
+arrival, her fight, her flight and her death with no switch and no fade. That is
+the idiom HORÁCIO has always used; she is simply the second boss to use it.
+**The switch was the only thing that ever stopped the music.**
+
+⚠️ **AND `bossMusic()` IS NOW A COMPLETE NO-OP, WHICH WAS TRACED RATHER THAN
+ASSUMED.** `want` is `!!(b && b.musicKey && ...)`, so it is always false; the
+function early-returns on `want === bossTheme` and `bossTheme` is false at
+declaration and at every run start. It never calls `playMusic` AND it never calls
+`roomMusic` -- which matters, because the `else` branch is a `roomMusic()` and a
+version of this that left the key in place would have been re-asserting the
+street's track on an edge instead of doing nothing.
+
+⚠️ **KEEP `bossMusic()`.** It is inert for every boss in the game now, and it is
+still the mechanism MISTER STOP is specified to use (his song differs from his
+room's, so he gets his own key). Same call as `MUSIC_LAYERS: {}` -- the
+engineering is the hard part and it costs nothing switched off.
+
+**FIVE PLACES, BECAUSE AN ASSET KEY LIVES IN UP TO FOUR AND EVERY MISMATCH IS
+SILENT:** `FlyBoss.musicKey`, `CONFIG.MOSCA_TRACK`, the `manifest.js` push,
+`MUSIC_LOOP.musicMosca` (14.452) and `MUSIC_GAIN.musicMosca` (0.68). ⚠️ **Deleted
+rather than nulled or gated**, which is what this project does with something
+that was turned down -- `this.musicKey = null` is a literal, not
+`CONFIG.MOSCA_TRACK ? ... : null`, because a test against a deleted constant reads
+as a feature that still exists and is merely off.
+
+⚠️ **`MUSIC_LOOP` IS NOW EMPTY AND STAYS.** `musicMosca` was its last pin. Every
+song in the game is a finished track that loops at its own end, which is exactly
+what an absence means in that map -- it is empty because nothing needs it, not
+because the feature went away.
+
+**The FILE is untouched.** `v2:flying-dungeon/audio/trilha-mix.ogg` is that game's
+own shipped track and it still plays it; it is simply no longer in this build,
+240KB lighter. Same shape as `whistle-song.ogg` and `mike-title.ogg`.
 
 ---
 
