@@ -8155,6 +8155,30 @@ own shipped track and it still plays it; it is simply no longer in this build,
 
 ---
 
+## Same day: HORÁCIO's health, 120 -> 192
+
+*"increase the HP of the horacio boss by 60%."* One number. He is now the toughest
+fighter in the game, against HIPÓLITO's 150.
+
+⚠️ **AND NOTHING HAD TO BE RE-DERIVED WITH IT, WHICH IS ONLY TRUE BECAUSE HIS
+TIERS ARE RATIOS.** `bodyLevel()` and `naked()` both test `hp / maxHp` against
+`hurtAt` (0.5) and `nakedAt` (0.25), so the exposed body still arrives at half the
+bar and the spikes still come off at a quarter -- at 96 and 48 HP now instead of
+60 and 30. **Had either tier been written as an absolute HP number it would have
+moved to the wrong phase of the fight silently**, which is the same shape as the
+`sfxVolume` dependents and the `musicMosca` absence: a number solved against
+another number is not a knob.
+
+**7.7 landed combos, not 5** -- and ⚠️ **that is a floor and not a time to kill**,
+which is this file's own standing lesson (see Open): a full string LANDS 25, not
+the advertised 36, because hits 2 and 4 fall inside the previous hit's i-frames;
+and the division counts no whiffs, no waiting and none of the openings his AI
+leaves. ⚠️ **At `DEV.punchDamage` 50 he now dies in four hits rather than three**,
+so the fight is still unjudgeable until dev mode is off -- which is the state the
+whole fight has been in since it was built.
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**

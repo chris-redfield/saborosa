@@ -4616,11 +4616,31 @@ const CONFIG = {
        the grandao -- so he is now considerably BIGGER than HIPOLITO (319), the
        final boss, which is a deliberate instruction and not a drift.
 
-       120 against HIPOLITO's 150. He is a stage 2 boss and the fight is long by
-       construction -- it has a scripted opening before a punch is thrown -- so
-       the health has to buy phases rather than a slugging match. ⚠️ JUDGE THIS
-       WITH DEV OFF: at `DEV.punchDamage` 50 he dies in three hits. */
-    health: 120,
+       ⚠️ 192 SINCE 2026-09-08, UP 60% FROM 120 ON REQUEST. He was 120 against
+       HIPOLITO's 150; he is now the toughest fighter in the game by a distance.
+       He is a stage 2 boss and the fight is long by construction -- it has a
+       scripted opening before a punch is thrown -- so the health has to buy
+       phases rather than a slugging match, and 120 was one of the guesses the
+       whole fight was still carrying.
+
+       ⚠️ NOTHING HAD TO BE RE-DERIVED WITH IT, AND THAT IS WORTH KNOWING BEFORE
+       MOVING IT AGAIN: his two tiers are RATIOS, not hit points. `bodyLevel()`
+       and `naked()` both test `hp / maxHp` against `hurtAt` (0.5) and `nakedAt`
+       (0.25), so the exposed body still arrives at half and the spikes still
+       come off at a quarter -- at 96 and 48 now instead of 60 and 30. A tier
+       written as an absolute HP number would have silently moved to the wrong
+       phase of the fight here.
+
+       ⚠️ AND IT IS 7.7 PLAYER COMBOS OF DAMAGE, NOT 5. A full string LANDS 25,
+       not the advertised 36 -- hits 2 and 4 fall inside the previous hit's
+       i-frames on every target in the game. ⚠️ THAT IS STILL A FLOOR AND NOT A
+       TIME TO KILL: it counts no whiffs, no waiting and none of the openings his
+       AI actually leaves. See the standing lesson in the Open section of
+       STATE.md, which was learned on exactly this arithmetic.
+
+       ⚠️ JUDGE THIS WITH DEV OFF: at `DEV.punchDamage` 50 he now dies in FOUR
+       hits rather than three. */
+    health: 192,
     /* THE BODY HE ARRIVES IN: level 1, the small spikes, as specified. */
     enterLevel: 1,
     /* HOW TALL HE DRAWS AT EACH LEVEL, straight out of the cutter's printout.

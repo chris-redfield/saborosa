@@ -5352,6 +5352,18 @@ Stage 2's boss. The pack, the nine beats and the fight's shape are documented in
 `CONFIG.HORACIO_BOSS` and `src/horacio-boss.js`; this section is only the three
 things changed on **2026-09-03**, and the knobs each one added.
 
+> ⚠️ **`health` is 192 since 2026-09-08 — up 60% from 120**, on request. He is
+> now the toughest fighter in the game (HIPÓLITO is 150). **Nothing had to move
+> with it:** his two body tiers are *ratios*, not hit points — `bodyLevel()` and
+> `naked()` test `hp / maxHp` against `hurtAt` (0.5) and `nakedAt` (0.25) — so
+> the exposed body still arrives at half and the spikes still come off at a
+> quarter, now at 96 and 48 HP. ⚠️ **That is 7.7 landed player combos, not 5** —
+> a full string lands **25**, not the advertised 36, because hits 2 and 4 fall
+> inside the previous hit's i-frames. And it is still a **floor, not a time to
+> kill**: it counts no whiffs, no waiting, and none of the openings his AI leaves.
+> ⚠️ **With `DEV.punchDamage` 50 he now dies in four hits rather than three**, so
+> the fight is still unjudgeable until dev is off.
+
 ### He goes up now, like the other two bosses
 
 *"when he dies, he needs to blow up like the other bosses with lots of explosion
