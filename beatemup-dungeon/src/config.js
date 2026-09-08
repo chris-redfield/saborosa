@@ -995,14 +995,23 @@ const CONFIG = {
          `roomMusic()` in game.js reads the three states: absent is the bed, a
          key is that track, `false` stops the music on the way in. The room is
          then quiet until something asks for a track — nothing in it does, since
-         it has no boss and the whistle layer rides the bed it no longer has.
+         it has no boss.
 
          ⚠️ AND THE STREET'S BED DOES NOT COME BACK BY ITSELF AFTERWARDS. The
          boss room declares `musicBoss`, so walking out of here starts the
          horse's theme as it always did; but a room added after this one with no
          `music` would pick the bed up again mid-game. Put the song here when
          there is one. */
-      music: false,
+      /* ⚠️ THERE IS ONE NOW: **SUCURI - SAMURAIO**, 2026-09-08. Everything above
+         is why this room was SILENT for three weeks -- it was waiting on a song
+         rather than choosing quiet -- and the instruction it was waiting for is
+         the line that arrived: *"FASE2 - cigarro - SUCURI"*.
+
+         ⚠️ AND HORACIO KEEPS IT PLAYING. *"BOSS - HORACIO - SUCURI"* is the same
+         song, and the way to say that is to give him NO theme of his own:
+         `bossMusic()` switches only for a boss carrying a `musicKey`, so his
+         arena runs the room's track straight through without a fade. */
+      music: 'musicDesert',
       /* ⚠️ A BELT TWICE THE STREET'S, AND IT IS THE FIRST ROOM TO HAVE ITS OWN.
          Requested 2026-08-27: "for the second level, double the height of the
          belt". The band a fighter walks in is 190px deep everywhere else; here
@@ -1484,7 +1493,16 @@ const CONFIG = {
          which is the opposite of nothing: `playMusic(key)` opens with
          `key || 'music'`, so a falsy key cannot express "none" and the decision
          has to be made before the call. */
-      music: false,
+      /* ⚠️ NOT SILENT ANY MORE: **ARROCHA DA SERPENTE**, 2026-09-08 -- *"FASE 3 -
+         ARROCHA DA SERPENTE"*. The paragraph above is the reasoning for the
+         silence it replaces, and its point about `music: false` vs a falsy key
+         is still exactly right; this room simply no longer needs it.
+
+         ⚠️ THE STAGE-3 BOSS IS NOT THIS TRACK. MISTER STOP gets Cumbia Corazon
+         when he exists, as a `musicKey` of his own -- unlike HORACIO, who shares
+         his room's. He does not exist, so nothing here anticipates him; see the
+         note on CONFIG.MUSIC_TRACKS. */
+      music: 'musicLevel3',
       /* THE BELT. The shelves are shallow -- a fighter stands on a plank, not in
          a desert -- so this is nearer the street's 520/190 than the desert's
          330/380. ⚠️ `topY` AND `depth` ARE A PAIR: z lives at `topY + z`, so
@@ -3756,10 +3774,20 @@ const CONFIG = {
      instant snap at those moments reads as a glitch; eased over ~0.15s it reads
      as stepping up onto a platform, which is what it is.
 
-     ⚠️ NOTHING ELSE IS RAISED. Enemies never stand on a lift, the shadow stays
-     on the GROUND (`drawShadow` paints at `Belt.topY + z` and ignores this the
-     same way it ignores `jumpY`), and no hitbox moves -- `riseY` is folded into
-     `groundY()`, which this game uses for DRAWING only. */
+     ⚠️ THE SHADOW RIDES UP WITH HIM, AND THIS NOTE USED TO SAY THE OPPOSITE.
+     It claimed the shadow "stays on the GROUND... the same way it ignores
+     `jumpY`" -- which was reasoning by analogy from the wrong one of the two.
+     They mean opposite things about the floor: `jumpY` is HE LEFT IT (the shadow
+     stays, to say where he lands) and `riseY` is IT CAME UP UNDER HIM (the
+     shadow belongs on the elevator's top face). Left as written it read exactly
+     as what it was reported as on 2026-09-08 -- *"it looks like he is
+     floating"*. `drawShadow` now paints at `Belt.topY + z - riseY`; its `lift`
+     term still reads `jumpY` alone, so a jump taken on the platform still
+     shrinks the shadow against the platform.
+
+     ⚠️ NOTHING ELSE IS RAISED. Enemies never stand on a lift, and no hitbox
+     moves -- `riseY` is folded into `groundY()`, which this game uses for
+     DRAWING only. */
   ELEVADOR: {
     /* HOW FAR UP THE SLAB IS DRAWN, in canvas px. "1 dedinho" -- a nudge, not a
        floor change. ⚠️ AT 0 EVERY LINE OF THIS FEATURE COLLAPSES TO THE OLD
@@ -8580,7 +8608,33 @@ const CONFIG = {
      value to paste. The lab's own loopMs stays at 6146 on purpose: it describes
      the ARRANGEMENT, and the crop needs the material outside the loop window to
      still be in the render it reads. */
-  MUSIC_TRACK: 'v2:beatemup-dungeon/audio/trilha-mix.ogg',
+  /* ⚠️ THIS IS **DANCE SABOROSA** SINCE 2026-09-08, NOT THE SIX-SECOND BED, and
+     everything above describes the thing it replaced. The whole paragraph is
+     kept because `trilha-mix.ogg` is still in the folder and still the reason
+     `tools/crop-beat-trilha.py` and the music lab exist -- but the bed is no
+     longer what the street plays, so do not read the crop notes as live.
+
+     The soundtrack landed on 2026-09-08 and the level beds became finished
+     songs. Six of them, normalised together to -16 LUFS by
+     `tools/compress-beat-soundtrack.py`; see that script for why they had to be.
+
+         LOGO            silent -- and already was; see game.js titleMusic()
+         TITLE + MENU    Coco Nha Nha        TITLE_TRACK
+         FASE 1 lixao    Dance Saborosa      MUSIC_TRACK  <- here
+         NARUTAO         unchanged (Still Life's)         MOSCA_TRACK
+         FASE 2 cigarro  Sucuri - Samuraio   MUSIC_TRACKS.musicDesert
+         HORACIO         Sucuri -- the room's own track, uninterrupted
+         HIPOLITO        unchanged                        BOSS_TRACK
+         FASE 3 estante  Arrocha da Serpente MUSIC_TRACKS.musicLevel3
+         ZERAMENTO       Pode Me Chamar      MUSIC_TRACKS.musicEnding
+         MISTER STOP     Cumbia Corazon -- NOT WIRED, he does not exist
+         TIME ATTACK     Cumbia Corazon -- NOT WIRED, it does not exist
+
+     ⚠️ AND ITS `MUSIC_LOOP` ENTRY WENT WITH IT. The bed was a three-bar crop
+     pinned at 5.115s; this is a 66.8s song that loops at its own end. Leaving
+     the pin behind would have cut the street's music off after five seconds --
+     see the note on that map. */
+  MUSIC_TRACK: 'v2:beatemup-dungeon/soundtrack/Dance Saborosa.mp3',
   musicVolume: 0.55,
 
   /* --- The title screen's theme --------------------------------------------
@@ -8609,7 +8663,61 @@ const CONFIG = {
      through the logo hears nothing until they play once and come back. Any real
      fix costs the player a press and would be a design change, not a wiring
      one. */
-  TITLE_TRACK: 'v2:beatemup-dungeon/audio/mike-title.ogg',
+  /* ⚠️ **COCO NHA NHA** SINCE 2026-09-08 -- MIKE is off this screen. Everything
+     above is the history of putting MIKE here and is kept for the browser-
+     autoplay note at the end of it, which is still exactly true of any track.
+
+     ⚠️ IT COVERS THE MENU AND OPCOES TOO, AND THAT IS FOR FREE RATHER THAN BY
+     CODE. Asked as two lines -- *"ABERTURA - COCO NHANHA"* and *"MENU (Opcoes)
+     - COCO NHANHA"* -- but the menu never stops the title's music and
+     `playMusic` is a no-op for the track already playing, so one track answers
+     both. If they ever want to differ, that is a new key and a call in the menu
+     branch, not a change here.
+
+     ⚠️ `mike-title.ogg` IS STILL IN THE FOLDER AND IS NOW SHIPPED BY NOTHING.
+     manifest.js walks the constants, so dropping out of one drops it out of the
+     build; it is left on disk because putting it back is this one line. */
+  TITLE_TRACK: 'v2:beatemup-dungeon/soundtrack/Coco Nha Nha.mp3',
+
+  /* --- THE REST OF THE SOUNDTRACK -----------------------------------------
+     ASSET KEY -> FILE, for every track that is not one of the four constants
+     above. Added 2026-09-08 with the soundtrack, because those four are named
+     roles (the bed, the boss, the title, the Mosca) and what arrived was a
+     LIST -- a song per stage, which the role-shaped constants have no room for.
+
+     ⚠️ ADDING A SONG IS ONE LINE HERE AND ONE `music:` ON A ROOM. manifest.js
+     walks this map, so nothing else has to learn the name. That is the same
+     bargain CONFIG.SFX and CONFIG.MUSIC_LAYERS already strike.
+
+     ⚠️ THE KEY IS SPELLED IN UP TO THREE OTHER PLACES -- `MUSIC_GAIN` (how loud
+     it sits), `MUSIC_LOOP` (where it wraps, and a finished song wants NO entry),
+     and whatever asks for it: a room's `music:`, a boss's `musicKey`, or a
+     `playMusic()` call. A typo in any of them is silent: the track simply never
+     plays, or plays at flat `musicVolume`.
+
+     ⚠️ CUMBIA CORAZON IS DELIBERATELY ABSENT. It is spoken for twice over --
+     MISTER STOP's theme and the TIME ATTACK mode's -- and NEITHER EXISTS. Wiring
+     it now would put a 3.5MB file in every build to be played by nothing, and
+     the request was explicit: *"mister stop ainda nao existe, nao incluir agora,
+     so documentar"*. The file is in `assets-v2/beatemup-dungeon/soundtrack/`.
+     When MISTER STOP is built, he is a `musicKey` on the boss plus one line
+     here; when TIME ATTACK is, it is one line here and a `playMusic` call. */
+  MUSIC_TRACKS: {
+    /* FASE 2, the sea of cigarettes. ⚠️ HORACIO PLAYS THIS TOO, and does so by
+       having no theme of his own: `bossMusic()` only switches for a boss with a
+       `musicKey`, so his arena keeps the room's track running straight through
+       the fight. That is what *"BOSS - HORACIO - SUCURI"* asks for, and it is
+       the same shape HIPOLITO's room already uses -- the ROOM owns the song, so
+       a boss who shares it declares nothing. */
+    musicDesert: 'v2:beatemup-dungeon/soundtrack/Sucuri - Samuraio.mp3',
+    /* FASE 3, the bookcase. */
+    musicLevel3: 'v2:beatemup-dungeon/soundtrack/Arrocha da Serpente.mp3',
+    /* ZERAMENTO -- the ending photograph and the results board after it.
+       ⚠️ NOT A ROOM, SO IT IS A `playMusic` CALL rather than a `music:` entry;
+       game.js starts it where the ending phase begins. It plays UNDER the
+       victory sting, which is a one-shot on the sfx bus and unaffected. */
+    musicEnding: 'v2:beatemup-dungeon/soundtrack/Pode Me Chamar - Rasteirinha.mp3',
+  },
 
   /* WHERE EACH TRACK WRAPS, by ASSET KEY, in seconds. A track with no entry
      loops at the end of its own decoded buffer.
@@ -8636,70 +8744,49 @@ const CONFIG = {
      both scripts print the value to paste:
        music      tools/crop-beat-trilha.py
        musicTitle tools/cut-song-loop.py                                     */
-  /* --- THE WHISTLE OVER THE STREET BED --------------------------------------
-     A SECOND LOOPING VOICE, STARTED WITH A TRACK AND STOPPED WITH IT. Asked for
-     2026-08-24: the whistle plays together with the gameplay song, looped
-     together, and NOT baked into one file unless there was no other way.
+  /* --- EXTRA VOICES THAT PLAY *WITH* A TRACK --------------------------------
+     Track key -> a list of `{ key, src, gated }`. A layer starts on the same
+     scheduled moment as its track, loops on its own pin, and is only ever faded
+     -- never started and stopped -- so it surfaces out of the mix wherever it
+     happens to be. manifest.js walks this, so declaring one is an entry here
+     and nothing else.
 
-     There was another way, and the reason is worth keeping: the "ONE FILE, ONE
-     LOOP, NO MIXER AT RUNTIME" rule at the top of this section is inherited
-     from the flying dungeon and it is about `<audio>` ELEMENTS -- three of
-     those started together drift apart within a minute. This game plays music
-     through `AudioBufferSourceNode`, which is sample-accurate by specification
-     and scheduled against ONE audio clock. Two of them started at the same
-     `currentTime` cannot drift; there is no second clock to drift against. So
-     the whistle stays a whole, uncut file and the bed stays the approved mix.
+     ⚠️ IT IS EMPTY, AND THE MACHINERY IS KEPT ANYWAY. Its only user was the
+     BARATAS' WHISTLE (built 2026-08-24, *"leave it mute, and make it appear only
+     when the cockroach enemies are on screen"*), which was REMOVED on
+     2026-09-08: the street's music became a finished song rather than the sparse
+     six-second bed the whistle was written against, and a second melody at its
+     own tempo over a full arrangement is not what that cue was. Flagged when the
+     soundtrack landed, heard, and cut.
 
-     ⚠️ IT DOES NOT DIVIDE THE BED'S LOOP AND DOES NOT NEED TO. 7.5735s over
-     5.115s: the two phase against each other and the whistle is never in the
-     same place twice. The music lab flags a layer that does not divide because
-     it RENDERS to one file and the remainder splices onto the head -- nothing
-     is rendered here, each voice loops itself cleanly, and this soundtrack is
-     already built out of layers that do not divide (its own takes repeat at
-     2.09s and 2.22s inside a 6.15s arrangement).
+     What went with it: `WHISTLE_GATE`, `whistleGate()` in game.js,
+     `Crowd.anyOnScreen()` in enemy.js, and the `musicWhistle` entries in
+     MUSIC_LOOP and MUSIC_GAIN. `whistle-song.ogg` is still on disk and shipped
+     by nothing.
 
-     ⚠️ IT IS ON `music` ONLY, which is the request: the street bed. The horse's
-     song and the title theme are finished pieces and are not accompanied.
+     ⚠️ WHAT STAYED IS `Sound`'s LAYER SUPPORT, and deliberately: scheduling two
+     buffers on one clock so they phase rather than drift is the hard part and it
+     is written and documented (see sound.js `_startLayer` / `setLayerOn`). It is
+     inert with this map empty. A future layer is one entry here. */
+  MUSIC_LAYERS: {},
 
-     Keyed by TRACK, listing { key, src } -- the manifest walks this for the
-     build, and `MUSIC_LOOP` / `MUSIC_GAIN` below carry the layer's own wrap and
-     level under the same asset key everything else uses. */
-  MUSIC_LAYERS: {
-    music: [
-      { key: 'musicWhistle', src: 'v2:beatemup-dungeon/audio/whistle-song.ogg',
-        gated: true },
-    ],
-  },
-
-  /* --- WHAT THE WHISTLE IS FOR ----------------------------------------------
-     ⚠️ IT IS THE BARATAS' SOUND. Asked for 2026-08-24, immediately after the
-     layer was built: "leave it mute, and make it appear only when the cockroach
-     enemies are on screen." So `gated: true` above -- the voice starts SILENT
-     and game.js raises it while one of these kinds is alive in the shot.
-
-     ⚠️ THE VOICE IS NEVER STARTED AND STOPPED, ONLY FADED. Restarting it would
-     play the melody from its first note every time a roach walked on, and would
-     throw away the one property the layer exists to have: it is locked to the
-     bed's clock and phases against it. Riding the gain means it comes UP
-     wherever it happens to be -- a layer surfacing out of a mix rather than a
-     cue being triggered. See Sound.setLayerOn().
-
-     `WHISTLE_GATE.marginPx` IS NOT SLOP. Baratas WALK IN from off the edge, so
-     a bare screen test would snap the whistle on somewhere in the middle of an
-     arrival. One screen-width margin either side means it starts when they do.
-
-     `fadeSec` is the ramp both ways. Long enough not to click on a sustained
-     whistle, short enough that it is clearly THEIR sound. */
-  WHISTLE_GATE: {
-    layer: 'musicWhistle',
-    kinds: ['barata', 'barata2'],
-    marginPx: 160,
-    fadeSec: 0.45,
-  },
 
   MUSIC_LOOP: {
-    music: 5.115,
-    musicTitle: 60.107,
+    /* ⚠️ `music` AND `musicTitle` WERE PINNED HERE AND ARE NOT ANY MORE
+       (2026-09-08). Both keys now hold FINISHED SONGS off the soundtrack --
+       Dance Saborosa on the street, Coco Nha Nha on the title -- and a finished
+       song loops at its own end, which is what an absence means in this map.
+
+       ⚠️ THIS IS THE TRAP THIS WHOLE MAP EXISTS TO SET, AND IT NEARLY FIRED.
+       The old numbers described the files that used to be behind those keys: a
+       three-bar crop of the bed (5.115s) and MIKE's cut loop (60.107s). Left
+       in place while the FILES changed, `music` would have cut Dance Saborosa
+       off after five seconds and looped those five forever, and Coco Nha Nha
+       would have wrapped at 60s of its 139. Neither errors. Both are simply
+       what the game would have sounded like.
+
+           the rule: a key here describes the FILE, not the ROLE.
+           repoint a *_TRACK constant and this entry is stale by definition. */
     /* THE WHOLE FILE, uncut. It loops on itself acceptably as delivered: the
        last second decays and the first builds, so the wrap is a breath rather
        than a splice -- measured, the seam step is 0.0019 against a head that is
@@ -8707,7 +8794,6 @@ const CONFIG = {
        crop tool was run on it and none is wanted; a cut through a
        through-composed melody has nowhere good to land (the best 5.115s window
        in it scores 0.23 for seam similarity, against 0.64 for MIKE). */
-    musicWhistle: 7.5735,
     /* ⚠️ NOT OURS TO RE-DERIVE: this is `loopMs` out of tools/music-lab.html,
        which is the flying dungeon's arrangement, in seconds. That mix is
        14.452s and the Opus container says 14.4585 -- 6.5ms of padding, which
@@ -8789,10 +8875,10 @@ const CONFIG = {
      now: the same trim, so the pair are level again wherever the bed goes next.
      ⚠️ Move one, move the other.
 
-     ⚠️ AND THE WHISTLE FOLLOWS THE BED FOR FREE. It is a LAYER on `music`, and
-     a layer's own gain node feeds the music bus that the main track's trim sets
-     -- so 0.8 takes the whistle down with it and their balance is unchanged.
-     That is worth knowing before anyone "fixes" the whistle to match.
+     ⚠️ A LAYER WOULD FOLLOW ITS TRACK FOR FREE, and that is worth knowing if one
+     is ever added again: a layer's own gain node feeds the music bus that the
+     main track's trim sets, so lowering the track lowers the layer with it and
+     their balance is unchanged. There are no layers now -- see MUSIC_LAYERS.
 
      Measured RMS, which is what these numbers came from:
 
@@ -8810,19 +8896,40 @@ const CONFIG = {
        too loud in play, and then another 15% on top: 1.0 -> 0.8 -> 0.68, which
        is 3.3dB and takes it from -16.9 to -20.3 dBFS. See the warnings above --
        this number moving is not free, and it has now moved twice. */
-    music: 0.68,
-    musicBoss: 0.85,
-    musicTitle: 2.6,
-    /* ⚠️ UNDER THE BED ON PURPOSE, AND NOT BECAUSE IT IS QUIET. Measured, the
-       whistle is -16.4 dBFS RMS against the bed's -16.9 -- they arrive at
-       almost exactly the same level. But one is a MELODY and the other is
-       percussion, and matched by RMS a melody sits in front of a groove rather
-       than on it. 0.8 was the first guess and it was 20% too present in play --
-       0.64 is that, heard and taken down. The bed's own level is still the fixed
-       point and does not move; this is the knob that does.
+    /* ⚠️ 0.72 SINCE 2026-09-08, AND THE OLD 0.68 IS NOT A HISTORY OF THIS
+       NUMBER -- IT BELONGED TO A DIFFERENT FILE. This key is Dance Saborosa
+       now, not the six-second bed, so the trim was re-derived rather than
+       carried over: the song measures -17.3 dBFS RMS and 0.72 lands it at
+       -20.3, which is exactly where the bed it replaced was arriving. The LEVEL
+       is inherited, in other words, not the multiplier -- and the level is the
+       part that was tuned in play over three sessions.
 
-       ⚠️ IT IS ITS OWN GAIN NODE, not the music bus. The bus carries the main
-       track's trim and stopMusic() puts it back to plain volume. */
+       ⚠️ THE `musicMosca` COUPLING BELOW IS NOW BROKEN, ON PURPOSE. The old rule
+       was "move one, move the other", because both keys held tracks that
+       measured within 0.3 dB and 0.68 kept them level. Her track has NOT
+       changed; this one has. They are two independent levels that happen to
+       arrive in the same place, and pairing them again would mean a future
+       change to the street's song silently moving Still Life's. */
+    music: 0.72,
+    musicBoss: 0.85,
+    /* ⚠️ 0.92, DOWN FROM 2.6, AND THE 2.6 WAS ABOUT MIKE. That number existed to
+       lift a track mastered at -25.4 dBFS; Coco Nha Nha arrives normalised at
+       -17.2 and needs almost none of it. 0.92 puts it at -18.2, the same place
+       MIKE was arriving -- a little UNDER the in-play beds, which the note above
+       explains is deliberate for a dense mix on a still screen. */
+    musicTitle: 0.92,
+    /* THE SOUNDTRACK'S OTHER BEDS. ⚠️ ONE NUMBER FOR ALL THE IN-PLAY ONES, AND
+       THAT IS THE POINT OF NORMALISING THE FILES. The six songs were levelled to
+       -16 LUFS together before they were encoded, so they now span 0.9 dB
+       against the 7.7 dB they arrived with -- which means a single trim serves
+       all of them and a per-track number would be pretending to a precision the
+       spread does not contain. If ONE of them turns out wrong in play, give that
+       one its own entry; do not re-derive the set. */
+    musicDesert: 0.72,
+    musicLevel3: 0.72,
+    /* THE ZERAMENTO. At the title's level rather than the beds', because like
+       the title it plays over a still screen with no effects on top of it. */
+    musicEnding: 0.92,
     /* STILL LIFE'S, ON THE MOSCA. ⚠️ IT IS THE BED'S TRIM AND NOT A LEVEL OF ITS
        OWN -- her track measures -17.2 dBFS against the bed's -16.9, so the two
        were already level and the job of this number is only to keep them that
@@ -8830,7 +8937,6 @@ const CONFIG = {
        an absence meant "level with the bed" right up to the moment that stopped
        being true. Move the bed, move this. */
     musicMosca: 0.68,
-    musicWhistle: 0.64,
   },
 
   /* --- Sound effects -------------------------------------------------------
@@ -8890,7 +8996,6 @@ const CONFIG = {
        below it. ⚠️ Unlike the coin above, this one needs NO cutting: it is a
        finished 10.7s clip that starts on its first beat. Enveloped before
        wiring, because the coin next to it looked finished and was not. */
-    victory: 'v2:flying-dungeon/audio/victory-sound-01.ogg',
     /* THE DEATH STING -- STILL LIFE'S, READ IN PLACE out of that game's folder
        rather than copied, exactly like the game over panel's three frames above
        it. Asked for by name on 2026-08-22: the two games are meant to end the
@@ -8904,8 +9009,23 @@ const CONFIG = {
     gameOver: 'v2:flying-dungeon/audio/game-over.ogg',
   },
   /* Effects sit ABOVE the music: a punch that the bed swallows reads as a
-     punch that did not connect. Both are under the mute. */
-  sfxVolume: 0.9,
+     punch that did not connect. Both are under the mute.
+
+     ⚠️ 0.81 SINCE 2026-09-08, DOWN A TRUE 10% FROM 0.9 (-0.9 dB). Asked for
+     after the soundtrack went in: *"reduce the sfx (punches and taking hits
+     sounds) volume by 10%, right now its a lot higher... and we want higher but
+     its too much"*. So the rule above still stands -- effects ABOVE the music is
+     the design, and this is only how far above.
+
+     ⚠️ MOVING THIS RE-DERIVES THREE ENTRIES IN `SFX_GAIN`, AND FORGETTING WOULD
+     BE SILENT. `gameOver`, `victory` and `coin` are not trims relative to the
+     punches; each was solved backwards from an ABSOLUTE level matched against
+     Still Life, with this number in the arithmetic. Lower the bus alone and all
+     three quietly drop 10% below the level they were matched to. They were
+     re-derived here (0.67 -> 0.74, 0.14 -> 0.156) so the cut lands on the
+     COMBAT sounds, which is what was asked for. Everything else in that table is
+     relative to its neighbours and rides the bus down correctly. */
+  sfxVolume: 0.81,
 
   /* Per-effect trim, multiplied onto sfxVolume. Anything not listed plays at 1.
 
@@ -8921,26 +9041,34 @@ const CONFIG = {
      more than that, the thing to turn down is musicVolume. */
   SFX_GAIN: {
     comboFinish: 1.2,      // the last hit of a string reads as the biggest one
-    /* 0.67 is not a taste decision, it is arithmetic: Still Life plays this
+    /* 0.74 is not a taste decision, it is arithmetic: Still Life plays this
        clip at 1.0 on an sfx bus set to 0.6, so it reaches the master at 0.6.
-       This game's bus is 0.9, and 0.9 x 0.67 is that same 0.6. Changing
-       sfxVolume therefore breaks the match -- if the punches are ever
-       rebalanced, re-derive this rather than nudging it by ear. */
-    gameOver: 0.67,
+       0.81 x 0.74 is that same 0.6.
+
+       ⚠️ AND IT WAS 0.67 UNTIL 2026-09-08, WHICH IS THE WARNING THIS COMMENT
+       ALREADY CARRIED COMING TRUE. The bus came down from 0.9 to 0.81 for the
+       punches; 0.67 was the answer for a 0.9 bus, and left alone it would have
+       taken the death sting 10% below the level it exists to match. Re-derived,
+       exactly as the old note said to. Move the bus again and do it again. */
+    gameOver: 0.74,
     /* THE COUNT-UP TICK, and the arithmetic is the same shape as gameOver's
        above but the answer is not. Still Life plays this clip at 0.605 on an
        sfx bus of 0.6, so it reaches master at 0.363; matching that on this
-       game's 0.9 bus would be 0.40.
+       game's 0.81 bus would be 0.45.
 
        ⚠️ MATCHING IT WOULD BE TOO LOUD, because that game plays ONE coin and
        this one plays about fifty in four and a half seconds, three or four of
        them ringing at any moment. What is being matched has to be the sound of
        the EFFECT, not of one voice in it, so this sits well under the derived
-       figure. 0.14 is roughly a third of it.
+       figure. 0.156 is roughly a third of it.
+
+       ⚠️ 0.14 -> 0.156 ON 2026-09-08 IS NOT A LEVEL CHANGE, IT IS THE SAME LEVEL
+       ON A QUIETER BUS. 0.9 x 0.14 and 0.81 x 0.156 are both 0.126. The 10% cut
+       was asked for on the punches; the tick keeps the level it was tuned to.
 
        If the tick is ever pulled apart from the roll -- one per row, say --
-       0.40 is the number to go back to. */
-    coin: 0.14,
+       0.45 is the number to go back to. */
+    coin: 0.156,
     /* UNDER THE PUNCH THAT CAUSED IT. The cut measures -14.6 dBFS against
        combo-finish's -15.9, and that clip is already lifted to 1.2 -- so at 1.0
        the reaction would arrive level with the blow and the two would fight.
@@ -8966,12 +9094,6 @@ const CONFIG = {
        between -14.6 and -14.2 dBFS, so one number does for the set and which
        sound plays never doubles as a volume change. */
     enemyDeath: 0.7,
-    /* Same arithmetic as gameOver above, and here it stands: Still Life plays
-       this at 1.0 on a 0.6 bus, reaching master at 0.6, and 0.9 x 0.67 is that
-       same 0.6. It is ONE voice there and one here -- nothing about the usage
-       differs, which is exactly why the coin's derivation had to be overruled
-       and this one does not. */
-    victory: 0.67,
   },
   /* --- The death sting -----------------------------------------------------
      HOW the game over music is played, kept apart from WHICH file it is because
@@ -8993,36 +9115,53 @@ const CONFIG = {
      THE BED STOPS FOR IT. This is music standing in for the music that has just
      ended, not an effect layered over one -- the opposite of the CLEAR board,
      where the game carries on. */
-  /* --- THE VICTORY FANFARE -------------------------------------------------
-     STILL LIFE'S, and it arrives in TWO moments rather than one. Asked for
-     2026-08-24 and then corrected the same message: "when the boss fight ends
-     and the screen fades out (the cavalo boss fight), stop the song of the boss
-     fight. Then the last screen is loaded and the coconut comes from the left,
-     start playing the victory song."
+  /* --- THE WIN'S MUSIC ------------------------------------------------------
+     ⚠️ THIS BLOCK WAS `VICTORY_STING` AND THE STING IS GONE (2026-09-08).
+     *"remove the other sfx that was at the screen, one that sounds like a little
+     trumpet"* -- Still Life's fanfare, which the ZERAMENTO no longer has room
+     for now that **Pode Me Chamar** plays over that screen. Two pieces of music
+     arriving on the same frame is one too many, and the song is the one that was
+     asked for.
 
-       1. THE HORSE'S SONG STOPS when the walk-out begins -- `musicFadeSec`,
-          rolled off across the walk rather than cut, so the room empties out.
-       2. THE FANFARE STARTS when the ending screen does, as he comes in from
-          the left. There is a beat of silence between the two, and that beat
-          is the point: the song ending is what makes the fanfare an arrival.
+     ⚠️ IT WAS RENAMED RATHER THAN SWITCHED OFF, AND THAT IS THE WHOLE POINT.
+     `on: false` looked like the one-line answer and was a trap: **`on` gated TWO
+     unrelated things** -- the fanfare AND `endBossMusic()`, the roll-off that
+     takes the level's song down across the walk-out. Turning it off would have
+     silenced the trumpet and ALSO left the library's music playing straight
+     through the walk-out and into the ending, where `musicEnding` would have
+     crossfaded over the top of it. A flag that gates two things is a flag that
+     cannot express either of them.
 
-     ⚠️ THIS REVERSES THE HORSE'S "NOTHING EVER STOPS IT" RULE, which is written
-     up at BOSS_TRACK above and was itself an explicit request on 2026-08-22 --
-     the song was to run through his death, the walk-out, the ending photograph
-     and the tally, "so the last thing the player hears is the same thing they
-     beat the game to". That is now the fanfare instead. Both notes are kept
-     because the reasoning has not stopped being good; it was simply outvoted.
+     WHAT SURVIVES IS BEAT 1 OF THE TWO THIS BLOCK USED TO DESCRIBE, and it still
+     matters for exactly the reason it always did:
 
-     ⚠️ IT IS `playOnce`, NOT `play`, AND THAT MATTERS. The clip is 10.7s and
-     the ending screen plus the whole results board is about ten -- a player who
-     skips the tally would otherwise be back on the title with a fanfare still
-     going. `toTitle()` calls `stopOnce`. This is Still Life's own finding
-     (`stopOnce('victory')`, "at 10.7s it easily outlives a run"), inherited
-     rather than rediscovered. */
-  VICTORY_STING: {
-    on: true,
-    musicFadeSec: 1.2,     // the horse's song rolling off across the walk-out
-    stopFadeSec: 0.4,      // the fanfare getting out of the way at the title
+       1. THE LEVEL'S SONG STOPS when the walk-out begins -- `fadeSec`, rolled
+          off across the walk rather than cut, so the room empties out.
+       2. ~~THE FANFARE STARTS when the ending screen does.~~ **Pode Me Chamar
+          starts there instead** -- see MUSIC_TRACKS.musicEnding, and game.js
+          where the ending phase begins.
+
+     ⚠️ AND THE BEAT OF SILENCE BETWEEN THEM IS STILL THE POINT. The old note
+     said "the song ending is what makes the fanfare an arrival"; it is what
+     makes the ZERAMENTO's song an arrival too, so the roll-off is not
+     housekeeping and must not be shortened to close the gap.
+
+     ⚠️ THE HORSE'S "NOTHING EVER STOPS IT" RULE STAYS REVERSED. Written up at
+     BOSS_TRACK, requested 2026-08-22, outvoted 2026-08-24 by the fanfare -- and
+     the fanfare has now gone, but not back to that. The last thing the player
+     hears is Pode Me Chamar. Both older notes are kept because the reasoning has
+     not stopped being good; it was simply outvoted twice.
+
+     WHAT WENT WITH THE STING: `playVictory()` and its call in game.js, the
+     `stopOnce('victory')` in `frontEnter()`, `stopFadeSec` (which existed only
+     to get the fanfare out of the way at the title), and the `victory` entries
+     in SFX and SFX_GAIN. `victory-sound-01.ogg` is read in place out of the
+     flying dungeon and is now shipped by nothing.
+
+     ⚠️ NOT TO BE CONFUSED WITH THE `victory` POSE in CHARACTERS -- that is the
+     arms-up drawing on the ending screen, a different namespace, and it stays. */
+  WIN_MUSIC: {
+    fadeSec: 1.2,          // the level's song rolling off across the walk-out
   },
 
   GAME_OVER_STING: {

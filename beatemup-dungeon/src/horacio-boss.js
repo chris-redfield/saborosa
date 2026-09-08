@@ -358,11 +358,14 @@ class HoracioBoss {
    * matter what the phase asked for. THE ART SAYS THIS, it is not a taste call:
    * master 001 is the only one with an F4.
    *
-   * ⚠️ SO THE STAB LOSES ITS SPIKES DOWN HERE. Beat 9 sets level 3 "because the
-   * grandao does the stabbing" and at low health it will draw as the naked
-   * joaninha lunging. That is the honest read of losing your armour and it is
-   * what `nakedLevel` is for -- set it to null and the tier goes inert again
-   * rather than half-applying.
+   * ⚠️ THE STAB USED TO LOSE ITS SPIKES DOWN HERE, AND NOW IT SIMPLY DOES NOT
+   * HAPPEN. This note argued that a naked joaninha lunging was "the honest read
+   * of losing your armour" and let the move through; seen in play on 2026-09-08
+   * the answer was the other one -- *"he doesn't have spikes anymore (as per his
+   * spritesheet)"* -- so `_pickGoal` drops the stab's weight to zero once
+   * `_shellGone()`, and `_decide` catches one that was already chosen. Beat 9
+   * still sets level 3 for the stab; it is just unreachable in this tier.
+   * `nakedLevel: null` still takes the whole tier inert, move set included.
    *
    * ⚠️ AND `sizePx()` GOES THROUGH HERE TOO, WHICH IS THE POINT. The joaninha
    * is 324 tall against level 1's 354, and a body that shrinks on screen while
@@ -1015,11 +1018,40 @@ class HoracioBoss {
   _pickGoal() {
     const C = CONFIG.HORACIO_BOSS, B = C.BALL;
     const W = CONFIG.GAME_W;
-    const r = Math.random();
     const w = C.WEIGHTS || { charge: 0.4, stab: 0.22, summon: 0.22, walk: 0.16 };
+    /* ⚠️ NO STAB ONCE THE SHELL IS OFF -- *"make him not do the 'emerge from the
+       ground and attack with spikes' attack, because now he doesn't have spikes
+       anymore (as per his spritesheet)"*, 2026-09-08.
+
+       ⚠️ THIS REVERSES A DECISION THAT WAS WRITTEN DOWN AND ARGUED FOR. The note
+       on `bodyLevel()` said the stab losing its spikes down here was "the honest
+       read of losing your armour" and let it keep happening, drawn as the naked
+       joaninha lunging. That was a taste call made in a comment; it has now been
+       SEEN, and the answer is that a move whose whole point is the spikes cannot
+       survive the spikes. The art decides, as it did when the tier was built.
+
+       ⚠️ ZEROED AND RENORMALISED, NOT RE-ROLLED. Re-drawing until it is not a
+       stab terminates with probability 1 but has no bound, and `Math.random()`
+       in a loop inside a per-move decision is the kind of thing that is fine
+       until it is not. Dividing by the surviving total is exact and constant
+       time: charge/summon/walk keep their 0.4 : 0.22 : 0.16 proportions and
+       simply share the stab's 0.22 between them.
+
+       ⚠️ AND IT HANGS OFF `_shellGone()` RATHER THAN A KNOB OF ITS OWN. One
+       threshold governs the whole third form -- the body, the size, the hurtbox
+       and now the move set -- so `nakedAt: null` still turns the entire tier
+       inert in one place instead of leaving a stab that has quietly gone
+       missing for an unrelated reason. */
+    const stab = this._shellGone() ? 0 : (w.stab || 0);
+    /* ⚠️ SCALED BY THE SURVIVING TOTAL, which is also what stops the missing
+       0.22 falling into `walk`. The chain below ends in an unguarded `: 'walk'`
+       -- weights that do not reach 1 silently hand the remainder to it, which
+       is the trap the config comment on WEIGHTS already warns about. */
+    const total = (w.charge || 0) + stab + (w.summon || 0) + (w.walk || 0);
+    const r = Math.random() * (total > 0 ? total : 1);
     this.next = (r < w.charge) ? 'charge'
-              : (r < w.charge + w.stab) ? 'stab'
-              : (r < w.charge + w.stab + w.summon) ? 'summon' : 'walk';
+              : (r < w.charge + stab) ? 'stab'
+              : (r < w.charge + stab + w.summon) ? 'summon' : 'walk';
     if (this.next === 'charge') {
       /* THE THREE LANES ARE FRACTIONS OF THE BELT -- back, middle, front -- and
          the side is a coin flip, so the same lane can be run either way. */
@@ -1071,6 +1103,16 @@ class HoracioBoss {
    */
   _decide(player) {
     const C = CONFIG.HORACIO_BOSS;
+    /* ⚠️ AND AGAIN HERE, BECAUSE THE PICK IS NOT THE MOMENT HE ATTACKS. A stab
+       is chosen at `_pickGoal` time and executed a whole roam later, so a combo
+       that takes him from 30% to 20% DURING that roam would surface a spikeless
+       body doing the spike move -- the one case the picker cannot see. Rewritten
+       to a walk rather than dropped: `_walk` is bounded by `walkMs` rather than
+       by reaching its goal, so it is safe to enter already standing on it, and
+       the rise hands to whatever `next` says by the time it lands. Falling
+       through to the final `_to('submerge')` instead would have started a CHARGE
+       on a goal that was never laid out for one. */
+    if (this.next === 'stab' && this._shellGone()) this.next = 'walk';
     if (this.next === 'stab' && player) {
       const side = (player.x >= this.x) ? 1 : -1;
       this.x = player.x - side * (C.STAB.standOff || 90);

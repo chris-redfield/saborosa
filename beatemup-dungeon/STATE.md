@@ -7575,6 +7575,320 @@ moments and the 24px itself are eye calls.
 
 ---
 
+## And then on 2026-09-08: the soundtrack
+
+Six songs arrived in `assets-v2/beatemup-dungeon/soundtrack/`, and the session
+was three jobs in a fixed order: **shrink them, level them, wire them** — fixed
+because the masters were deleted at the end of it, so anything that needed the
+320 kbps files had to happen first.
+
+### They were 52 MB, and 320 kbps was the export default, not a decision
+
+All six arrived 320 kbps CBR stereo — the highest bitrate MP3 has, more than
+every other asset in the game put together. Measured across the middle minute,
+the energy above 16 kHz (the first thing any lower bitrate discards) is between
+**0.002% and 0.041%**. The music already in the game is 128 kbps
+(`song-enmakun2011`) and ~110 (`mike-title`).
+
+`tools/compress-beat-soundtrack.py` — masters in `originals/`, output one folder
+up, never in place. **51.8 MB → 19.8 MB, 62% off.**
+
+⚠️ **THE PUBLISHED VBR AVERAGES ARE WRONG FOR THIS MATERIAL, AND I QUOTED THEM
+BEFORE MEASURING.** LAME V5 is "about 130 kbps" everywhere it is written down; on
+four of these six it produced **86–96 kbps**, *below* the game's own 128k
+standard. Caught only because the output was re-probed rather than trusted. The
+ladder in the script's header is now the measured one:
+
+| | bitrate range | total |
+|---|---|---|
+| V5 | 86–141 | 17.2 MB |
+| **V4 (ships)** | **104–164** | **20.3 MB** |
+| V3 | 119–184 | 23.0 MB |
+| V2 | 136–202 | 26.0 MB |
+
+V4 over V5 for a reason beyond the numbers: **the masters were deleted**, so
+shipping the most aggressive setting and then burning the only source is the one
+mistake here that cannot be undone.
+
+### They were NOT "ok between themselves" — they spanned 7.7 dB
+
+The ask was *"tente regularizar o volume de todas elas... as que já estavam no
+game estavam completamente desreguladas"*. The memory was right, and it applied
+to the new ones too:
+
+| | LUFS in | true peak |
+|---|---|---|
+| Cumbia Corazon | −6.55 | **+1.21 dBTP** |
+| Sucuri | −9.22 | **+1.23 dBTP** |
+| Dance Saborosa | −10.73 | **+0.48 dBTP** |
+| Arrocha | −12.48 | −4.33 |
+| Pode Me Chamar | −13.10 | −3.23 |
+| Coco Nha Nha | −14.21 | −3.21 |
+
+Cumbia is nearly **8 dB** over Coco Nha Nha, and **three of the six were already
+over full scale**. Normalised two-pass to −16 LUFS / −1.5 dBTP in the same
+ffmpeg pass as the encode — one generation, not two. After: all six at −16.0,
+peaks −3.8 to −7.8, **spread down from 7.7 dB to 0.9 dB**.
+
+⚠️ **TWO-PASS, NOT ONE.** `loudnorm` applied blind is a compressor riding the
+programme; applied to a measurement it is a gain calculation. On a five-minute
+song one-pass pumps the quiet intro up and rides it back down when the band
+comes in.
+
+⚠️ **THE TRUE-PEAK CEILING IS THE POINT, NOT A DETAIL.** Normalising a song that
+already peaks at +1.2 dBTP without one just moves where it clips.
+
+⚠️ **`loudnorm` RESAMPLES TO 192 kHz INTERNALLY** and the rate has to be forced
+back to 44100, or the encoder is handed 192k.
+
+### And the levelling did NOT go in the files alone
+
+`CONFIG.MUSIC_GAIN` already existed for exactly this — *"so a song mixed hotter
+than the bed does not have to be re-rendered"*. So the work split: **the files
+were made to agree with each other** (once, permanently), and **MUSIC_GAIN
+decides how each sits under the effects** (a mix decision that moves when the bed
+moves). Doing both in the file would have baked a play-balance into an asset.
+
+The existing tracks were therefore **not re-encoded at all** — `mike-title` is 8.5
+dB quiet and already carries a 2.6× gain for it.
+
+Derived, in the block's own dBFS-RMS convention: the six now average −17.4, so
+**0.72** lands them at −20.3 (exactly where the old bed was arriving) and
+**0.92** at −18.2 (where MIKE was). One number for all the in-play beds, which is
+the payoff of normalising — a per-track figure would pretend to a precision a
+0.9 dB spread does not contain.
+
+### The wiring, and the two landmines in it
+
+    LOGO            silent -- already was
+    TITLE + MENU    Coco Nha Nha          TITLE_TRACK
+    FASE 1 lixao    Dance Saborosa        MUSIC_TRACK
+    NARUTAO         unchanged             MOSCA_TRACK
+    FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
+    HORACIO         Sucuri -- no theme of his own, the room's runs through
+    HIPOLITO        unchanged             BOSS_TRACK
+    FASE 3 estante  Arrocha da Serpente   MUSIC_TRACKS.musicLevel3
+    ZERAMENTO       Pode Me Chamar        MUSIC_TRACKS.musicEnding
+    MISTER STOP     Cumbia Corazon -- DOCUMENTED, NOT WIRED
+    TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED
+
+⚠️ **`MUSIC_LOOP` NEARLY CUT TWO SONGS TO PIECES.** It had `music: 5.115` and
+`musicTitle: 60.107` — numbers that described the *files* that used to be behind
+those keys, a three-bar crop of the bed and MIKE's cut loop. Repointing the
+constants left both entries pointing at songs of 66.8s and 139.3s. Neither
+errors. The street would simply have looped its first five seconds forever.
+**The rule is now written in the map: an entry here describes the FILE, not the
+ROLE, so repointing a `*_TRACK` constant makes it stale by definition.**
+
+⚠️ **THE WHISTLE LAYER IS NOW A MELODY OVER A SONG, AND IT WAS KEPT ANYWAY.**
+`MUSIC_LAYERS.music` hangs the whistle off the key `music` — which stopped being
+a sparse percussion bed and became Dance Saborosa. It was designed locked to the
+bed's clock, surfacing out of a mix; over a full song at its own tempo it is a
+second melody. It stays because it is not decoration — it is *the baratas'
+sound*, gated to them and asked for on 2026-08-24, and dropping a gameplay cue
+while wiring a soundtrack is not a wiring decision. **First thing to listen for
+in fase 1.** Off is deleting four lines; the middle option is lowering
+`MUSIC_GAIN.musicWhistle` from 0.64.
+
+⚠️ **`MUSIC_GAIN.music` AND `musicMosca` ARE NO LONGER COUPLED.** The old rule was
+"move one, move the other", because both held tracks measuring within 0.3 dB.
+Her track has not changed; the street's has. They are two independent levels
+that arrive in the same place.
+
+⚠️ **HORÁCIO SHARES A SONG BY DECLARING NOTHING.** `bossMusic()` switches only for
+a boss carrying a `musicKey`, so an arena whose boss has none runs the room's
+track straight through the fight with no fade. That is how *"BOSS - HORÁCIO -
+SUCURI"* is expressed. MISTER STOP will be the other shape — his own `musicKey`,
+because his song differs from his room's.
+
+### Small things worth keeping
+
+* `MUSIC_TRACKS` is new: asset key → file, walked by manifest.js. The four
+  `*_TRACK` constants are named ROLES and what arrived was a LIST.
+* **Cumbia Corazon is on disk and in no manifest**, deliberately — it is spoken
+  for twice and neither claimant exists. Shipping it would put 3.5 MB in every
+  build to be played by nothing.
+* **The filenames contain spaces**, which nothing else in the assets does.
+  Verified end to end: the browser encodes them (`Dance%20Saborosa.mp3`, 200) and
+  `package.sh` reads the manifest tab-separated with quoted `cp`.
+* `mike-title.ogg` is still on disk and now shipped by nothing. Putting it back
+  is one line.
+
+---
+
+## Same day, after hearing it: the whistle out, the effects down 10%
+
+Both asked for once the soundtrack was in and playing.
+
+### The whistle is gone
+
+Exactly the risk flagged when the soundtrack landed, confirmed by ear: *"remove
+the whistle that appears when the cockroaches appear on screen."* It was written
+against the sparse six-second bed and locked to its clock; once `music` became
+**Dance Saborosa** it was a second melody at its own tempo over a full
+arrangement.
+
+Removed whole rather than switched off: the `MUSIC_LAYERS` entry, `WHISTLE_GATE`,
+`whistleGate()` in game.js, `Crowd.anyOnScreen()` in enemy.js (which existed only
+to answer it), and the `musicWhistle` entries in `MUSIC_LOOP` and `MUSIC_GAIN`.
+The stale prose it left in three other config comments went too.
+
+⚠️ **THE LAYER MACHINERY STAYED, AND `MUSIC_LAYERS: {}` IS THE POINT.** Scheduling
+two buffers on one clock so they phase rather than drift is the hard part, it is
+written and documented in sound.js, and it is inert with the map empty. Deleting
+it would have thrown away the engineering to remove the content. A future layer
+is one entry. `whistle-song.ogg` stays on disk and is shipped by nothing.
+
+### The effects came down 10% — and three of them did NOT
+
+*"reduce the sfx (punches and taking hits sounds) volume by 10%, right now its a
+lot higher... and we want higher but its too much."* So the design is unchanged —
+effects above the music — and only the distance moved. `sfxVolume` **0.9 → 0.81**,
+a true 10% (−0.92 dB).
+
+⚠️ **AND MOVING THAT BUS SILENTLY BREAKS THREE `SFX_GAIN` ENTRIES, WHICH THE
+CONFIG HAD ALREADY WRITTEN DOWN AS A WARNING BEFORE IT CAME TRUE.** `gameOver`,
+`victory` and `coin` are not trims relative to the punches: each was solved
+*backwards* from an absolute level matched against Still Life, **with `sfxVolume`
+in the arithmetic**. Lowering the bus alone would have dropped all three 10% below
+the level they exist to match — inaudibly wrong, and nothing would have said so.
+
+| | gain | reaches master | change |
+|---|---|---|---|
+| comboFinish | 1.2 | 0.9720 | −0.92 dB |
+| enemyHit / playerHit | 0.7 | 0.5670 | −0.92 dB |
+| enemyDeath | 0.7 | 0.5670 | −0.92 dB |
+| playerDeath | 0.47 | 0.3807 | −0.92 dB |
+| **gameOver** | 0.67 → **0.74** | 0.5994 | **held** |
+| **victory** | 0.67 → **0.74** | 0.5994 | **held** |
+| **coin** | 0.14 → **0.156** | 0.1264 | **held** |
+
+The old comment on `gameOver` said *"if the punches are ever rebalanced,
+re-derive this rather than nudging it by ear"* — this is that day, and following
+it cost one line of arithmetic instead of a mystery later.
+
+**THE STANDING LESSON:** a knob that other numbers were *solved against* is not a
+knob, it is a constant with dependents. Before moving one, grep for what quotes
+it — here the dependents named themselves in their own comments, which is the
+only reason this was cheap.
+
+### And HORÁCIO stops stabbing once the shell is off
+
+*"when the boss horacio is in his third form (25% or less of HP), make him not do
+the 'emerge from the ground and attack with spikes' attack, because now he
+doesn't have spikes anymore (as per his spritesheet)."*
+
+⚠️ **THIS REVERSES A DECISION THAT WAS WRITTEN DOWN, ARGUED FOR, AND WRONG.** The
+note on `bodyLevel()` had already seen this coming and made the other call — the
+stab pops him to level 3 "because the grandão does the stabbing", and below
+`nakedAt` he is forced to level 0, so the move drew as *the naked joaninha
+lunging*. The comment called that "the honest read of losing your armour" and let
+it through. It has now been watched, and the answer is the opposite: **a move
+whose entire content is the spikes cannot outlive the spikes.** The art decided
+the tier when it was built and it decides the move set now.
+
+**Two guards, because the pick is not the moment he attacks:**
+
+* `_pickGoal()` — the stab's weight goes to **zero** once `_shellGone()`, and the
+  total is renormalised. Charge / summon / walk keep their 0.4 : 0.22 : 0.16
+  proportions and share the freed 0.22: **40/22/22/16 → 51.2/0/28.2/20.6**,
+  verified over 400k draws.
+* `_decide()` — a stab is chosen at pick time and executed **a whole roam
+  later**, so a combo taking him from 30% to 20% *during* that roam is the one
+  case the picker cannot see. Rewritten to a walk there.
+
+⚠️ **ZEROED AND RENORMALISED, NOT RE-ROLLED.** Re-drawing until it is not a stab
+terminates with probability 1 but has no bound; dividing by the surviving total
+is exact and constant time.
+
+⚠️ **THE FALLBACK IS A WALK AND NOT A FALL-THROUGH.** `_decide` ends in an
+unguarded `_to('submerge')`, which is the CHARGE path — reaching it with a stab's
+goal data would have started a charge on a lane that was never laid out. `_walk`
+is bounded by `walkMs` rather than by arriving, so it is safe to enter while
+already standing on its goal.
+
+⚠️ **AND IT HANGS OFF `_shellGone()`, NOT A NEW KNOB.** One threshold governs the
+whole third form — body, size, hurtbox, and now the move set — so `nakedAt: null`
+still takes the entire tier inert in one place, rather than leaving a stab that
+has quietly gone missing for an unrelated reason.
+
+### The elevator shadow — and a note of mine that asserted the wrong thing
+
+*"the character enter the elevator and elevates his z... that is beautiful
+actually, good job, but we need the shadow of the character to also do it,
+otherwise it looks like he is floating."*
+
+⚠️ **`riseY` MOVES THE SHADOW; `jumpY` DOES NOT.** They are both pure drawing
+offsets, which is exactly why they got treated alike — but they say **opposite
+things about the floor**:
+
+| | means | the shadow |
+|---|---|---|
+| `jumpY` | he left the floor | **stays** — its job is to say where he comes *down* |
+| `riseY` | the floor came up under him | **goes with it** — it belongs on the platform's top face |
+
+`drawShadow` now paints at `Belt.topY + z - riseY`. Verified across the cases:
+standing on the floor, mid-step-up, and standing on the lift all give a gap of
+**0** between feet and shadow; jumping gives a gap of `jumpY` with the shadow
+resting on whatever he launched from (floor y 570, lift y 546).
+
+⚠️ **THE `lift` TERM STILL READS `jumpY` ALONE, AND MUST.** That is the *height
+above the surface* — how small and faint the shadow goes. Folding `riseY` into it
+as well would shrink the shadow of a man standing still on a platform.
+
+⚠️ **THE REAL LESSON IS THAT I WROTE THE WRONG RULE INTO A COMMENT AS A FACT.**
+The `CONFIG.ELEVADOR` note said the shadow "stays on the GROUND (`drawShadow`
+paints at `Belt.topY + z` and ignores this **the same way it ignores `jumpY`**)"
+— reasoning by analogy from the wrong one of the two, stated as settled, and
+shipped. Nobody reading that comment would have gone looking. Both it and the
+README entry now carry the correction. Same family as *taste calls in comments*:
+**an argument written in a comment reads as decided, so a wrong one is worse than
+none.**
+
+### The victory fanfare is out of the ZERAMENTO
+
+*"remove the other sfx that was at the screen, one that sounds like a little
+trumpet (do not remove the numbers going up SFX)."* Still Life's fanfare, which
+had that screen to itself until **Pode Me Chamar** was wired onto it earlier the
+same day. Two pieces of music arriving on the same frame is one too many.
+
+⚠️ **`on: false` WAS THE OBVIOUS ONE-LINE ANSWER AND IT WAS A TRAP.**
+`VICTORY_STING.on` gated **two unrelated things**: the fanfare, *and*
+`endBossMusic()` — the roll-off that takes the level's song down across the
+walk-out. Switching the trumpet off that way would have left Arrocha da Serpente
+playing straight through the walk-out and into the ending, with the ZERAMENTO's
+track crossfading over the top of it. Nothing would have errored.
+
+So the block was **renamed to what actually survives** rather than disabled:
+
+```js
+WIN_MUSIC: { fadeSec: 1.2 }     // was VICTORY_STING { on, musicFadeSec, stopFadeSec }
+```
+
+⚠️ **THE BEAT OF SILENCE IS STILL THE POINT.** The old note said "the song ending
+is what makes the fanfare an arrival" — it is what makes the *song's* arrival too,
+so the roll-off is not housekeeping and must not be shortened to close the gap.
+
+Removed with it: `playVictory()` and its call, the `stopOnce('victory')` in
+`frontEnter()` (which existed only because the 10.7 s clip outlived a skipped
+tally — an ordinary music-bus track needs no such guard), `stopFadeSec`, and the
+`victory` entries in `SFX` and `SFX_GAIN`. `victory-sound-01.ogg` is read in place
+out of the flying dungeon and now ships nowhere.
+
+**Kept, explicitly:** `RESULTS.TICK` — the count-up on the results board — which
+was named as the thing NOT to remove. Untouched, `coin` still at 0.156.
+
+⚠️ **AND NOT THE `victory` POSE.** `CHARACTERS.*.poses.victory` is the arms-up
+drawing on the ending screen, a different namespace that happens to share a word.
+Grepping `'victory'` hits both.
+
+**THE STANDING LESSON, and it is the second time today:** a flag whose name
+describes one feature but whose `if` stands in front of two is not a switch, it
+is a coincidence. Same shape as the `sfxVolume` dependents — check what a flag
+*guards*, not what it is *called*.
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**

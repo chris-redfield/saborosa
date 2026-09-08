@@ -275,8 +275,16 @@ change and a third one gets it for free.
 > back of the drawing (see `ROOMS[3].belt`). Lifting the picture alone sinks him
 > into the slab by `liftPx`. `Elevador.tickRider` raises whoever is standing on
 > one via `Fighter.riseY`, which is folded into `groundY()` — **drawing only**.
-> No hitbox moves, and the shadow stays on the ground exactly as it does for
-> `jumpY`.
+> No hitbox moves.
+
+> ⚠️ **The shadow rides up with him — `riseY` moves it, `jumpY` does not.** They
+> are both drawing offsets, but they say opposite things about the floor:
+> `jumpY` is *he left it* (the shadow stays put, to say where he lands) and
+> `riseY` is *it came up under him* (the shadow belongs on the platform's top
+> face). Treating them alike made him look like he was floating on the lift,
+> reported 2026-09-08. `drawShadow` paints at `Belt.topY + z - riseY`; its `lift`
+> term still reads `jumpY` alone, so a jump taken *on* the platform still shrinks
+> the shadow against the platform.
 
 > ⚠️ **So there is a step on and off, and `riseSpeed` is why it is not a
 > teleport.** He crosses that edge in view four times: off the parked slab he
@@ -835,7 +843,7 @@ folder like the three frames above it, and played the way it plays it.
 | `.rate` | 0.9 — 10% slow. ⚠️ It **resamples**, so the pitch drops with it (~1.8 semitones). A tape-speed change, not a tempo change |
 | `.doubleDelayMs` | 50 — a second voice off the same buffer, that far behind. ⚠️ In the **clip's** time, so game.js divides it by `rate` before scheduling |
 | `.musicFadeSec` | 0.35 — the level's bed getting out of the way |
-| `SFX_GAIN.gameOver` | 0.67 — ⚠️ not taste: Still Life plays it at 1.0 on a 0.6 bus, and 0.9 × 0.67 is that same 0.6. Re-derive it if `sfxVolume` ever moves |
+| `SFX_GAIN.gameOver` | **0.74** — ⚠️ not taste: Still Life plays it at 1.0 on a 0.6 bus, and 0.81 × 0.74 is that same 0.6. It **was** 0.67 against a 0.9 bus and was re-derived when the bus moved on 2026-09-08 — do the same next time |
 
 **It fires when the panel is armed, not when the body hits the floor** — the
 death animation and its hold run first. That is where Still Life fires its own
@@ -3450,24 +3458,68 @@ Three knobs and three pipelines.
 
 | knob | what it does |
 |---|---|
-| `MUSIC_TRACK` | the looping bed, one file. Loaded under the key `music` |
-| `BOSS_TRACK` | the boss room's song — 4m39s, played whole. Loaded under the key `musicBoss` |
-| `TITLE_TRACK` | the title screen's theme — a 60s loop cut out of MIKE. Loaded under the key `musicTitle`. Unset = silent title screen |
-| `MOSCA_TRACK` | **the Mosca's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
-| `MUSIC_LAYERS` | **extra voices started with a track and stopped with it**, by track key. `music` gets `musicWhistle` (the whistle over the street bed). Each entry is `{ key, src }`; the manifest walks it |
-| `MUSIC_LOOP` | **where each track wraps, by asset key** — `music` 5.115, `musicTitle` 60.107, `musicMosca` 14.452, `musicWhistle` 7.5735. NOT decoration; see below. A track with no entry loops at its own end (that is `musicBoss`) |
-| `MUSIC_GAIN` | per-track level on the music bus, by asset key. **`music` 0.68** (the bed — 20% then a further 15%, 2026-08-24), **`musicMosca` 0.68** (tracks the bed), `musicBoss` 0.85, `musicTitle` **2.6** (MIKE is mastered quiet). Above 1 is allowed |
-| `musicVolume` | 0.55 — the whole music bus. ⚠️ The bed **was** the fixed point everything else was derived against, until it came down 20% itself. `musicBoss` / `musicTitle` were levelled in absolute dBFS so they are unaffected; `musicMosca` **0.68**, the same trim as the bed — it measures level with it, so it tracks it. ⚠️ Move one, move the other |
+| `MUSIC_TRACK` | **fase 1's song — Dance Saborosa** (was the six-second bed until 2026-09-08). Loaded under the key `music` |
+| `BOSS_TRACK` | HIPÓLITO's song — 4m39s, played whole. Loaded under the key `musicBoss` |
+| `TITLE_TRACK` | **the title AND menu theme — Coco Nha Nha** (was MIKE). Key `musicTitle`. Unset = silent title screen |
+| `MOSCA_TRACK` | **NARUTÃO's theme — Still Life's own soundtrack**, read in place out of that game's folder like her sprite sheets. Key `musicMosca`. Unset = she fights over the bed |
+| `MUSIC_TRACKS` | **asset key → file, for every song that is not one of the four roles above** (new 2026-09-08). `musicDesert` (Sucuri), `musicLevel3` (Arrocha da Serpente), `musicEnding` (Pode Me Chamar). manifest.js walks it, so adding a song is one line here plus one `music:` on a room |
+| `MUSIC_LAYERS` | **extra voices started with a track and stopped with it**, by track key. ⚠️ **Empty since 2026-09-08** — its only user was the baratas' whistle, now removed. The machinery is kept; a future layer is one entry |
+| `MUSIC_LOOP` | **where each track wraps, by asset key** — now only `musicMosca` 14.452. ⚠️ **An entry describes the FILE, not the role**: `music` and `musicTitle` were dropped on 2026-09-08 because those keys now hold finished songs. A track with no entry loops at its own end |
+| `MUSIC_GAIN` | per-track level on the music bus, by asset key. **0.72** for every in-play bed (`music`, `musicDesert`, `musicLevel3`), **0.92** for the still screens (`musicTitle`, `musicEnding`), `musicBoss` 0.85, `musicMosca` 0.68. Above 1 is allowed |
+| `musicVolume` | 0.55 — the whole music bus. ⚠️ `musicBoss` / `musicMosca` were levelled in absolute dBFS and are untouched by the soundtrack. ⚠️ **`music` and `musicMosca` are no longer coupled** — the old "move one, move the other" rule assumed both keys held tracks that measured within 0.3 dB, and only one of them changed |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here |
-| `sfxVolume` | 0.9 — effects sit above the music on purpose |
-| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume` |
+| `sfxVolume` | **0.81** — effects sit above the music on purpose; this is only *how far* above. Down a true 10% from 0.9 on 2026-09-08 (−0.9 dB), asked for after the soundtrack went in |
+| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume`. ⚠️ **Two entries are pinned to absolute levels and must be re-derived whenever the bus moves** — `gameOver` (0.67→**0.74**) and `coin` (0.14→**0.156**), both solved backwards from a Still Life match with `sfxVolume` in the arithmetic. Left alone they would have dropped 10% with the punches, silently. Everything else in the table is relative and rides the bus down correctly. (`victory` was a third until the fanfare was removed, 2026-09-08) |
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
 | `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
 | `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
-| `VICTORY_STING` | `{ on, musicFadeSec: 1.2, stopFadeSec: 0.4 }` — **the win, in two moments**. The horse's song rolls off when the walk-out starts; the fanfare (Still Life's, read in place) begins when the ending screen does. ⚠️ Played with `playOnce` so `frontEnter()` can stop it — at 10.7 s it outlives a skipped tally |
+| `WIN_MUSIC` | `{ fadeSec: 1.2 }` — **the level's song rolling off across the winning walk-out**, so the room empties out before the ZERAMENTO's track starts. ⚠️ Was `VICTORY_STING` until 2026-09-08; the fanfare it was named for is gone (**Pode Me Chamar** plays that screen now). ⚠️ **The old `on` flag gated this line as well as the trumpet** — switching the sting off would have left the level's music playing into the ending, which is why the block was renamed rather than disabled. ⚠️ The beat of silence it creates is what makes the ending's song an arrival: do not shorten it to close the gap |
 | `RESULTS.TICK` | `{ on, sfx: 'coin', ms: 90, rise: 0.25 }` — **the count-up tick**. Still Life's coin hit, once every `ms` for exactly as long as a number is moving, pitching up 1.0→1.25 across the roll. ⚠️ Stops at `resultsRollS`, not at the end of the board — the beat before the rank stamp has to stay silent |
 
 `M` mutes everything, in every phase.
+
+### The soundtrack (2026-09-08)
+
+```
+LOGO            silent -- already was
+TITLE + MENU    Coco Nha Nha          TITLE_TRACK
+FASE 1 lixao    Dance Saborosa        MUSIC_TRACK
+NARUTAO         unchanged             MOSCA_TRACK
+FASE 2 cigarro  Sucuri                MUSIC_TRACKS.musicDesert
+HORACIO         Sucuri -- the room's own track, uninterrupted
+HIPOLITO        unchanged             BOSS_TRACK
+FASE 3 estante  Arrocha da Serpente   MUSIC_TRACKS.musicLevel3
+ZERAMENTO       Pode Me Chamar        MUSIC_TRACKS.musicEnding
+MISTER STOP     Cumbia Corazon -- DOCUMENTED, NOT WIRED (he does not exist)
+TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED (it does not exist)
+```
+
+> ⚠️ **A boss shares its room's song by declaring NOTHING.** `bossMusic()`
+> switches only for a boss carrying a `musicKey`, so HORÁCIO's arena runs the
+> desert's track straight through the fight with no fade. MISTER STOP will be the
+> other shape — his own key, because Cumbia differs from Arrocha.
+
+> ⚠️ **THE WHISTLE WAS REMOVED THE SAME DAY IT WAS FLAGGED.** `MUSIC_LAYERS`
+> hung it off the key `music`, which became a finished song rather than the
+> sparse bed it was tuned against — over a full song it was a second melody at
+> its own tempo. Heard, and cut. See *Layering a second voice over a track*.
+
+**Compression and levelling — `tools/compress-beat-soundtrack.py`.** The six
+songs arrived 320 kbps and 52 MB; they ship at LAME V4 and **19.8 MB**. They also
+arrived spanning **7.7 dB** with three of them clipping, and are normalised
+two-pass to −16 LUFS / −1.5 dBTP — after which they span **0.9 dB**, which is why
+one `MUSIC_GAIN` figure serves all the in-play beds.
+
+> ⚠️ **The masters were deleted (asked for), so there is no re-encoding upward.**
+> That is why V4 ships rather than V5: V5 measured 86–96 kbps on four of the six,
+> *below* the 128k the rest of the game's music uses. Do not trust published VBR
+> averages on this material — the script's header carries the measured ladder.
+
+> ⚠️ **Levelling the files is not the same job as `MUSIC_GAIN`.** The files were
+> made to agree with *each other*, once. `MUSIC_GAIN` is how a track sits under
+> the effects *in play*, which moves when the mix moves. The tracks already in the
+> game were **not** re-encoded — `mike-title` is 8.5 dB quiet and carries a gain
+> for it instead.
 
 ### The boss room's song
 
@@ -4079,69 +4131,36 @@ one left-to-right** (2026-08-24).
 
 ### Layering a second voice over a track
 
-The whistle plays **over** the street bed as its own looping source — not baked
-into it. Two `AudioBufferSourceNode`s started at the same scheduled
-`currentTime`, each pinned to its own length.
+`MUSIC_LAYERS` starts a second looping source on the **same scheduled
+`currentTime`** as its track, each pinned to its own length, so the two phase
+against each other instead of drifting. A layer is only ever **faded**, never
+started and stopped — so it surfaces out of the mix wherever it happens to be,
+rather than restarting on every trigger.
 
 ```js
-MUSIC_LAYERS: { music: [{ key: 'musicWhistle', src: 'v2:.../whistle-song.ogg', gated: true }] }
-MUSIC_LOOP:   { music: 5.115, musicWhistle: 7.5735 }
-MUSIC_GAIN:   { musicWhistle: 0.64 }
+MUSIC_LAYERS: {}          // empty since 2026-09-08
 ```
 
-> ⚠️ **The "no mixer at runtime" rule does not apply, and this is why.** That
-> rule is inherited from the flying dungeon and it is about `<audio>`
-> **elements** — three of those started together drift apart within a minute.
-> Music here plays through `AudioBufferSourceNode`, which is sample-accurate by
-> specification and scheduled against **one** audio clock. Two of them started
-> at the same `currentTime` cannot drift; there is no second clock to drift
-> against. The constraint was never about layering — it was about the element.
+> ⚠️ **It has no users, and the machinery is kept on purpose.** Scheduling two
+> buffers on one clock so they phase rather than drift is the hard part, and it
+> is written and documented (`sound.js` `_startLayer` / `setLayerOn`). It is
+> inert with the map empty. A future layer is one entry.
 
-> ⚠️ **A layer need not divide the track's loop.** The music lab flags one that
-> doesn't, because it *renders* to a single file and the remainder splices onto
-> the head. Nothing is rendered here: each voice loops itself cleanly and the
-> two phase against each other. 7.5735 s over 5.115 s means the whistle is never
-> in the same place twice — which on this soundtrack is the feel, not a fault.
+**Its one user was the baratas' whistle**, built 2026-08-24 (*"leave it mute, and
+make it appear only when the cockroach enemies are on screen"*) and **removed
+2026-09-08**. The reason is worth keeping: the whistle was written against the
+sparse six-second street bed, locked to its clock. When the soundtrack landed and
+`music` became **Dance Saborosa**, a finished song, the whistle stopped being a
+voice surfacing out of a mix and became a second melody at its own tempo over a
+full arrangement.
 
-#### The whistle is the baratas' sound — `WHISTLE_GATE`
+Removed with it: `WHISTLE_GATE`, `whistleGate()` in game.js, and
+`Crowd.anyOnScreen()` in enemy.js — which existed only to answer it.
+`whistle-song.ogg` is still on disk and shipped by nothing.
 
-`gated: true` means the voice starts **silent**. It comes up while a `barata` or
-`barata2` is alive on screen and fades out again when the last one is gone.
-
-| knob | |
-|---|---|
-| `kinds` | `['barata', 'barata2']` |
-| `marginPx` | 160 — ⚠️ **not slop.** They *walk in* from off the edge; a bare screen test would snap the whistle on mid-arrival |
-| `fadeSec` | 0.45 both ways |
-
-> ⚠️ **The voice is never started and stopped, only faded.** Restarting it would
-> play the melody from its first note every time a roach walked on, and would
-> throw away the one property the layer exists to have — it is locked to the
-> bed's clock and phases against it. Riding the gain means it surfaces *wherever
-> it happens to be*, which is a layer coming out of a mix rather than a cue
-> being triggered.
-
-`whistleGate()` is asked **every frame**, and that is correct: a gate reading the
-world has to be, and `setLayerOn` is a no-op when it is already where it is being
-asked to go. That is the opposite of `bossMusic()`, which *is* edge-triggered —
-because its other branch calls `roomMusic()` and would fight the boss room's
-theme every frame. It is called from `update()` rather than `loop()`, so only
-the play phase moves it.
-
-**Rules the implementation keeps:**
-
-- **Every layer must be decoded before anything starts.** A layer that arrived
-  late would begin at whatever moment its decode finished — the one thing the
-  arrangement exists to prevent.
-- **…but an optional voice can never hold its track hostage.** A failed decode
-  is remembered (`failedDecode`) and the bed plays without it. Otherwise a
-  broken whistle means a silent street.
-- **Layers stop with the track.** They ride the same bus, so the fade takes them
-  down — but nothing would ever *stop* them, and the bus comes back up for the
-  next track. A whistle left running under the boss theme is what that looks
-  like.
-- **Each layer's level is its own gain node**, not the bus — the bus carries the
-  main track's trim and `stopMusic()` resets it.
+> ⚠️ **A layer's level is its own gain node**, not the bus — the bus carries the
+> main track's trim and `stopMusic()` resets it. So a layer follows its track's
+> level for free, and their balance survives the track being re-trimmed.
 
 ### Who owns a track — room, or boss
 
@@ -4150,7 +4169,7 @@ Two rules, and the difference is which one the player experiences as the change.
 | track | scoped to | starts | stops |
 |---|---|---|---|
 | `music` (the bed) | the **room**, by default — any room with no `music` field | walking through the door | when a room asks for something else, or for `music: false` |
-| `musicBoss` (the horse) | the **room** — `ROOMS[2].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`VICTORY_STING`, 2026-08-24). It used to run through everything to the title — that was an explicit request and it was explicitly reversed |
+| `musicBoss` (HIPÓLITO) | the **room** — `ROOMS[2].music` | walking through the door | ⚠️ **when the winning walk-out starts** (`WIN_MUSIC`, 2026-08-24). It used to run through everything to the title — that was an explicit request, explicitly reversed, and the thing that replaced it (the fanfare) has itself since been replaced by the ZERAMENTO's song |
 | `musicMosca` (Still Life) | the **boss** — `FlyBoss.musicKey` | she flies in | ⚠️ **when she dies *or breaks off*** — the street gets its bed back |
 | *nothing* (the desert) | the **room** — `music: false` | — | the bed is stopped on the way in |
 

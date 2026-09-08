@@ -303,6 +303,17 @@ function assetManifest() {
      game's folder the way her sprite sheets are. ⚠️ ASSET KEY `musicMosca`,
      spelled again in CONFIG.MUSIC_LOOP and in FlyBoss's `musicKey`. */
   if (CONFIG.MOSCA_TRACK) out.push({ key: 'musicMosca', src: CONFIG.MOSCA_TRACK, how: 'audio' });
+  /* THE REST OF THE SOUNDTRACK -- a song per stage, walked out of
+     CONFIG.MUSIC_TRACKS so adding one is a line THERE and nothing here. The four
+     constants above are named ROLES (the bed, the boss, the title, the Mosca)
+     and what arrived on 2026-09-08 was a list; see the note on that map.
+
+     ⚠️ THE KEY IS THE ASSET KEY, exactly as with the four above, and it is
+     spelled again in MUSIC_GAIN, in MUSIC_LOOP, and in whatever asks for the
+     track -- a room's `music:`, a boss's `musicKey`, or a playMusic() call.
+     A mismatch is silent in every direction. */
+  for (const [key, src] of Object.entries(CONFIG.MUSIC_TRACKS || {}))
+    if (src) out.push({ key: key, src: src, how: 'audio' });
   /* EXTRA VOICES that play WITH a track -- the whistle over the street bed.
      Walked out of CONFIG.MUSIC_LAYERS so declaring a layer is one entry there
      and nothing here, the same bargain CONFIG.SFX already has. */

@@ -240,7 +240,12 @@
    * the logo is silent and `titleMusic()` is a separate moment.
    */
   function frontEnter() {
-    sound.stopOnce('victory', (CONFIG.VICTORY_STING || {}).stopFadeSec);
+    /* ⚠️ THE `stopOnce('victory', ...)` THAT LIVED HERE WENT WITH THE FANFARE
+       (2026-09-08). It existed for one reason: the clip was 10.7s against an
+       ending-plus-tally of about ten, so a player who skipped the tally arrived
+       at the title with a trumpet still ringing. The ZERAMENTO's music is an
+       ordinary track on the music bus now, and `stopMusic` below already covers
+       it -- which is why this is one line shorter rather than one line changed. */
     sound.stopMusic(0.4);
   }
 
@@ -379,33 +384,6 @@
        seconds is a metronome. `t / until` is the whole climb, not one row's, so
        it rises once rather than eight times. */
     sound.play(K.sfx || 'coin', 1 + (K.rise || 0) * (t / until));
-  }
-
-  /**
-   * THE WHISTLE IS THE BARATAS' SOUND: it is silent until one is alive on
-   * screen and fades out again when the last of them is gone.
-   *
-   * ⚠️ IT FADES THE LAYER, IT DOES NOT START AND STOP IT -- see
-   * Sound.setLayerOn(). The voice runs from the moment the bed does and is only
-   * ever turned up and down, so the melody surfaces wherever it happens to be
-   * instead of restarting on every roach.
-   *
-   * ⚠️ ASKED EVERY FRAME ON PURPOSE. A gate reading the world has to; `sound
-   * .setLayerOn` is a no-op when it is already where it is being asked to go,
-   * so there is no edge to detect here and no flag to leave stale. That is the
-   * opposite of `bossMusic()` above, which IS edge-triggered -- because its
-   * other branch calls `roomMusic()` and would fight the boss room every frame.
-   *
-   * ⚠️ IT IS ASKED FROM `update`, NOT FROM `loop`, so only the PLAY phase moves
-   * it. A death or a walk-out freezes it where it was rather than re-deciding
-   * over a screen with no fight on it -- and the layer is stopped with the bed
-   * on any route that leaves the level.
-   */
-  function whistleGate() {
-    const G = CONFIG.WHISTLE_GATE;
-    if (!G || !G.layer) return;
-    const on = crowd.anyOnScreen(G.kinds || [], stage.camX, G.marginPx);
-    sound.setLayerOn(G.layer, on, G.fadeSec);
   }
 
   /* ⚠️ THREE STATES, NOT TWO, AND `false` IS NOT THE SAME AS ABSENT.
@@ -783,8 +761,27 @@
           ending.reset();
           endingShown = true;
           phase = 'ending';
-          // He comes in from the left over this. See playVictory().
-          playVictory();
+          /* THE ZERAMENTO'S SONG -- *"ZERAMENTO - PODE ME CHAMAR"*, 2026-09-08.
+             It runs under the ending photograph and on through the results
+             board, which together are about ten seconds.
+
+             ⚠️ HERE AND NOT IN A ROOM, because the ending is not one: it is a
+             phase, so there is no `music:` for it to declare and this is the
+             moment it begins.
+
+             ⚠️ AND IT IS THE ONLY THING PLAYING HERE NOW. There used to be a
+             victory fanfare on the SFX bus over the top of it; it was removed
+             on 2026-09-08 -- *"one that sounds like a little trumpet"* -- because
+             two pieces of music arriving on the same frame is one too many. The
+             count-up tick on the results board is untouched and deliberately so.
+
+             ⚠️ AND IT IS SAFE THAT THE LAST ROOM STOPPED ITS OWN MUSIC on the
+             way here. `playMusic` crossfades from whatever is playing and is a
+             no-op only for the SAME key, so this starts cleanly whether the
+             library's track was still running or had already faded. */
+          if (CONFIG.MUSIC_TRACKS && CONFIG.MUSIC_TRACKS.musicEnding) {
+            sound.playMusic('musicEnding');
+          }
         } else {
           phase = 'fade';
           faded = false;
@@ -1051,9 +1048,6 @@
        after she arrived, which is inaudible, and revert one frame after she
        died, which is not. */
     bossMusic();
-    /* IN `update` AND NOT IN `loop`, so it is asked only while the fight is
-       running -- see whistleGate(). */
-    whistleGate();
 
     /* THE WALK-OUT IS A DOOR, NOT AN ENDING. Running out of segments with
        another room to go ('room') walks him off the right-hand edge and fades
@@ -1129,23 +1123,15 @@
    * silent for no reason.
    */
   function endBossMusic() {
-    const V = CONFIG.VICTORY_STING || {};
-    if (V.on === false) return;
-    sound.stopMusic(V.musicFadeSec != null ? V.musicFadeSec : 1.2);
-  }
-
-  /**
-   * THE FANFARE, on the frame the ending screen begins and he walks in from the
-   * left. Deliberately NOT at the same moment the song stops -- the beat of
-   * silence between them is what makes this an arrival.
-   *
-   * ⚠️ `playOnce`, so `toTitle()` can stop it. At 10.7s it outlives a skipped
-   * tally and would otherwise ring over the title screen.
-   */
-  function playVictory() {
-    const V = CONFIG.VICTORY_STING || {};
-    if (V.on === false) return;
-    sound.playOnce('victory');
+    /* ⚠️ THIS USED TO BE GATED ON `VICTORY_STING.on`, WHICH WAS A BUG WAITING
+       FOR SOMEONE TO SWITCH THE FANFARE OFF. The flag read as "play the win
+       sting", but it also stood in front of this line -- so turning the trumpet
+       off would have left the level's song playing through the walk-out and into
+       the ending, under the ZERAMENTO's track. The fanfare is gone (2026-09-08)
+       and this beat is not: the roll-off is what empties the room, and the beat
+       of silence after it is what makes the ending's song an arrival. */
+    const W = CONFIG.WIN_MUSIC || {};
+    sound.stopMusic(W.fadeSec != null ? W.fadeSec : 1.2);
   }
 
   function playDeathSting() {
@@ -1537,7 +1523,31 @@
     if (f.noShadow) return;          // the horse -- see its constructor
     if (f.dead && f.downPhase === 'lie') return;
     const x = f.groundX(camX);
-    const y = Belt.topY + f.z;
+    /* ⚠️ `riseY` MOVES THE SHADOW, `jumpY` DOES NOT, AND THE DIFFERENCE IS THE
+       WHOLE RULE. They are both drawing offsets and it is tempting to treat them
+       alike -- but they mean opposite things about the FLOOR:
+
+         jumpY  he left the floor. The shadow stays where it is, because its job
+                is to say where he will come DOWN. Take it up with him and a
+                jump loses the only cue that reads its height.
+         riseY  the floor came up under him -- he is standing on the elevator's
+                top face. The shadow belongs ON that face, because that is what
+                he is standing on.
+
+       Reported 2026-09-08, on both lifts: *"the character enter the elevator and
+       elevates his z... that is beautiful actually, but we need the shadow of the
+       character to also do it, otherwise it looks like he is floating."* Exactly
+       right, and my own note on CONFIG.ELEVADOR had asserted the opposite -- that
+       the shadow "deliberately stays on the ground, exactly as it does for
+       jumpY". That reasoning was sound for a jump and simply wrong for a
+       platform, and floating is what it looked like.
+
+       ⚠️ THE `lift` BELOW STILL READS `jumpY` ALONE, and must. It is height ABOVE
+       the surface -- how small and faint the shadow goes -- so a jump taken while
+       riding shrinks the shadow against the PLATFORM, which is correct, while
+       merely standing on the platform leaves it full size. Folding riseY in there
+       too would shrink the shadow of a man standing still. */
+    const y = Belt.topY + f.z - (f.riseY || 0);
 
     /* `lift` IS CLAMPED TO 0..1 AND MUST STAY THAT WAY. It used to be
        `jumpY / CONFIG.jumpHeight` — which quietly assumed every shadow-caster
