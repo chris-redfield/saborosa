@@ -980,6 +980,23 @@ class Title {
   }
 
   /**
+   * HOW FAR DOWN THE WHOLE TITLE SCREEN'S TEXT SITS, in px -- the name, the
+   * gloss and the three menu items together. See CONFIG.LETTERS.titleNudgePx.
+   *
+   * ⚠️ IT IS A METHOD RATHER THAN A NUMBER READ AT EACH SITE so the four places
+   * that draw this screen cannot drift apart. They are the name, the gloss, the
+   * menu, and the typed fallback the screen uses when the letter pack is
+   * missing -- and a nudge that reached three of those would be a bug you only
+   * see on a bad connection.
+   *
+   * ⚠️ IT IS ADDED TO THE RESTING POSITION, NOT TO THE ANIMATION. The drop, the
+   * bounce and the lift are all offsets from where these things come to rest;
+   * this moves the rest, so the whole gesture follows it without any of the
+   * timing numbers changing.
+   */
+  _nudge() { return this._lcfg('titleNudgePx', 0); }
+
+  /**
    * The three menu items, under the name.
    *
    * ⚠️ THE HIGHLIGHT IS SIZE AND NOTHING ELSE -- `LETTERS.selectedMul`, 1.10.
@@ -1033,7 +1050,7 @@ class Title {
        and its gloss already fall together for the same reason. */
     const p = this._dropP();
     const a = (alpha == null) ? 1 : alpha;
-    const cy = H * this._lcfg('menuYRel', 0.55)
+    const cy = H * this._lcfg('menuYRel', 0.55) + this._nudge()
              + this._travel(H) * (1 - p)
              - this._bounce(this.t - this._landedAtMs());
     const gap = H * this._lcfg('menuGapRel', 0.11);
@@ -1124,7 +1141,10 @@ class Title {
     if (this.stage === 'credits') { this._drawCredits(ctx, W, H); return; }
     const ns = CONFIG.titleNameSize || 74;
     const ss = CONFIG.titleSubSize || 30;
-    const cy = H * (CONFIG.titleNameY != null ? CONFIG.titleNameY : 0.30);
+    /* THE TYPED FALLBACK TAKES THE NUDGE TOO -- see `_nudge`. A failed download
+       already costs the lettering's look; it must not also move the layout. */
+    const cy = H * (CONFIG.titleNameY != null ? CONFIG.titleNameY : 0.30)
+             + this._nudge();
     const travel = this._travel(H);
 
     if (this.stage === 'ask' || this.stage === 'chosen') {
@@ -1196,8 +1216,10 @@ class Title {
     if (L) {
       ctx.save();
       ctx.globalAlpha = a;
-      L.draw(ctx, 'title', W / 2, H * this._lcfg('titleYRel', 0.20) + dy);
-      L.draw(ctx, 'subtitle', W / 2, H * this._lcfg('subtitleYRel', 0.31) + dy);
+      L.draw(ctx, 'title', W / 2,
+             H * this._lcfg('titleYRel', 0.20) + this._nudge() + dy);
+      L.draw(ctx, 'subtitle', W / 2,
+             H * this._lcfg('subtitleYRel', 0.31) + this._nudge() + dy);
       ctx.restore();
       /* THE MENU ARRIVES WITH THE NAME, FROM THE OTHER EDGE -- one gesture on
          one clock; see _drawMenu. In `lift` it is gone already: the question is

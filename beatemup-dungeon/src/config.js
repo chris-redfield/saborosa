@@ -7663,6 +7663,34 @@ const CONFIG = {
        then set. */
     titleYRel: 0.17,
     subtitleYRel: 0.35,
+    /* ⚠️ ONE NUDGE FOR THE WHOLE TITLE SCREEN'S TEXT, IN PIXELS -- the name, the
+       gloss under it, and the three menu items, all together. Asked for
+       2026-09-08: *"a tela principal... chegar 1 dedinho pra baixo, todo o
+       texto, tanto o BATIDAO DE COCO acima quanto as 3 opcoes de menu"*.
+
+       ⚠️ IT IS A NUDGE AND NOT THREE EDITED FRACTIONS, WHICH IS THE WHOLE POINT.
+       `titleYRel`, `subtitleYRel` and `menuYRel` are the SHAPE of the screen and
+       every one of them was measured or argued into place -- the gloss because a
+       picture has a height and the first guess overlapped by 38px, the menu
+       because at 0.60 it still read as a fourth line of the title and had to
+       come down twice. Moving the block by editing all three is three chances to
+       change the shape while trying to change the position. Same discipline as
+       `GRADE.strength`: the stops are the shape, the multiplier is the level.
+
+       ⚠️ IT MOVES THE TYPED FALLBACK TOO. If the letter pack fails to download
+       the screen falls back to Futura (`titleNameY`), and that path takes the
+       same nudge -- otherwise a failed download would also silently undo a
+       layout decision.
+
+       ⚠️ IT DOES NOT REACH THE OTHER FRONT-END SCREENS. OPCOES (`optRowYRel`),
+       the credits and the fruit select have their own layouts and were not in
+       the ask; a shared nudge across all of them would move four screens to fix
+       one.
+
+       ⚠️ AND THERE IS ROOM TO GO FURTHER. Measured at 24 against the pack's own
+       scale, the lowest item (SABOROSA) ends at y 618 of 720 -- 102px of margin
+       before anything clips the bottom edge. */
+    titleNudgePx: 24,
     /* ⚠️ 0.68, AND IT TOOK TWO GOES. At 0.55 COMEÇAR's box ended 7px from the
        gloss's; at 0.60 it still read as one stack with the name -- *"the
        começar, opções, and saborosa rows are too close to the title, bring them

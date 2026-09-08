@@ -7887,6 +7887,53 @@ describes one feature but whose `if` stands in front of two is not a switch, it
 is a coincidence. Same shape as the `sfxVolume` dependents — check what a flag
 *guards*, not what it is *called*.
 
+### BATIDÃO DE CÔCO's text moved down a finger
+
+*"a tela principal... chegar 1 dedinho pra baixo, todo o texto, tanto o BATIDÃO
+DE CÔCO acima quanto as 3 opções de menu."* `LETTERS.titleNudgePx: 24`.
+
+⚠️ **ONE NUDGE, NOT THREE EDITED FRACTIONS.** `titleYRel` 0.17, `subtitleYRel`
+0.35 and `menuYRel` 0.68 are the **shape** of the screen, and every one of them
+was measured or argued into place — the gloss because a picture has a height and
+the first guess overlapped by 38 px, the menu because at 0.60 it still read as a
+fourth line of the title and had to come down twice. Editing all three to move
+the block is three chances to change the shape while trying to change the
+position. Same discipline as `GRADE.strength`: the stops are the shape, the
+multiplier is the level.
+
+⚠️ **FOUR DRAW SITES, ONE HELPER.** `Title._nudge()` — the name, the gloss, the
+menu, **and the typed Futura fallback** the screen uses when the letter pack is
+missing. A nudge that reached three of those would be a bug you only see on a bad
+connection.
+
+⚠️ **IT IS ADDED TO THE RESTING POSITION, NOT TO THE ANIMATION.** The drop, the
+bounce and the lift are all offsets from where these things come to rest, so the
+whole gesture follows the nudge with none of the timing numbers touched.
+
+Measured against the pack's own scale before setting it: at 24 px nothing clips —
+the lowest item (SABOROSA) ends at y 618 of 720, 102 px of margin.
+
+⚠️ **AND THE THING THAT BREAKS FIRST IF IT GROWS IS CONTRAST, NOT CLIPPING.**
+`menuYRel` sits where it does partly because *the wall is brown there and the type
+is yellow*; past the wall/ground seam the menu is yellow on pale sand. At 24 px
+OPÇÕES and SABOROSA are already on the sand. Flagged with the render rather than
+decided.
+
+#### ⚠️ AND THE HEADLESS SCREENSHOT CANNOT REACH THIS SCREEN
+
+Worth writing down, because it cost several attempts. `--virtual-time-budget`
+gets past the loading bar and the logo (`LOGO.holdMs` 3000) at around 150 000,
+and then **stops being useful**: on the title, `Title.t` does not advance, so
+`_dropP()` stays 0 and the name is parked a full screen-height above its resting
+place — an empty wall that looks exactly like "the text is not drawing". Raising
+the budget from 60 000 to 200 000 produced a byte-identical PNG, which is the
+tell. Related to the double-rAF trap in [[beatemup_title_screen]].
+
+**What worked instead:** compositing the real pack frames at the real computed
+positions over `TITLE_BG`, with the numbers pulled out of the real config by
+`node -e`. Same method as the day grade's preview — reproduce the maths, and say
+what it omits. Here it omits the drop, the bounce and the highlight.
+
 ---
 
 ## Open

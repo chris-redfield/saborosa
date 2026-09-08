@@ -671,6 +671,7 @@ LETTERS: {
   itemPop: 0.10,       // the tiny stamp on an item that is CHOSEN
   itemPopMs: 260,
   menuHoldMs: 300,     // …and the beat before the screen acts on the choice
+  titleNudgePx: 24,    // the WHOLE title screen's text, down the canvas
   // …and the rest is POSITION: titleYRel, menuYRel, optRowYRel, …
 }
 OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
@@ -683,6 +684,23 @@ OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
 > differently, that is a **multiplier on** that scale. There are two: `menuMul`
 > 0.90 and `lifeMul` 0.80. If a third and fourth appear, the question is whether
 > `titleWRel` is wrong — not whether to add another.
+
+> ⚠️ **`titleNudgePx` moves the title screen's text as one block** — the name,
+> the gloss and the three menu items together, in px, added to where they come to
+> rest. Asked for 2026-09-08 (*"chegar 1 dedinho pra baixo, todo o texto"*). It is
+> a nudge rather than three edited fractions on purpose: `titleYRel`,
+> `subtitleYRel` and `menuYRel` are the **shape** of the screen and each was
+> measured or argued into place — moving the block by editing all three is three
+> chances to change the shape while trying to change the position. Same discipline
+> as `GRADE.strength`. It reaches the **typed fallback** too, so a failed download
+> cannot also undo the layout, and it deliberately does **not** reach OPÇÕES, the
+> credits or the fruit select. At 24 the lowest item ends at y 618 of 720.
+
+> ⚠️ **Watch the contrast as it goes down.** `menuYRel` sits where it does partly
+> because *the wall is brown there and the type is yellow* — past the wall/ground
+> seam the menu is yellow on pale sand. At 24 px OPÇÕES and SABOROSA are already
+> on the sand; that is a look call, but it is the thing that breaks first if this
+> number grows.
 
 > ⚠️ **The meters are the row drawn short.** Each option row was lettered with
 > eight bars and the cutter recorded where each ends, so a level of *n* is one
