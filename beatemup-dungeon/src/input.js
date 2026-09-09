@@ -53,6 +53,13 @@ class Input {
     this._kb = { left: false, right: false, up: false, down: false };
     this._pad = { left: false, right: false, up: false, down: false };
     this._padPrev = {};
+    /* ⚠️ IS THE WINDOW FOCUSED -- read by poll() to decide whether the PAD may
+       be read at all. See the blur/focus binding, and _shouldReadPad().
+       ⚠️ IT STARTS TRUE AND IS ONLY EVER PULLED DOWN BY AN EVENT WE ACTUALLY
+       SAW. A browser that fires no focus events at all leaves this true for
+       ever, which is exactly today's behaviour -- the failure mode of guessing
+       wrong here is a DEAD CONTROLLER, so it is biased to stay live. */
+    this._focused = true;
 
     this.deadzone = 0.45;
     this.moveAxis = { x: 0, y: 1, invertX: false, invertY: false };
@@ -162,9 +169,86 @@ class Input {
       if (e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Space') this._attackHeld = false;
       if (e.code === 'KeyC') this.debug = false;
     });
+    /* ⚠️⚠️ THE WINDOW LOST FOCUS, SO EVERY HELD KEY IS NOW A LIE.
+       Reported 2026-09-09: *"if I am holding the 'd' key to go right and I press
+       volume up on the keyboard, the key gets stuck -- it either makes the
+       character move in that direction even when you are not pressing the key,
+       or it just stops working."*
+
+       ⚠️ IT IS NOT THE VOLUME KEY, IT IS THE FOCUS. A media key is grabbed by
+       the desktop, and an X11 keyboard grab reaches the browser as a real
+       `blur` (FocusOut/NotifyGrab) followed by a `focus` when it ends. Key
+       events during the grab go to the desktop and NEVER to this page -- so:
+
+         * the KEYUP for a key released during the grab is lost, `_kb.right`
+           stays true for ever, and `poll()` ORs it into `this.right` on every
+           frame after: he walks right with nothing held. That is the first half.
+         * a KEYDOWN pressed during the grab is lost the same way, so the key
+           does nothing until it is pressed again. That is the second half, and
+           it is the same event missing in the other direction.
+
+       Alt-tab, a notification, the OS volume overlay and a click on another
+       window are all the same shape. **Nothing in this game recovered from it:
+       there was no blur handler anywhere in this file, in the flying dungeon's
+       input.js, or in the main game's.**
+
+       ⚠️ AND `flush()` DOES NOT FIX IT, though it looks like it should. It drops
+       `_attackHeld` for exactly this reason and says so -- but it deliberately
+       leaves `_kb` alone, and must keep doing so: it runs on every screen
+       change, and a player holding a direction through a room fade would have
+       their walk cut until autorepeat re-asserted the key half a second later.
+       Focus loss is the case where the held state is genuinely unknowable;
+       a screen change is not. */
+    const releaseAll = () => this.releaseAll();
     if (typeof window !== 'undefined') {
+      window.addEventListener('blur', () => { this._focused = false; releaseAll(); });
+      window.addEventListener('focus', () => { this._focused = true; });
       window.addEventListener('gamepaddisconnected', () => { this._padPrev = {}; });
     }
+    /* ⚠️ AND `visibilitychange` AS WELL AS `blur`, because they are not the same
+       event: a tab switched away from, or a phone screen locked, can hide the
+       page without the window ever blurring. Both end in the same call, which
+       is safe to run twice. */
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { this._focused = false; releaseAll(); }
+        else this._focused = true;
+      });
+    }
+  }
+
+  /**
+   * Everything the player is HOLDING, let go of.
+   *
+   * ⚠️ HELD STATE ONLY -- the queued edges are deliberately left alone. A punch
+   * pressed a frame before the window blurred is a press the game still owes an
+   * answer to, which is `flush()`'s doctrine and is right here too; what cannot
+   * be trusted after a focus change is anything whose truth depends on a keyup
+   * that may never arrive.
+   *
+   * ⚠️ `this.left`/`right`/... ARE CLEARED TOO, not just `_kb`. `poll()` derives
+   * them and would do it for us on the next frame -- but only if a frame comes,
+   * and the game is very often paused or between phases when focus is lost.
+   *
+   * ⚠️ THE PAD IS INCLUDED. A pad is polled from scratch every frame so it
+   * cannot strictly stick, but `_padPrev` is a rising-edge memory: leaving a
+   * button remembered as DOWN across a blur would swallow the first press after
+   * the player comes back.
+   *
+   * ⚠️ `_typed` IS NOT CLEARED, matching flush(): it is half-finished typing
+   * that only the pause screen listens for, not an input state.
+   */
+  releaseAll() {
+    this._kb.left = this._kb.right = this._kb.up = this._kb.down = false;
+    this._pad.left = this._pad.right = this._pad.up = this._pad.down = false;
+    this.left = this.right = this.up = this.down = false;
+    this._padPrev = {};
+    this._attackHeld = false;
+    this._padHeldLift = false;
+    this.firing = false;
+    /* Hold-C. Same class of bug, and a debug overlay welded on because the
+       window blurred is how a "the game is broken" report gets written. */
+    this.debug = false;
   }
 
   /* Apply a mapping authored in the main game's tools/gamepad-mapper.html.
@@ -235,6 +319,18 @@ class Input {
     return null;
   }
 
+  /* ⚠️ `document.hasFocus()` IS CONSULTED AS WELL AS THE FLAG, not instead of
+     it. The flag catches the case the events describe; hasFocus() catches a
+     page that simply loaded without focus, where no blur was ever fired to
+     record. Either saying no is enough. ⚠️ A document that does not implement
+     hasFocus leaves the decision to the flag rather than defaulting to "dead". */
+  _shouldReadPad() {
+    if (!this._focused) return false;
+    if (typeof document !== 'undefined' && typeof document.hasFocus === 'function')
+      return document.hasFocus();
+    return true;
+  }
+
   poll() {
     const pad = this._pad;
     pad.left = pad.right = pad.up = pad.down = false;
@@ -243,7 +339,29 @@ class Input {
        with this already false. */
     let padLift = false;
 
-    const gp = this._firstPad();
+    /* ⚠️⚠️ THE PAD IS NOT READ WHILE THE WINDOW IS UNFOCUSED, and this is the
+       CONTROLLER half of the stuck-key bug -- asked about directly, 2026-09-09:
+       *"does that fix it for when the player is playing in a controller?"*
+
+       The keyboard half cannot happen here: a pad is POLLED, not evented, so
+       every direction above is zeroed and rebuilt from the live snapshot each
+       frame and there is no keyup to lose. But `requestAnimationFrame` keeps
+       running while a window is merely blurred (only HIDING stops it), so the
+       game goes on polling a pad the player is not holding -- and whether
+       Chrome zeroes or FREEZES the snapshot of an unfocused page is not
+       something to rely on either way. If it freezes, a held stick keeps
+       walking him after the volume OSD steals focus: the same symptom, a
+       different mechanism, and `releaseAll()` cannot fix it because the very
+       next poll re-derives the state it just cleared.
+
+       ⚠️ SO THE POINT IS TO MAKE THE BROWSER'S ANSWER NOT MATTER. An unfocused
+       window is one the player is not playing; neither input path should
+       produce anything, whatever the API returns.
+
+       ⚠️ AND IT ROUTES THROUGH THE EXISTING "no pad" BRANCH ON PURPOSE, which
+       already clears `_padPrev` -- so the first press after coming back reads
+       as a rising EDGE rather than being swallowed as already-held. */
+    const gp = this._shouldReadPad() ? this._firstPad() : null;
     if (gp) {
       const ax = this.moveAxis;
       let rx = gp.axes[ax.x] || 0, ry = gp.axes[ax.y] || 0;

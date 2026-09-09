@@ -2796,6 +2796,77 @@ its first frame and the following wave spawns on top of them. It is what
 happened after the Mosca. In the normal case the player is behind `toX`, so the
 minimum never binds and costs no film.
 
+## Held keys and losing focus (fixed 2026-09-09)
+
+*"if I am holding the `d` key to go right and I press volume up on the keyboard,
+the key gets stuck — it either makes the character move in that direction even
+when you are not pressing the key, or it just stops working."*
+
+⚠️ **It is not the volume key, it is the focus.** A media key is grabbed by the
+desktop, and on X11 a keyboard grab reaches the browser as a real `blur`
+(FocusOut / NotifyGrab) followed by a `focus` when it ends. Every key event
+during the grab goes to the desktop and none of them reach the page — so:
+
+| what is lost | what you see |
+|---|---|
+| the **keyup** of a key released during the grab | `_kb.right` stays true for ever and `poll()` ORs it into `this.right` every frame — he walks with nothing held |
+| the **keydown** of a key pressed during the grab | the key does nothing until it is pressed again — "it stopped working" |
+
+**Both halves are the same event missing, in opposite directions**, which is why
+one report described two opposite symptoms. Alt-tab, a notification, the OS
+volume overlay and a click on another window are all the same shape, and it is
+not specific to the beat 'em up mode — TIME ATTACK shares the same `Input`.
+
+**The fix** is `Input.releaseAll()`, called on `window` `blur` and on
+`document` `visibilitychange` → hidden. It drops **held** state only —
+directions, the attack hold, `firing`, hold-C, and `_padPrev` (a rising-edge
+memory that would otherwise swallow the first press after you come back).
+Queued edges are left alone: a punch pressed a frame before the blur is still a
+press the game owes an answer to.
+
+⚠️ **`flush()` does *not* clear `_kb`, and must not start.** It already drops
+`_attackHeld` for this exact reason and says so — but it runs on every screen
+change, and a player holding a direction through a room fade would have their
+walk cut until autorepeat re-asserted the key half a second later. **Focus loss
+is the case where the held state is genuinely unknowable; a screen change is
+not.**
+
+### On a controller
+
+⚠️ **The keyboard bug cannot happen on a pad.** A pad is **polled, not evented**:
+`poll()` zeroes every direction and `padLift` at the top and rebuilds them from
+the live snapshot each frame, so there is no keyup to lose and nothing to
+strand. The only accumulated pad state is `_padPrev` (a rising-edge memory) and
+it already self-heals.
+
+⚠️ **But there is a pad-shaped version of the same symptom, and it needed its
+own fix.** `requestAnimationFrame` keeps running while a window is merely
+blurred — only *hiding* stops it — so the game goes on polling a pad the player
+is not holding, and whether Chrome zeroes or **freezes** the snapshot of an
+unfocused page is not worth relying on either way. If it freezes, a held stick
+keeps walking him after the volume OSD steals focus: same symptom, different
+mechanism, and `releaseAll()` cannot touch it because the next poll re-derives
+what it just cleared.
+
+**So the pad is not read at all while the window is unfocused**
+(`_shouldReadPad()`), which makes the browser's answer irrelevant — an unfocused
+window is one nobody is playing, and neither path should produce input. It
+routes through the existing *no pad* branch, which already clears `_padPrev`, so
+the first press after coming back reads as a rising edge instead of being
+swallowed as already-held. ⚠️ `_focused` **starts true and is only pulled down by
+an event actually seen**: the failure mode of guessing wrong is a dead
+controller, so it is biased to stay live.
+
+⚠️ **There was no blur handler anywhere in the repo** — not here, not in
+`flying-dungeon/src/input.js`, not in the main game's. The other two have the
+same hole; only this one has been reported.
+
+⚠️ **And `Sound` listens for `visibilitychange` too**, for a different reason: a
+hidden tab stops `requestAnimationFrame`, and a held loop is the one sound that
+needs a frame to turn itself off. Alt-tab out of TIME ATTACK with the trigger
+down and `stopLoops()` would never be reached. Blur needs nothing there —
+it does not stop rAF, so the gun turns itself off through the ordinary path.
+
 ## The camera
 
 ```js
@@ -3485,9 +3556,10 @@ Three knobs and three pipelines.
 | `MUSIC_LOOP` | **where each track wraps, by asset key** — now only `musicMosca` 14.452. ⚠️ **An entry describes the FILE, not the role**: `music` and `musicTitle` were dropped on 2026-09-08 because those keys now hold finished songs. A track with no entry loops at its own end |
 | `MUSIC_GAIN` | per-track level on the music bus, by asset key. **0.72** for every in-play bed (`music`, `musicDesert`, `musicLevel3`), **0.92** for the still screens (`musicTitle`, `musicEnding`), `musicBoss` 0.85, `musicMosca` 0.68. Above 1 is allowed |
 | `musicVolume` | 0.55 — the whole music bus. ⚠️ `musicBoss` / `musicMosca` were levelled in absolute dBFS and are untouched by the soundtrack. ⚠️ **`music` and `musicMosca` are no longer coupled** — the old "move one, move the other" rule assumed both keys held tracks that measured within 0.3 dB, and only one of them changed |
-| `SFX` | name → file. `sound.play('hit')` looks the name up here |
+| `SFX` | name → file. `sound.play('hit')` looks the name up here. ⚠️ **The two TIME ATTACK loops are in here too** — this map is what manifest.js walks and what `primeSfx()` decodes, so a looping clip has to be listed here to exist; *how* it is played is the next row |
 | `sfxVolume` | **0.81** — effects sit above the music on purpose; this is only *how far* above. Down a true 10% from 0.9 on 2026-09-08 (−0.9 dB), asked for after the soundtrack went in |
-| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume`. ⚠️ **Two entries are pinned to absolute levels and must be re-derived whenever the bus moves** — `gameOver` (0.67→**0.74**) and `coin` (0.14→**0.156**), both solved backwards from a Still Life match with `sfxVolume` in the arithmetic. Left alone they would have dropped 10% with the punches, silently. Everything else in the table is relative and rides the bus down correctly. (`victory` was a third until the fanfare was removed, 2026-09-08) |
+| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume`. ⚠️ **Two entries are pinned to absolute levels and must be re-derived whenever the bus moves** — `gameOver` (0.67→**0.74**) and `coin` (0.14→**0.156**), both solved backwards from a Still Life match with `sfxVolume` in the arithmetic. Left alone they would have dropped 10% with the punches, silently. ⚠️ **And since 2026-09-09 there are four**: the TIME ATTACK loops `gun` (**0.611**) and `coinHit` (**0.747**). ⚠️ **They were 0.367 / 0.448 for one session and both were 4.4 dB quiet** — solved against Still Life's `sfxVolume`, which its loops *do not go through*: that game runs them on a parallel `loopGain` bus pinned at **1.0**, so their `volume` is their level. 0.495 / 0.81 and 0.605 / 0.81 are the real match. Everything else in the table is relative and rides the bus down correctly. (`victory` was a third until the fanfare was removed, 2026-09-08) |
+| `SFX_LOOP` | **which effects are HELD rather than fired** (2026-09-09), name → `{ loopTrimMs }`. An entry makes `sound.loop(name, bool)` legal for that name; everything else in `SFX` is an event fired once with `play()`. Only `gun` and `coinHit`, only inside TIME ATTACK. ⚠️ `loopTrimMs` **12** is not a fade, it is the loop *region*: build-sound.py fades 12 ms at each edge, and looping edge-to-edge makes the two fades meet as a 24 ms hole once per pass. ⚠️ Levels are **not** here — a loop is trimmed by `SFX_GAIN` like everything else |
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
 | `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
 | `GAME_OVER_STING` | how the death music is played; see *The game over panel* |
@@ -3887,12 +3959,46 @@ it hands to the BATIDÃO DE CÔCO title.
 | knob (`CONFIG.LOGO`) | what it does |
 |---|---|
 | `on` | `false` opens straight on the title, exactly as before this screen existed |
-| `onRestart` | `false` — a run that ends goes back to the TITLE, not through the logo again |
+| `onRestart` | `false` — a run that ends **in a death** goes back to the TITLE, not through the logo again |
+| `onClear` | `true` (2026-09-09) — a run that is **FINISHED** goes back through the logo, so a completed game is bookended by the screen it opened on |
 | `SHEET` | the logo, read in place out of the flying dungeon's folder |
 | `wRel` / `yRel` | 0.52 / 0.5 — width as a fraction of the canvas (height follows), and its centre |
 | `holdMs` | 3000 — it leaves on its own after this. **0 = wait for a press** |
 | `armMs` | 250 — before a press counts. See below |
 | `fadeInMs` / `fadeOutMs` | 400 up out of the loading bar's black, 600 down into the title |
+
+### The two endings take different routes back (2026-09-09)
+
+```
+PERDEU  (3rd death) --press--> TITLE          onRestart: false
+CLEAR   (finished)  --press--> LOGO -> TITLE  onClear:   true
+```
+
+*"after the player finishes the game, and presses any button after the final
+statistics screen, the game goes back to the main menu screen. That is wrong, it
+should go back to the starting screen, the one that shows the saborosa logo."*
+
+⚠️ **Two knobs rather than one, because the same three seconds mean opposite
+things.** Finishing the game happens once and the logo reads as a bookend;
+dying happens constantly and it reads as a toll — which is the argument the
+`onRestart: false` note has always made, and it is still right for a death.
+
+⚠️ **`toTitle(via)` takes the OCCASION, not the answer** — `'clear'` or
+`'dead'`. Passing a boolean would put the policy at the call site, and both
+endings are dismissed by the same `if` down in the end-screen handler; keeping
+it in `toTitle()` means the one function every route to the front passes through
+owns the rule, and a new route names its occasion instead of restating it. A
+bare `toTitle()` still reads `onRestart`, as it always did.
+
+⚠️ **The music needs nothing.** `frontEnter()` already fades the track out on
+both routes and the logo is deliberately silent, so a clear→logo is byte for
+byte the cold boot: silence, then MIKE arriving with the title. And `logo.reset()`
+fully re-arms the screen (`t`, `out`, `done`), so it replays.
+
+⚠️ **`armMs` earns its keep on this route too.** `toTitle()` flushes the press
+that dismissed the board, and a *held* key cannot get through either —
+`_anyPress` is set past the `e.repeat` guard, and a pad needs a rising edge that
+`_padPrev` still has as down. The arming covers what those two do not.
 
 **This screen was deleted on 2026-08-21 and asked for again on 08-22** — in
 *front* of the photograph this time rather than instead of it. It cost one 30KB
@@ -5799,7 +5905,7 @@ python3 tools/build-beat-horacio-defs.py
 
 ---
 
-## TIME ATTACK — the minigame between the desert and HORÁCIO
+## TIME ATTACK — the minigame between the desert and HIPÓLITO
 
 Sonic 2's special stages, flown in Still Life's plane. `CONFIG.TIME_ATTACK`,
 `src/time-attack.js`, and three files ported from that game — `ta-plane.js`,
@@ -5841,6 +5947,78 @@ timer out      -> the mode ends, he walks on to HORÁCIO
 > agree with itself while disagreeing with the game. ⚠️ Things that *cannot* be
 > hit (a dying fly, a spent clock) are drawn **dim rather than absent**, so "why
 > didn't that react?" is answered on screen.
+
+### The two sounds (2026-09-09)
+
+Still Life's, read in place out of that game's folder like the death sting — the
+minigame *is* that game's plane, so a second copy of its gun would drift the
+moment one of them is recut.
+
+| | file | `SFX_GAIN` |
+|---|---|---|
+| `gun` | `efeito-metralha-01.ogg` | **0.611** |
+| `coinHit` | `coin-hit-01.ogg` (1.119 s, two hits in it) | **0.747** |
+
+⚠️ **They are HELD LOOPS, and this game had no way to play one.** `Sound` had
+`play` (fire and forget), `playOnce` (tracked, because a 10.7s fanfare outlives
+its screen) and the music layers — and no `loop()` at all. So this was a *port*
+of Still Life's `loop()` / `stopLoops()` plus `CONFIG.SFX_LOOP`, not a wiring
+job. A loop is a third way to play a clip and the difference is **who ends it**:
+a loop runs until something stops it.
+
+⚠️ **`TimeAttack` owns the two calls, not `game.js`** — which is where Still Life
+puts them. The mode ends *itself* when the clock runs out, and `game.js` returns
+on that very frame to start the fade, so a `sound.loop(...)` living out there
+would never get the frame that turns the gun off and the machine gun would carry
+into HIPÓLITO's room. `leave()` calls `stopLoops()` — **by that name and not by
+listing the two**, which is what keeps a third loop from being the one nobody
+remembered. Still Life shipped exactly that bug (a gun running under its game
+over panel). The DEV number keys are the other exit and they call `leave()` too.
+
+⚠️ **The gun is driven off `ray`, not off `input.firing`.** They differ on the
+frames that matter: the plane is control-locked through the fly-in and the round
+cards, and a trigger held through the opening card would otherwise sound a gun
+that visibly is not firing.
+
+⚠️ **The coin hit is set on the BEAM CROSSING, not on `hit()` succeeding** — the
+one exception to the rule in `_shoot()`'s header, where everything that changes
+the *game* is gated on `hit()` so the i-frames can rate-limit it. `TaCoin.hit()`
+is refused inside 160 ms of i-frames; gating a sound on it would chop the loop
+on and off several times a second while the player holds a steady beam on a coin
+they can watch taking damage. The state being reported is *"this coin is under
+fire"*, which is true on every frame the beam is on it.
+
+⚠️⚠️ **Both levels were wrong for a session, and that is why the coin sounded
+different** (*"the coin being hit is reproducing in a different way than it was
+on still life"*). They were solved against that game's `sfxVolume` 0.6 — **and
+its loops do not go through it.** Its graph is three parallel buses, and the one
+the loops sit on is pinned at **1.0**:
+
+```
+music     -> musicGain -+
+loops     -> loopGain --+-> master      loopGain = 1.0
+one-shots -> sfxGain ---+               sfxGain  = sfxVolume (0.6)
+```
+
+So `volume` *is* the level over there — 0.495 and 0.605 at the master — and the
+first pass landed both 4.4 dB down. 0.495 / 0.81 and 0.605 / 0.81 are the match.
+⚠️ **They still belong on this game's sfx bus** rather than getting a `loopGain`
+of their own: Still Life has no options screen, so splitting them off costs it
+nothing, while here the SFX meter is a real control and a machine gun that
+ignored it would be a bug. **What is copied is the level at the master, not the
+graph that produced it.** Move `sfxVolume` and re-derive, as `gameOver`
+0.67→0.74 already proved.
+
+⚠️⚠️ **And the stop is a HARD stop, after being a 20 ms ramp for a session** —
+the other half of the same report. The ramp's reasoning was sound in general (a
+loop is stopped mid-region by definition, so the clip's own fade-out is never
+reached, and a waveform ending off zero is a click) and wrong *here*: a ramp
+keeps the outgoing voice alive for 20 ms while `loop()` may start a new one on
+the next frame at 16 ms, so the tail and the new attack **overlap**. On the gun
+that is inaudible — one held state, flipped twice a round. On the coin it is the
+whole sound: `coinBeam` flickers as the beam crosses coin edges and as a clock
+dies under a held trigger, so a 1.119 s clip with two transients was restarting
+over its own decay several times a second. A flam on every re-engagement.
 
 > ⚠️ **It is a ROOM-EXIT flag, not a segment.** A segment only sits between two
 > segments of the *same* room; this belongs in the seam between two ROOMS, which

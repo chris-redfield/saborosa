@@ -8885,7 +8885,25 @@ const CONFIG = {
      every time they die. */
   LOGO: {
     on: true,
+    /* ⚠️ THE TWO ENDINGS TAKE DIFFERENT ROUTES BACK, AND THAT IS THE WHOLE
+       POINT OF THERE BEING TWO KNOBS.
+
+       `onRestart` is the DEATH path -- the PERDEU panel. It is false because
+       making the player sit through three seconds of branding every time they
+       lose is a punishment, and the arcade instinct is that a death is a retry.
+
+       `onClear` is the ZERAMENTO path -- the results board after the game is
+       FINISHED. It is true, asked for 2026-09-09: *"after the player finishes
+       the game, and presses any button after the final statistics screen ... it
+       should go back to the starting screen, the one that shows the saborosa
+       logo."* Finishing happens once; the logo reads as a bookend there rather
+       than as a toll, which is exactly why the same three seconds are wrong on
+       a death and right here.
+
+       ⚠️ BOTH ARE GATED BY `on` ABOVE. With the logo switched off entirely
+       neither can send anyone to a screen that does not exist. */
     onRestart: false,
+    onClear: true,
     SHEET: 'v2:flying-dungeon/saborosa-logo.webp',
     wRel: 0.52,        // logo width as a fraction of the canvas. Still Life's
     yRel: 0.5,         // and its centre, down the canvas
@@ -9582,6 +9600,23 @@ const CONFIG = {
        because this map is what gets fetched and decoded, not because a punch
        and a requiem are the same kind of thing. */
     gameOver: 'v2:flying-dungeon/audio/game-over.ogg',
+    /* --- The TIME ATTACK loops ---------------------------------------------
+       STILL LIFE'S, READ IN PLACE out of that game's folder like the death
+       sting above, and for the same reason: the minigame IS that game's
+       plane/fly/coin ported across, so a second copy of its gun would drift the
+       moment one of them is recut.
+
+       ⚠️ THESE TWO ARE HELD LOOPS, NOT ONE-SHOTS, and they are in this map
+       anyway -- SFX is what manifest.js walks and what primeSfx() decodes, so a
+       looping clip has to be listed here to exist at all. WHICH of them loop,
+       and how, is `SFX_LOOP` below; their levels are in SFX_GAIN like every
+       other effect. Nothing ever calls play() on either: a single burst of a
+       machine gun that stops on its own is not the sound of a trigger held. */
+    gun: 'v2:flying-dungeon/audio/efeito-metralha-01.ogg',
+    /* UNDER the gun rather than beside it -- you cannot be hitting a coin
+       without firing, so this only ever sounds layered on top of the one above,
+       which is what its level was solved against over there. */
+    coinHit: 'v2:flying-dungeon/audio/coin-hit-01.ogg',
   },
   /* Effects sit ABOVE the music: a punch that the bed swallows reads as a
      punch that did not connect. Both are under the mute.
@@ -9669,6 +9704,68 @@ const CONFIG = {
        between -14.6 and -14.2 dBFS, so one number does for the set and which
        sound plays never doubles as a volume change. */
     enemyDeath: 0.7,
+    /* --- The TIME ATTACK loops ---------------------------------------------
+       ⚠️⚠️ THESE WERE 0.367 / 0.448 FOR ONE SESSION AND BOTH WERE 4.4 dB TOO
+       QUIET, WHICH IS WHY THE COIN *"reproduced in a different way than it was
+       on still life"*. The arithmetic was the right shape against the wrong
+       BUS: I solved them against that game's `sfxVolume` (0.6), the way
+       gameOver and coin below are correctly solved, and its LOOPS DO NOT GO
+       THROUGH IT. Read its `_audio()` -- the graph is three parallel buses:
+
+           music     -> musicGain -+
+           loops     -> loopGain --+-> master        loopGain.gain.value = 1
+           one-shots -> sfxGain ---+                 sfxGain = cfg.sfxVolume
+
+       So over there the gun reaches the master at 0.495 x **1.0** and the coin
+       at 0.605 x **1.0** -- their `volume` IS their level, and its sfx bus
+       never touches them. Matching that through this game's one sfx bus:
+
+           gun      0.495 / 0.81 = 0.611
+           coinHit  0.605 / 0.81 = 0.747
+
+       ⚠️ AND THEY STILL BELONG ON THIS GAME'S SFX BUS rather than getting a
+       loopGain of their own. Still Life has no options screen, so its bus is a
+       constant and splitting the loops off it costs nothing there. Here the
+       SFX meter is a real control, and a machine gun that ignored it would be
+       a bug -- see applyOptions(). What is copied is the LEVEL AT THE MASTER,
+       not the graph that produced it.
+
+       ⚠️ MOVE THE BUS AND RE-DERIVE, exactly as gameOver's note below says and
+       as 0.67 -> 0.74 already proved. 0.81 is spelled into the division above
+       for that reason. There are now FOUR entries in this table pinned to an
+       absolute level, not two.
+
+       ⚠️ AND THEY ARE MATCHED STRAIGHT, unlike the count-up tick below, because
+       here the thing being matched is the same thing: ONE gun and ONE beam on
+       ONE coin, exactly as over there. The tick had to be pulled a third of the
+       way down because this game rings fifty of them in four seconds where that
+       game plays one; nothing about a held loop multiplies. */
+    gun: 0.611,
+    coinHit: 0.747,
+  },
+
+  /* --- Which effects are HELD, not fired ------------------------------------
+     name -> { loopTrimMs }. An effect in here reports a STATE the player is
+     holding rather than an event that happened: the game hands
+     `sound.loop('gun', firing)` a boolean every frame and the sound starts and
+     stops itself as it flips. Everything else in SFX is an event and is fired
+     once with play(). A name here must also be in SFX -- this map says how a
+     clip is played, not which clip it is.
+
+     ⚠️ `loopTrimMs` IS NOT A FADE, IT IS THE LOOP REGION. tools/build-sound.py
+     puts a 12ms fade on each edge of everything it builds, which is right for a
+     clip played once and wrong for one played end to end: the two fades meet at
+     the wrap and put a 24ms hole in the sound once per pass -- a stutter in the
+     gun's burst, an audible seam on anything else. Looping BETWEEN them keeps
+     the fade-in as the sound's attack, heard on the frame it starts and never
+     returned to. Still Life's finding, and its numbers; see CONFIG.LOOPS there.
+
+     ⚠️ THE LEVEL IS NOT IN HERE. A loop is trimmed by SFX_GAIN like every other
+     effect, so an effect's volume is looked up in one place whatever kind of
+     effect it is. */
+  SFX_LOOP: {
+    gun: { loopTrimMs: 12 },
+    coinHit: { loopTrimMs: 12 },
   },
   /* --- The death sting -----------------------------------------------------
      HOW the game over music is played, kept apart from WHICH file it is because

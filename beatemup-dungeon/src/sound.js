@@ -87,6 +87,11 @@ class Sound {
        a 300ms punch cannot outlive anything. */
     this.once = {};
     this._sfxPending = {};     // name -> true while a decode is in flight
+    /* HELD effects, by name -> { wanted, src, gain }. See loop(): these are
+       sounds that report a state the player is holding rather than an event,
+       and unlike everything above them they have to be STOPPED by somebody.
+       Empty for the whole game except inside TIME ATTACK. */
+    this.loops = Object.create(null);
     this.muted = false;
     this.volume = (typeof CONFIG !== 'undefined' && CONFIG.musicVolume != null)
       ? CONFIG.musicVolume : 0.55;
@@ -112,6 +117,23 @@ class Sound {
       const kick = () => this._resume();
       ['pointerdown', 'keydown', 'touchstart'].forEach(
         ev => window.addEventListener(ev, kick, { passive: true }));
+    }
+
+    /* ⚠️ A HIDDEN TAB STOPS requestAnimationFrame, AND A LOOP IS THE ONE SOUND
+       THAT NEEDS A FRAME TO TURN ITSELF OFF. Alt-tab out of TIME ATTACK with
+       the trigger held and `TimeAttack.update()` never runs again, so the
+       `loop('gun', false)` that would silence it never happens -- a machine gun
+       playing over whatever the player switched to. The music is deliberately
+       NOT touched here: it plays on when the tab is hidden and always has.
+
+       ⚠️ BLUR NEEDS NOTHING, and that asymmetry is the point. Blur does not
+       stop rAF, so the mode keeps ticking, `input.releaseAll()` has already
+       dropped `firing`, and the gun turns itself off through the ordinary path
+       on the very next frame. It is only the frames STOPPING that strands it. */
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) this.stopLoops();
+      });
     }
   }
 
@@ -174,6 +196,13 @@ class Sound {
     }
     this._startIfReady();
     this.primeSfx();
+    /* ⚠️ AND ANY LOOP THE GAME IS ALREADY ASKING FOR. A held sound that was
+       wanted while the context was locked has no event to fire it later -- the
+       press already happened and is still happening -- so the gesture that
+       unlocks audio is what starts it. Defensive here rather than load-bearing:
+       the only loops in this game are inside a minigame two stages deep, by
+       which point audio has been running for several minutes. */
+    this._restartLoops();
   }
 
   /** Which track the game has asked for, or null. */
@@ -357,6 +386,129 @@ class Sound {
         v.src.stop();
       }
     } catch (e) { /* already stopped */ }
+  }
+
+  /* --- Held loops -----------------------------------------------------------
+     Hand it a boolean every frame and forget about it: `loop('gun', firing)`.
+     PORTED FROM STILL LIFE (its sound.js), which is where the two clips come
+     from and where the only loops this game has are played.
+
+     ⚠️ THIS IS A THIRD WAY TO PLAY A CLIP, not a flag on the other two, and the
+     difference is who ends it. `play()` is fire-and-forget because a punch
+     cannot outlive anything. `playOnce()` is tracked because a 10.7s fanfare
+     can outlive the screen that started it. A LOOP OUTLIVES EVERYTHING -- it
+     runs until something says stop, so the one failure mode that matters here
+     is a gun still firing over the next room. See stopLoops().
+
+     ⚠️ CALLING THIS EVERY FRAME IS THE INTENDED USE and costs nothing: it
+     no-ops unless the state flips. */
+  loop(name, on) {
+    const L = this.loops[name] || (this.loops[name] = { wanted: false, src: null, gain: null });
+    if (on) {
+      L.wanted = true;
+      /* ⚠️ RETRIED WHILE WANTED, not only on the flip, which is the one place
+         this differs from Still Life's version. _loopStart() gives up quietly
+         when the buffer has not decoded yet or the context is not running, and
+         a caller that only tried on the rising edge would then never try again
+         -- the trigger is already down, so there is no second edge coming. The
+         every-frame call is what makes that self-healing. */
+      if (!L.src) this._loopStart(name);
+      return;
+    }
+    L.wanted = false;
+    this._loopStop(name);
+  }
+
+  /**
+   * Every loop off at once.
+   *
+   * ⚠️ THIS IS WHAT THE EXITS CALL, and naming them individually is the bug it
+   * exists to prevent: Still Life shipped a player who died holding fire and
+   * left the gun running under the game-over panel. Here the equivalent is
+   * TimeAttack.leave(), which is reached from the mode's own state machine
+   * (the clock running out) as well as from the round-out -- two paths, one
+   * call. A loop added later is silenced by both for free.
+   */
+  stopLoops() {
+    for (const name in this.loops) this.loop(name, false);
+  }
+
+  _loopStart(name) {
+    const L = this.loops[name];
+    if (!L || L.src) return;
+    const ctx = this.ctx;
+    if (!ctx || ctx.state !== 'running') return;   // a gesture will come back for it
+    const buf = this.sfx[name];
+    if (!buf) { this.primeSfx(); return; }         // ditto, once it decodes
+    const s = ctx.createBufferSource();
+    s.buffer = buf;
+    s.loop = true;
+    /* THE LOOP REGION SKIPS THE CLIP'S OWN EDGE FADES -- see CONFIG.SFX_LOOP
+       for why a 12ms fade at each end is right for a one-shot and is a 24ms
+       hole in a loop. Clamped so a clip shorter than the trim cannot invert
+       the region and produce a source that plays nothing. */
+    const cfg = (CONFIG.SFX_LOOP && CONFIG.SFX_LOOP[name]) || {};
+    const trim = Math.max(0, (cfg.loopTrimMs || 0) / 1000);
+    if (buf.duration > trim * 3) {
+      s.loopStart = trim;
+      s.loopEnd = buf.duration - trim;
+    }
+    /* Its own trim node under the sfx bus -- the same bargain _voice() makes,
+       and for the same reason: the bus is the balance between all effects and
+       the music, so a per-clip level must never be applied by moving it. */
+    const g = ctx.createGain();
+    g.gain.value = (CONFIG.SFX_GAIN && CONFIG.SFX_GAIN[name]) || 1;
+    g.connect(this.sfxGain);
+    s.connect(g);
+    /* From the very top, NOT from loopStart: the first thing heard should be
+       the sound starting, which is what that fade-in is, and every start should
+       be identical. Playback falls into the loop region on its own. */
+    s.start(0);
+    L.src = s;
+    L.gain = g;
+  }
+
+  /**
+   * Stop one, NOW, and let go of both nodes.
+   *
+   * ⚠️⚠️ THIS IS A HARD STOP, AND IT USED TO BE A 20ms RAMP -- reverted
+   * 2026-09-09 because the ramp changed how the coin hit SOUNDED: *"the coin
+   * being hit is reproducing in a different way than it was on still life."*
+   *
+   * The reasoning for the ramp was not wrong in itself -- a buffer stopped
+   * mid-cycle ends on a step, which is the click stopMusic() and stopOnce() are
+   * both built around, and a LOOP is stopped mid-region by definition. What it
+   * missed is that a ramp keeps the old voice ALIVE for 20ms while `loop()` is
+   * free to start a new one on the very next frame (16ms), so the outgoing
+   * tail and the new attack OVERLAP. On the gun that is inaudible: it is one
+   * held state and it flips twice a round. On the COIN it is the whole sound --
+   * `coinBeam` flickers as the beam crosses coin edges and as one clock dies
+   * under a held trigger, so a 1.119s clip with two transients in it was being
+   * restarted over its own decaying tail several times a second. That is a flam
+   * on every re-engagement, and it is exactly the kind of thing that reads as
+   * "the same sound, played differently".
+   *
+   * ⚠️ SO: STILL LIFE'S VERSION, VERBATIM, DISCONNECTS AND ALL. Fourth time on
+   * this port that the piece I rewrote rather than copied is the piece that was
+   * wrong -- and the first three were contracts, while this one was a judgement
+   * call made against a real fact (the click) in a place the fact did not
+   * apply. If a click ever does appear on release, it is one observable thing
+   * to fix then, on evidence.
+   */
+  _loopStop(name) {
+    const L = this.loops[name];
+    if (!L || !L.src) return;
+    try { L.src.stop(); } catch (e) {}
+    try { L.src.disconnect(); } catch (e) {}
+    if (L.gain) { try { L.gain.disconnect(); } catch (e) {} }
+    L.src = null;
+    L.gain = null;
+  }
+
+  /** Start whatever the game is still asking for. See _resume(). */
+  _restartLoops() {
+    for (const name in this.loops)
+      if (this.loops[name].wanted && !this.loops[name].src) this._loopStart(name);
   }
 
   /**

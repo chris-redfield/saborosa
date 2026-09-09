@@ -47,9 +47,17 @@
  * gesture, and a blit from a video with no data silently draws nothing.
  */
 class TimeAttack {
-  constructor(assets, input) {
+  constructor(assets, input, sound) {
     this.assets = assets;
     this.input = input;
+    /* ⚠️ THE MODE OWNS ITS OWN SOUND rather than game.js driving it from
+       outside, which is where Still Life puts the same two calls. The reason is
+       leave(): the mode ends ITSELF when the clock runs out, and game.js
+       returns on that very frame to start the fade -- so a `sound.loop(...)`
+       living in game.js would never get the frame that turns the gun off, and
+       the machine gun would carry into HIPÓLITO's room. Optional, so a caller
+       that has no audio still gets a working minigame. */
+    this.sound = sound || null;
     this.plane = null;      // built on the first enter(); see _cfg()
     this.flies = [];
     this.coins = [];
@@ -84,6 +92,11 @@ class TimeAttack {
        with the game -- which is the one thing it exists to rule out. Null on
        every frame the gun is not firing, and cleared at the top of `_shoot`. */
     this.ray = null;
+    /* IS THE BEAM ON A COIN RIGHT NOW -- the coin-hit loop's whole input, and
+       nothing else reads it. Kept beside `ray` because it has exactly the same
+       lifetime: recomputed by `_shoot()` every frame and false on every frame
+       that does not run it. */
+    this.coinBeam = false;
   }
 
   /**
@@ -111,6 +124,10 @@ class TimeAttack {
   enter(packIdx) {
     const c = this._cfg();
     this.reset();
+    /* RE-ENTRY INSURANCE. `reset()` clears the flags that DRIVE the loops but
+       cannot stop a source that is already playing, and the DEV jump can open
+       this mode while it is already open. */
+    if (this.sound) this.sound.stopLoops();
     if (!this.plane) return;
     this.plane.setCharacter(c.character != null ? c.character
                             : (packIdx || 0) % (c.CHARACTERS || ['']).length);
@@ -123,6 +140,13 @@ class TimeAttack {
   /** Tear down. ⚠️ THE VIDEO IS PAUSED, not left running behind the level. */
   leave() {
     if (this.video) { try { this.video.pause(); } catch (e) {} }
+    /* ⚠️ AND THE HELD SOUNDS, WHICH NOTHING ELSE WILL DO. A player holding fire
+       as the clock hits zero is the ordinary way out of this mode, not an edge
+       case -- and the frame after this one is a fade into the next room. By
+       NAME would be wrong here: stopLoops() is what keeps the third loop, added
+       by whoever adds one, from being the one nobody remembered. Still Life
+       shipped this exact bug (a gun running under its game-over panel). */
+    if (this.sound) this.sound.stopLoops();
     this.flies.length = 0;
     this.coins.length = 0;
     this.state = 'done';
@@ -284,7 +308,26 @@ class TimeAttack {
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     for (const f of this.flies) f.update(dt, W, H, false);
     for (const cn of this.coins) cn.update(dt, W);
-    if (live) this._shoot(); else this.ray = null;
+    if (live) this._shoot(); else { this.ray = null; this.coinBeam = false; }
+
+    /* THE TWO HELD SOUNDS, handed a boolean each and left to sort themselves
+       out -- Sound.loop() no-ops unless the state flips, so calling it on every
+       frame is the intended use and not a waste.
+
+       ⚠️ DRIVEN OFF `ray`, NOT OFF `input.firing`. They are different on the
+       frames that matter: the gun is silent while the plane is control-locked
+       (the fly-in, the round cards) and between rounds, and a trigger held
+       through the opening card would otherwise fire a gun that visibly is not.
+       `ray` is null on exactly those frames because `_shoot()` returns before
+       building one.
+
+       ⚠️ THE COIN HIT CAN ONLY BE TRUE ON A FRAME THE GUN IS ALSO TRUE, so it
+       layers under the gun rather than replacing it -- which is the balance
+       its level in SFX_GAIN was solved against. */
+    if (this.sound) {
+      this.sound.loop('gun', !!this.ray);
+      this.sound.loop('coinHit', this.coinBeam);
+    }
 
     /* Drop the dead and top the field back up. ⚠️ A LANDED FLY IS NOT DEAD --
        `isDead()` and `isLanded()` are different questions in ta-fly.js and a
@@ -340,6 +383,7 @@ class TimeAttack {
   _shoot() {
     const c = this._cfg();
     this.ray = null;
+    this.coinBeam = false;
     if (!this.input.firing || !this.plane || this.plane.controlLocked) return;
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     const m = this.plane.muzzle(W, H);
@@ -364,6 +408,17 @@ class TimeAttack {
       if (!cn.isShootable()) continue;
       for (const b of cn.boxes(0, 0, W)) {
         if (!TimeAttack._rayHitsBox(ray, th, b)) continue;
+        /* ⚠️⚠️ THE SOUND IS SET ON THE BEAM CROSSING AND IS THE ONE EXCEPTION
+           TO THE RULE IN THIS METHOD'S HEADER -- read them together. Everything
+           that CHANGES THE GAME is gated on `hit()` returning true, because the
+           i-frames are what stop a held trigger buying a minute of clock. A
+           sound changes nothing, and the state it is reporting is not "a hit
+           landed", it is "this coin is under fire" -- which is true on every
+           frame the beam is on it. Gating it on `hit()` would chop the loop on
+           and off several times a second (160ms of i-frames against a 16ms
+           frame) while the player holds a steady beam on a coin they can watch
+           taking damage. Still Life's shape, kept deliberately. */
+        this.coinBeam = true;
         /* ⚠️ THE CLOCK PAYS OUT ONCE, WHEN IT IS DESTROYED -- NOT PER DAMAGE
            TICK. `TaCoin.hit()` returns true on every tick that lands, and a
            coin has `coinHealth` 7 of them: paying per tick handed out 7 x

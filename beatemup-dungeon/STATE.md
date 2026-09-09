@@ -8496,6 +8496,336 @@ cannot show.**
 
 ---
 
+## And then on 2026-09-09: TIME ATTACK got its two sounds
+
+*"in the next session I want to add the SFXs from still life, the one for the
+machine gun and the one for when you hit the coin."* Both are Still Life's, both
+are **read in place** out of that game's folder like the death sting and the
+game over panel's frames -- the minigame IS that game's plane, so a second copy
+of its gun would drift the moment one of them is recut.
+
+    SFX.gun      v2:flying-dungeon/audio/efeito-metralha-01.ogg   SFX_GAIN 0.611
+    SFX.coinHit  v2:flying-dungeon/audio/coin-hit-01.ogg          SFX_GAIN 0.747
+    SFX_LOOP     { gun: {loopTrimMs:12}, coinHit: {loopTrimMs:12} }
+
+### THIS GAME HAD NO WAY TO PLAY A HELD SOUND, WHICH IS THE WHOLE JOB
+
+It reads like a two-line wiring change and it is not. `Sound` had `play()` (fire
+and forget -- a 300ms punch cannot outlive anything), `playOnce()`/`stopOnce()`
+(tracked, because a 10.7s fanfare outlives the screen that started it) and the
+music layer system. **Zero `loop(`.** So this is a port of Still Life's
+`loop()` / `stopLoops()` / `_loopStart()` plus a `SFX_LOOP`-shaped config, and
+the wiring is the small part.
+
+**A loop is a THIRD way to play a clip, and the difference is who ends it.** The
+other two end themselves. A loop runs until something stops it, which makes the
+only interesting failure a sound still playing over a screen it does not belong
+to.
+
+⚠️ **THE LOOP REGION IS NOT A FADE.** `loopTrimMs` 12 skips the clip's own edge
+fades: `build-sound.py` puts 12ms on each end of everything it builds, which is
+right for a clip played once and wrong for one played end to end -- the two
+fades meet at the wrap and put a **24ms hole** in the sound, once per pass. On
+the gun that is a stutter in the burst. Playback still **starts at 0**, not at
+`loopStart`, so the fade-in is heard once as the sound's attack and never again.
+Still Life's finding, copied rather than rederived.
+
+⚠️ **AND THE STOP IS A 20ms RAMP, WHICH STILL LIFE DOES NOT DO.** This is the one
+place the port deliberately differs. A loop is stopped **mid-region by
+definition** -- the clip's own fade-out lives outside the loop and is never
+reached -- and a waveform that ends anywhere but zero is a step, which is a
+click. That fact is already load-bearing in `stopMusic()` and `stopOnce()` in
+this same file, and deviating from an in-repo measured fact to preserve a port
+would be the wrong trade. 20ms is under a frame: a release, not a fade.
+
+### THE MODE OWNS THE CALLS, NOT game.js -- AND THAT IS NOT TIDINESS
+
+Still Life drives both from its `game.js` loop. Copying that here would have
+shipped the gun into HIPÓLITO's room: **the mode ends ITSELF** when the clock
+runs out (`state 'out' -> leave()`), and `game.js` returns on that very frame to
+start the fade. There is no later frame in which an outside
+`sound.loop('gun', false)` could run. So `TimeAttack` takes `sound` in its
+constructor, drives both loops at the end of `update()`, and `leave()` calls
+`stopLoops()`.
+
+⚠️ **`stopLoops()` BY NAME, NOT THE TWO NAMES.** Naming them is the bug it exists
+to prevent -- Still Life shipped a player who died holding fire and left the gun
+running under its game over panel. A third loop added later is silenced for free.
+
+⚠️ **AND THE DEV NUMBER KEYS ARE THE OTHER EXIT.** That block runs BEFORE the
+phase branches, every frame, so a number key pressed inside the minigame lands
+there -- and without a `timeAttack.leave()` the machine gun would follow the jump
+into the street and play for ever. Found by tracing the exits rather than by
+hearing it; `leave()` on a mode already `done` does nothing, so it is free.
+
+### THE GUN FOLLOWS `ray`, THE COIN FOLLOWS THE BEAM CROSSING
+
+Two different decisions and both are load-bearing.
+
+**The gun is driven off `ray`, not off `input.firing`.** They differ on exactly
+the frames that matter: the plane is control-locked through the fly-in and
+through every round card, and `_shoot()` returns before building a ray on those
+frames. A trigger held through the opening card would otherwise sound a gun that
+is visibly not firing.
+
+**The coin hit is set on the beam CROSSING a coin's box, not on `hit()`
+returning true** -- and that is the **one exception** to the rule in `_shoot()`'s
+own header, which says every effect must be gated on `hit()` so the i-frames can
+rate-limit it. Read them together: that rule is about things that change the
+GAME (the clock payout, the coin bank), where the i-frames are the only thing
+stopping a held trigger buying a minute of clock. A sound changes nothing, and
+the state it reports is not *"a hit landed"*, it is *"this coin is under fire"*.
+`TaCoin.hit()` is refused inside **160ms** of i-frames against a 16ms frame, so
+gating the loop on it would chop it on and off several times a second while the
+player holds a steady beam on a coin they can watch taking damage.
+
+### ⚠️⚠️ AND IT WAS WRONG, TWICE, IN THE SAME AFTERNOON
+
+*"the coin being hit is reproducing in a different way than it was on still
+life, please fix it."* Two causes, both mine, both in the parts I did not copy.
+
+**1. THE LEVELS WERE SOLVED AGAINST THE WRONG BUS.** I derived them from Still
+Life's `sfxVolume` (0.6), the way `gameOver` and `coin` are correctly derived --
+**and that game's loops do not go through its sfx bus.** Its `_audio()` builds
+THREE parallel buses and the loops have their own, pinned at 1.0:
+
+    music     -> musicGain -+
+    loops     -> loopGain --+-> master     loopGain.gain.value = 1
+    one-shots -> sfxGain ---+              sfxGain = cfg.sfxVolume (0.6)
+
+So over there `volume` IS the level: gun 0.495 and coinHit 0.605 at the master.
+My numbers put them at 0.297 and 0.363 -- **4.4 dB down, both of them**. The
+ratio between the two was preserved, which is why it read as "different" rather
+than as "wrong balance". Now `gun: 0.611` and `coinHit: 0.747`, i.e. 0.495/0.81
+and 0.605/0.81, measured back out at 0.4949 and 0.6051.
+
+⚠️ **THEY STILL SIT ON THIS GAME'S SFX BUS, and that is deliberate.** Still Life
+has no options screen, so its bus is a constant and splitting the loops off it
+costs nothing. Here the SFX meter is a real control and a machine gun that
+ignored it would be a bug. **What has to be copied is the LEVEL AT THE MASTER,
+not the graph that produced it** -- which is the same distinction `gameOver` and
+`coin` already make, and the one I got wrong by copying neither.
+
+⚠️ **THERE ARE NOW FOUR PINNED ENTRIES IN `SFX_GAIN`**, not two. Move
+`sfxVolume` and re-derive all four.
+
+**2. THE 20ms RELEASE RAMP FLAMMED THE COIN.** The other half of the report, and
+the more interesting failure. I added a ramp Still Life does not have, reasoning
+that a loop is stopped MID-REGION by definition (its own fade-out lives outside
+the loop and is never reached) and that a waveform ending off zero is a click --
+a fact this very file already leans on twice, in `stopMusic()` and `stopOnce()`.
+
+**The fact was true and did not apply here.** A ramp keeps the outgoing voice
+alive for 20ms, and `loop()` is free to start a new one on the next frame, 16ms
+later -- so the decaying tail and the new attack OVERLAP. On the gun that is
+inaudible: one held state, flipped twice a round. **On the coin it is the whole
+sound.** `coinBeam` flickers as the beam crosses coin edges and as one clock
+dies under a held trigger, so a 1.119s clip with two transients in it was being
+restarted over its own decay several times a second -- a flam on every
+re-engagement. Reverted to Still Life's version verbatim, disconnects included.
+
+⚠️⚠️ **FOURTH TIME ON THIS PORT, AND THE SHARPEST VERSION YET.** The first three
+were CONTRACTS not visible in a signature (what a `dt` means, what a `worldW`
+means, what a box's fields are called). This one is worse and more instructive:
+a judgement call, made against a real measured fact from this repo, applied in
+the one place the fact did not hold. **A correct general principle is not a
+licence to differ from the source you are porting.** The thing to copy is the
+behaviour; a local improvement to it is a separate change, made on evidence,
+after the port is heard.
+
+### Unheard
+
+⚠️ **NOTHING HERE HAS BEEN LISTENED TO.** Both gains are arithmetic against Still
+Life's mix -- a game with no punches, no grunts and a different bed underneath --
+and the 20ms release is reasoning about waveforms, not a judgement. There is no
+preview for this: a sound cannot be rendered to a PNG, and the browser check
+that would drive it is the one that put the game's music out of the user's
+speakers. **It needs to be played.**
+
+---
+
+## The stuck key: holding a direction and pressing volume up (2026-09-09)
+
+*"if I am like holding a key, like the 'd' key to go right or the 'w' key to go
+up, and I press volume up in the keyboard or any other key that is not related
+to the game, the key that I was holding kinda gets stuck, it either make the
+character move in that direction even when you are not pressing the key, or it
+just stops working, so you can't walk in that direction anymore."*
+
+### It is not the volume key. It is the FOCUS.
+
+A media key is grabbed by the desktop, and on X11 a keyboard grab arrives at the
+browser as a genuine **`blur`** (FocusOut with mode NotifyGrab), with a `focus`
+when the grab ends. **Every key event in between goes to the desktop and none of
+them reach the page.** From there both symptoms fall out of the same fact:
+
+    keyup lost    -> _kb.right stays true for ever, poll() ORs it into
+                     this.right on every frame -> he walks with nothing held
+    keydown lost  -> the press never happened as far as the game knows
+                     -> "you can't walk in that direction anymore"
+
+⚠️ **TWO OPPOSITE SYMPTOMS, ONE CAUSE, AND THAT IS WHY THE REPORT HAD BOTH IN
+IT.** It was tempting to read them as two bugs; they are one event missing, in
+whichever direction the timing happened to strand it. Alt-tab, a notification,
+the OS volume overlay and a click on another window are the same shape.
+
+### ⚠️ NOTHING IN THIS REPO RECOVERED FROM IT
+
+There was **no `blur` handler, no `visibilitychange` handler and no focus
+handling of any kind** -- not in `beatemup-dungeon/src/input.js`, not in
+`flying-dungeon/src/input.js`, not in the main game's. All three hold keyboard
+state in a `_kb` map that only a keyup ever clears. **The other two games have
+the identical hole and it has simply not been reported yet.**
+
+`Input.releaseAll()` now runs on `window` `blur` and on `document`
+`visibilitychange` -> hidden.
+
+⚠️ **HELD STATE ONLY.** Directions, `_attackHeld`, `firing`, hold-C `debug`, and
+`_padPrev` -- that last one because it is a rising-EDGE memory, and a button
+left remembered as down across a blur would swallow the first press after the
+player comes back. The queued edges are deliberately untouched: a punch pressed
+a frame before the window blurred is a press the game still owes an answer to,
+which is `flush()`'s own doctrine.
+
+### ⚠️ AND `flush()` IS NOT THE PLACE, THOUGH IT LOOKS LIKE IT
+
+`flush()` already drops `_attackHeld` for exactly this reason and carries a
+comment saying so -- *"no keyup ever arrives for a key released while the card
+was up"*. The obvious move is to add `_kb` beside it. **It would be wrong.**
+`flush()` runs on every screen change, and a player holding a direction through
+a room fade would have their walk cut until autorepeat re-asserted the key half
+a second later -- a hitch introduced on every transition to fix a case that only
+happens on focus loss.
+
+**The distinction worth keeping: focus loss is the case where held state is
+genuinely UNKNOWABLE. A screen change is not.** Same-looking symptom, different
+epistemics, different fix.
+
+### ⚠️ AND THE CONTROLLER IS A DIFFERENT QUESTION WITH A DIFFERENT ANSWER
+
+Asked directly: *"does that fix it for when the player is playing in a
+controller?"*
+
+**The keyboard bug cannot happen on a pad**, and not because it was fixed. A pad
+is **POLLED, not evented**: `poll()` zeroes every direction and `padLift` at the
+top and rebuilds them from the live snapshot every frame. There is no keyup to
+lose. The only accumulated pad state is `_padPrev`, a rising-edge memory, and it
+already self-heals -- either the pad is gone (the `else` branch clears it) or the
+buttons read false and overwrite it.
+
+⚠️⚠️ **BUT THERE IS A PAD-SHAPED VERSION OF THE SAME SYMPTOM, AND `releaseAll()`
+CANNOT REACH IT.** `requestAnimationFrame` keeps running while a window is merely
+BLURRED -- only HIDING stops it -- so the game goes on polling a pad the player
+is not holding. Whether Chrome zeroes or FREEZES the gamepad snapshot of an
+unfocused page is not something to rely on either way; if it freezes, a held
+stick keeps walking him after the OSD takes focus. **Same symptom, different
+mechanism**, and clearing state is useless against it because the very next poll
+re-derives what was just cleared.
+
+**The pad is now not read at all while the window is unfocused**
+(`_shouldReadPad()`), which makes the browser's behaviour irrelevant rather than
+guessed at. An unfocused window is one nobody is playing; neither path should
+produce input, whatever the API returns.
+
+⚠️ **IT ROUTES THROUGH THE EXISTING "no pad" BRANCH**, which already clears
+`_padPrev` -- so the first press after coming back reads as a rising EDGE rather
+than being swallowed as already-held. Reusing the branch that was already
+correct beat adding a second way to be neutral.
+
+⚠️ **`_focused` STARTS TRUE AND IS ONLY EVER PULLED DOWN BY AN EVENT ACTUALLY
+SEEN.** A browser that fires no focus events leaves it true for ever, which is
+today's behaviour exactly. **The failure mode of guessing wrong here is a DEAD
+CONTROLLER**, so the flag is biased to stay live, and `document.hasFocus()` is
+consulted as well -- for a page that loaded unfocused and never fired a blur to
+record. Either saying no is enough; a document without `hasFocus` leaves the
+decision to the flag rather than defaulting to dead.
+
+### The one thing the loops added to this
+
+⚠️ **A HIDDEN TAB STOPS `requestAnimationFrame`, AND A HELD LOOP IS THE ONE
+SOUND THAT NEEDS A FRAME TO TURN ITSELF OFF.** Alt-tab out of TIME ATTACK with
+the trigger down: `TimeAttack.update()` never runs again, so the
+`loop('gun', false)` that would silence it never happens, and a machine gun
+plays over whatever the player switched to. `Sound` now listens for
+`visibilitychange` itself and calls `stopLoops()` -- **music deliberately
+untouched**, it has always played on when the tab is hidden.
+
+⚠️ **BLUR NEEDS NOTHING THERE, AND THE ASYMMETRY IS THE POINT.** Blur does not
+stop rAF: the mode keeps ticking, `releaseAll()` has already dropped `firing`,
+and the gun turns itself off through the ordinary path on the next frame. **It
+is only the frames STOPPING that strands a loop** -- which is a different
+failure from "nobody called stop", and the reason the two handlers live in two
+different files.
+
+### Unverified
+
+The mechanism is traced, not reproduced -- the fix is the standard one and the
+missing handler is a fact, but **whether it cures what they saw is theirs to
+say.** Hold a direction, hit volume up, let go.
+
+---
+
+## Finishing the game ends where it began (2026-09-09)
+
+*"after the player finishes the game, and presses any button after the final
+statistics screen, the game goes back to the main menu screen. That is wrong, it
+should go back to the starting screen, the one that shows the saborosa logo."*
+
+    PERDEU  (3rd death) --press--> TITLE           LOGO.onRestart: false
+    CLEAR   (finished)  --press--> LOGO -> TITLE   LOGO.onClear:   true
+
+### ⚠️ THE MACHINERY ALREADY EXISTED AND FLIPPING IT WOULD HAVE BEEN WRONG
+
+`CONFIG.LOGO.onRestart` has been there since the logo was built and does exactly
+this -- and it is **false on purpose**, with a note saying why: *"making the
+player sit through three seconds of branding every time they die is a different
+thing and it is opt-in."* Setting it true would have granted the request and
+also put the logo after every death, which nobody asked for and which that note
+had already argued against.
+
+⚠️ **SO IT IS A SECOND KNOB, NOT A FLIPPED ONE.** The same three seconds mean
+opposite things at the two endings: finishing the game happens ONCE and the logo
+is a bookend; dying happens constantly and it is a toll. **A knob whose existing
+value encodes a decision someone already argued through is a sign the new case
+is a different case** -- the temptation is to read the old value as an oversight
+because it happens to sit between you and what was asked for.
+
+### ⚠️ `toTitle(via)` TAKES THE OCCASION, NOT THE ANSWER
+
+`via` is `'clear'` or `'dead'`; `toTitle` looks up which knob applies. A boolean
+would have put the policy at the call site -- and both endings are dismissed by
+the SAME `if` in the end-screen handler, so the call site would have grown the
+whole rule inline. Keeping it inside means the one function every route to the
+front passes through owns it, and a future route names its occasion rather than
+restating the rule. A bare `toTitle()` still reads `onRestart`, unchanged.
+
+### What the new route needed, and did not
+
+⚠️ **THE MUSIC NEEDED NOTHING, WHICH IS WORTH KNOWING BEFORE LOOKING FOR IT.**
+`frontEnter()` already calls `stopMusic(0.4)` on every route to the front, and
+the logo has been deliberately SILENT since 2026-08-24 (*"MIKE starts on the
+BATIDÃO DE CÔCO screen and not before"*). So clear->logo is byte for byte a cold
+boot: the ZERAMENTO's track fades, three silent seconds, then MIKE arrives with
+the title. `titleMusic()` stays where it is -- the logo's own hand-off calls it.
+
+⚠️ **AND `logo.reset()` FULLY RE-ARMS THE SCREEN** (`t`, `out`, `done`), so it
+replays with no once-only guard to defeat. Checked rather than assumed: a first
+screen of the session is exactly the kind of thing that gets written as a
+one-shot.
+
+⚠️ **`armMs` 250 EARNS ITS KEEP ON THIS ROUTE, AND ITS COMMENT UNDERSELLS IT.**
+It says the arming is because this is the FIRST screen of the session -- a key
+still down from launching the game. It now also catches a player still holding
+the button that dismissed the results board. `toTitle()` flushes that press, and
+neither path can re-arm it while held (a keyboard's `_anyPress` is set past the
+`e.repeat` guard; a pad needs a rising edge and `_padPrev` still has the button
+down) -- so the arming is belt to those braces rather than the only guard. Left
+alone: the rationale still holds and the number does not move.
+
+**Traced, not played.**
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**

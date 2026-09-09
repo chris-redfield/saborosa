@@ -51,7 +51,7 @@
   /* TIME ATTACK -- the minigame between the desert and HORÁCIO. It owns the
      whole canvas while it runs, so it is a PHASE and not something drawn over
      the level; see src/time-attack.js. */
-  const timeAttack = new TimeAttack(assets, input);
+  const timeAttack = new TimeAttack(assets, input, sound);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
   const cont = new Continue(assets);
@@ -304,7 +304,7 @@
    * ⚠️ AND IT SCHEDULES A FRAME, like start() does. Every caller inside loop()
    * relies on that contract; returning without one is this game's recurring bug.
    */
-  function toTitle() {
+  function toTitle(via) {
     if (!CONFIG.title) { start(); return; }   // no front screen to go back to
     stage.reset();
     crowd.clear();
@@ -317,11 +317,22 @@
     boardSkip = 0;
     faded = false;
     title.reset();
-    /* ⚠️ A RESTART GOES TO THE TITLE, NOT THROUGH THE LOGO, unless asked. The
-       run ending at the front of the game was decided when the game over panel
-       was pointed here; making the player sit through three seconds of branding
-       every time they die is a different thing and it is opt-in. */
-    const viaLogo = CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.onRestart;
+    /* ⚠️ WHICH ENDING THIS IS DECIDES WHETHER THE LOGO IS PASSED THROUGH, and
+       `via` is that ending -- 'clear' for the results board after the game is
+       FINISHED, anything else for the death panel. The knobs are
+       `LOGO.onClear` (true) and `LOGO.onRestart` (false); see the note on the
+       pair in config.js for why the same three seconds are a bookend after a
+       zeramento and a toll after a death.
+
+       ⚠️ THE ARGUMENT IS THE OCCASION, NOT THE ANSWER. A caller passing a
+       boolean would put the policy at the call site, and there are two call
+       sites' worth of it in one `if` down in the end-screen dismissal -- so the
+       decision lives here, in the one function every route to the front goes
+       through, and a new route names its occasion rather than restating the
+       rule. Defaulting to the restart knob keeps a bare `toTitle()` doing what
+       it always did. */
+    const L = CONFIG.LOGO || {};
+    const viaLogo = !!(L.on && (via === 'clear' ? L.onClear : L.onRestart));
     if (viaLogo) logo.reset();
     /* The bed belongs to the level, not to the front screen -- it is started by
        start() and has to stop here or it would play under the title and then be
@@ -738,6 +749,14 @@
       player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
       player.props = props;
       liftRide.reset();          // see start() -- a jump abandons any ride
+      /* ⚠️ AND IT ABANDONS THE MINIGAME, WHICH IS THE ONLY THING IN THIS GAME
+         THAT HOLDS A SOUND OPEN. This block runs BEFORE the phase branches, so
+         a number key pressed inside TIME ATTACK lands here -- and without this
+         the machine gun would follow the jump into the street and play there
+         for ever, because a loop only stops when somebody stops it. Harmless
+         when the minigame was never running: leave() on a mode already `done`
+         does nothing. */
+      timeAttack.leave();
       stage.enterRoom(jump, player);
       /* AND HE WALKS IN HERE TOO, like the fade and like the start of a run.
          ⚠️ NOT ONLY FOR TIDINESS: the number keys are how a room gets LOOKED AT,
@@ -1120,7 +1139,12 @@
          and only the THIRD death reaches this panel. By then the run is over in
          exactly the sense the CLEAR board's is, so it ends where a run ends.
          Changed on request, 2026-08-22. */
-      else { toTitle(); return; }
+      /* ⚠️ AND THE TWO ENDINGS PART COMPANY HERE, on the phase that got us into
+         this branch. Finishing the game goes back through the SABOROSA logo --
+         the screen the game opens on -- so a completed run is bookended by it;
+         a death goes straight to the title. `toTitle` owns which, and this only
+         tells it which ending happened. */
+      else { toTitle(phase === 'clear' ? 'clear' : 'dead'); return; }
     }
 
     renderFrame(render);
