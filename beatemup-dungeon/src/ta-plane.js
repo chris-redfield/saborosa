@@ -490,7 +490,18 @@ class TaPlane {
     // (When the deteriorated art lands, planeWearFilter empties and this term
     // simply becomes '' — nothing else here changes.)
     const d = Math.min(1, Math.max(0, drain || 0));
-    const wear = (c.planeWearFilter && c.planeWearFilter[this.stage()]) || '';
+    /* ⚠️ CLAMPED TO THE LAST ENTRY, WHICH IS A DELIBERATE DIVERGENCE FROM
+       STILL LIFE -- its version indexes straight in. It can afford to: it has
+       `planeHealth: 3` and exactly three filters, written together. Here the
+       two are independent knobs, and raising health to 4 made `stage()` reach
+       an index past the end; `undefined || ''` is NO FILTER, so the plane
+       looked REPAIRED at one hit from death. **A missing array entry failing
+       into "no effect" is the same silent, permissive failure as a missing
+       object property** -- it does not throw, it just quietly says nothing is
+       wrong. Clamping makes the worst tint stick instead, so health and this
+       array can never again disagree in a way that reads as a bug. */
+    const wf = c.planeWearFilter;
+    const wear = (wf && wf.length ? wf[Math.min(this.stage(), wf.length - 1)] : '') || '';
     const fx = (d > 0 ? 'saturate(' + (1 - d).toFixed(3) + ') ' : '') + wear;
     if (fx.trim()) ctx.filter = fx.trim();
 

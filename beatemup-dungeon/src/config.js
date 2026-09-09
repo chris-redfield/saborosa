@@ -3657,14 +3657,18 @@ const CONFIG = {
          rewind mechanic. So "os relogios" are drawn by art that already exists
          and already means time. ⚠️ IF A DEDICATED CLOCK SPRITE IS EVER DRAWN it
          is one asset swap here and no code.
-       * ⚠️ IT CANNOT BE LOST, AND IT GRANTS NO EXTRA LIFE. Ruled 2026-09-08:
-         *"don't add extra lifes please, the game doesn't need it."* Running the
-         clock out ends the mode and the player walks on to HORÁCIO. What it
-         pays is POINTS -- *"os pontos podem dar a nota A e o zeramento da
-         cerveja no final"*.
-       * ⚠️ THE PLANE CANNOT DIE HERE EITHER, and that is `planeHealth: 0`
-         below rather than a branch: nothing in this mode shoots back, so its
-         damage path is simply never entered. See the note there.
+       * ⚠️ IT GRANTS NO EXTRA LIFE, AND LOSING IT COSTS NONE. Ruled
+         2026-09-08: *"don't add extra lifes please, the game doesn't need
+         it."* What it pays is POINTS -- *"os pontos podem dar a nota A e o
+         zeramento da cerveja no final"*.
+       * ⚠️ IT **CAN** BE LOST SINCE 2026-09-09, and that is new -- the flies
+         hurt and the plane can be shot down (`planeHealth: 4`). ⚠️ **LOSING IT
+         IS NOT LOSING A LIFE**: the mode ends early, the ABATIDO card comes
+         up, and the fade leads to the NEXT ROOM exactly as running the clock
+         out always did. Nothing about lives, continues or game over is
+         reachable from in here, which is the 09-08 ruling still standing --
+         *"after the time attack is over, I must go to the NEXT stage"* holds
+         for all three endings now, not two.
 
      THE BACKGROUND is `time-attack-1-plate.mp4`, cut by
      tools/build-time-attack-plate.py from the filmed stone orbit. ⚠️ IT LOOPS
@@ -3852,17 +3856,43 @@ const CONFIG = {
        flying-dungeon/src/config.js programmatically, not retyped.
        The exceptions, which ARE decisions:
          GAME_H      720 either way, so it agrees by luck rather than by copy.
-         planeHealth 0 -- see below.
+         planeHealth 4 -- Still Life's is 3; see below.
          timeOverMs  gone: this mode's clock is `ROUNDS[n].timeMs`.
          planeWearSheets stays false; there is no wear art for these planes. */
     GAME_H: 720,
-    /* ⚠️ 0, AND IT IS NOT A DISABLED FEATURE. Still Life's plane has 3 health
-       and a fall-out-of-the-sky death; nothing in TIME ATTACK shoots back, so
-       `hurt()` is never called and the value is simply never read. It is 0 to
-       say so out loud: if anything here is ever given a weapon, this is the
-       line that decides whether the plane can be knocked down, and the whole
-       fall/wear/drain path below is already ported and waiting. */
-    planeHealth: 0,
+    /* ⚠️ THE NOTE THAT STOOD HERE UNTIL 2026-09-09 SAID THIS WAS 0 BECAUSE
+       "nothing in TIME ATTACK shoots back", and ended: *"if anything here is
+       ever given a weapon, this is the line that decides whether the plane can
+       be knocked down, and the whole fall/wear/drain path below is already
+       ported and waiting."* That turned out to be exactly right, and it is the
+       reason today's ask was a constant and a collision test rather than a
+       feature. **Recording a disabled path and WHY, at the line that disables
+       it, is what made the difference.** */
+    /* ⚠️⚠️ 0 -> 4 ON 2026-09-09: THE FLIES HURT NOW. *"make the little flies
+       hurt the player as well. The player has 4 health, and if HP reaches 0,
+       the plane falls, and the player loses the time attack ... we are trying
+       to make time attack more dynamic and more fun."*
+
+       ⚠️ NONE OF THE MACHINERY IS NEW. `hurt()`, the i-frames, the blink, the
+       flinch, the death fall and the wear counter all came across with the port
+       and have been sitting in ta-plane.js since 2026-09-08 -- `planeHealth: 0`
+       was the single number switching the whole path off, and `isDead()` is
+       `wear >= planeHealth`, which at 0 is true from the first frame and is why
+       the old note said the plane "cannot die here". **The feature was one
+       constant and a collision test.**
+
+       ⚠️ FOUR TOUCHES, because `flyTouchDamage` below is 1. Still Life gives its
+       swarm HALF a point against 3 health (six touches); the ask here named the
+       health, so the damage is what had to move to make "4 health" mean four
+       flies. ⚠️ `planeHurtMs` 1100 is the real difficulty knob: a fly sitting on
+       the player drains all four in 4.4 seconds and no faster, however many
+       flies are touching. */
+    planeHealth: 4,
+    /* ⚠️ A WHOLE POINT PER TOUCH -- Still Life's is 0.5. See planeHealth above:
+       four health and four flies is the request, and one of the two numbers had
+       to give. Halve this for a gentler eight-touch run without changing what
+       the HUD reads, since the pips draw `hp()`. */
+    flyTouchDamage: 1,
     /* --- THE PLANE -- position, entry, feel ------------------------*/
     planeScale: 0.30720000000000003,
     planeOffsetY: 0,
@@ -3915,7 +3945,35 @@ const CONFIG = {
     planeFallSpin: 2.4,
     planeFallVy0: -150,
     planeWearSheets: false,
-    planeWearFilter: ["", "sepia(0.55) contrast(0.9) brightness(0.94)", "sepia(0.9) contrast(0.72) brightness(0.8)"],
+    /* HOW A DAMAGED PLANE IS TINTED -- one entry per `stage()`, i.e. per point
+       of health lost, applied as a canvas filter over the existing art. **This
+       is the only thing that shows damage on the plane itself**, because
+       `planeWearSheets` is false and there are no deteriorated PNGs.
+
+       ⚠️⚠️ A FOURTH ENTRY WAS ADDED 2026-09-09 AND THE PLANE WAS SNAPPING BACK
+       TO FULL COLOUR WITHOUT IT. Still Life has `planeHealth: 3` and exactly
+       three entries, so its array and its health are the same length by
+       coincidence of being written together. Raising health to 4 here made
+       `stage()` reach 3, `planeWearFilter[3]` was `undefined`, and `|| ''`
+       turned that into NO FILTER -- so at one hit from death the plane looked
+       brand new, worse-then-better-then-dead. Reported on sight: *"that is
+       wrong, he should not go back to full color."*
+
+       ⚠️ THE FOURTH VALUE IS EXTRAPOLATED, NOT MEASURED -- it continues the two
+       existing steps geometrically (contrast x0.8 each stage, brightness
+       x0.85, sepia closing on 1 by the same ratio) so the third step is the
+       same shape as the first two rather than a new opinion. It has not been
+       looked at.
+
+       ⚠️ AND THE LOOKUP IS NOW CLAMPED in ta-plane.js, so a short array can
+       never again read as a repaired plane -- see the note there. Adding
+       health without adding an entry now just holds the last tint. */
+    planeWearFilter: [
+      "",
+      "sepia(0.55) contrast(0.9) brightness(0.94)",
+      "sepia(0.9) contrast(0.72) brightness(0.8)",
+      "sepia(0.98) contrast(0.58) brightness(0.68)",
+    ],
     planeDrainOn: true,
     planeDrainStartMs: 60000,
     planeDrainFullMs: 0,

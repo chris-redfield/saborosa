@@ -97,6 +97,10 @@ class TimeAttack {
        lifetime: recomputed by `_shoot()` every frame and false on every frame
        that does not run it. */
     this.coinBeam = false;
+    /* ⚠️ SHOT DOWN, as opposed to having run the clock out. Both end the mode
+       and both lead to the next room -- this only decides which card comes up
+       and is the one thing that distinguishes the two endings. */
+    this.lost = false;
   }
 
   /**
@@ -457,6 +461,65 @@ class TimeAttack {
       this.sound.loop('coinHit', this.coinBeam);
     }
 
+    /* ⚠️⚠️ THE FLIES HURT (2026-09-09). Ported from Still Life's swarm block,
+       which is the same test against the same two shapes.
+
+       ⚠️ GATED ON `live` AS WELL AS ON `controlLocked`. Still Life only has the
+       second, because it has no round cards -- here the plane keeps flying
+       through every card while `_shoot()` does not run, so without `live` a
+       player would be taking damage during a beat they cannot shoot back in.
+       `controlLocked` covers the other two: the fly-in, and a plane already on
+       its way down.
+
+       ⚠️ THE LABELLED BREAK IS LOAD-BEARING, and it is Still Life's. Once a
+       touch has landed there is nothing left to find this frame: continuing
+       would only ask `hurt()` to say false for every other fly, and it keeps
+       the semantics honest -- **a frame in which three flies overlap the plane
+       is ONE hit, not three.** The i-frames would mask it either way; this
+       states it rather than relying on them.
+
+       ⚠️ `isAlive()`, not merely "in the list": a fly that has burst is still
+       in `flies` until the cull below, and without this its corpse would go on
+       hitting. */
+    if (live && this.plane && !this.plane.controlLocked) {
+      const pb = this.plane.hitBox(W, H);
+      if (pb) {
+        swarm:
+        for (const f of this.flies) {
+          if (!f.isAlive()) continue;
+          for (const b of f.boxes(0, 0, W)) {
+            if (!TimeAttack._boxesOverlap(pb, b)) continue;
+            if (this.plane.hurt(c.flyTouchDamage == null ? 1 : c.flyTouchDamage)
+                && this.sound) {
+              /* THE MAIN GAME'S OWN VOICES, not new files: he makes the same
+                 noise being hit here as he does on the street, and the same one
+                 on the way out. `isDead()` picks which -- two vocal samples
+                 from one body in one frame is a mess, so the death REPLACES the
+                 hit rather than layering, exactly as the fighting does. */
+              this.sound.play(this.plane.isDead() ? 'playerDeath' : 'playerHit');
+            }
+            break swarm;
+          }
+        }
+      }
+    }
+
+    /* SHOT DOWN. ⚠️ A SEPARATE STATE, NOT STRAIGHT TO `out`, because the plane
+       has to be SEEN to fall: `hurt()` starts the tumble on the fatal hit and
+       `ta-plane.js` flies it out of frame on real time. `down` stops the clock
+       and the shooting (it is not `live`) while everything else keeps running.
+       ⚠️ `fallDone()` carries its own `planeFallMaxMs` safety net, so this
+       cannot hang on a mistuned gravity. */
+    if (this.state === 'play' && this.plane && this.plane.isDead()) {
+      this.state = 'down';
+      this.stateT = 0;
+      this.lost = true;
+    }
+    if (this.state === 'down' && this.plane && this.plane.fallDone(H)) {
+      this.state = 'out';
+      this.stateT = 0;
+    }
+
     /* THE CLIMB AND THE DIVE. ⚠️ BOTH EDGES ARE CONSUMED UNCONDITIONALLY and
        only the PLAYING is gated -- a press banked while the plane is
        control-locked (the fly-in, every round card) must be dropped, not held
@@ -615,6 +678,17 @@ class TimeAttack {
    * a box's field names are part of its contract exactly as much as a `dt`'s
    * units are, and this is the third time that lesson has cost a session.
    */
+  /* ⚠️ COPIED VERBATIM FROM STILL LIFE'S `boxesOverlap`, and the four-line
+     size of it is exactly why. The one function on this port I retyped from
+     memory instead of copying was `rayHitsBox`, which read `{x0,y0,x1,y1}`
+     against boxes that are `{x,y,w,h}` -- every comparison was
+     `undefined > number`, and the beam hit everything on screen for a session.
+     A missing property is not an error; it quietly makes a boolean say yes. */
+  static _boxesOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x
+        && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
   static _rayHitsBox(ray, t, b) {
     const half = t / 2;
     return (ray.y + half >= b.y) && (ray.y - half <= b.y + b.h)
@@ -677,6 +751,31 @@ class TimeAttack {
     ctx.textAlign = 'right';
     ctx.fillText((c.quotaLabel || '') + ' ' + this.coinsGot + '/' + R.coins, W - 28, 40);
 
+    /* ⚠️ THE HEALTH, AND IT IS NOT OPTIONAL POLISH. The plane took damage
+       silently before this: `planeWearSheets` is false, so there is no
+       deteriorated art to read the state off -- Still Life shows its damage by
+       drawing an older plane, and that is the channel this game does not have.
+       The blink and the flinch say a hit LANDED; nothing said how many were
+       left. Four hidden hit points is not a difficulty setting, it is a
+       surprise.
+
+       ⚠️ DRAWN FROM `plane.hp()`, the same call `isDead()` is derived from, so
+       the row cannot disagree with the fight -- an empty row and a falling
+       plane are the same frame by construction. Spent pips are dimmed rather
+       than dropped, so the total stays readable and the row does not resize as
+       it empties. */
+    if (this.plane && (c.planeHealth || 0) > 0) {
+      const hp = this.plane.hp(), max = c.planeHealth;
+      const r = 7, gap = 21;
+      for (let i = 0; i < max; i++) {
+        ctx.beginPath();
+        ctx.arc(35 + i * gap, 68, r, 0, Math.PI * 2);
+        ctx.globalAlpha = i < hp ? 1 : 0.28;
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
     if (this.state === 'card' || this.state === 'in' || this.state === 'out') {
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
@@ -685,6 +784,11 @@ class TimeAttack {
       ctx.font = '900 64px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
       const msg = this.state === 'in' ? 'TIME ATTACK'
                 : this.state === 'card' ? (this.lastCard + ' OK')
+                /* ⚠️ THREE ENDINGS NOW, NOT TWO. `lost` is checked FIRST
+                   because a plane shot down on the very shot that met the quota
+                   is still a plane that was shot down -- and without the order
+                   being stated, that frame would read COMPLETO over a wreck. */
+                : this.lost ? 'ABATIDO!'
                 : (this.coinsGot >= R.coins ? 'COMPLETO' : 'TEMPO!');
       /* The quota under the opening card, so the goal is stated before the
          round starts rather than inferred from a counter in the corner. */
