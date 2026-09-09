@@ -388,6 +388,35 @@ class Sound {
     } catch (e) { /* already stopped */ }
   }
 
+  /**
+   * An event that must PLAY THROUGH -- a second request while it is still
+   * sounding is REFUSED, not stacked and not restarted.
+   *
+   * ⚠️ THIS IS A THIRD POLICY, AND ALL THREE ARE DELIBERATE. `play()` overlaps
+   * (two punches 80ms apart are two sounds). `playOnce()` REPLACES its own name
+   * (asking twice for the fanfare is one fanfare). This one REJECTS: the climb
+   * and dive swooshes are ~0.5s, and a player working the stick fast would
+   * either stack them into mush (`play`) or chop each one off at its attack
+   * (`playOnce`). Still Life's `once()`/`_playOnce()`, whose comment puts it
+   * exactly: *"an occupied slot rejects the new press rather than cutting the
+   * old one."*
+   *
+   * ⚠️ IT REUSES THE `once` MAP, so a name cannot be exclusive here and
+   * replaceable there -- one slot per name, one policy per name.
+   *
+   * ⚠️ NOT NAMED `once()` LIKE STILL LIFE'S, and that is not a style choice:
+   * `this.once` is a FIELD on this class (the voice map), so a method of that
+   * name would be shadowed by it on every instance and never called.
+   */
+  playExclusive(name) {
+    if (this.once[name]) return;                 // still going: refuse
+    const v = this._voice(name, null, true);
+    if (!v) return;
+    this.once[name] = v;
+    v.src.onended = () => { if (this.once[name] === v) this.once[name] = null; };
+    v.src.start(0);
+  }
+
   /* --- Held loops -----------------------------------------------------------
      Hand it a boolean every frame and forget about it: `loop('gun', firing)`.
      PORTED FROM STILL LIFE (its sound.js), which is where the two clips come

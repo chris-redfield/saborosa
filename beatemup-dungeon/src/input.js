@@ -60,6 +60,13 @@ class Input {
        ever, which is exactly today's behaviour -- the failure mode of guessing
        wrong here is a DEAD CONTROLLER, so it is biased to stay live. */
     this._focused = true;
+    /* ⚠️ RISING EDGES ON UP AND DOWN, derived in poll() from the MERGED
+       direction rather than from either device's own events -- see the note
+       there. Only TIME ATTACK reads them (the swoosh on a climb or a dive);
+       the fighting reads the HELD directions and always has. */
+    this._upPress = false;
+    this._downPress = false;
+    this._dirPrev = { up: false, down: false };
 
     this.deadzone = 0.45;
     this.moveAxis = { x: 0, y: 1, invertX: false, invertY: false };
@@ -405,6 +412,18 @@ class Input {
     this.right = kb.right || pad.right;
     this.up = kb.up || pad.up;
     this.down = kb.down || pad.down;
+    /* ⚠️ THE EDGES ARE TAKEN OFF THE MERGED VALUE, NOT OFF EITHER DEVICE.
+       Doing it per-device would mean two mechanisms (a keydown guard on the
+       keyboard, a `_padPrev` comparison on the pad) that BOTH fire when someone
+       nudges the stick while resting a hand on W -- one press, two swooshes.
+       One comparison here cannot double-fire by construction.
+       ⚠️ It costs at most a frame of latency, which a held direction cannot
+       notice; a tap shorter than one frame is not a thing a stick or a key can
+       produce. */
+    if (this.up && !this._dirPrev.up) this._upPress = true;
+    if (this.down && !this._dirPrev.down) this._downPress = true;
+    this._dirPrev.up = this.up;
+    this._dirPrev.down = this.down;
     /* ⚠️ THE PAD'S HELD FIRE COMES FROM `padHeld`, NOT FROM THE EDGE ABOVE.
        `_padPrev` is a rising-edge memory; "is the button down right now" is a
        different question and is answered in the button loop. */
@@ -416,6 +435,13 @@ class Input {
   // rather than recomputed. A punch pressed on the frame a hitstop began must
   // still come out when the world resumes.
   takeAttack() { const a = this._attackQueued; this._attackQueued = false; return a; }
+  /* ⚠️ CONSUME THESE EVERY FRAME EVEN WHEN THEY ARE NOT ACTED ON. TIME ATTACK
+     takes both and then decides whether to play anything (the plane is
+     control-locked through the fly-in and the round cards). Reading them only
+     when they can be used would leave a press queued across that lock and fire
+     a swoosh for a climb the player made a second and a half earlier. */
+  takeUpPress() { const a = this._upPress; this._upPress = false; return a; }
+  takeDownPress() { const a = this._downPress; this._downPress = false; return a; }
   takeJump() { const j = this._jumpQueued; this._jumpQueued = false; return j; }
   takePickup() { const p = this._pickupQueued; this._pickupQueued = false; return p; }
   /** Dev: the room a number key asked for, or -1. Consumed on read. */
@@ -465,6 +491,11 @@ class Input {
     this._attackHeld = false; this._padHeldLift = false; this.firing = false;
     this._pauseQueued = this._anyPress = false;
     this._roomJump = -1;
+    /* ⚠️ AND THE DIRECTION EDGES, WITH `_dirPrev` LEFT ALONE. Dropping the
+       queued edge is what flush() is for; resetting `_dirPrev` as well would
+       manufacture a NEW edge on the next poll for a direction still being held,
+       which is the opposite of dropping it. */
+    this._upPress = this._downPress = false;
   }
 }
 

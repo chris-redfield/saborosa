@@ -124,6 +124,26 @@ class TimeAttack {
   enter(packIdx) {
     const c = this._cfg();
     this.reset();
+    /* ⚠️⚠️ THE PLANE IS RE-ARMED, AND WITHOUT THIS THE ENTRANCE PLAYED ONCE PER
+       PAGE LOAD. *"when entering the time attack stage, make the player come
+       from the left, instead of just appearing in it."* The fly-in was never
+       missing -- `planeEntry`, `planeEntryFromX: -0.55`, `planeEntryMs` and the
+       whole `_entryOff()` easing came across with the port and are Still Life's
+       own numbers. What did not come across is WHEN that state is built.
+
+       ⚠️ STILL LIFE REBUILDS THE PLANE (`plane = new Plane(...)` in its
+       restart), because over there a run IS the program: a new run is a new
+       everything. Here the plane is constructed once in `load()`, at boot, and
+       deliberately so -- see the note there about not decoding the frames
+       twice. So `locked` was true exactly once, the first entry of a session
+       spent it, and every entry after that opened with the plane already
+       parked at `startX`. A DEV jump straight back in is the fastest way to
+       never see it.
+
+       ⚠️ SO THE LIFETIME IS THE BUG, NOT THE ANIMATION -- the same shape as the
+       `dt` and the `worldW`: a contract about when state is built, which no
+       signature states and which a copied class cannot carry with it. */
+    if (this.plane) this.plane.reset();
     /* RE-ENTRY INSURANCE. `reset()` clears the flags that DRIVE the loops but
        cannot stop a source that is already playing, and the DEV jump can open
        this mode while it is already open. */
@@ -131,6 +151,18 @@ class TimeAttack {
     if (!this.plane) return;
     this.plane.setCharacter(c.character != null ? c.character
                             : (packIdx || 0) % (c.CHARACTERS || ['']).length);
+    /* ⚠️ THE MODE'S OWN SONG, by KEY -- the `musicKey` idiom the bosses use.
+       Coming OUT needs nothing: the exit is a room CHANGE, and `roomMusic()` on
+       the far side of the fade starts the next room's track the way it does for
+       every other room. Unset falls through to whatever the room it was entered
+       from left playing, which is what this mode did until 2026-09-09. */
+    if (this.sound && c.musicKey) this.sound.playMusic(c.musicKey);
+    /* ⚠️ AND A CLEAN INPUT SLATE, for the same reason every screen change in
+       this game takes one: a press made on the way out of the fight is not a
+       press aimed at the minigame. It also drops any direction EDGE banked
+       during the walk-out, which would otherwise spend itself as a swoosh on
+       the first frame the plane answers the controls. */
+    if (this.input && this.input.flush) this.input.flush();
     this._startVideo();
     this.state = 'in';
     this.stateT = 0;
@@ -153,6 +185,29 @@ class TimeAttack {
   }
 
   isDone() { return this.state === 'done'; }
+
+  /**
+   * The game paused, or resumed.
+   *
+   * ⚠️ THE PLATE HAS TO BE TOLD, AND IT IS THE ONLY BACKDROP IN THE GAME THAT
+   * DOES. Every other room's film is SCRUBBED by camera position (`Backdrop`
+   * draws frame `f(camX)`), so it freezes for free the moment the world stops
+   * being ticked -- a paused game cannot move the camera. This one is a plain
+   * looping `<video>` playing on the browser's own clock, which knows nothing
+   * about the pause card, so without this the stones would go on drifting under
+   * a frozen plane, a frozen clock and a frozen swarm. *"just like the rest of
+   * the game"* is the ask, and for this plate that means being told.
+   *
+   * ⚠️ NOT `_startVideo()` ON THE WAY BACK: that seeks to 0 and re-reads the
+   * rate. Resuming a pause has to come back on the frame it stopped on.
+   */
+  setPaused(on) {
+    const v = this.video;
+    if (!v) return;
+    if (on) { try { v.pause(); } catch (e) {} return; }
+    const p = v.play();
+    if (p && p.catch) p.catch(() => {});
+  }
 
   /* ------------------------------------------------------------------ video */
 
@@ -187,6 +242,12 @@ class TimeAttack {
        cut to loop on itself (tools/build-time-attack-plate.py), so looping is
        the whole playback policy and it has to be turned on here. */
     this.video.loop = true;
+    /* ⚠️ SET ON EVERY ENTRY, NOT ONCE. `playbackRate` belongs to the ELEMENT,
+       and the element is the loader's -- shared, long-lived, and reset to 1 by
+       some engines on a load/seek. Setting it here means the rate is a property
+       of the mode running rather than of the tab's history. */
+    const rate = this._cfg().plateRate;
+    try { this.video.playbackRate = (rate > 0 ? rate : 1); } catch (e) {}
     try { this.video.currentTime = 0; } catch (e) {}
     /* ⚠️ `play()` RETURNS A PROMISE THAT REJECTS on an autoplay refusal. An
        uncaught one lands as an unhandled rejection and the frame carries on
@@ -253,7 +314,74 @@ class TimeAttack {
        `clockFace` range against a `fruitFace`) for Still Life's shoot-a-coin-to-
        rewind mechanic. It already means time. A dedicated clock sprite would be
        an asset swap and no code. */
-    this.coins.push(new TaCoin(this.assets, c, this._spawnX(), this._fieldY(), '01'));
+    const p = this._freeSpot(c);
+    this.coins.push(new TaCoin(this.assets, c, p.x, p.y, '01'));
+  }
+
+  /**
+   * A spawn point for a clock that is not on top of another clock.
+   *
+   * ⚠️ THE DISTANCE IS MEASURED ROUND THE TORUS, and getting that wrong is the
+   * whole trap. `TaCoin` wraps `x` modulo the field width and renders the two
+   * neighbouring copies, so a coin at 0.98W and one at 0.02W are a sliver
+   * apart on screen and 0.96W apart by subtraction. The spawn band is the
+   * RIGHT-HAND part of the field (`spawnFromRel` 0.58 to 0.98) while existing
+   * coins have drifted left towards 0, which is exactly the pair that wraps --
+   * so the naive distance would report them as maximally far apart at the one
+   * moment they are touching.
+   *
+   * ⚠️ AND IT GIVES UP AFTER `coinSpawnTries`, taking the roomiest point it
+   * saw. The band is finite and the caller runs inside the frame; a loop that
+   * insisted on the constraint would hang the game the moment the field got
+   * full. Best-effort placement is a look; a hang is a crash.
+   *
+   * ⚠️ FLIES ARE NOT CONSIDERED, on purpose. The ask was about clocks reading as
+   * one clump, and there are up to six flies to a field -- folding them in
+   * would over-constrain a band that has to hold both.
+   */
+  /**
+   * The width of the world the COINS wrap in -- wider than the screen.
+   *
+   * ⚠️⚠️ EVERY PLACE THAT HANDS A COIN A `worldW` MUST USE THIS, and there are
+   * five of them: `update()`, the ray test in `_shoot()`, `render()`,
+   * `renderBurst()` and the hold-C overlay. `TaCoin` derives its wrap AND the
+   * two ghost copies it draws from that number, so a call site still passing
+   * `GAME_W` would put a coin's picture and its hitbox in different places --
+   * silently, and only for the copies. That is the same failure the beam bug
+   * was, and the reason this is a method rather than a local.
+   *
+   * ⚠️ THE FLIES ARE DELIBERATELY NOT ON THIS WORLD. They are the targets and
+   * are meant to be in the field; only the clocks were asked to arrive.
+   */
+  _coinW() {
+    return CONFIG.GAME_W + (this._cfg().coinOffscreenPx || 0);
+  }
+
+  _freeSpot(c) {
+    const W = this._coinW();
+    const min = (c.coinMinGapPx != null ? c.coinMinGapPx : (c.coinSizePx || 76) * 1.35);
+    const tries = c.coinSpawnTries || 40;
+    let best = null, bestD = -1;
+    /* ⚠️ THE BAND IS THE OFF-SCREEN STRIP AND NOTHING ELSE -- `_spawnX()` is
+       the FLIES' band (0.58..0.98 of the canvas, i.e. on screen) and is
+       deliberately not used here. Inset by half a coin at each end so a clock
+       is never spawned already poking over the right edge, and never so deep
+       that it wraps back on to the left. */
+    const half = (c.coinSizePx || 76) / 2;
+    const lo = CONFIG.GAME_W + half, hi = Math.max(lo, W - half);
+    for (let i = 0; i < tries; i++) {
+      const x = lo + Math.random() * (hi - lo), y = this._fieldY();
+      let d = Infinity;
+      for (const cn of this.coins) {
+        if (cn.isDead()) continue;
+        let dx = Math.abs(x - cn.x);
+        if (W > 0) dx = Math.min(dx, W - dx);      // the short way round
+        d = Math.min(d, Math.hypot(dx, y - cn.y));
+      }
+      if (d >= min) return { x, y };
+      if (d > bestD) { bestD = d; best = { x, y }; }
+    }
+    return best || { x: lo, y: this._fieldY() };
   }
 
   /* ------------------------------------------------------------------ update */
@@ -307,7 +435,7 @@ class TimeAttack {
 
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     for (const f of this.flies) f.update(dt, W, H, false);
-    for (const cn of this.coins) cn.update(dt, W);
+    for (const cn of this.coins) cn.update(dt, this._coinW());
     if (live) this._shoot(); else { this.ray = null; this.coinBeam = false; }
 
     /* THE TWO HELD SOUNDS, handed a boolean each and left to sort themselves
@@ -327,6 +455,22 @@ class TimeAttack {
     if (this.sound) {
       this.sound.loop('gun', !!this.ray);
       this.sound.loop('coinHit', this.coinBeam);
+    }
+
+    /* THE CLIMB AND THE DIVE. ⚠️ BOTH EDGES ARE CONSUMED UNCONDITIONALLY and
+       only the PLAYING is gated -- a press banked while the plane is
+       control-locked (the fly-in, every round card) must be dropped, not held
+       and spent the moment control returns on a climb the player has forgotten
+       making. Reading them inside the `if` would do the second thing.
+
+       ⚠️ AND THEY ARE GATED ON `controlLocked`, WHICH IS WHERE STILL LIFE PUTS
+       THEM TOO: the swoosh answers the stick, so it must not sound on a frame
+       the stick is being ignored -- the entrance flies the plane up the screen
+       on its own and would otherwise swoosh all the way in. */
+    const upP = this.input.takeUpPress(), downP = this.input.takeDownPress();
+    if (this.sound && this.plane && !this.plane.controlLocked) {
+      if (upP) this.sound.playExclusive('up');
+      if (downP) this.sound.playExclusive('down');
     }
 
     /* Drop the dead and top the field back up. ⚠️ A LANDED FLY IS NOT DEAD --
@@ -406,7 +550,7 @@ class TimeAttack {
     }
     for (const cn of this.coins) {
       if (!cn.isShootable()) continue;
-      for (const b of cn.boxes(0, 0, W)) {
+      for (const b of cn.boxes(0, 0, this._coinW())) {
         if (!TimeAttack._rayHitsBox(ray, th, b)) continue;
         /* ⚠️⚠️ THE SOUND IS SET ON THE BEAM CROSSING AND IS THE ONE EXCEPTION
            TO THE RULE IN THIS METHOD'S HEADER -- read them together. Everything
@@ -482,9 +626,9 @@ class TimeAttack {
   render(ctx) {
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     this._drawPlate(ctx, W, H);
-    for (const cn of this.coins) cn.render(ctx, 0, 0, W);
+    for (const cn of this.coins) cn.render(ctx, 0, 0, this._coinW());
     for (const f of this.flies) f.render(ctx, 0, 0, W);
-    for (const cn of this.coins) cn.renderBurst(ctx, 0, 0, W);
+    for (const cn of this.coins) cn.renderBurst(ctx, 0, 0, this._coinW());
     if (this.plane) this.plane.render(ctx, W, H, 0);
     if (this.input && this.input.debug) this._drawDebug(ctx, W, H);
     this._drawHud(ctx, W, H);
@@ -592,7 +736,7 @@ class TimeAttack {
     }
     for (const cn of this.coins) {
       ctx.strokeStyle = cn.isShootable() ? '#FAFA24' : 'rgba(250,250,36,0.25)';
-      for (const bx of cn.boxes(0, 0, W)) ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
+      for (const bx of cn.boxes(0, 0, this._coinW())) ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
     }
     if (this.plane && this.plane.hitBox) {
       const pb = this.plane.hitBox(W, H);

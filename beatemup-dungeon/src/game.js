@@ -562,17 +562,22 @@
        return further down, which would otherwise swallow the press for a few
        dozen milliseconds after every punch.
 
-       ⚠️ ONLY FROM `play`, AND OUT FROM ANYWHERE. `phase === 'play' || paused`
-       is not belt and braces: without the second half a pause could never be
+       ⚠️ FROM `play` AND `timeattack`, AND OUT FROM ANYWHERE. The trailing
+       `|| paused` is not belt and braces: without it a pause could never be
        lifted, because the branch below returns before anything can change the
        phase and the test would keep asking about a phase nobody is in.
+       ⚠️ TIME ATTACK ADDED 2026-09-09, on request -- *"make it possible for the
+       pause to be used at the time attack stage as well, just like the rest of
+       the game."* It is a phase like `play` and not a room, so it had to be
+       named; and see the render call in the paused block, which had to learn
+       the same thing.
 
        ⚠️ AND THE PRESS IS FLUSHED BOTH WAYS. Pausing eats whatever was queued,
        which is right -- a punch buffered before a pause is not a punch the
        player still wants three minutes later -- and un-pausing stops the same
        press from also being read as an action on the frame the game resumes. */
     if (input.takePause() && CONFIG.PAUSE && CONFIG.PAUSE.on !== false
-        && (phase === 'play' || paused)) {
+        && (phase === 'play' || phase === 'timeattack' || paused)) {
       paused = !paused;
       /* THE WORD, PICKED ONCE, ON THE WAY IN. ⚠️ NOT ON THE WAY OUT and not in
          the draw below: see pause.js. And deliberately not touched by the cheat
@@ -584,6 +589,18 @@
          Sound.setPaused(): stopping the music would restart the horse's 4m39s
          song from the top on every pause. */
       sound.setPaused(paused);
+      /* ⚠️ AND THE HELD LOOPS STOP OUTRIGHT, WHICH SUSPENDING THE CONTEXT DOES
+         NOT DO. Suspending makes them inaudible; they are still *running*, and
+         the mode that would turn them off is not being ticked. `input.flush()`
+         below drops `firing` for exactly this reason on the attack side -- this
+         is the same guarantee for the sound side, so the player cannot resume
+         into a frame of machine gun they are no longer asking for. Costs
+         nothing outside TIME ATTACK, where there are no loops to stop. */
+      if (paused) sound.stopLoops();
+      /* ⚠️ AND THE MINIGAME'S PLATE, which is the one backdrop in this game
+         that plays on its own clock instead of being scrubbed by the camera --
+         see TimeAttack.setPaused(). A no-op in every other phase. */
+      if (phase === 'timeattack') timeAttack.setPaused(paused);
       input.flush();
       /* THE DEV-MODE UNLOCK LISTENS ONLY WHILE THE PAUSE CARD IS UP. Armed and
          disarmed on the EDGE, and `armCheat` forgets the buffer both ways, so
@@ -615,7 +632,15 @@
           && input.takeCheat(CONFIG.DEV_UNLOCK.word || 'SABOROSA')) {
         CONFIG.DEV.on = !CONFIG.DEV.on;
       }
-      renderFrame(render);
+      /* ⚠️ THE MINIGAME PAINTS ITSELF, AND `render()` WOULD PAINT THE DESERT.
+         `render()` draws the WORLD -- the room TIME ATTACK was entered from,
+         which is finished and which the player has visually left. Pausing in
+         the minigame with the ordinary painter would put the pause card over
+         the desert, which is the same bug family as the fade that flashed the
+         room behind it: **a screen that is fully painted has to say by WHOM.**
+         The phase branches below already make this exact choice; the pause
+         block returns before reaching them, so it makes it too. */
+      renderFrame(phase === 'timeattack' ? () => timeAttack.render(ctx) : render);
       /* THE CARD IS A DRAWING FIRST (2026-09-08). `Pause.draw` returns false only
          when the lettering pack is missing, and the typed card below is then set
          exactly as it always was -- including the cheat line, which the pack

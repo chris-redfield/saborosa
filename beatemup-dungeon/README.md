@@ -3557,8 +3557,8 @@ Three knobs and three pipelines.
 | `MUSIC_GAIN` | per-track level on the music bus, by asset key. **0.72** for every in-play bed (`music`, `musicDesert`, `musicLevel3`), **0.92** for the still screens (`musicTitle`, `musicEnding`), `musicBoss` 0.85, `musicMosca` 0.68. Above 1 is allowed |
 | `musicVolume` | 0.55 — the whole music bus. ⚠️ `musicBoss` / `musicMosca` were levelled in absolute dBFS and are untouched by the soundtrack. ⚠️ **`music` and `musicMosca` are no longer coupled** — the old "move one, move the other" rule assumed both keys held tracks that measured within 0.3 dB, and only one of them changed |
 | `SFX` | name → file. `sound.play('hit')` looks the name up here. ⚠️ **The two TIME ATTACK loops are in here too** — this map is what manifest.js walks and what `primeSfx()` decodes, so a looping clip has to be listed here to exist; *how* it is played is the next row |
-| `sfxVolume` | **0.81** — effects sit above the music on purpose; this is only *how far* above. Down a true 10% from 0.9 on 2026-09-08 (−0.9 dB), asked for after the soundtrack went in |
-| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume`. ⚠️ **Two entries are pinned to absolute levels and must be re-derived whenever the bus moves** — `gameOver` (0.67→**0.74**) and `coin` (0.14→**0.156**), both solved backwards from a Still Life match with `sfxVolume` in the arithmetic. Left alone they would have dropped 10% with the punches, silently. ⚠️ **And since 2026-09-09 there are four**: the TIME ATTACK loops `gun` (**0.611**) and `coinHit` (**0.747**). ⚠️ **They were 0.367 / 0.448 for one session and both were 4.4 dB quiet** — solved against Still Life's `sfxVolume`, which its loops *do not go through*: that game runs them on a parallel `loopGain` bus pinned at **1.0**, so their `volume` is their level. 0.495 / 0.81 and 0.605 / 0.81 are the real match. Everything else in the table is relative and rides the bus down correctly. (`victory` was a third until the fanfare was removed, 2026-09-08) |
+| `sfxVolume` | **0.567** — effects sit above the music on purpose; this is only *how far* above. Down a true 10% from 0.9 on 2026-09-08, then a true **30%** from 0.81 on 09-09 (−3.1 dB; −4.0 dB cumulative from 0.9): *"muito mais presente que a música"*. ⚠️ Taken in two steps the same day, and **the second is 30% of 0.81, not 10% off 0.648** — the reductions are quoted against the original, so each restatement replaces the last. ⚠️ **The six pinned `SFX_GAIN` entries were deliberately NOT re-derived** — see below |
+| `SFX_GAIN` | per-effect trim, multiplied onto `sfxVolume`. ⚠️ **Two entries are pinned to absolute levels and must be re-derived whenever the bus moves** — `gameOver` (0.67→**0.74**) and `coin` (0.14→**0.156**), both solved backwards from a Still Life match with `sfxVolume` in the arithmetic. Left alone they would have dropped 10% with the punches, silently. ⚠️⚠️ **When the bus moved to 0.648 on 2026-09-09 these were deliberately left alone, which is the opposite of what their own notes say.** That instruction is for a bus that moved for an unrelated reason; this one moved *because the effects are too loud against the music*, so re-deriving would have held exactly the clips the request is about at their old level and quieted only the punches. **They now sit 30% under their Still Life reference by design.** If the bus ever moves for a non-balance reason, re-derive from **0.81** — the level they were matched at — not from whatever the bus reads then. ⚠️ **And since 2026-09-09 there are four**: the TIME ATTACK loops `gun` (**0.611**) and `coinHit` (**0.747**). ⚠️ **They were 0.367 / 0.448 for one session and both were 4.4 dB quiet** — solved against Still Life's `sfxVolume`, which its loops *do not go through*: that game runs them on a parallel `loopGain` bus pinned at **1.0**, so their `volume` is their level. 0.495 / 0.81 and 0.605 / 0.81 are the real match. Everything else in the table is relative and rides the bus down correctly. (`victory` was a third until the fanfare was removed, 2026-09-08) |
 | `SFX_LOOP` | **which effects are HELD rather than fired** (2026-09-09), name → `{ loopTrimMs }`. An entry makes `sound.loop(name, bool)` legal for that name; everything else in `SFX` is an event fired once with `play()`. Only `gun` and `coinHit`, only inside TIME ATTACK. ⚠️ `loopTrimMs` **12** is not a fade, it is the loop *region*: build-sound.py fades 12 ms at each edge, and looping edge-to-edge makes the two fades meet as a 24 ms hole once per pass. ⚠️ Levels are **not** here — a loop is trimmed by `SFX_GAIN` like everything else |
 | `sfxHitDetune` | 0.045 — how much each combo link is pitched up. 0 = off |
 | `sfxTakeHitRate` | 0.82 — the same punch sample, pitched **down**, for a blow the player *takes*. 1 = both directions sound identical |
@@ -3581,7 +3581,7 @@ HIPOLITO        unchanged             BOSS_TRACK
 FASE 3 estante  Dance Saborosa        MUSIC_TRACKS.musicLevel3
 ZERAMENTO       Pode Me Chamar        MUSIC_TRACKS.musicEnding
 MISTER STOP     Cumbia Corazon -- DOCUMENTED, NOT WIRED (he does not exist)
-TIME ATTACK     Cumbia Corazon -- DOCUMENTED, NOT WIRED (it does not exist)
+TIME ATTACK     Cumbia Corazon -- WIRED 2026-09-09 (musicTimeAttack, gain 0.72)
 ```
 
 > ⚠️ **FASE 1 AND FASE 3 TRADED SONGS** later on 2026-09-08, on request. Two
@@ -5928,6 +5928,187 @@ timer out      -> the mode ends, he walks on to HORÁCIO
 | `carryTime` | `true` carries leftover time into the next round (off: the quota rises and the clock does not — that *is* the difficulty curve) |
 | `CHARACTERS` | `['lebron','ipaneima']` — positional with `PLAYER_PACKS`, so whoever you were punching with is who flies |
 | `pointsPerCoin` / `pointsPerRound` | what it pays. ⚠️ **Nothing consumes these yet** |
+| `flyScale` | **0.0546** (2026-09-09, +20%) — the hitbox follows for free (`_scale()` → `boxes()`), so it is one number not two. Was Still Life's 0.091, halved to 0.0455 on 09-08; this is a correction to that cut |
+| `coinSizePx` | **83.6** (2026-09-09, +10%) — **everything else about the coin derives from it**: hitbox, bob, hit spark and burst are all multiples, so they grow with it |
+| `stepped` / `steppedMs` | **`false`** (2026-09-09). See below — the stop-motion was a look whose *reason* did not survive the port. `steppedMs` (23 fps) is kept but unread |
+| `rayMuzzleXRel` | **0.64** (2026-09-09) — where the nose is, as a fraction of the frame's *width*. **Measured, not judged**: the alpha bbox of all twelve plane frames ends at 0.641–0.670, so a third of every 660×507 frame is empty margin and the beam was starting **104 px in front of the propeller**. 0.64 is the *minimum* of the twelve on purpose — anything higher leaves the level pose still gapped |
+| `coinOffscreenPx` | **240** (2026-09-09) — how much wider the coins' world is than the screen. ⚠️ **The only way to spawn one off screen at all**: the field is a torus, so when `worldW` *was* the canvas every x was on screen. Costs an absence of `this / coinSpeed` = **2 s per lap** |
+| `coinMinGapPx` / `coinSpawnTries` | **113** (1.35 × `coinSizePx`) / **40** — how far apart a new clock must land, centre to centre, and how many placements to try before taking the roomiest seen. ⚠️ Measured round the **torus** |
+| `coinSpeedVar` | **0** (2026-09-09, was 0.25) — see below: it is the half of "never overlapped" that spawn placement cannot deliver |
+| `musicKey` | **`musicTimeAttack`** (Cumbia Corazon, wired 2026-09-09). Unset falls back to whatever the room it was entered from left playing |
+| `plateRate` | **2** (2026-09-09) — how fast the background plays, as a multiple of normal. **Judged, not derived**: 1.2 was too subtle, **4 was refused on sight**, 2 is where it landed. A playback rate, not a re-encode; the wrap-crossfade scales with it, so the loop survives at any rate. ⚠️ It **is** a decode cost. If the mode drops frames, re-encode the plate faster and play it at 1.0 rather than shaving this number |
+| `planeEntry` / `planeEntryFromX` / `planeEntryMs` / `planeEntryHoldMs` | the fly-in from off the left edge: `true`, **−0.55** screen widths left of `startX`, over 1035 ms, then a 150 ms beat before the controls answer. Still Life's numbers. A **draw-only** offset — see below |
+
+### Pause, the plate's speed, and the fly-in (2026-09-09)
+
+### The plane was hopping at 23 fps against a smooth background
+
+*"the character animation in the time attack stage is choppy ... make him
+normal."* `stepped: false`. ⚠️ **This is not Still Life's look being overruled —
+it is a look whose reason did not survive the port.** That game's own note says
+what the pair was for: *"Reproduce the BACKGROUND's low-framerate jank on the
+plane … and pan the CAMERA off that same stepped value so plane + world hop
+TOGETHER."* Both halves are missing here:
+
+- that game's background is a stop-motion set with real jank in it; **this
+  mode's is a filmed video plate running smoothly** (and now at 2×), so there is
+  nothing to be in step *with*;
+- that game pans its camera off the stepped value — and **this mode has no
+  camera at all** (`camX`/`camY` are 0; it is why the plate is a plain looping
+  `<video>` and not a `Backdrop`), so the half that made the whole world hop
+  with him cannot exist here even in principle.
+
+So the plane hopped at 23 fps, alone, against a smooth background — which is not
+the effect, it is the artefact the effect exists to hide. The read site is
+`if (c.stepped)` with a per-frame `_snapshot()` in the else: a supported path.
+
+### The climb and the dive (2026-09-09)
+
+Still Life's swoosh, one file per direction, read in place: `SFX.up` /
+`SFX.down`, both at `SFX_GAIN` **0.666**. The derivation is `gameOver`'s exactly
+— that game lists them as plain strings (1.0 on its 0.6 sfx bus) and 0.81 × 0.74
+is that 0.6 — and then **an ear overruled it**: *"the swoosh noise should be
+slightly subtle, 10% more subtle"*, so 0.74 × 0.9. ⚠️ **These two are therefore
+arithmetic *plus* a decision**, and a mechanical re-derivation of the pinned set
+would silently put the swoosh back 11% louder than it was asked to be. Do not
+"restore" them to 0.74. ⚠️ Unlike the two loops, these **do**
+go through that game's sfx bus — only its *loops* bypass it.
+
+⚠️ **`Sound.playExclusive()` is a third playback policy, and all three are
+deliberate.** `play()` overlaps (two punches 80 ms apart are two sounds);
+`playOnce()` replaces its own name (asking twice for the fanfare is one
+fanfare); this one **refuses** a request while the clip is still sounding.
+Working the stick fast would otherwise either stack the swooshes into mush or
+chop each one off at its attack. Still Life's `once()`, whose comment puts it
+exactly: *"an occupied slot rejects the new press rather than cutting the old
+one."* ⚠️ It is not *called* `once()` here because `this.once` is a field on the
+class and would shadow it.
+
+⚠️ **The press edges are taken off the MERGED direction**, not off either
+device. Per-device edges would mean two mechanisms that both fire when someone
+nudges the stick while resting a hand on W — one press, two swooshes. One
+comparison cannot double-fire by construction. ⚠️ Both edges are **consumed
+every frame and only the playing is gated**, so a press banked while the plane
+is control-locked is dropped rather than spent a second later.
+
+### The gun's gap, and the coins clumping (2026-09-09)
+
+⚠️ **The beam was starting 104 px in front of the plane.** `muzzle()` used
+`dw / 2` — the right edge of the **frame box**, not the nose. Measuring the art
+settled it in one pass: every plane frame is 660×507 with the ink ending at
+x = 423–442, so **218–237 px of every frame is empty margin on the right**.
+`rayMuzzleXRel: 0.64` is where the ink actually stops, and it is the *minimum*
+of the twelve frames deliberately — the ask was to remove the gap, so the pose
+whose nose reaches least far has to be the one that sets it. The pitched poses
+now start their beam a few px *inside* the propeller, which is invisible and is
+the right way to be wrong. ⚠️ It is a **fraction**, so it survives `planeScale`;
+re-measure only if the plane art is recut.
+
+⚠️⚠️ **"Never overlapped" could not be done at spawn time alone.** Coins drift
+at their own speeds (`coinSpeedVar` 0.25 → 90–150 px/s) on a **torus**, so a
+faster one laps a slower one — at 60 px/s of closing speed, inside ~21 s on a
+1280 field, well within a 30 s round. **They were being placed apart and then
+driving into each other.** `coinSpeedVar: 0` freezes every gap at the value the
+spawn chose, and the guarantee becomes true by construction instead of something
+to enforce every frame. ⚠️ **The cost is a look that has not been seen** — the
+clocks now drift in lockstep. If that reads as marching rather than as a field,
+the alternatives are a per-frame separation pass (which visibly *shoves* coins
+and looks worse) or accepting occasional overlaps.
+
+⚠️⚠️ **Clocks now spawn off screen and arrive across the right edge**, and
+widening their world is the only way that was possible. *"coins must never spawn
+in screen, always off screen and come from the right."* The field is a **torus**
+and `worldW` was the canvas — so **every x was on screen**, and there was no
+off-screen place to put one. Spawning at `GAME_W + 90` does not put a coin off
+the right; it wraps it to x = 90 and puts it on the **left**, which is not a
+guess but the exact bug the flies shipped with on 09-08. So the world is widened
+instead: `[GAME_W, GAME_W + coinOffscreenPx)` exists and is never drawn, clocks
+are placed there, and they drift on across the right edge by themselves — no
+entry animation and no special case, because the wrap already did this every lap.
+The band is inset by half a coin at each end, which lands both extremes exactly
+flush with a screen edge.
+
+⚠️⚠️ **Five call sites hand a coin its `worldW`** — `update()`, the ray test in
+`_shoot()`, `render()`, `renderBurst()` and the hold-C overlay — and `TaCoin`
+derives both its wrap *and* the two ghost copies it draws from that number. One
+site left on `GAME_W` would put a coin's picture and its hitbox in different
+places, silently, and only for the copies. That is why it is `_coinW()` and not
+a local. ⚠️ **Flies are deliberately not on this world** — they are the targets
+and are meant to be in the field; only the clocks were asked to arrive.
+
+⚠️ **The spawn distance is measured round the torus, and that is the trap.**
+`TaCoin` wraps `x` and renders the neighbouring copies, so a coin at 0.98 W and
+one at 0.02 W are a sliver apart on screen and 0.96 W apart by subtraction — and
+that is exactly the pair that occurs, because the spawn band is the right-hand
+end of the field (0.58–0.98) while existing coins have drifted left toward 0.
+⚠️ `_freeSpot()` **gives up** after `coinSpawnTries` and takes the roomiest point
+it saw: the band is finite and this runs inside the frame, so a loop that
+insisted would hang the game the moment the field filled. ⚠️ Flies are not
+considered — there are up to six of them, and folding them in would
+over-constrain a band that has to hold both.
+
+### TIME ATTACK finally has its song
+
+`musicTimeAttack` — **Cumbia Corazon**, which had been assigned to this stage
+and to MISTER STOP on 2026-09-08 and wired to neither, because neither existed.
+⚠️ **MISTER STOP still does not**; when he arrives he gets his own `musicKey`
+onto the same file, because his song differs from his room's.
+
+⚠️ **`MUSIC_GAIN` 0.72 is measured, not guessed and not judged**: Cumbia is
+**−16.0 LUFS** integrated against Sucuri's −16.0 and Dance Saborosa's −15.9, so
+it came out of the same normalisation pass and takes the bed trim. ⚠️
+`musicDesert` sits at **0.97** despite measuring the same — that one is a
+per-song decision and **not** the number to copy.
+
+⚠️ **Coming out needs nothing.** The mode's exit is a room *change*, so
+`roomMusic()` on the far side of the fade starts the next room's track exactly
+as it does everywhere else.
+
+⚠️ **`plateRate` took three values in one day** — 1.2 (*"by like 20%"*, too
+subtle to read on a ~1 px/frame pan), then 4 (*"ok this is bad"*), landing on
+**2**. It is the only number in the block that has actually been looked at.
+⚠️ **4 is a look that was turned down, not a headroom limit** — don't read the
+bracket as "2 safe, 4 risky".
+
+⚠️ **Pause works in TIME ATTACK now.** It is a *phase*, like `play`, and not a
+room, so it had to be named in the pause gate. Two things had to learn it with
+it:
+
+- **The paused frame draws the minigame, not `render()`.** `render()` paints the
+  WORLD — the desert the mode was entered from, which is finished and which the
+  player has visually left. The ordinary painter would have put the pause card
+  over a room that is not on screen. Same family as the fade that flashed the
+  room behind it: **a fully-painted screen has to say by whom.**
+- **The plate has to be told**, and it is the only backdrop in the game that
+  does. Every other room's film is *scrubbed by camera position*, so it freezes
+  for free when the world stops being ticked — a paused game cannot move the
+  camera. This one is a plain looping `<video>` on the browser's clock, so
+  without `TimeAttack.setPaused()` the stones would drift on under a frozen
+  plane. ⚠️ Resuming calls `play()`, **not** `_startVideo()`: that seeks to 0.
+
+⚠️ **The held loops are stopped outright on pause**, not merely made inaudible.
+Suspending the context silences them but leaves them *running*, and the mode
+that would turn them off is not being ticked — so the player would resume into
+a frame of machine gun they are no longer asking for. `input.flush()` already
+makes the same guarantee on the attack side.
+
+⚠️⚠️ **The fly-in was never missing — the plane's LIFETIME was the bug.**
+*"make the player come from the left, instead of just appearing in it."* Every
+knob above and the whole `_entryOff()` easing came across with the port and are
+Still Life's own. What did not come across is *when* that state is built: **Still
+Life rebuilds the plane on every restart** (`plane = new Plane(...)`), because
+over there a run is the program. Here it is built once in `load()`, at boot, and
+deliberately so — so `locked` was true exactly once, the first entry of a
+session spent it, and every entry after opened with the plane parked at
+`startX`. A DEV jump straight back in is the fastest way to never see it.
+
+`TaPlane.reset()` is now the constructor's own body, called by both, so *"fresh
+entry"* and *"fresh plane"* cannot drift apart. ⚠️ It does **not** touch
+`charIdx` — which coconut is flying is identity, not flight state.
+
+⚠️ **The entrance is 1185 ms against a 900 ms opening card**, and the card is a
+band at the middle of the screen while the plane sits at `startY` 0.76 — so the
+fly-in is visible under it and finishes a beat after it lifts.
 
 > **DEV number keys** (`CONFIG.DEV.JUMPS`, key 1 = first entry):
 > `1` street · `2` desert/HORÁCIO · `3` **TIME ATTACK** · `4` HIPÓLITO · `5` the

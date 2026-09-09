@@ -59,7 +59,31 @@ class TaPlane {
   constructor(assets, cfg) {
     this.assets = assets;
     this.cfg = cfg;
+    /* ⚠️ IDENTITY, AND THE ONE FIELD `reset()` DOES NOT TOUCH. Which coconut is
+       flying survives a re-entry -- it follows the player's pack and is set by
+       the mode straight after. Everything else about the plane is FLIGHT state
+       and is built below. */
     this.charIdx = 0;
+    this.reset();
+  }
+
+  /**
+   * Back to the state a brand-new plane is in -- **including a fresh entrance**.
+   *
+   * ⚠️ THE CONSTRUCTOR CALLS THIS RATHER THAN DUPLICATING IT, and that is the
+   * whole point of it existing. Still Life has no such method because it
+   * REBUILDS the plane on every restart (`plane = new Plane(...)`); this game
+   * builds it once at boot and enters the mode many times in a session, so
+   * "fresh entry" and "fresh plane" are two different events here and would
+   * drift the first time a field was added to one and not the other. Written as
+   * the constructor's own body so they cannot.
+   *
+   * ⚠️ WITHOUT IT THE FLY-IN PLAYED ONCE PER PAGE LOAD: `locked` is armed from
+   * `cfg.planeEntry` here, the first entry spent it, and every entry after that
+   * opened with the plane already parked at `startX`.
+   */
+  reset() {
+    const cfg = this.cfg;
     this.pose = cfg.CH_REST;
     this.acc = 0;
     this.x = cfg.startX;
@@ -393,9 +417,20 @@ class TaPlane {
     const c = this.cfg;
     const k = c.planeScale / c.gunOffRefScale;
     const offY = ((this.disp.pose === c.CH_REST) ? c.gunOffY : 0) * k;
-    // Same screen offsets the sprite is drawn with, so the shot line always
-    // leaves the nose where the nose actually is.
-    return { x: (this.disp.x + this.disp.entryOff) * W + m.dw / 2,
+    /* Same screen offsets the sprite is drawn with, so the shot line always
+       leaves the nose where the nose actually is.
+
+       ⚠️ AND `dw / 2` IS NOT THE NOSE -- it is the right edge of the FRAME BOX,
+       which is a third of the way past him. Measured off the art: every plane
+       frame is 660x507 with the ink ending at x=423..442, so **218-237px of
+       every frame is empty margin on the right** and the beam was starting
+       about 96 screen px in front of the propeller. *"there is a gap right in
+       front of the player."* `rayMuzzleXRel` is where the ink actually ends as
+       a fraction of the frame width; 0.5 is the box centre.
+       ⚠️ UNSET FALLS BACK TO 1 -- the old box-edge behaviour -- so a missing
+       knob cannot silently move the gun. */
+    const noseRel = (c.rayMuzzleXRel != null ? c.rayMuzzleXRel : 1) - 0.5;
+    return { x: (this.disp.x + this.disp.entryOff) * W + m.dw * noseRel,
              y: (this.disp.y + (c.planeOffsetY || 0)) * H + m.bob - offY + c.rayOffsetY * k };
   }
 

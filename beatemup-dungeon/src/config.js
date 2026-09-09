@@ -3778,6 +3778,39 @@ const CONFIG = {
     roundCardMs: 1600,
     /* THE BEAT BEFORE THE FIRST ROUND and after the last, so the mode does not
        start and end on a cut. */
+    /* ⚠️ HOW FAST THE PLATE RUNS, and it is a PLAYBACK RATE, not a re-encode.
+       **2 = twice normal speed.** THREE VALUES HAVE NOW BEEN SEEN, WHICH MAKES
+       THIS THE ONE NUMBER IN THIS BLOCK THAT IS ACTUALLY JUDGED RATHER THAN
+       DERIVED, all on 2026-09-09:
+
+           1.2   asked for first ("by like 20%") and moved off -- 20% on a
+                 ~1 px/frame pan is close to invisible
+           4     asked for next, and refused ON SIGHT: *"ok this is bad"*
+           2     where it landed
+
+       ⚠️ SO 4 IS A LOOK THAT HAS BEEN TURNED DOWN, not a headroom limit -- do
+       not read the bracket as "2 is safe, 4 is risky". It says the shot reads
+       as flight at 2 and as something else at 4, which is a fact about this
+       picture and nothing more general.
+
+       ⚠️ THE LOOP SURVIVES ANY RATE. The plate was cut to wrap on ITSELF with a
+       0.6s crossfade (tools/build-time-attack-plate.py) and a rate change
+       scales both sides of that seam equally -- what matched at 1.0 matches
+       here. It is the one property of this video changeable without ffmpeg.
+
+       ⚠️ IT IS ALSO A DECODE COST: 2x the frames per second out of the decoder
+       (848x478, CRF 30). This game has a VRAM history -- see PERFORMANCE.md --
+       so if the mode ever drops frames the fix is to re-encode the plate faster
+       and play it at 1.0, not to shave this number. */
+    /* ⚠️ THE MODE OWNS A SONG, WHICH IS THE `musicKey` IDIOM THE BOSSES USE --
+       a thing that plays music declares the KEY and never the file. Unset takes
+       back the old behaviour (the mode runs over whatever the room it was
+       entered from left playing) rather than silence. Coming out is not handled
+       here and does not need to be: the mode's exit is a room CHANGE, and
+       `roomMusic()` on the far side of the fade starts the next room's own
+       track the way it does for every other room. */
+    musicKey: 'musicTimeAttack',
+    plateRate: 2,
     inMs: 900,
     outMs: 1200,
 
@@ -3841,7 +3874,32 @@ const CONFIG = {
     planeEntryFromX: -0.55,
     planeEntryHoldMs: 150,
     planeEntryMs: 1035,
-    stepped: true,
+    /* ⚠️⚠️ OFF HERE, AND ON IN STILL LIFE -- *"the character animation in the
+       time attack stage is choppy ... make him normal."* This is not a look
+       being overruled, it is a look whose REASON did not survive the port.
+
+       Still Life's note on the pair says exactly what it was for: *"Reproduce
+       the BACKGROUND'S low-framerate jank on the plane ... and pan the CAMERA
+       off that same stepped value so plane + world hop TOGETHER."* Both halves
+       of that are missing here:
+
+         * that game's background is a stop-motion set with real jank in it;
+           this mode's is a FILMED VIDEO PLATE running smoothly (and now at 2x),
+           so there is nothing for the plane to be in step WITH.
+         * that game pans its camera off the stepped value. **THIS MODE HAS NO
+           CAMERA AT ALL** (camX/camY are 0 -- it is why the plate is a plain
+           looping <video> and not a `Backdrop`), so the half of the effect that
+           made the whole world hop with him cannot exist here even in principle.
+
+       So the plane was hopping at 23fps, alone, against a smooth background --
+       which is not the effect, it is the artefact the effect exists to hide.
+
+       ⚠️ `steppedMs` IS NOW DEAD but is kept: it is the 23fps that was ported,
+       and deleting it would lose the only record of what the number was if the
+       stop-motion is ever wanted deliberately. The read site is
+       `if (c.stepped)` in ta-plane.js, with a per-frame `_snapshot()` in the
+       else -- a supported path, not a knob being abused. */
+    stepped: false,
     steppedMs: 43.47826086956522,
     /* --- THE PLANE -- damage, shake, fall --------------------------*/
     planeHitWRel: 0.35,
@@ -3872,6 +3930,23 @@ const CONFIG = {
     gunOffRefScale: 0.32,
     gunAnchorX: 0.655,
     gunAnchorY: 0.564,
+    /* ⚠️ WHERE THE NOSE IS, as a fraction of the frame's WIDTH -- 0.5 would be
+       the box centre. **MEASURED, NOT JUDGED** (2026-09-09): the alpha bounding
+       box of all twelve plane frames (both packs, 660x507) ends at x = 423..442,
+       so the ink stops at 0.641..0.670 of the width and the remaining THIRD of
+       every frame is empty margin.
+
+       ⚠️ 0.64 IS THE MINIMUM OF THE TWELVE, ON PURPOSE. The ask was to *remove*
+       the gap, so the value has to be the frame whose nose reaches LEAST far
+       (ipaneima-04, the level pose at 0.6409) -- any higher and that one pose
+       keeps a gap. The cost is that the pitched poses start their beam a few
+       pixels inside the propeller, which is invisible and is the right way to
+       be wrong.
+
+       ⚠️ IT IS A FRACTION AND NOT A PIXEL OFFSET so it survives `planeScale`:
+       the muzzle multiplies it by the DRAWN width. Re-measure it only if the
+       plane art is recut. */
+    rayMuzzleXRel: 0.64,
     rayOffsetY: 15,
     /* --- THE FLIES -------------------------------------------------*/
     FLY_RECTS: [[20, 98, 168, 181], [245, 92, 181, 192], [447, 80, 188, 222], [707, 84, 238, 225], [1002, 54, 273, 263]],
@@ -3882,8 +3957,38 @@ const CONFIG = {
        being config-injected. The hit box follows it for free: `TaFly._scale()`
        derives from this and `boxes()` derives from that, so the target shrinks
        with the drawing and there is no second number to keep in step. */
-    flyScale: 0.0455,
-    flyHealth: 3,
+    /* ⚠️ TWO RAISES ON 2026-09-09: 0.0455 -> 0.0546 (+20%) -> **0.06006**
+       (+10% again), i.e. +32% over the day. The hitbox follows for free --
+       `TaFly._scale()` is `(GAME_H * flyScale) / FLY_RECTS[0][3]` and `boxes()`
+       is derived from it -- so this is one number and not two.
+
+       ⚠️ EACH RAISE IS A PERCENTAGE OF THE THEN-CURRENT VALUE, which is the
+       opposite convention to `sfxVolume`'s: there the cuts are quoted against
+       the ORIGINAL and each restatement replaces the last, because the ask
+       kept restating one target. Here the asks are successive nudges at a size
+       being looked at. **Read which one an instruction is before doing the
+       arithmetic** -- "10% more subtle" and "10% bigger" are not the same
+       operation.
+
+       ⚠️ It was 0.091 (Still Life's) until it was HALVED here on 2026-09-08, so
+       this is still 66% of that game's fly and the day's raises are walking
+       back that cut rather than departing from it. */
+    flyScale: 0.06006,
+    /* ⚠️ 3 -> 2 ON 2026-09-09, ON REQUEST. It was Still Life's own value, so
+       this is the first time a fly has been tuned for THIS game.
+
+       ⚠️ WHAT IT ACTUALLY CHANGES IS TIME, NOT SHOTS, and the number to think
+       with is `flyHurtMs` below rather than this one. `rayDamage` is 1 and the
+       i-frames refuse a hit for 180ms after each, so a held beam kills in
+       (hp-1) x flyHurtMs: **360ms before, 180ms now.** Halved, not cut by a
+       third -- the first hit is free.
+
+       ⚠️ AND IT MOVES THE ROUNDS WITHOUT TOUCHING `ROUNDS`. The quotas (8/14/22
+       kills in 30s) were set against a 360ms fly; they are now the only
+       untuned numbers in the block sitting on top of a changed one. If the
+       rounds now finish early, that is this edit and not the quotas being
+       wrong. */
+    flyHealth: 2,
     flySpeed: 200,
     flyVSpeed: 300,
     flyHurtMs: 180,
@@ -3924,10 +4029,67 @@ const CONFIG = {
     /* --- THE CLOCK COINS -------------------------------------------*/
     COIN_CELL: 160,
     COIN_FRAMES: 22,
-    coinSizePx: 76,
+    /* ⚠️ 76 -> 83.6 ON 2026-09-09, +10% on request. EVERYTHING ELSE ABOUT THE
+       COIN IS DERIVED FROM THIS ONE NUMBER -- the hitbox (`coinHitScale`), the
+       bob (`coinBobRel`), the hit spark (`coinHitFxSize`) and the burst
+       (`coinBoomSize`) are all multiples of it -- so they all grow with it and
+       none of them is a second edit. Left as the exact 10% rather than rounded
+       to 84: nothing here wants a whole pixel. */
+    coinSizePx: 83.6,
     coinHealth: 7,
     coinSpeed: 120,
-    coinSpeedVar: 0.25,
+    /* ⚠️⚠️ 0.25 -> 0 ON 2026-09-09, AND IT IS THE HALF OF *"nunca deixar elas
+       ficarem sobrepostas"* THAT SPAWN PLACEMENT CANNOT DELIVER.
+
+       With variance every coin gets its own speed (0.25 = +/-25%, so 90..150
+       px/s), the field is a TORUS, and a faster coin therefore laps a slower
+       one -- at 60 px/s of closing speed, inside about 21 seconds on a 1280
+       field, which is well inside a 30-second round. **No spawn rule can
+       prevent that; they are placed apart and then drive into each other.**
+
+       At 0 every coin drifts at exactly `coinSpeed`, so the gaps between them
+       are FROZEN at the values `_freeSpot()` chose. "Never overlapped" stops
+       being something to enforce every frame and becomes true by construction.
+
+       ⚠️ THE COST IS THAT THE CLOCKS NOW DRIFT IN LOCKSTEP, which is a look and
+       has not been seen. With at most three on screen it should read as a
+       field rather than as a formation -- but if it reads as marching, the
+       alternatives are a per-frame separation pass (which visibly SHOVES coins
+       and looks worse) or accepting occasional overlaps. Turn this back up and
+       the guarantee goes with it. */
+    coinSpeedVar: 0,
+    /* ⚠️⚠️ HOW MUCH WIDER THE COINS' WORLD IS THAN THE SCREEN, in px -- and it
+       is the only way to spawn one OFF screen at all. *"coins must never spawn
+       in screen, always off screen and come from the right."*
+
+       ⚠️ THE FIELD IS A TORUS AND `worldW` USED TO BE THE CANVAS, which means
+       **every x was on screen** -- `TaCoin` wraps x into [0, worldW) and draws
+       the copies at x-worldW / x / x+worldW, so there was no off-screen place
+       to put one. Spawning at `GAME_W + 90` did not put a coin off the right,
+       it wrapped it to x=90 and put it on the LEFT. That is not a guess: it is
+       the exact bug the flies shipped with on 2026-09-08.
+
+       So the world is widened instead. `[GAME_W, GAME_W + this)` is a strip
+       that exists but is never drawn, coins are placed there, and they drift on
+       to the screen across the right edge on their own -- no entry animation
+       and no special case, because the wrap already did this every lap.
+
+       ⚠️ IT COSTS AN ABSENCE: a coin that leaves on the left is gone for
+       `this / coinSpeed` seconds before it comes back round. At 240/120 that is
+       **2 seconds** of a 30-second round, per lap. Widen it and clocks get
+       rarer; narrow it and there is less room to spread them out.
+       ⚠️ It must stay wider than one coin (83.6) or a "hidden" coin is still
+       half on screen. */
+    coinOffscreenPx: 240,
+    /* ⚠️ HOW FAR APART A NEW CLOCK MUST LAND, centre to centre, in px. Default
+       is `coinSizePx * 1.35` -- the sprite is a SQUARE cell of that size, so
+       1.0 is bodies just touching and this leaves a third of a coin of air.
+       Measured against the TORUS-wrapped distance; see `_freeSpot`. */
+    coinMinGapPx: 113,
+    /* How many placements to try before giving up and taking the roomiest one
+       seen. ⚠️ IT MUST GIVE UP: the band is finite, and a loop that insists on
+       the constraint hangs the frame the moment the field is full. */
+    coinSpawnTries: 40,
     coinHurtMs: 160,
     coinHoldMs: 60,
     coinHitScale: 0.72,
@@ -9120,7 +9282,7 @@ const CONFIG = {
          FASE 3 estante  Dance Saborosa      MUSIC_TRACKS.musicLevel3
          ZERAMENTO       Pode Me Chamar      MUSIC_TRACKS.musicEnding
          MISTER STOP     Cumbia Corazon -- NOT WIRED, he does not exist
-         TIME ATTACK     Cumbia Corazon -- NOT WIRED, it does not exist
+         TIME ATTACK     Cumbia Corazon -- WIRED 2026-09-09 (musicTimeAttack)
 
      ⚠️ AND ITS `MUSIC_LOOP` ENTRY WENT WITH IT. The bed was a three-bar crop
      pinned at 5.115s; this is a 66.8s song that loops at its own end. Leaving
@@ -9202,6 +9364,14 @@ const CONFIG = {
        the same shape HIPOLITO's room already uses -- the ROOM owns the song, so
        a boss who shares it declares nothing. */
     musicDesert: 'v2:beatemup-dungeon/soundtrack/Sucuri - Samuraio.mp3',
+    /* TIME ATTACK -- Cumbia Corazon. ⚠️ WIRED 2026-09-09, AFTER BEING
+       DOCUMENTED-NOT-WIRED SINCE THE SOUNDTRACK LANDED: it was assigned to this
+       stage and to MISTER STOP on 2026-09-08, when neither existed. The stage
+       does now. **MISTER STOP still does not**, and when he arrives he gets his
+       OWN `musicKey` pointing at this same file -- his song differs from his
+       room's, which is the case `bossMusic()` exists for.
+       ⚠️ Until now the mode played over whatever the desert had left running. */
+    musicTimeAttack: 'v2:beatemup-dungeon/soundtrack/Cumbia Corazon - 09-07-26.mp3',
     /* FASE 3, the bookcase. ⚠️ SWAPPED WITH THE STREET'S ON 2026-09-08 -- this
        key held Arrocha da Serpente and now holds Dance Saborosa. The KEY is the
        role and the file behind it changed; see the warning on MUSIC_LOOP, which
@@ -9524,6 +9694,15 @@ const CONFIG = {
        made it sound like something the engine was doing. */
     musicDesert: 0.97,
     musicLevel3: 0.72,
+    /* TIME ATTACK. ⚠️ NOT A GUESS AND NOT JUDGED EITHER -- MEASURED. Cumbia
+       Corazon is **-16.0 LUFS integrated**, against Sucuri's -16.0 and Dance
+       Saborosa's -15.9, so it came out of the same normalisation pass as the
+       rest of the soundtrack and wants the same trim the other in-play beds
+       carry. ⚠️ `musicDesert` sits at 0.97 rather than 0.72 despite measuring
+       the same, so that one is a per-song decision and NOT the bed default --
+       do not read it as the number to copy. This is the default; it has never
+       been heard against the gun. */
+    musicTimeAttack: 0.72,
     /* THE ZERAMENTO. At the title's level rather than the beds', because like
        the title it plays over a still screen with no effects on top of it. */
     musicEnding: 0.92,
@@ -9612,6 +9791,13 @@ const CONFIG = {
        and how, is `SFX_LOOP` below; their levels are in SFX_GAIN like every
        other effect. Nothing ever calls play() on either: a single burst of a
        machine gun that stops on its own is not the sound of a trigger held. */
+    /* THE CLIMB AND THE DIVE -- Still Life's swoosh, one per direction, read in
+       place like the two loops below. Fired on the PRESS and never looped,
+       which is the whole distinction that game draws: the gun reports a STATE
+       the player is holding, these report an EVENT. Releasing up does not stop
+       the swoosh and holding up does not repeat it. */
+    up: 'v2:flying-dungeon/audio/efeito-pra-cima-01.ogg',
+    down: 'v2:flying-dungeon/audio/efeito-pra-baixo-01.ogg',
     gun: 'v2:flying-dungeon/audio/efeito-metralha-01.ogg',
     /* UNDER the gun rather than beside it -- you cannot be hitting a coin
        without firing, so this only ever sounds layered on top of the one above,
@@ -9635,7 +9821,36 @@ const CONFIG = {
      re-derived here (0.67 -> 0.74, 0.14 -> 0.156) so the cut lands on the
      COMBAT sounds, which is what was asked for. Everything else in that table is
      relative to its neighbours and rides the bus down correctly. */
-  sfxVolume: 0.81,
+  /* ⚠️⚠️ 0.81 -> 0.567 ON 2026-09-09, A TRUE 30% CUT (-3.1 dB), on request:
+     *"abaixar o som geral do SFX do game em 20%, está muito mais presente que
+     a música."* Taken in two steps the same day -- 20% first, then *"bring the
+     sfx down by 10% more ... we want 30% reduction"* -- and **the second step is
+     30% OF 0.81, NOT 10% OFF 0.648.** 0.81 x 0.7 = 0.567; compounding would
+     have given 0.583, a 28% cut, and quietly missed the number that was asked
+     for. ⚠️ The reductions are quoted against the ORIGINAL, so each restatement
+     replaces the last rather than stacking on it.
+
+     ⚠️ It was 0.9 before 2026-09-08, so the effects have now come down three
+     times for the same reason and against the same soundtrack. Cumulatively
+     0.9 -> 0.567 is **-4.0 dB**.
+
+     ⚠️⚠️ AND THE PINNED `SFX_GAIN` ENTRIES WERE **DELIBERATELY NOT RE-DERIVED**,
+     WHICH IS THE OPPOSITE OF WHAT THEIR OWN NOTES TELL YOU TO DO. Six of them
+     (`gameOver`, `coin`, `up`, `down`, `gun`, `coinHit`) are solved backwards
+     from a Still Life match with this number in the arithmetic, and every one
+     of those notes says to re-derive when the bus moves. **That instruction is
+     for a bus that moved for an unrelated reason.** This one moved *because the
+     effects are too loud against the music* -- so re-deriving the pinned six
+     would hold exactly the clips the request is about at their old level and
+     quiet only the punches. The ask is "o som GERAL do SFX", and the bus is the
+     only thing that means all of it.
+
+     ⚠️ SO THOSE SIX NOW SIT 30% UNDER THEIR STILL LIFE REFERENCE BY DESIGN, and
+     that is a decision rather than an oversight. If the bus is ever moved again
+     for a NON-balance reason, their notes apply again and are still correct --
+     but re-derive from **0.81**, the level they were matched at, not from
+     whatever the bus reads at the time. */
+  sfxVolume: 0.567,
 
   /* Per-effect trim, multiplied onto sfxVolume. Anything not listed plays at 1.
 
@@ -9645,10 +9860,30 @@ const CONFIG = {
      flattened. Gain at playback has the headroom the file does not: Web Audio
      mixes in float and only meets the fixed point at the output.
 
-     THE CEILING IS REAL THOUGH. sfxVolume 0.9 x 1.2 against a -0.94 dBFS clip
-     comes to 0.97, which fits; push much past 1.3 here and the effect will
-     clip against the music instead of getting louder. If it needs to dominate
-     more than that, the thing to turn down is musicVolume. */
+     THE CEILING IS REAL THOUGH, AND IT MOVES WITH THE BUS -- recompute it,
+     never remember it. At the current 0.567: 0.567 x 1.2 against a -0.94 dBFS
+     clip comes to 0.61, so there is room to about 2.0 before an effect meets
+     the fixed point at the output. ⚠️ THIS PARAGRAPH SAID `sfxVolume 0.9 x 1.2
+     ... push much past 1.3 and the effect will clip` UNTIL 2026-09-09 -- true
+     when the bus was 0.9, two cuts stale by the time anyone read it, and a
+     ceiling quoted from memory is exactly how a real headroom problem gets
+     invented or missed. If an effect needs to dominate more than the ceiling
+     allows, the thing to turn down is musicVolume.
+
+     ⚠️⚠️ SEVERAL ENTRIES BELOW SPELL `0.81` INTO THEIR ARITHMETIC. **THAT IS
+     THE BUS THEY WERE MATCHED AT, NOT THE BUS NOW.** Six of them (`gameOver`,
+     `coin`, `up`, `down`, `gun`, `coinHit`) are solved backwards from a Still
+     Life level, and each tells you to re-derive when the bus moves.
+     ⚠️ **AND `up`/`down` CARRY A JUDGED 0.9 ON TOP OF THEIR DERIVATION** (the
+     swoosh, taken 10% down by ear on 2026-09-09), so they are the two that a
+     mechanical re-derivation would silently undo. Four are arithmetic; two are
+     arithmetic plus a decision. When the
+     bus went 0.81 -> 0.567 on 2026-09-09 they were deliberately LEFT ALONE,
+     because that move was *"o som geral do SFX ... muito mais presente que a
+     música"* -- re-deriving would have held exactly those clips at their old
+     level and quieted only the punches. **They sit 30% under their Still Life
+     reference by design.** Read `sfxVolume`'s note before touching any of
+     them, and re-derive from 0.81 rather than from whatever the bus reads. */
   SFX_GAIN: {
     comboFinish: 1.2,      // the last hit of a string reads as the biggest one
     /* 0.74 is not a taste decision, it is arithmetic: Still Life plays this
@@ -9704,6 +9939,25 @@ const CONFIG = {
        between -14.6 and -14.2 dBFS, so one number does for the set and which
        sound plays never doubles as a volume change. */
     enemyDeath: 0.7,
+    /* THE CLIMB AND THE DIVE.
+
+       ⚠️⚠️ THESE TWO ARE NO LONGER A PURE DERIVATION AND MUST NOT BE "RESTORED"
+       TO 0.74. The derivation is still the starting point and is worth keeping:
+       Still Life lists both as plain strings, so they play at 1.0 on its sfx
+       bus of 0.6 and reach the master at 0.6, and 0.81 x 0.74 was that same
+       0.6. ⚠️ Unlike the two loops below these DO go through that game's sfx
+       bus -- they are one-shots, and only its LOOPS bypass it, which is what
+       the loops' note underneath is about.
+
+       ⚠️ THEN THEY WERE JUDGED: *"the swoosh noise should be slightly subtle,
+       10% more subtle"* (2026-09-09). 0.74 x 0.9 = 0.666. **That is an EAR
+       overruling the match**, which is allowed and is the only thing that ever
+       should overrule it -- but it means the four remaining pinned entries are
+       arithmetic and these two are arithmetic PLUS a decision. Anyone
+       re-deriving the pinned set from a moved bus must reapply the 0.9 to these
+       two, or the swoosh silently comes back 11% louder than it was asked to be. */
+    up: 0.666,
+    down: 0.666,
     /* --- The TIME ATTACK loops ---------------------------------------------
        ⚠️⚠️ THESE WERE 0.367 / 0.448 FOR ONE SESSION AND BOTH WERE 4.4 dB TOO
        QUIET, WHICH IS WHY THE COIN *"reproduced in a different way than it was

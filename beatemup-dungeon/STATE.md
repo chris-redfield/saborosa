@@ -8826,6 +8826,422 @@ alone: the rationale still holds and the number does not move.
 
 ---
 
+## TIME ATTACK: pause, plate speed, and the fly-in (2026-09-09)
+
+Three asks in one pass. Two were small; the third was not what it looked like.
+
+### 1. Pause reaches the minigame
+
+*"make it possible for the pause to be used at the time attack stage as well,
+just like the rest of the game."* It is a PHASE, like `play`, not a room, so the
+gate had to name it. **Two things had to learn it as well, and neither was in
+the ask:**
+
+⚠️ **THE PAUSED FRAME WAS GOING TO DRAW THE DESERT.** The pause block calls
+`render()`, which paints the WORLD -- the room the mode was entered from, which
+is finished and which the player has visually left. It returns before reaching
+the phase branches, so it never saw the choice those branches already make. The
+pause card would have come up over a room that is not on screen. **Same family
+as the fade that flashed the room behind it: a screen that is fully PAINTED has
+to say by whom.** [[fade_boundary_state]] shape, third time.
+
+⚠️ **AND THE PLATE HAD TO BE TOLD, WHICH NO OTHER BACKDROP IN THIS GAME DOES.**
+Every other room's film is SCRUBBED by camera position, so it freezes for free
+the moment the world stops being ticked -- a paused game cannot move the camera.
+TIME ATTACK's is a plain looping `<video>` running on the browser's own clock,
+which knows nothing about a pause card, so the stones would have gone on
+drifting under a frozen plane, a frozen clock and a frozen swarm.
+`TimeAttack.setPaused()` pauses and resumes the element. ⚠️ Resuming calls
+`play()` and NOT `_startVideo()`, which seeks to 0 -- a resume has to come back
+on the frame it stopped on.
+
+⚠️ **THE HELD LOOPS ARE STOPPED OUTRIGHT, NOT JUST SILENCED.** `setPaused`
+suspends the context, which makes them inaudible while leaving them RUNNING --
+and the mode that would turn them off is not being ticked. So the player would
+resume into a frame of machine gun they are no longer asking for. `input.flush()`
+already makes exactly this guarantee on the attack side and says so; this is the
+same guarantee for the sound.
+
+### 2. The plate runs 2x faster -- and it took three tries
+
+`plateRate: 2`, applied in `_startVideo()`. ⚠️ **SET ON EVERY ENTRY, NOT ONCE**:
+`playbackRate` belongs to the ELEMENT, which is the loader's -- shared,
+long-lived, and reset to 1 by some engines on a load or seek.
+
+    1.2   asked for first ("increase ... by like 20%"), moved off
+    4     asked for next ("make the background 4x faster")  -> "ok this is bad"
+    2     where it landed
+
+⚠️ **THIS IS THE ONLY NUMBER IN THE WHOLE TIME ATTACK BLOCK THAT HAS BEEN
+JUDGED RATHER THAN DERIVED.** Everything else in there is Still Life's extracted
+value or arithmetic; this one was looked at three times in an afternoon. Worth
+saying out loud, because it is also the only one where "what does the file say"
+is the wrong question to ask next.
+
+⚠️ **AND 4 IS A LOOK THAT WAS TURNED DOWN, NOT A HEADROOM LIMIT.** The bracket
+does not mean "2 is safe and 4 is risky" -- it means the shot reads as flight at
+2 and as something else at 4. A fact about this picture, nothing more general.
+
+⚠️⚠️ **I HAD PRE-REFUSED 4 IN A COMMENT, AND THEN 4 WAS ASKED FOR ANYWAY.**
+When I first set 1.2 I wrote *"past about 2 the stone texture strobes; this is
+not a knob to turn up far"* into the config as settled fact, having never seen it
+above 1.2. **A guess wearing a measurement's clothes, sitting directly between
+the user and their next ask.** Deleted rather than softened when 4 was
+requested. ⚠️ **AND THE UNCOMFORTABLE PART: the guess turned out to be roughly
+RIGHT** -- 4 was indeed bad. That does not make writing it right. It was not
+known when it was written, it was stated as though it were, and had it been
+obeyed the number would have been capped at 2 without anyone ever looking at 4.
+**Being lucky about a taste call you had no business making is still not having
+made it.** [[taste_calls_in_comments]].
+
+⚠️ **THE LOOP SURVIVES ANY RATE FOR FREE.** The plate wraps on itself with a
+0.6s crossfade and a rate change scales both sides of that seam equally: what
+matched at 1.0 matches at 2 or 4. The one property of this video that can be
+changed without going back to ffmpeg. ⚠️ It IS a decode cost, though, and that
+is the thing to watch rather than the look -- if the mode ever drops frames,
+re-encode the plate faster and play at 1.0 rather than shaving the number.
+
+### 3. ⚠️⚠️ THE FLY-IN WAS NEVER MISSING -- THE PLANE'S LIFETIME WAS THE BUG
+
+*"when entering the time attack stage, make the player come from the left,
+instead of just appearing in it. We use a similar effect at the still life
+project."*
+
+**It is already there, and it is already Still Life's.** `planeEntry: true`,
+`planeEntryFromX: -0.55`, `planeEntryMs: 1035`, `planeEntryHoldMs: 150`, and the
+whole `_entryOff()` easeOutCubic came across with the port untouched. Nothing
+needed writing.
+
+**What did not come across is WHEN that state is built.** Still Life REBUILDS
+the plane on every restart -- `plane = new Plane(assets, CONFIG)` in its restart
+path -- because over there a run IS the program: a new run is a new everything.
+Here `TimeAttack.load()` builds it **once, at boot**, and deliberately (see the
+note there about not decoding the twelve frames twice). So `this.locked =
+!!cfg.planeEntry` was true exactly ONCE. The first entry of a session spent it,
+and every entry after that opened with the plane already parked at `startX`.
+⚠️ **A DEV jump straight back in is the fastest possible way to never see it**,
+which is exactly how the mode gets tested.
+
+`TaPlane.reset()` is now the constructor's own body, called by both, and
+`enter()` calls it. ⚠️ **WRITTEN AS THE CONSTRUCTOR'S BODY RATHER THAN BESIDE
+IT**: "fresh entry" and "fresh plane" are two different events in this game and
+would drift the first time a field was added to one and not the other. All 25
+fields verified still assigned after the extraction. ⚠️ `charIdx` is the one
+field it does NOT touch -- which coconut is flying is identity, not flight state.
+
+⚠️⚠️ **AND THIS IS THE FIFTH TIME ON THIS PORT, IN THE SAME FAMILY AS THE FIRST
+THREE.** What a `dt` means, what a `worldW` means, what a box's fields are
+called -- and now **when an object is constructed**. Every one of them is a
+contract that no signature states and that a copied class cannot carry with it.
+**The class was perfect; the sentence around it was missing.** When porting,
+diff the LIFETIMES as well as the loops: who builds this, how often, and what
+that assumes about how many times it will run.
+
+### What it looked like instead
+
+Worth recording, because it was nearly diagnosed as art: the plane "just
+appearing" reads as a missing animation, and the first instinct was to go
+looking for an entrance to write. **The knobs were all present and correct in
+the config**, which is what settled it in about a minute -- a feature whose
+entire configuration exists and is right is a feature that is being SKIPPED, not
+one that is absent. [[config_zero_read_site]] is the same instinct pointed the
+other way: check the read site, not the file.
+
+### Unverified
+
+⚠️ The entrance is **1185 ms against a 900 ms opening card**, and the card is a
+band across the middle while the plane sits at `startY` 0.76 -- so on paper the
+fly-in is visible below it and settles a beat after it lifts. **Not watched.**
+Nor is the 1.2 rate judged, nor the pause seen.
+
+---
+
+## TIME ATTACK, the polish pass (2026-09-09)
+
+Sizes, the choppiness, the song and the swoosh.
+
+### Sizes
+
+    flyScale    0.0455 -> 0.0546   (+20%)   hitbox follows via _scale() -> boxes()
+    coinSizePx  76     -> 83.6     (+10%)   hitbox/bob/spark/burst all derive from it
+
+⚠️ **BOTH ARE ONE EDIT EACH BECAUSE EVERYTHING ELSE IS DERIVED FROM THEM.** The
+coin's hitbox (`coinHitScale`), bob (`coinBobRel`), hit spark (`coinHitFxSize`)
+and burst (`coinBoomSize`) are all multiples of `coinSizePx`, and the fly's
+boxes come out of `_scale()`. Nothing here needed a second number kept in step.
+⚠️ `flyScale` was Still Life's 0.091 and was HALVED here on 2026-09-08, so this
+is a correction to that cut rather than a departure from that game.
+
+### ⚠️⚠️ THE CHOPPINESS WAS A LOOK WHOSE REASON DID NOT SURVIVE THE PORT
+
+*"the character animation in the time attack stage is choppy, that means its
+frames have this lower framerate. Fix that, make him normal."*
+
+`stepped: false`. **And this is NOT Still Life's look being overruled.** Its own
+config says what the pair was for, in as many words:
+
+    "Reproduce the BACKGROUND'S low-framerate jank on the plane: sample its
+     drawn state only every steppedMs instead of every frame, and pan the
+     CAMERA off that same stepped value so plane + world hop TOGETHER."
+
+**Both halves of that are absent here:**
+
+* that game's background is a stop-motion set with real jank in it. **This
+  mode's is a filmed video plate running smoothly** -- and, since this morning,
+  at 2x. There is nothing for the plane to be in step WITH.
+* that game pans its camera off the stepped value. **THIS MODE HAS NO CAMERA AT
+  ALL** -- camX/camY are 0, which is the documented reason the plate is a plain
+  looping `<video>` and not a `Backdrop`. The half of the effect that made the
+  whole world hop with him **cannot exist here even in principle.**
+
+So the plane was hopping at 23fps, alone, against a smooth background -- which
+is not the effect, it is the artefact the effect exists to hide.
+
+⚠️ **THIS IS THE SIXTH ONE, AND IT IS A NEW SHAPE.** The first five were
+contracts (what a `dt` means, a `worldW`, a box's fields, WHEN an object is
+constructed). This one is a VALUE whose justification lived entirely outside the
+class -- in the background it was matching and in a camera that does not exist
+here. `stepped: true` came across in the extracted block and was correct in
+every sense except the one that mattered. **When porting a tuned value, port the
+sentence that justifies it and check whether the sentence is still true.** A
+number cannot tell you what it was in step with.
+
+⚠️ `steppedMs` (23fps) is kept though now unread -- it is the only record of
+what the number was, if the stop-motion is ever wanted deliberately. The read
+site is `if (c.stepped)` with a per-frame `_snapshot()` in the else: a supported
+path, not a knob being abused.
+
+### Cumbia Corazon, at last
+
+`musicTimeAttack`, via `TIME_ATTACK.musicKey` -- the `musicKey` idiom the bosses
+use, so a thing that plays music names the KEY and never the file. It was
+assigned to this stage AND to MISTER STOP on 2026-09-08 and wired to neither,
+because neither existed. ⚠️ **MISTER STOP still does not.** When he arrives he
+gets his own `musicKey` onto the same file, because his song differs from his
+room's -- which is the case `bossMusic()` exists for.
+
+⚠️ **THE GAIN IS MEASURED, NOT GUESSED AND NOT JUDGED.** Cumbia is **-16.0 LUFS
+integrated**, against Sucuri -16.0 and Dance Saborosa -15.9: same normalisation
+pass, so it takes the in-play bed trim of **0.72**. ⚠️ `musicDesert` sits at
+0.97 despite measuring the same, so **that one is a per-song decision and not
+the bed default** -- the wrong number to copy, and the sort of thing that gets
+copied.
+
+⚠️ **COMING OUT NEEDED NOTHING**, which is worth recording because it looked
+like it would: the mode's exit is a room CHANGE, so `roomMusic()` on the far
+side of the fade starts the next room's track exactly as it does everywhere
+else. No restore, no stop, no special case.
+
+### The climb and the dive
+
+Still Life's swoosh, one file per direction, read in place. `SFX_GAIN` **0.666**
+for both. The derivation is `gameOver`'s exactly -- that game lists them as plain
+strings (1.0 on its 0.6 sfx bus) and 0.81 x 0.74 is that 0.6 -- and then **an ear
+overruled it the same day**: *"the swoosh noise should be slightly subtle, 10%
+more subtle."* 0.74 x 0.9 = 0.666.
+
+⚠️⚠️ **WHICH MAKES THESE THE ONLY TWO PINNED ENTRIES THAT ARE ARITHMETIC PLUS A
+DECISION**, and the two a mechanical re-derivation would silently undo: someone
+re-solving the pinned set against a moved bus gets 0.74 back and the swoosh
+returns 11% louder than it was asked to be. Both the entry and the `SFX_GAIN`
+banner now say so. **A derived number that has since been judged is no longer a
+derived number, and the file has to say which parts are which** -- otherwise the
+next correct-looking re-derivation quietly discards a request. ⚠️ **Unlike the two loops these DO go through that game's sfx bus** --
+only its LOOPS bypass it, which is the distinction that cost a session this
+morning, now cutting the other way.
+
+⚠️ **`Sound.playExclusive()` IS A THIRD PLAYBACK POLICY AND ALL THREE ARE
+DELIBERATE:**
+
+    play()           overlaps       two punches 80ms apart are two sounds
+    playOnce()       replaces       asking twice for the fanfare is one fanfare
+    playExclusive()  refuses        a swoosh plays through or not at all
+
+Working the stick fast would otherwise stack the swooshes into mush (`play`) or
+chop each at its attack (`playOnce`). Still Life's `once()`/`_playOnce()`:
+*"an occupied slot rejects the new press rather than cutting the old one."*
+⚠️ **NOT named `once()` here**, because `this.once` is a FIELD on this class
+(the voice map) and would shadow the method on every instance -- it would never
+be called, and nothing would say so.
+
+⚠️ **THE EDGES ARE TAKEN OFF THE MERGED DIRECTION, NOT OFF EITHER DEVICE.**
+Per-device edges would be two mechanisms -- a keydown guard on the keyboard, a
+`_padPrev` comparison on the pad -- that BOTH fire when someone nudges the stick
+while resting a hand on W. One press, two swooshes. A single comparison in
+`poll()` cannot double-fire by construction, and costs at most a frame of
+latency that a held direction cannot notice.
+
+⚠️ **BOTH EDGES ARE CONSUMED EVERY FRAME AND ONLY THE PLAYING IS GATED.** The
+plane is control-locked through the fly-in and every round card; reading them
+inside the gate would bank a press across that lock and spend it as a swoosh for
+a climb the player made a second and a half earlier. And the gate matters in the
+other direction too: the entrance flies the plane up the screen on its own, and
+would have swooshed all the way in.
+
+### Unverified
+
+None of it has been seen or heard: the two sizes, the smooth plane, Cumbia
+against the gun, and the swoosh. The gains are arithmetic and the LUFS is
+measured; everything else is an eye and an ear.
+
+---
+
+## The gun's gap, the SFX bus, and the coins (2026-09-09)
+
+### ⚠️ THE BEAM WAS STARTING 104px IN FRONT OF THE PLANE, AND THE ART SAID SO
+
+*"arrumar o scanline da metralhadora, right now there is a gap right in front of
+the player, remove that gap."*
+
+`muzzle()` returned `centre + dw / 2` -- the right edge of the **FRAME BOX**, on
+the assumption that the box is the plane. It is not. The alpha bounding box of
+all twelve plane frames (both packs, 660x507):
+
+    lebron    ink ends x = 442 441 439 424 437 437   margin 218..236 px
+    ipaneima  ink ends x = 441 440 439 423 437 436   margin 219..237 px
+
+**A THIRD OF EVERY FRAME IS EMPTY MARGIN ON THE RIGHT.** At `planeScale` 0.3072
+the plane draws 287.9px wide, so the beam left at centre+144 while the propeller
+ends at centre+40: **a 104px gap**, and every fly inside it was un-hittable.
+
+`rayMuzzleXRel: 0.64` is where the ink actually stops, as a fraction of the
+frame's WIDTH. ⚠️ **IT IS THE MINIMUM OF THE TWELVE, NOT THE MEAN**, because the
+ask was to REMOVE the gap: the pose whose nose reaches least far (ipaneima-04,
+the level pose, 0.6409) has to be the one that sets it, or that one pose keeps a
+gap while the average looks fine. The pitched poses now start their beam a few
+px INSIDE the propeller, which is invisible. **When a constraint is "never",
+the extreme sets the number and the average is the wrong statistic.**
+
+⚠️ **A FRACTION, NOT A PIXEL OFFSET**, so it survives `planeScale` -- the muzzle
+multiplies it by the DRAWN width. Re-measure only if the plane art is recut.
+⚠️ Unset falls back to 1 (the old box-edge behaviour), so a missing knob cannot
+silently move the gun.
+
+⚠️ **AND THIS IS WHY THE DEBUG SCANLINE EARNED ITS KEEP AGAIN.** The beam is
+invisible in play -- it is drawn only under hold-C -- so the gap was only ever
+visible to someone holding C. That overlay has now found two separate beam bugs
+([[verifiable_debug_views]]).
+
+### The SFX bus, down a true 20%
+
+*"abaixar o som geral do SFX do game em 20%, está muito mais presente que a
+música."* `sfxVolume` **0.81 -> 0.567**, taken in two steps the same day: 20%
+first, then *"bring the sfx down by 10% more ... we want 30% reduction."*
+
+⚠️ **THE SECOND STEP IS 30% OF 0.81, NOT 10% OFF 0.648.** 0.81 x 0.7 = 0.567;
+compounding would have given 0.583, a 28% cut, and quietly missed the number
+that was asked for. **The reductions are quoted against the ORIGINAL, so each
+restatement replaces the last rather than stacking on it** -- the same shape as
+[[target_restated_as_correction]], and the arithmetic is where it would have
+been fumbled. -3.1 dB from 0.81, and -4.0 dB cumulative from the 0.9 the bus
+started at: three cuts, same reason, same soundtrack.
+
+⚠️⚠️ **AND THE SIX PINNED `SFX_GAIN` ENTRIES WERE DELIBERATELY NOT RE-DERIVED,
+WHICH IS THE EXACT OPPOSITE OF WHAT THEIR OWN NOTES INSTRUCT.** `gameOver`,
+`coin`, `up`, `down`, `gun` and `coinHit` are each solved backwards from a Still
+Life match with `sfxVolume` in the arithmetic, and every one of those notes says
+to re-derive when the bus moves -- an instruction I wrote twice today and
+followed once already.
+
+**That instruction is for a bus that moves for an unrelated reason.** This one
+moved BECAUSE the effects are too loud against the music. Re-deriving the pinned
+six would have held exactly the clips the request is about at their old level
+and quieted only the punches -- the opposite of *"o som GERAL do SFX"*. The bus
+is the only knob that means all of it.
+
+⚠️ **SO THOSE SIX NOW SIT 30% UNDER THEIR STILL LIFE REFERENCE BY DESIGN.** The
+notes are still correct for the case they describe, with one correction now
+written into them: **re-derive from 0.81, the level they were matched at, not
+from whatever the bus reads at the time.**
+
+⚠️⚠️ **THE GENERAL SHAPE, AND IT IS THE SHARPEST THING IN THIS SESSION: A
+STANDING INSTRUCTION IN A COMMENT ENCODES A REASON, NOT A RULE.** "Re-derive
+when the bus moves" was written for balance-preserving moves and read as
+unconditional. Following it here would have been obedient and wrong. **Before
+obeying a note you wrote, check that the situation it describes is the situation
+you are in.** Same family as [[flag_guards_two_things]].
+
+### ⚠️ "NEVER OVERLAPPED" COULD NOT BE DONE AT SPAWN TIME
+
+*"não deixar as moedas spawnarem muito perto umas das outras. nunca deixar elas
+ficarem sobrepostas."* Two clauses, and **only the first one is about spawning.**
+
+`coinSpeedVar` 0.25 gives every coin its own speed (90..150 px/s) on a TORUS, so
+a faster coin LAPS a slower one -- at 60 px/s of closing speed, inside about 21
+seconds on a 1280 field, comfortably within a 30-second round. **No spawn rule
+can prevent that: they are placed apart and then drive into each other.**
+
+`coinSpeedVar: 0` freezes every gap at the value the spawn chose. "Never
+overlapped" stops being something to enforce each frame and becomes true by
+construction, at zero per-frame cost. ⚠️ **THE COST IS A LOOK NOBODY HAS SEEN**:
+the clocks now drift in lockstep. With at most three on screen that should read
+as a field rather than a formation, but if it reads as marching the alternatives
+are a per-frame separation pass -- which visibly SHOVES coins and looks worse --
+or accepting occasional overlaps. Flagged rather than decided.
+
+### ⚠️⚠️ AND "OFF SCREEN" NEEDED A WIDER WORLD, BECAUSE THERE WAS NO OFF SCREEN
+
+*"coins must never spawn in screen, always off screen and come from the right."*
+
+**The field is a TORUS and `worldW` was the canvas, so every x was on screen.**
+`TaCoin` wraps x into [0, worldW) and draws copies at x-worldW / x / x+worldW --
+there was literally nowhere to put a coin that was not visible. ⚠️ **And
+spawning at `GAME_W + 90` does not put one off the right: it wraps to x=90 and
+puts it on the LEFT.** That is not a hypothetical -- it is the exact bug the
+FLIES shipped with on 2026-09-08 (*"the flyes are all stuck in the left"*), and
+it would have been reproduced verbatim by the obvious fix.
+
+So the world is widened instead: `coinOffscreenPx` 240 makes
+`[GAME_W, GAME_W+240)` a strip that exists and is never drawn. Clocks are placed
+there and **drift on to the screen across the right edge by themselves** -- no
+entry animation, no special case, because the wrap has been doing exactly this
+every lap since the port. The band is inset by half a coin at each end, which
+puts both extremes exactly flush with a screen edge: invisible at spawn either
+way, and never so deep that it wraps back to the left.
+
+⚠️ **IT COSTS AN ABSENCE**, and that is the knob's real trade: a clock that
+leaves on the left is gone for `coinOffscreenPx / coinSpeed` = **2.0s** before
+it comes round again, out of a 30s round. Round 1 has ONE clock. Widen it and
+clocks get rarer; narrow it and there is less room to spread them.
+
+⚠️⚠️ **FIVE CALL SITES HAND A COIN A `worldW`** -- `update()`, the ray test in
+`_shoot()`, `render()`, `renderBurst()` and the hold-C overlay -- and `TaCoin`
+derives its wrap AND the two ghost copies it draws from that number. **A site
+left on `GAME_W` would put a coin's picture and its hitbox in different places,
+silently, and only for the copies.** That is the beam bug's failure mode exactly,
+so it is a method (`_coinW()`) and not a local, and all five were changed
+together and listed here so the next reader can count them.
+
+⚠️ **THE FLIES ARE DELIBERATELY NOT ON THIS WORLD.** They are the targets and
+are meant to be in the field; only the clocks were asked to arrive. Two entities
+wrapping in two different worlds is fine -- each wraps independently -- but it
+is the sort of thing that looks like a bug later, so: it is on purpose.
+
+⚠️⚠️ **AND THE SPAWN DISTANCE IS MEASURED ROUND THE TORUS, WHICH IS THE TRAP.**
+`TaCoin` wraps `x` modulo the field and renders the neighbouring copies, so a
+coin at 0.98W and one at 0.02W are a sliver apart on screen and **0.96W apart by
+subtraction**. And that is precisely the pair that occurs: the spawn band is the
+RIGHT-HAND end of the field (`spawnFromRel` 0.58 to 0.98) while existing coins
+have drifted LEFT towards 0. A naive distance would have reported the one
+touching pair as maximally far apart. Third time the torus has bitten this port
+-- see the spawn-wrap bug in the port's own bug list.
+
+⚠️ **`_freeSpot()` GIVES UP** after `coinSpawnTries` (40) and takes the roomiest
+point it saw. The band is finite and this runs inside the frame: a loop that
+insisted on the constraint would hang the game the moment the field filled.
+**Best-effort placement is a look; a hang is a crash.**
+
+⚠️ **FLIES ARE NOT CONSIDERED**, on purpose -- there are up to six to a field,
+and folding them in would over-constrain a band that has to hold both.
+
+### Unverified
+
+The 104px is arithmetic off a measurement and is the one thing here I would bet
+on. Everything else needs eyes and ears: the new bus against the music, the
+lockstep clocks, and whether the beam now reads as leaving the propeller.
+
+---
+
 ## Open
 
 - ⚠️ **THE BALANCE IS UNPLAYED, AND THE FIRST ITCH BUILD SHIPPED THAT WAY**
