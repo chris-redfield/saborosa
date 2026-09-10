@@ -2303,6 +2303,74 @@ const CONFIG = {
                   downLand: { anim: 'knockdown', from: 0, to: 2 },
                   downLie:  { anim: 'knockdown', from: 2, to: 3 },
                   downRise: { anim: 'knockdown', from: 3, to: 6 },
+                  /* ⚠️ HIS DEATH SKIPS THE FIRST DRAWING OF ITS OWN ROW, asked
+                     for 2026-09-10: *"quando ela vai explodir, a animacao ta
+                     esquisita... ela cai primeiro (usa o frame caindo), mas
+                     depois entra no estado 'vou explodir'... tem que remover
+                     esse frame dele caindo."* Landing on the floor a beat before
+                     he stands up and swells reads as two different deaths in a
+                     row.
+
+                     ⚠️ IT IS `from: 4`, AND IT WAS `from: 1` FIRST -- THE ROW
+                     HAS **FOUR** KNOCKED-OUT DRAWINGS, NOT ONE. Asked for one
+                     frame, I cut the sprawl (row frame 0) and the report came
+                     straight back: *"I still see the frame where his arms go up,
+                     as if he fell to the ground."* Frames 0-3 are ALL X-eyed and
+                     THREE of them throw a glove up; removing the first only
+                     promoted the next one. **The unit here is the knocked-out
+                     SECTION, not a drawing** -- frames 0-3 are the fall, 4-5 are
+                     him upright and wide-eyed, and 4 is where "he is not on the
+                     floor any more" actually starts.
+
+                     ⚠️ IT IS A SLICE, NOT A RE-CUT, AND THAT IS THE CHEAP PART.
+                     The tile stays in the atlas because `hurt` and `knockdown`
+                     both still open on it (all three rows share those drawings
+                     byte for byte -- see the sheet note above), so nothing was
+                     rebuilt and no other row moved. Only the DEATH pose is
+                     shorter: 10 drawings -> 6.
+
+                     ⚠️ AND EVERYTHING THAT NAMES A DEATH FRAME BY NUMBER HAD TO
+                     COME DOWN ONE. There are four, in three different blocks,
+                     and none of them would have errored:
+                         DEATH_BURST.charutobi.from          7 -> 3
+                         DEATH_BURST.charutobi.shudder.from  5 -> 1
+                         DEATH_BURST.charutobi.shudder.to    6 -> 2
+                         DEATH_BOOM.charutobi.atFrame        7 -> 3
+                         DEATH_BLAST.charutobi.atFrame       8 -> 4
+                     Miss one and the explosion, the tremble or the damage
+                     simply happens on the wrong drawing. ⚠️ The CUTTER's
+                     `centreFrom: 7` does NOT move -- it indexes the row being
+                     cut, and the row is unchanged. */
+                  /* ═══ TO BRING THE FALL BACK ═══════════════════════════
+                     FIVE numbers, and they move TOGETHER or the explosion,
+                     the tremble and the damage land on the wrong drawing --
+                     silently, because none of them can error. `n` is the row
+                     frame this pose starts at; every index below is
+                     `original - n`, and the originals are the full row:
+
+                       n = 0  the whole row back      (fall, rise, swell, burst)
+                       n = 4  SHIPPED                 (stand, swell, burst)
+                       n = 5  one frame tighter       (stand, swell, burst)
+
+                       poses.death.from                n     0    4    5
+                       DEATH_BURST.charutobi.from      7-n   7    3    2
+                       DEATH_BURST...shudder.from      5-n   5    1    0
+                       DEATH_BURST...shudder.to        6-n   6    2    1
+                       DEATH_BOOM.charutobi.atFrame    7-n   7    3    2
+                       DEATH_BLAST.charutobi.atFrame   8-n   8    4    3
+
+                     ⚠️ CHECK IT BY WHAT THE INDICES RESOLVE TO, NOT BY THE
+                     ARITHMETIC. Every one must still name the same TILE: the
+                     burst opens on tile 20, the shudder runs 18/19, the damage
+                     lands on 21. Resolve the pose the way sheets.js does
+                     (`anims.death.slice(from)`) and read the tiles back --
+                     that is the only check that catches a missed one.
+
+                     ⚠️ AND THE CUTTER IS NOT INVOLVED. `centreFrom: 7` in
+                     tools/build-beat-enemy-defs.py indexes the row being CUT,
+                     which never changes. Do not "fix" it to match.
+                     ═══════════════════════════════════════════════════════ */
+                  death:    { anim: 'death', from: 4 },
                 } },
   },
 
@@ -7005,7 +7073,11 @@ const CONFIG = {
        (tools/build-beat-enemy-defs.py), which is what anchors those three tiles
        on their own centre instead of on the belt. */
     charutobi: {
-      from: 7,
+      /* ⚠️ CAME DOWN ONE ON 2026-09-10, when the death pose began skipping its
+      /* ⚠️ CAME DOWN **FOUR** ON 2026-09-10: the death pose starts at row frame 4
+         (CHARACTERS.charutobi.poses.death), because ALL FOUR knocked-out
+         drawings are cut, not just the first. The row itself is unchanged. */
+      from: 3,
       /* THREE FRAMES, AND THE WIDEST IS THE LAST. Espeto's burst peaks in the
          middle and settles, so his `ms` holds frame 3 of 4; charutobi's expands
          all the way to the end (172 / 215 / 251 drawn px at his current
@@ -7073,7 +7145,10 @@ const CONFIG = {
          and the length that was tuned against it. Copied, not shared -- same
          reasoning as the tint below. */
       shudder: {
-        from: 5, to: 6, ms: 40, holdMs: 800,
+        /* ⚠️ 5,6 -> 1,2 with the pose. STILL THE SAME TWO DRAWINGS -- upright
+           and wide-eyed, then the swell -- which is the check that it moved
+           correctly rather than merely moved. */
+        from: 1, to: 2, ms: 40, holdMs: 800,
         /* The bomb's red, the same filter string, copied for the reason espeto's
            is: two objects that want the same colour today, and aliasing would
            tie this death to a future retune of the bomb's panic. */
@@ -7166,7 +7241,15 @@ const CONFIG = {
          frame and read as one event, which is the whole of *"it will be like 2
          explosions at the same time"*. ⚠️ IT IS 7 AND ESPETO's IS 6 for the same
          reason `from` is: the swell is a frame of body, not of burst. */
-      atFrame: 7,
+      /* ⚠️ CAME DOWN ONE ON 2026-09-10, when the death pose began skipping its
+         first drawing -- the sprawl with the glove up. See
+         CHARACTERS.charutobi.poses.death; the row itself is unchanged. It still names the FIRST
+      /* ⚠️ CAME DOWN **FOUR** ON 2026-09-10: the death pose starts at row frame 4
+         (CHARACTERS.charutobi.poses.death), because ALL FOUR knocked-out
+         drawings are cut, not just the first. The row itself is unchanged.
+         It still names the FIRST DRAWN BURST FRAME and must keep agreeing
+         with DEATH_BURST.charutobi.from. */
+      atFrame: 3,
       spreadXRel: 0,
       spreadYRel: 0,
       jitterRel: 0,
@@ -7293,7 +7376,14 @@ const CONFIG = {
          damage arriving before the explosion, which is how this was reported the
          first time on espeto. Frames 8 and 9 are the two widest drawings and the
          window spans them. */
-      atFrame: 8,
+      /* ⚠️ CAME DOWN ONE ON 2026-09-10, when the death pose began skipping its
+         first drawing -- the sprawl with the glove up. See
+      /* ⚠️ CAME DOWN **FOUR** ON 2026-09-10: the death pose starts at row frame 4
+         (CHARACTERS.charutobi.poses.death), because ALL FOUR knocked-out
+         drawings are cut, not just the first. The row itself is unchanged.
+         Still the SECOND burst drawing, which is what the rule below asks
+         for. */
+      atFrame: 4,
       /* ⚠️ 200, DOWN FROM 300, AND IT FOLLOWED THE BURST RATHER THAN BEING
          RETUNED. The window is documented as "frames 8 and 9, the two widest
          drawings" and those two now last 190ms between them; left at 300 it

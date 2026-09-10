@@ -9721,3 +9721,81 @@ about this**: the raw bbox widths (579/580/566/587/573) rank them differently
 again, because the horns and the rear legs are most of the box. Neither the eye
 nor the bounding box answers "how far does the punch reach" — the fist does.
 
+
+## CHARUTOBI stops falling over before he explodes (2026-09-10)
+
+*"Mudar a animação da bombinha vermelha na explosão — quando ela vai explodir, a
+animação tá esquisita. Ela cai primeiro (usa o frame caindo), mas depois entra no
+estado 'vou explodir'; antes de entrar no estado vou explodir, tem que remover
+esse frame dele caindo."*
+
+⚠️ **THERE IS NO "FALLING STATE" TO SWITCH OFF, AND THAT IS THE WHOLE SHAPE OF
+THE PROBLEM.** His death is one continuous ten-drawing row — `0-3` knocked over
+with X eyes, `4-5` back on his feet, `6` the swell, `7-9` the burst — because his
+death row opens with his knockdown row byte for byte. So "remove the falling
+frame" is not a flag, it is starting the row later.
+
+### ⚠️ AND I CUT ONE DRAWING WHEN THE ANSWER WAS A SECTION
+
+Rendered the row on one ground line and asked which frame; the answer was *"only
+cut 1 frame, which is the one where he is fallen in the ground and his hands (or
+one hand) is in the air"*. I took that literally, cut death 0 — the sprawl with a
+glove thrown up — and it came straight back: *"I still see the frame where his
+arms go up, as if he fell to the ground."*
+
+⚠️ **BECAUSE FRAMES 0-3 ARE ALL X-EYED AND THREE OF THEM THROW A GLOVE UP.**
+Removing the first only promoted the next one into the same slot. **The unit was
+never a drawing, it was the knocked-out SECTION** — 0-3 are the fall, 4-5 are him
+upright and wide-eyed, and 4 is where "not on the floor any more" starts. The
+user's "1 frame" was an estimate of how much art the fall occupied, not a
+constraint; taking a count literally when the person cannot see the sheet is the
+mistake.
+
+⚠️ **AND MY MEASUREMENT WAS NOT WRONG, IT WAS ANSWERING A NARROWER QUESTION.** I
+checked glove-height-above-ground, got death 3 as the maximum (133px vs death 0's
+118), decided it looked like the rising frame and overrode it. Both were "the
+frame with a raised arm" — there were several, which is the fact neither the
+metric nor my eye surfaced. **When a description matches more than one frame, the
+answer is usually all of them.**
+
+### The fix is a slice, and the cost is four numbers
+
+`CHARACTERS.charutobi.poses.death = { anim: 'death', from: 4 }`. Ten drawings
+become six and the burst arrives 520 ms earlier.
+
+⚠️ **NOTHING WAS RE-CUT.** The tile stays in the atlas because `hurt` and
+`knockdown` both still open on it — all three rows share those drawings — so no
+other row moved and the cutter was not run.
+
+⚠️ **BUT EVERYTHING THAT NAMES A DEATH FRAME BY NUMBER HAD TO COME DOWN ONE, AND
+NONE OF THEM WOULD HAVE ERRORED.** Four indices in three separate blocks:
+
+    DEATH_BURST.charutobi.from          7 -> 3
+    DEATH_BURST.charutobi.shudder.from  5 -> 1
+    DEATH_BURST.charutobi.shudder.to    6 -> 2
+    DEATH_BOOM.charutobi.atFrame        7 -> 3
+    DEATH_BLAST.charutobi.atFrame       8 -> 4
+
+Miss one and the explosion, the tremble or the damage simply happens on the wrong
+drawing — silently, which is this fighter's whole history (`corpseFade`, the
+`|| 150` eating a zero, the three-correct-rules freeze).
+
+⚠️ **AND ON THE SECOND PASS I MOVED THE POSE AND FORGOT ALL FOUR.** The probe
+printed `burst from frame 6 -> tile undefined` for every one of them. **That is
+what "none of them would have errored" looks like from the inside** — the config
+parses, the game runs, and the explosion is simply hung on nothing. The check
+below is the only reason it took seconds instead of a play-test.
+
+⚠️ **THE CHECK IS THAT EVERY INDEX STILL LANDS ON THE SAME TILE.** Resolving the
+pose the way `sheets.js` does and rebuilding `deathFrameStartS` from
+`fighter.js`: burst still opens on tile 20, shudder still runs 18/19, damage
+still lands on tile 21, before and after. **An index into a list that got shorter
+is only correct if it still points at the same thing** — comparing the numbers
+proves nothing, comparing what they resolve to proves it.
+
+⚠️ **AND THE CUTTER'S `centreFrom: 7` DOES NOT MOVE.** It indexes the row being
+CUT, not the pose being PLAYED, and the row is unchanged. Two indices into
+"the death row" that mean different things, one file apart — the note on
+`centreFrom` saying it "must agree" is about the cutter and the burst `from`, and
+that agreement is now broken *on purpose*.
+

@@ -3473,28 +3473,79 @@ the same time."* So `hideBurst` is **absent** — this is espeto as he was the d
 before he was asked to blow up like the bomb.
 
 ```js
-CHARACTERS.charutobi: { drawScale: 0.6885, corpseFade: false, ... }
+CHARACTERS.charutobi: { drawScale: 0.6885, corpseFade: false,
+                        poses: { death: { anim: 'death', from: 4 }, ... } }
 
 SUICIDE_RUSH.charutobi: { speed: 1.7, triggerX: 24, triggerZ: 34 }
 
-DEATH_BURST.charutobi: { from: 7, ms: [60, 80, 110], hideAfterRow: true,
-                         shudder: { from: 5, to: 6, ms: 40, holdMs: 800, tint: ... } }
-DEATH_BOOM.charutobi:  { on: true, count: 1, atFrame: 7,
+DEATH_BURST.charutobi: { from: 3, ms: [60, 80, 110], hideAfterRow: true,
+                         shudder: { from: 1, to: 2, ms: 40, holdMs: 800, tint: ... } }
+DEATH_BOOM.charutobi:  { on: true, count: 1, atFrame: 3,
                          spreadXRel: 0, spreadYRel: 0, jitterRel: 0,
                          baseYRel: 0.46, refPx: 115, sizePx: 193 }
-DEATH_BLAST.charutobi: { atFrame: 8, activeMs: 200, damage: 12, knockdown: true,
+DEATH_BLAST.charutobi: { atFrame: 4, activeMs: 200, damage: 12, knockdown: true,
                          radial: true, reachX: 174 * BODY_SCALE,
                          reachZ: 59 * BODY_SCALE, knockback: 280 }
 ```
 
 | phase | frames | ms |
 |---|---|---|
-| the fall | death 0-6 at `POSE_MS.death` | 0 - 910 |
-| the shudder | death 5-6 alternating, red one beat in three | 910 - 1710 |
-| the drawn burst | 7-9 at `ms` | 1710 - 1960 |
-| the boom | one blast, 214px | 1710 - 2561 |
-| the damage | `atFrame: 8`, 200ms | 1770 - 1970 |
-| corpse reaped | | 2561 |
+| on his feet | death 0-2 at `POSE_MS.death` | 0 - 390 |
+| the shudder | death 1-2 alternating, red one beat in three | 390 - 1190 |
+| the drawn burst | 3-5 at `ms` | 1190 - 1440 |
+| the boom | one blast, 214px | 1190 - 2041 |
+| the damage | `atFrame: 4`, 200ms | 1250 - 1450 |
+| corpse reaped | | 2041 |
+
+> ⚠️ **HIS DEATH SKIPS THE FIRST DRAWING OF ITS OWN ROW** (2026-09-10) — *"quando
+> ela vai explodir, a animação tá esquisita… ela cai primeiro (usa o frame
+> caindo), mas depois entra no estado 'vou explodir'… tem que remover esse frame
+> dele caindo."* Landing on the floor a beat before he stands up and swells read
+> as two different deaths in a row. `poses.death` starts the row at frame 4 —
+> **10 drawings → 6**, and the burst arrives **520 ms** earlier.
+>
+> ⚠️ **It was `from: 1` first, and that is the lesson: the row has FOUR
+> knocked-out drawings, not one.** Asked for a single frame, I cut the sprawl and
+> the report came straight back — *"I still see the frame where his arms go up, as
+> if he fell to the ground."* Frames 0–3 are **all** X-eyed and three of them
+> throw a glove up, so removing the first only promoted the next one. **The unit
+> is the knocked-out section, not a drawing:** 0–3 are the fall, 4–5 are him
+> upright and wide-eyed, and 4 is where "not on the floor any more" actually
+> starts.
+>
+> **To bring the fall back**, `n` is `poses.death.from` and every index is
+> `original − n`. They move together or the explosion, the tremble and the damage
+> land on the wrong drawing:
+>
+> | | | `n=0` (whole row) | `n=4` (shipped) | `n=5` |
+> |---|---|---|---|---|
+> | `poses.death.from` | `n` | 0 | **4** | 5 |
+> | `DEATH_BURST.from` | `7−n` | 7 | **3** | 2 |
+> | `DEATH_BURST.shudder.from` | `5−n` | 5 | **1** | 0 |
+> | `DEATH_BURST.shudder.to` | `6−n` | 6 | **2** | 1 |
+> | `DEATH_BOOM.atFrame` | `7−n` | 7 | **3** | 2 |
+> | `DEATH_BLAST.atFrame` | `8−n` | 8 | **4** | 3 |
+>
+> ⚠️ **Check it by what the indices resolve to, not by the arithmetic** — burst
+> on tile 20, shudder on 18/19, damage on 21, every time. ⚠️ And the **cutter's**
+> `centreFrom: 7` is not involved: it indexes the row being cut, which never
+> changes.
+>
+> ⚠️ **It is a slice, not a re-cut.** The tile stays in the atlas because `hurt`
+> and `knockdown` both still open on it (all three rows share those drawings byte
+> for byte), so nothing was rebuilt and no other row moved.
+>
+> ⚠️ **And every number that names a death frame had to come down one — four of
+> them, in three different blocks, none of which would have errored:**
+> `DEATH_BURST.from` 7→3, `shudder.from/to` 5,6→1,2, `DEATH_BOOM.atFrame` 7→3,
+> `DEATH_BLAST.atFrame` 8→4. ⚠️ **On the second pass I moved the pose and forgot
+> them, and the probe printed `tile undefined` for all four** — that is exactly
+> what "would not have errored" looks like from the inside. Verified by resolving
+> the pose and rebuilding
+> `deathFrameStartS`: every one still lands on **the same tile** it did before
+> (burst opens on tile 20, shudder on 18/19, damage on 21). ⚠️ The **cutter's**
+> `centreFrom: 7` does *not* move — it indexes the row being cut, and the row is
+> unchanged.
 
 > ⚠️ **The burst was cut twice on 2026-08-28**: 670ms → 469 (×0.7) → **250ms**,
 > 63% off the original, ~83ms a frame. That is the same order as the boom under
@@ -4476,6 +4527,10 @@ row's last frame, the roach on its back.
 > `_rollChain` reads `min(weights.length, combo.length)`, so a three-long weights
 > array silently caps the string at three — the same trap espeto's five-entry
 > note was written about.
+>
+> ✅ **Confirmed in play 2026-09-10** — *"the 4 hit combo works"*. The four-hit
+> string and the re-cut are the two barata things that are no longer
+> extrapolations; the damage numbers around them still are.
 >
 > ⚠️ **The first three hits are untouched**, so a string that rolls 1–3 plays
 > exactly as before. The fourth is a *tail* past the punish window, weighted
