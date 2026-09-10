@@ -1187,7 +1187,13 @@
     backdrop.update(dt);
 
     const bounds = stage.bounds();
-    player.update(dt, input, bounds);
+    /* LEVEL 3 HOOK 8. Boarding a lift is a scripted walk to the middle of the
+       slab, so for those ~1.0s the room drives the player instead of the stick.
+       ⚠️ IT REPLACES THIS CALL RATHER THAN RUNNING BEFORE IT: `scriptWalk` ticks
+       the fighter itself, so doing both would advance him twice in one frame --
+       and leaving the ordinary update running with live input would let a held
+       direction fight the script to a standstill. See Level3.tickBoarding. */
+    if (!Level3.tickBoarding(dt, player, stage.room())) player.update(dt, input, bounds);
     crowd.update(dt, player, bounds, sheets);
     if (stage.boss) stage.boss.update(dt, player, bounds);
 

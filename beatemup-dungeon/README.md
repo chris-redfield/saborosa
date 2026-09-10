@@ -1418,7 +1418,7 @@ cannot turn round reads as a hang); the walls simply close to the platform.
 it is what ends the walk leg — there is no "walked into the boundary" event. It
 comes into view on its own as the camera nears the end (~4s of approach on shelf
 1, ~3.4s on shelf 2) and is boarded with no movement at all on the hand-over
-frame.
+frame — then **he walks himself into the middle of it before it goes** (below).
 
 > ⚠️ **It used to be drawn at a fixed SCREEN position, and that one choice caused
 > both halves of what was reported** — *"it just appears out of nowhere"* and
@@ -1475,6 +1475,66 @@ frame.
 > standHalfRel`, so `Elevador.tickRider` keeps him up on the slab and he steps
 > down by walking off it. Move `platScreenX`, `standHalfRel` or `widthPx` far
 > enough and a clamp to `bounds()` is what it would need.
+
+> ⚠️ **STEPPING ON STARTS A SCRIPTED WALK TO THE MIDDLE — `LEVEL3.boardWalk`.**
+> Asked for 2026-09-10: *"basta o player caminhar no elevador; então ele caminha
+> no elevador, e a animação captura o player e ele caminha até o meio, daí o
+> elevador começa a se mexer e o player pode recuperar o controle."*
+>
+> ⚠️ **The trigger is the slab's NEAR EDGE, not the landing** — and getting that
+> wrong was the first version: *"I have to walk until the rightmost side, then the
+> player walks to the middle, this is wrong"*, on **both** lifts. The landing sits
+> 300px *past* the slab's middle (it has to be where the camera is already pinned:
+> screen 940 rightward, 340 leftward, while the slab is drawn centred at 640), so
+> ending the leg there marched him across the whole elevator and back. The gate is
+> `platX ∓ widthPx × standHalfRel` — **the same number `Elevador.tickRider` uses
+> to decide he is aboard**, so there is one definition of "on the lift", not two —
+> and the scripted walk now always goes forward, edge → centre.
+>
+> ⚠️ **So boarding has to carry the camera, and that is the real cost.** He
+> touches the slab **364px (shelf 1)** and **568px (shelf 2)** before the camera
+> would have pinned, and a ride starting on an unpinned camera is exactly the
+> ~0.7s film jump `landingInsetPx` exists to prevent. Boarding finishes the walk
+> leg for him: the camera pans the rest of the way and `progress` is read off it
+> with the **previous** leg's mapping, landing on that leg's `film[1]` — which
+> *is* the lift's `film[0]`. ⚠️ `landingInsetPx` is therefore **no longer what
+> keeps the film honest** while this is on; it still places the wall, and it is
+> what the leg ends on with `boardWalk: false`.
+>
+> ⚠️ **The pan runs at walking speed, and the beat that creates is deliberate.**
+> The room is built on the film moving 1:1 with the feet; sizing the pan to finish
+> with his 336px walk would run it 1.7× that on shelf 2. So the pan keeps the rate
+> and he stands on the slab while the shot settles. Measured: the walk is 1.12s,
+> the whole thing **1.20s on lift 1** and **1.90s on lift 2**. If that reads slow,
+> the alternative is one line — pan by `shortfall / walkTime` — at the cost of the
+> plate playing ~1.3× for a second.
+>
+> ⚠️ **The ride waits; it does not get longer.** `legT` is held at zero through
+> boarding, so the shot still starts on its own first frame. The elevator **boils
+> through the pan**, by the ordinary rule rather than an exception — it is sliding
+> across the screen, which is what `_tickBoil` means by moving. Control comes back
+> the instant boarding ends.
+>
+> ⚠️ **It replaces `player.update` for those frames (hook 8 in `game.js`), it does
+> not run beside it.** `scriptWalk` ticks the fighter itself, so doing both would
+> advance him twice in one frame; and leaving the ordinary update running with
+> live input would let a held direction fight the script to a standstill. Driven
+> through the real `Level3` with the stick held **left**, **right** and **not at
+> all**, all three step on at the slab's edge (offset ∓332/336 from its centre)
+> and finish at offset **0.0** — player and slab both on screen x **640.0** — with
+> the film landing on the leg's own end frame.
+>
+> ⚠️ **This is not `boardSec` coming back.** That was a 0.35s *ease* that dragged
+> him onto a lift he could not walk to, and it was reported as *"he kinda gets
+> pushed to the middle of the screen"*. This is his own walk animation at his own
+> speed, over a gap he can see. `boardWalk: false` restores the old instant start.
+>
+> ⚠️ **The clock that can see a dead hook lives in `update()`, not in
+> `tickBoarding`.** `Level3.update` is called every play frame by the stage; the
+> hook is called by `game.js`. If that hook ever stops being reached the walk
+> would never finish and the room would hang with the lift parked, so the side
+> that always runs counts the time and bails out after `GAME_W / walkSpeedX + 1`
+> seconds by putting him on the mark.
 
 > ⚠️ **`sec` is the film's own duration and should stay that way.** 13.7s is a
 > long time to stand there — the answer is enemies riding up with you, **not a
@@ -1747,7 +1807,14 @@ leg 4  walk       x  +3396   y    −66
 > per frame against a −12 mean** — the fastest part of the climb, which is exactly
 > where the phase correlation behind `level-3-wall-track.json` is recorded as
 > wrapping. Those are the lift's own patches, welded to a track that is wrong
-> there. **The fix is re-measuring that window at full resolution, not the count.**
+> there — **suspected, not proven**: it could equally be a pan that really did
+> speed up.
+>
+> ⚠️ **CLOSED WITHOUT BEING FIXED, ON THE USER'S CALL** (2026-09-10): *"no need to
+> touch that anymore, just removing those worms at the end was good enough."* The
+> arrival cut was the ask; the stutter is accepted. **Do not re-open it
+> unprompted** — and if it is ever asked for, the move is re-measuring that window
+> at full resolution, *not* the count, which only deletes the art that shows it.
 
 > ⚠️ **`perLiftScreen` is patches ON SCREEN, not per lift.** The two rides climb
 > 4826 and 2296 px, so one count would make the short one a carpet or the long one

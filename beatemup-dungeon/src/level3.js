@@ -93,6 +93,9 @@ const Level3 = {
   _camDX: 0,        // how far the camera moved THIS frame, after its clamp
   _boiling: false,  // is the elevator animating right now
   _boilT: 0,        // its own clock -- only runs while it boils. See _tickBoil.
+  _board: false,    // walking him onto the slab; the ride waits. See tickBoarding
+  _boardWalked: false, // he has reached the middle; the camera may still be panning
+  _boardT: 0,       // how long that has been going on -- the stuck-hook guard
 
   /** Is this the bookcase? The guard every hook is wrapped in. */
   owns(room) { return !!(room && room.level3 && CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false); },
@@ -111,6 +114,9 @@ const Level3 = {
     this._camDX = 0;
     this._boiling = false;
     this._boilT = 0;
+    this._board = false;
+    this._boardWalked = false;
+    this._boardT = 0;
   },
 
   /**
@@ -230,7 +236,23 @@ const Level3 = {
         : ((L.dir < 0) ? hi - pad - inset : lo + pad + inset);
       const to = (landing != null) ? landing
         : ((L.dir < 0) ? lo + pad : hi - pad);
-      this._bands.push({ lo, hi, from, to, camLo, camHi, landing, arrival,
+      /* ⚠️ WHERE HE STEPS ON, WHICH IS NOT WHERE HE USED TO STOP. `to` is the
+         LANDING -- the point the camera has to be pinned by -- and it sits 300px
+         PAST the slab's middle, so ending the leg there made him walk across the
+         whole elevator and get marched back: *"I have to walk until the rightmost
+         side, then the player walks to the middle, this is wrong"* (2026-09-10,
+         reported for both lifts).
+
+         The gate is the NEAR standable edge of the slab, and it is the same
+         `standHalfRel` that `Elevador.tickRider` uses to decide he is aboard --
+         one definition of "on the lift", not two. He touches it 364px (shelf 1)
+         and 568px (shelf 2) before the camera would have pinned, which is the
+         whole reason boarding has to carry the camera; see `update`. */
+      const P = C.platform || {};
+      const half = (P.widthPx || 960) * (P.standHalfRel || 0.35);
+      const gate = (platX == null) ? null
+        : ((L.dir < 0) ? platX + half : platX - half);
+      this._bands.push({ lo, hi, from, to, gate, camLo, camHi, landing, arrival,
                          platX, arrivalPlatX });
       cursor = hi + gap;
     }
@@ -371,17 +393,89 @@ const Level3 = {
     this._camDX = 0;
 
     if (L.kind === 'lift') {
+      /* ⚠️ THE RIDE HAS NOT STARTED YET WHILE HE IS BOARDING, and everything
+         that says "a ride is happening" is held rather than skipped: the film
+         sits on the leg's first frame, the camera stays pinned where the walk
+         left it, and `_tickBoil(dt, false)` holds the slab on frame 0 -- it is
+         not moving, and the boil is the only thing on screen that says whether
+         it is. ⚠️ `legT` IS PUT BACK TO ZERO, not merely ignored: it was
+         incremented at the top of this method, and the ride's whole film mapping
+         is `legT / L.sec`, so a boarding walk left in it would start the shot
+         part-way through. See `tickBoarding` for the walk itself. */
+      if (this._board) {
+        this.legT = 0;
+        /* ⚠️ THE LEG HE JUST LEFT STILL OWNS THE CAMERA AND THE FILM, and that
+           is what makes the hand-over seamless instead of a jump. He steps onto
+           the slab 364px (shelf 1) / 568px (shelf 2) BEFORE the camera would
+           have pinned, so `progress` is short of the leg's end -- the exact
+           thing `landingInsetPx` used to exist to prevent by making him walk
+           further. Boarding finishes that walk for him: the camera pans the rest
+           of the way at his own walking speed, `progress` is read off it with
+           the PREVIOUS leg's mapping, and it lands on `PL.film[1]`, which IS
+           this lift's `film[0]`. Measured hand-over gap: 0.00s.
+
+           ⚠️ AT WALKING SPEED, NOT "IN STEP WITH HIM". The whole room is built
+           on the film moving 1:1 with the feet, and a pan sized to finish with
+           his 336px walk would run 1.7x that on shelf 2. So the pan keeps the
+           rate and he waits: the walk is 1.12s, the pan 1.21s on shelf 1 and
+           1.89s on shelf 2, and the difference is a beat of him standing on the
+           lift while it settles into frame. */
+        const PL = this.legs()[this.leg - 1];
+        const pb = this._bands[this.leg - 1];
+        if (!PL || !pb) { this._board = false; return null; }
+        const pin = (PL.dir < 0) ? pb.camLo : pb.camHi;
+        const was = this._camX;
+        const step = (CONFIG.walkSpeedX || 300) * dt;
+        this._camX = (this._camX < pin) ? Math.min(pin, this._camX + step)
+                                        : Math.max(pin, this._camX - step);
+        this._camDX = this._camX - was;
+        stage.camX = this._camX;
+        stage.camTarget = this._camX;
+        const bf = (PL.dir < 0) ? (pb.camHi - this._camX) / PL.px
+                                : (this._camX - pb.camLo) / PL.px;
+        this.progress = PL.film[0]
+                      + (PL.film[1] - PL.film[0]) * Math.max(0, Math.min(1, bf));
+        /* ⚠️ AND IT BOILS WHILE THE CAMERA PANS, by the ordinary rule rather
+           than an exception: the slab is sliding across the screen, which is
+           what `_tickBoil` means by moving. `riding` stays false because it is
+           not rising yet. */
+        this._tickBoil(dt, false);
+        if (this._boardWalked && this._camX === pin) this._board = false;
+        /* ⚠️ THE CLOCK IS KEPT **HERE**, NOT IN `tickBoarding`, AND THAT IS THE
+           POINT OF IT. This method is called every play frame by the stage;
+           `tickBoarding` is called by a hook in game.js, and if that hook ever
+           stops being reached -- a new phase, a reordered loop -- the walk would
+           never finish and the room would hang with the lift parked forever. A
+           clock kept on the side that always runs can see that happen. */
+        this._boardT += dt;
+        const bail = (CONFIG.GAME_W / (CONFIG.walkSpeedX || 300)) + 1;
+        if (this._boardT > bail) {
+          /* Crossing the whole canvas at walking pace and then a second more:
+             the walk is 1.0s, so reaching this means nobody is driving it. Put
+             him on the mark and let the lift go rather than stranding the run. */
+          const mark = this._boardMarkX();
+          if (player && mark != null) player.x = mark;
+          this._board = false;
+        }
+        return null;
+      }
       /* ⚠️ INPUT IS NOT DISABLED HERE, THE WALLS ARE CLOSED (see bounds()).
          Freezing the controls would also freeze his facing and his idle, and a
          rider who cannot even turn round reads as the game having hung. He can
          walk and swing on the platform; he simply has nowhere to go.
 
-         ⚠️ AND THERE IS NO LONGER ANY BOARDING MOVE. There used to be a 0.35s
-         ease that slid him onto the platform, because he reached the lift by
-         walking into the far WALL, ~380px past it. Now the platform IS the end
-         of the leg -- he is standing on its centre on the frame the ride starts,
-         because touching it is what started the ride. Nothing to correct, and
-         *"he kinda gets pushed to the middle of the screen"* goes with it. */
+         ⚠️ THE BOARDING MOVE CAME BACK ON 2026-09-10, AND IT IS NOT THE ONE
+         THAT WAS DELETED. This note used to say there was none, and that he was
+         "standing on its centre on the frame the ride starts". The first half
+         was true and the second half was never true: the landing has to sit
+         where the camera is already pinned (screen 940 / 340) and the slab is
+         drawn centred at 640, so touching it left him 300px off the middle.
+         What was deleted was `boardSec`, a 0.35s EASE that dragged him onto a
+         lift he could not walk to -- *"he kinda gets pushed to the middle of the
+         screen"*. What is here now is his own `scriptWalk` across a gap he can
+         see, and the ride WAITS for it (see the `_board` branch above and
+         `tickBoarding`). Asked for in those terms: *"a animacao captura o player
+         e ele caminha ate o meio, dai o elevador comeca a se mexer."* */
       const t = Math.min(1, this.legT / L.sec);
       this.progress = L.film[0] + (L.film[1] - L.film[0]) * t;
       /* THE CAMERA HOLDS. A rise is vertical and this camera is horizontal --
@@ -440,10 +534,77 @@ const Level3 = {
     this.progress = L.film[0]
                   + (L.film[1] - L.film[0]) * Math.max(0, Math.min(1, f));
 
-    // Reached the far end of the shelf: the lift is waiting.
-    const arrived = (L.dir < 0) ? (player.x <= b.to) : (player.x >= b.to);
+    /* STEPPED ONTO THE LIFT: the ride is next. ⚠️ THE GATE, NOT THE LANDING,
+       WHENEVER THE BOARDING WALK IS ON -- see the note on `gate` in enterRoom.
+       With `boardWalk` off there is nothing to carry the camera, so the leg has
+       to end where the camera is already pinned and `to` is that place. */
+    const C2 = this.cfg() || {};
+    const end = (C2.boardWalk !== false && b.gate != null) ? b.gate : b.to;
+    const arrived = (L.dir < 0) ? (player.x <= end) : (player.x >= end);
     if (arrived) return this._nextLeg(stage, player);
     return null;
+  },
+
+  /**
+   * WHERE THE MIDDLE OF THE SLAB IS, in world x -- the mark he boards to.
+   *
+   * ⚠️ THERE IS NO HALF-WIDTH TO ADD, and adding one is the mistake this note
+   * exists to prevent. The elevator pack is anchored on its front lip's CENTRE
+   * (see elevador.js), so the number `drawPlatform` paints it at IS its middle.
+   * `offsetX` is part of that number because `platformRect` applies it, and a
+   * mark that ignored it would walk him to where the slab is not.
+   */
+  _boardMarkX() {
+    const at = this._liftPlatX();
+    if (at == null) return null;
+    const P = (this.cfg() && this.cfg().platform) || {};
+    return at + (P.offsetX || 0);
+  },
+
+  /** Is the room walking him onto a lift right now? The hook's guard. */
+  boarding(room) { return this.owns(room) && !!this._board; },
+
+  /**
+   * Walk him to the middle of the slab, under the game's control.
+   *
+   * ⚠️ IT REPLACES `player.update` FOR THESE FRAMES RATHER THAN RUNNING BESIDE
+   * IT, WHICH IS THE WHOLE REASON IT IS A HOOK IN game.js AND NOT A LINE IN
+   * `update()`. `scriptWalk` ticks the fighter itself (`super.update`), so
+   * calling it after the ordinary update would advance him TWICE in one frame --
+   * double animation, double physics. And the ordinary update cannot simply be
+   * left running with input: it would move him too, so holding the stick the
+   * other way would fight the script to a standstill and the lift would never
+   * leave. One of the two has to own the frame; this does.
+   *
+   * ⚠️ AND IT IS THE PLAYER'S OWN WALK, NOT AN EASE. `scriptWalk` is the same
+   * call the boss room's lift cutscene boards him with, so it is his real speed
+   * (`walkSpeedX` 300) and his real walk animation. At the current numbers the
+   * mark is 300px from the landing either way -- `GAME_W/2 - gateMarginX -
+   * landingInsetPx`, which happens to equal `landingInsetPx` and is NOT the same
+   * number twice -- so the walk is a flat 1.0s. Move either knob and it changes;
+   * nothing here needs telling.
+   *
+   * ⚠️ THE DIRECTION IS ASKED EVERY FRAME, not decided once. He can be on either
+   * side of the mark -- shelf 1 lands to its right and shelf 2 to its left -- and
+   * a script that only ever walked one way would stall for half the room.
+   *
+   * Returns true when it has taken the frame, so game.js knows to skip the
+   * ordinary update.
+   */
+  tickBoarding(dt, player, room) {
+    if (!this.boarding(room) || !player) return false;
+    const mark = this._boardMarkX();
+    if (mark == null) { this._board = false; return false; }
+    /* ⚠️ HE STOPS BEFORE BOARDING DOES. The camera is still panning the shot to
+       its end (see `update`), and standing on the slab through that is the
+       settle -- he and the lift are one object in world space by then, so only
+       the background moves. `update` owns the flag; this owns the walk. */
+    if (this._boardWalked) { player.scriptIdle(dt); return true; }
+    const dir = (player.x > mark) ? -1 : 1;
+    player.scriptWalk(dt, dir);
+    const there = (dir < 0) ? (player.x <= mark) : (player.x >= mark);
+    if (there) { player.x = mark; this._boardWalked = true; }
+    return true;
   },
 
   _nextLeg(stage, player) {
@@ -462,7 +623,20 @@ const Level3 = {
       /* A lift owns no band and needs no placement: the player is already
          standing on the platform, which is why touching it ended the last leg.
          The camera does not move either -- it was pinned at the end of its range
-         before he could reach the landing at all. */
+         before he could reach the landing at all.
+
+         ⚠️ BUT HE IS ON ITS EDGE, NOT ITS MIDDLE, AND THAT IS WHERE THE RIDE
+         USED TO START. The landing has to sit where the camera is already
+         pinned (screen 940 / 340) and the slab is DRAWN centred (640), so
+         touching it leaves him 300px off centre. Asked for 2026-09-10: *"basta
+         o player caminhar no elevador; entao ele caminha no elevador, e a
+         animacao captura o player e ele caminha ate o meio, dai o elevador
+         comeca a se mexer e o player pode recuperar o controle."* So the ride
+         waits while he walks the rest of the way in. See `tickBoarding`. */
+      const C = this.cfg() || {};
+      this._board = (C.boardWalk !== false);
+      this._boardWalked = false;
+      this._boardT = 0;
       return null;
     }
     this._place(player, stage, rodeTo);

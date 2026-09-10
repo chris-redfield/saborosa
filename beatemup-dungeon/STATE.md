@@ -9560,3 +9560,96 @@ moves between −33% and +43%.** `perLeg` is a lottery over nine knots that diff
 20× in area, so "58 patches" is worth about a third either way depending on the
 draw. That is why that knob was measured on screen instead of reasoned about —
 and why re-rolling it is a real change, not a shuffle.
+
+### ⚠️ AND THEN HE WALKS HIMSELF IN: THE BOARDING WALK (same day)
+
+*"Quando o elevador vai ser acionado, o player automaticamente caminha até o meio
+do elevador // basta o player caminhar no elevador; então ele caminha no elevador,
+e a animação captura o player e ele caminha até o meio, daí o elevador começa a se
+mexer e o player pode recuperar o controle do personagem."*
+
+⚠️ **AND THE FILE SAID HE WAS ALREADY THERE.** The lift branch's own comment read
+*"he is standing on its centre on the frame the ride starts"* — and he never was.
+The landing has to sit where the camera is already PINNED (screen 940 rightward,
+340 leftward) and the slab is DRAWN centred at 640, because a 960px slab centred
+on the landing hangs off the canvas. Those are two different numbers by
+construction, 300px apart, and the note had quietly conflated them. **A comment
+that asserts a coincidence between two numbers the code keeps apart on purpose is
+worth checking before you trust it** — this one was written in the same session
+that separated them.
+
+`LEVEL3.boardWalk`. Touching the lift ends the walk leg as before, but the ride
+now waits while `Level3.tickBoarding` walks him to `_boardMarkX()` with
+`player.scriptWalk` — his real speed and his real walk animation, the same call
+the boss room's lift boards him with. 300px at `walkSpeedX` 300 is a flat **1.0s**.
+
+⚠️ **THE RIDE WAITS; IT DOES NOT GET LONGER.** `legT` is put back to zero every
+boarding frame — not merely ignored — because the film mapping is `legT / L.sec`
+and a boarding walk left in it would start the shot part-way through. The camera
+stays pinned and `_tickBoil(dt, false)` holds the slab on frame 0: it is not
+moving yet, and the boil is the only thing on screen that says whether it is.
+
+⚠️ **THE HOOK REPLACES `player.update`, IT DOES NOT RUN BESIDE IT.** `scriptWalk`
+ticks the fighter itself (`super.update`), so calling it after the ordinary update
+would advance him twice in one frame — double animation, double physics. And the
+ordinary update cannot just be left running with live input: it would move him
+too, so **holding the stick the other way would fight the script to a standstill
+and the lift would never leave.** One of the two has to own the frame.
+
+Driven through the real `Level3` in `game.js`'s own call order, with the stick
+held LEFT, held RIGHT and untouched: all three board in **1.02s** and land on
+screen x **640.0** exactly, the film advances **0.02s** (the ride's own first
+frame), and the room still reaches `done`. `boardWalk: false` puts the instant
+start back.
+
+⚠️ **THE STUCK-HOOK CLOCK LIVES ON THE SIDE THAT ALWAYS RUNS.** `Level3.update` is
+called every play frame by the stage; `tickBoarding` is called by a hook in
+game.js. If that hook ever stops being reached — a new phase, a reordered loop —
+the walk would never finish and the room would hang with the lift parked forever.
+So `update()` keeps `_boardT` and bails after `GAME_W / walkSpeedX + 1` seconds by
+putting him on the mark. **A state that only one caller can leave needs a way out
+that does not depend on that caller.**
+
+⚠️ **AND IT IS NOT `boardSec` COMING BACK.** That was a 0.35s EASE that dragged
+him onto a lift he could not walk to — *"he kinda gets pushed to the middle of the
+screen"* — and it went when the lift got a world x. This is a walk across a gap he
+can see, which is the thing that was actually being asked for both times.
+
+### ⚠️ AND THE TRIGGER WAS IN THE WRONG PLACE, ON BOTH LIFTS
+
+*"I have to walk until the rightmost side, then the player walks to the middle,
+this is wrong"* -- and then *"also the second lift, also has the same problem."*
+
+I added the walk and left the leg ending where it always had: at the LANDING,
+which sits **300px past the slab's middle**. So he walked onto the elevator,
+kept walking across the whole of it to its far end, and only then got marched
+back. Both lifts, mirrored.
+
+⚠️ **THE TWO NUMBERS ARE APART ON PURPOSE AND I USED THE WRONG ONE.** The landing
+has to be where the camera is already PINNED -- screen 940 rightward, 340
+leftward -- and the slab is DRAWN centred at 640, because a 960px slab centred on
+the landing hangs off the canvas. The trigger is the slab's near standable edge
+now (`gate`), which is **the same `standHalfRel` `Elevador.tickRider` uses to
+decide he is aboard**: one definition of "on the lift", not two.
+
+⚠️ **WHICH MEANS BOARDING HAS TO CARRY THE CAMERA.** He touches the slab 364px
+(shelf 1) / 568px (shelf 2) before the camera would have pinned, and a ride that
+starts on an unpinned camera is the ~0.7s film jump `landingInsetPx` was invented
+to prevent. So boarding finishes the walk leg for him: the camera pans the rest of
+the way, `progress` is read off it with the PREVIOUS leg's mapping, and it lands
+on that leg's `film[1]` -- which IS the lift's `film[0]`. **`landingInsetPx` is no
+longer what keeps the film honest while this is on**, and a note that still says
+it is would be wrong.
+
+⚠️ **THE PAN RUNS AT WALKING SPEED, NOT SIZED TO THE WALK.** The room is built on
+the film moving 1:1 with the feet, and a pan sized to finish with his 336px walk
+would run 1.7x that on shelf 2. So the pan keeps the rate and he stands on the
+slab while the shot settles: walk 1.12s, whole thing **1.20s on lift 1, 1.90s on
+lift 2**. Flagged rather than decided -- the alternative is one line and costs the
+plate playing ~1.3x for a second.
+
+Measured with the stick held left, right and untouched: he steps on at the slab's
+edge (offset -332 / +336 from its centre) and finishes at offset **0.0**, player
+and slab both at screen x **640.0**, film on the leg's own end frame, room still
+reaching `done`.
+

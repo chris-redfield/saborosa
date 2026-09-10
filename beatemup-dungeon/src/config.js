@@ -4311,9 +4311,15 @@ const CONFIG = {
        filmed pan accelerates to -31 canvas px per frame against a -12 mean --
        the fastest part of the climb, which is exactly where the phase
        correlation behind `level-3-wall-track.json` is known to wrap. The worms
-       are welded to a track that is wrong there. ⚠️ THE FIX IS THE MEASUREMENT,
-       NOT THIS KNOB: re-run tools/build-level-3-plate.py --track at full
-       resolution over that window before reaching for the count. */
+       may be welded to a track that is wrong there -- suspected, not proven.
+
+       ⚠️ CLOSED ON 2026-09-10 WITHOUT BEING FIXED, ON THE USER'S CALL: *"no need
+       to touch that anymore, just removing those worms at the end was good
+       enough."* The arrival cut was what he wanted; the stutter is accepted.
+       ⚠️ DO NOT RE-OPEN IT UNPROMPTED. If it is ever asked for, the move is to
+       re-run tools/build-level-3-plate.py --track at full resolution over that
+       window -- NOT to reach for this count, which only deletes the art that
+       shows it. */
     perLiftScreen: 22,
     /* THE PLANES. ⚠️ THEY NO LONGER DIFFER IN SIZE, ON REQUEST 2026-09-04:
        *"make them all have the same size"*. `bandScale` was [0.90, 1.15, 1.45]
@@ -5764,6 +5770,53 @@ const CONFIG = {
        640 is inside the pin point in BOTH directions. With a deadzone follow the
        player is never at screen centre while the camera is still. */
     landingInsetPx: 300,
+    /* WALK HIM INTO THE MIDDLE OF THE LIFT BEFORE IT GOES. Asked for
+       2026-09-10: *"basta o player caminhar no elevador; entao ele caminha no
+       elevador, e a animacao captura o player e ele caminha ate o meio, dai o
+       elevador comeca a se mexer e o player pode recuperar o controle."*
+
+       ⚠️ AND THE FIRST VERSION TRIGGERED IT AT THE **LANDING**, WHICH IS 300px
+       PAST THE MIDDLE OF THE SLAB. Reported at once, for both lifts: *"I have to
+       walk until the rightmost side, then the player walks to the middle, this
+       is wrong."* He was walking across the whole elevator and being marched
+       back. The trigger is the slab's NEAR standable edge now (`gate` in
+       level3.js) -- the same `standHalfRel` that decides he is aboard, so there
+       is one definition of "on the lift" and not two -- and the scripted walk
+       always goes FORWARD, from an edge to the centre.
+
+       ⚠️ WHICH MEANS BOARDING HAS TO CARRY THE CAMERA, AND THAT IS THE REAL
+       COST OF THE CHANGE. He touches the slab 364px (shelf 1) and 568px
+       (shelf 2) before the camera would have pinned, and a ride that starts on
+       an unpinned camera is the ~0.7s film jump `landingInsetPx` exists to
+       prevent. So the boarding phase finishes the walk leg for him: the camera
+       pans the rest of the way and `progress` is read off it with the PREVIOUS
+       leg's mapping, landing exactly on that leg's `film[1]`. ⚠️ `landingInsetPx`
+       IS THEREFORE NO LONGER WHAT KEEPS THE FILM HONEST while this is on -- it
+       still places the wall and the fallback, and it is what the leg ends on if
+       you set `boardWalk` false.
+
+       ⚠️ THE PAN RUNS AT WALKING SPEED, NOT "IN STEP WITH HIM", and the beat
+       that creates is deliberate. The whole room is built on the film moving 1:1
+       with the feet; sizing the pan to finish with his 336px walk would run it
+       1.7x that rate on shelf 2. So the pan keeps the rate and he waits on the
+       slab while the shot settles: measured, the walk is 1.12s and the whole
+       thing is **1.20s on lift 1 and 1.90s on lift 2**. If that reads as slow,
+       the alternative is one line -- pan by `shortfall / walkTime` instead of by
+       `walkSpeedX` -- and it costs the plate playing at about 1.3x for a second.
+
+       ⚠️ AND IT IS THE RIDE THAT WAITS, NOT A LONGER RIDE. `sec` is the film's
+       own duration and level3.js holds `legT` at zero through the walk, so the
+       shot still starts on its first frame. The elevator BOILS through the
+       boarding pan, by the ordinary rule rather than an exception: it is sliding
+       across the screen, which is what `_tickBoil` means by moving.
+
+       ⚠️ THIS IS NOT THE OLD `boardSec` COMING BACK. That was a 0.35s EASE that
+       slid him from the far WALL onto a lift he could not walk to, and it was
+       reported as *"he kinda gets pushed to the middle of the screen"*. This is
+       his own `scriptWalk` -- real speed, real walk animation, the same call the
+       boss room's lift boards him with -- over a gap he can already see. Set it
+       false and the ride starts the instant he steps on, as it did before. */
+    boardWalk: true,
     legs: [
       { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98] },
       /* ⚠️ `sec` IS THE FILM'S OWN DURATION AND SHOULD STAY THAT WAY. A rise is
