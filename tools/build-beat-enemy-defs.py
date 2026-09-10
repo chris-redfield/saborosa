@@ -246,13 +246,25 @@ SHEETS = {
         'src': 'assets-v2/beatemup-dungeon/barata-coconutbash.png',
         'base': 'barata-beat',
         'native': 'right',
-        # Drawn BIG: 342.5px of body at the shared 0.49, twice the first
-        # cigarette's 170. Same rule as the cigarettes -- bring the atlas back
-        # to ~170px of body, because `sheets.js` scales every pack so its idle
-        # body is `fighterSizePx` tall and a source drawn 2.5x over that is
-        # 2.5x of texture being thrown away on every draw. Sizing in game is
-        # `bodyH` in the defs, never this.
-        'scale': 0.24,
+        # ⚠️ THE TARGET IS `fighterSizePx * drawScale`, NOT `fighterSizePx`,
+        # AND THIS PACK IS WHY THE RULE HAD TO BE WRITTEN DOWN. It used to say
+        # "bring the atlas back to ~170px of body" -- true for a character drawn
+        # at its normalised size, and wrong for one the game then magnifies.
+        # `sheets.js` scales a pack by `fighterSizePx / bodyH` and MULTIPLIES BY
+        # `drawScale`, so the roach's atlas body of 167.8 was being drawn at
+        # 136.8 x 2.3194 = 317px: **1.89x upscale, every frame**. Reported
+        # 2026-09-10: *"eles foram downscaled no corte, e depois fizemos upscale
+        # no tamanho da barata tanto, que ficou esquisito."*
+        #
+        # 0.4538 puts the atlas body at 317px -- 1.00x, drawn at the resolution
+        # it is cut at. Nothing else in the pipeline changed.
+        #
+        # ⚠️ SO THIS NUMBER IS TIED TO `drawScale` AND HAS TO FOLLOW IT. That
+        # field has moved five times (1.452 -> 1.888 -> 2.4544 -> 2.20896 ->
+        # 2.3194); each of those quietly cost another slice of sharpness, with
+        # nothing to see in the diff. Move it again and re-cut:
+        #     scale = fighterSizePx * drawScale / nativeBodyH,  native 699.2 here
+        'scale': 0.4538,
         'rows': [
             ('idle',   1, 4),
             ('walk',   2, 5),
@@ -268,13 +280,11 @@ SHEETS = {
         'src': 'assets-v2/beatemup-dungeon/barata2-coconutbash.png',
         'base': 'barata2-beat',
         'native': 'right',
-        # Drawn BIG: 342.5px of body at the shared 0.49, twice the first
-        # cigarette's 170. Same rule as the cigarettes -- bring the atlas back
-        # to ~170px of body, because `sheets.js` scales every pack so its idle
-        # body is `fighterSizePx` tall and a source drawn 2.5x over that is
-        # 2.5x of texture being thrown away on every draw. Sizing in game is
-        # `bodyH` in the defs, never this.
-        'scale': 0.24,
+        # ⚠️ SAME AS `barata`, AND FOR THE SAME REASON -- the target is
+        # `fighterSizePx * drawScale`, not `fighterSizePx`; see that spec. The
+        # pair share a `drawScale`, so they share this. 0.4538 -> 317px of body,
+        # drawn at 1.00x instead of the old 1.89x.
+        'scale': 0.4538,
         'rows': [
             ('idle',   1, 4),
             ('walk',   2, 5),

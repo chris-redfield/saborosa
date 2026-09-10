@@ -9653,3 +9653,71 @@ edge (offset -332 / +336 from its centre) and finishes at offset **0.0**, player
 and slab both at screen x **640.0**, film on the leg's own end frame, room still
 reaching `done`.
 
+
+## The roaches: re-cut at the size they are drawn, and the fourth punch (2026-09-10)
+
+*"Reimplementar os sprites da barata — re cortar os sprites do spritesheet
+original, porque eles foram downscaled no corte, e depois fizemos upscale no
+tamanho da barata tanto, que ficou esquisito"* + *"Barata tem um quarto soco, e
+não está usando ele direito. Checar o spritesheet original."*
+
+### ⚠️ THE CUTTER'S RULE WAS WRITTEN FOR A CHARACTER NOBODY MAGNIFIES
+
+The spec's own comment said *"bring the atlas back to ~170px of body, because
+`sheets.js` scales every pack so its idle body is `fighterSizePx` tall"*. That
+sentence is true and the conclusion is wrong, because it stops one term short:
+`sheets.js` scales by `fighterSizePx / bodyH` **and then multiplies by
+`drawScale`**. So the target is `fighterSizePx × drawScale`.
+
+    atlas body 167.8    fighterSizePx 136.8    drawScale 2.3194
+    drawn at 136.8 x 2.3194 / 167.8  =  1.89x  UPSCALE, every frame
+
+`scale` 0.24 → **0.4538**, atlas body **317.2 px**, drawn at **1.000×**. One
+number in `tools/build-beat-enemy-defs.py`; the tile layout, the anims and the
+19-for-24 dedupe all came out byte-identical, so nothing downstream moved.
+
+⚠️ **AND THE DAMAGE WAS DONE ONE REQUEST AT A TIME.** `drawScale` went 1.452 →
+1.888 → 2.4544 → 2.20896 → 2.3194 across four sessions. Every one of those was a
+one-line diff that looked like a pure sizing tweak and was also a sharpness cut,
+with nothing in the diff to say so. **A knob that scales a sprite at draw time is
+coupled to the knob that scales it at cut time, and only one of them is visible
+in review.** The formula is now written next to both.
+
+⚠️ **NOBODY ELSE IS THIS BAD, AND NOBODY ELSE IS AT 1.0.** Measured across the
+cast by the same formula: horse 1.37×, cigarro2/3 1.36×, cigarro 1.17×, barril
+1.12×, espeto 0.90×, charutobi 0.74×. Left alone on purpose — this was about the
+roach — but it is the same one-line fix each.
+
+Cost: 869×679 → 1643×1283 per sheet, decoded texture 4.7 MB → 16.9 MB for the
+pair. Against the game's 31 atlases at **340.8 MB** (HORÁCIO alone is 117 MB)
+that is +3.7%, which is why it was not worth trading sharpness for.
+
+### ⚠️ THE FOURTH PUNCH NEEDED THREE ENTRIES, AND TWO OF THEM FAIL SILENTLY
+
+Checking the master first, as asked: row 3 is **five bodies** on both sheets —
+the cut was right all along. Frame 0 is a guard, 1–4 are four separate strikes,
+and the game used 1, 2, 3.
+
+Wiring it took a pose (`combo4`), an `ENEMY_COMBOS` step, **and a fourth
+`enemyComboWeights` entry**. That last one is the trap: `_rollChain` reads
+`min(weights.length, combo.length)`, so with three weights the new step is
+present, correct and never rolled — no error, no warning, and it reads in play as
+"he just doesn't do that". The espeto note already warned about it in those exact
+terms, which is why it was checked rather than discovered.
+
+⚠️ **THE FIRST THREE HITS ARE UNTOUCHED**, so a string that rolls 1–3 plays
+exactly as it did. The fourth is a TAIL past the punish window at **1 in 11**
+(espeto's finisher is 1 in 12), which means combo3's 430 ms recovery now falls
+**mid-string** on a four-roll — deliberate, and the shape espeto's heavy third
+already has. Average damage per attack 10.2 → 11.2 and 12.1 → 13.6, about +10%
+each; the weight is the knob to dial, not the damage.
+
+⚠️ **AND THE REACH IS COMBO3's, NOT LONGER, BECAUSE THE ART WAS MEASURED.** The
+fourth drawing reads like a lunge — I nearly gave it the longest box in the
+string on that basis. Rendered anchor-aligned and measured at the arm tip, the
+four strikes land within **5 px** of each other (93.2 / 93.1 / 87.9 / 88.9 game
+px); frame 4 is one pixel further out than frame 3. ⚠️ **The silhouette lies
+about this**: the raw bbox widths (579/580/566/587/573) rank them differently
+again, because the horns and the rear legs are most of the box. Neither the eye
+nor the bounding box answers "how far does the punch reach" — the fist does.
+

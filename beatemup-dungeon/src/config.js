@@ -1899,11 +1899,16 @@ const CONFIG = {
 
        THREE POSE OVERRIDES, AND EACH IS A CONSEQUENCE OF THE SHEET:
 
-       `combo1..3` -- his punch row is FIVE frames, not the cigarettes' six, and
+       `combo1..4` -- his punch row is FIVE frames, not the cigarettes' six, and
        it is not wind-up/strike pairs. Frame 0 is a guard he returns to and
        frames 1-4 are four separate strikes, so each punch is ONE drawing and
-       the shared table's pair-slicing would cut every hit in half. The fourth
-       strike is cut and unwired -- three is the longest string.
+       the shared table's pair-slicing would cut every hit in half.
+
+       ⚠️ THE FOURTH STRIKE WAS CUT AND UNWIRED UNTIL 2026-09-10, when it was
+       reported as exactly that: *"barata tem um quarto soco, e nao esta usando
+       ele direito."* It is `combo4` now, the rare tail of his string -- see
+       ENEMY_COMBOS.barata and `enemyComboWeights`, and note that BOTH of those
+       have to gain an entry or the drawing stays unreachable.
 
        `down` -- there is no knockdown row. It borrows the death row's last
        frame, which is the roach on its back with its legs up: that IS what
@@ -1956,6 +1961,9 @@ const CONFIG = {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
                  combo3: { anim: 'combo', from: 3, to: 4 },
+                 /* THE FOURTH DRAWING, wired 2026-09-10. Same one-frame shape
+                    as the other three: this row is four strikes, not pairs. */
+                 combo4: { anim: 'combo', from: 4, to: 5 },
                  down:   { anim: 'death', from: 2, to: 3 },
                } },
     /* The red one. Same six rows drawn to one plan, heavier in the fight. */
@@ -1972,6 +1980,9 @@ const CONFIG = {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
                  combo3: { anim: 'combo', from: 3, to: 4 },
+                 /* THE FOURTH DRAWING, wired 2026-09-10. Same one-frame shape
+                    as the other three: this row is four strikes, not pairs. */
+                 combo4: { anim: 'combo', from: 4, to: 5 },
                  down:   { anim: 'death', from: 2, to: 3 },
                } },
 
@@ -5021,6 +5032,31 @@ const CONFIG = {
       { pose: 'combo3', startupMs: 190, activeMs: 100, recoverMs: 430,
         cancelMs: 0, damage: 6, reachX: 114 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
         knockback: 200, lift: 0 },
+      /* THE FOURTH DRAWING, WIRED 2026-09-10 -- *"barata tem um quarto soco, e
+         nao esta usando ele direito."* It was cut into the atlas from the first
+         build and never reachable: three poses, three string entries, three
+         weights.
+
+         ⚠️ THE FIRST THREE HITS ARE UNTOUCHED ON PURPOSE, so a string that
+         rolls 1, 2 or 3 plays exactly as it did before this existed. This is a
+         TAIL, not a re-balance -- the same shape as espeto's `combo4`/`combo5`
+         past his heavy third.
+
+         ⚠️ WHICH MEANS COMBO3's 430ms RECOVERY HAPPENS *MID-STRING* on a
+         four-roll, and that is deliberate rather than overlooked. The punish
+         window stays where it is; on the rare long string the player gets it
+         and he keeps coming anyway, which is the whole reason to notice a
+         fourth hit at all. Espeto's third does the same.
+
+         ⚠️ THE REACH IS COMBO3's, NOT LONGER, AND THAT WAS MEASURED. The
+         drawing looks like a bigger swing, but the arm tips of the four strikes
+         land within 5px of each other off the anchor (93.2 / 93.1 / 87.9 /
+         88.9 game px) -- frame 4 is one pixel further out than frame 3. Giving
+         it a longer box because it reads as a lunge would be a hitbox the
+         picture does not have. */
+      { pose: 'combo4', startupMs: 220, activeMs: 120, recoverMs: 520,
+        cancelMs: 0, damage: 7, reachX: 114 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 260, lift: 0 },
     ],
     // The red one: the same string played heavier, the way the stub is to
     // CIGARRO. Every window longer, every hit worth more.
@@ -5034,6 +5070,12 @@ const CONFIG = {
       { pose: 'combo3', startupMs: 240, activeMs: 110, recoverMs: 520,
         cancelMs: 0, damage: 9, reachX: 118 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
         knockback: 240, lift: 0 },
+      // The red one's fourth, heavier and slower in the same proportion the
+      // other three keep. Reach is combo3's for the reason stated there: the
+      // four strike drawings all reach the same distance.
+      { pose: 'combo4', startupMs: 260, activeMs: 130, recoverMs: 600,
+        cancelMs: 0, damage: 10, reachX: 118 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
+        knockback: 300, lift: 0 },
     ],
 
     cigarro3: [
@@ -7325,8 +7367,21 @@ const CONFIG = {
        roach's whole identity is that he is already on the second one. Weighted
        toward three, his ordinary attack is a flurry and the charge is what
        breaks the rhythm. */
-    barata:  [2, 3, 5],
-    barata2: [3, 3, 4],
+    /* ⚠️ FOUR ENTRIES SINCE 2026-09-10, AND THE FOURTH IS THE WHOLE POINT OF
+       THE CHANGE. `_rollChain` reads `min(weights.length, combo.length)`, so
+       leaving these at three would have added `combo4` to ENEMY_COMBOS, added
+       the pose, and still never shown the drawing -- silently, exactly as the
+       note on espeto's five warns.
+
+       ⚠️ WEIGHTED RARE -- 1 in 11, against espeto's finisher at 1 in 12. The
+       roach still leans long over his first three (he is the only kind that
+       does), and the fourth sits past the punish window as a surprise rather
+       than as part of the rhythm. It costs the player 7 on top of a string that
+       already cost 14, so at flat weights it would be a different enemy.
+       Measured over the roll: average damage per attack goes 10.2 -> 11.2,
+       about +10%. Dial THIS, not the damage, if he starts to feel unfair. */
+    barata:  [2, 3, 5, 1],
+    barata2: [3, 3, 4, 1],
   },
   /* =========================================================================
      THE BARATA CHARGE

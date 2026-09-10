@@ -49,7 +49,7 @@ CHARACTERS.coconut.drawScale:  0.9,     // the player, DRAWN size
 CHARACTERS.cigarro.drawScale:  1.452,   // raised 45% over three requests
 CHARACTERS.cigarro2.drawScale: 1.691,   // the stub, 1.164x the above
 CHARACTERS.cigarro3.drawScale: 1.691,   // drawn at the stub's size
-CHARACTERS.barata.drawScale:   2.20896, // both roaches; 1.888 +30% then -10%
+CHARACTERS.barata.drawScale:   2.3194,  // both roaches; 1.888 +30% -10% +5%
 CHARACTERS.horse.drawScale:    2.2243,  // HIPÓLITO; 1.711 + 30%, paired with sizePx
 flyBossSizePx: 304,                     // the Mosca, drawn AND simulated
 ```
@@ -3583,8 +3583,11 @@ player HP      110  x 3 lives
 DUDU      (cigarro)  34   0.88    3 + 3 + 5  = 11        30%        -
 DIDI      (cigarro2) 40   0.72    4 + 4 + 7  = 15        20%        -
 DEDÉ      (cigarro3) 55   0.58    6 + 6 + 10 = 22        20%        -
-CLAUDINHO (barata)   50   1.05    4 + 4 + 6  = 14        50%       12 @ 15.4%/turn
-ZIDANE    (barata2)  66   0.90    5 + 5 + 9  = 19        40%       15 @ 11.2%/turn
+CLAUDINHO (barata)   50   1.05    4+4+6+7    = 21         9%*      12 @ 15.4%/turn
+ZIDANE    (barata2)  66   0.90    5+5+9+10   = 29         9%*      15 @ 11.2%/turn
+                                  * FOUR hits since 2026-09-10; P shown is the
+                                    fourth. Avg damage per attack 10.2 -> 11.2
+                                    and 12.1 -> 13.6, about +10% each
 ESPETO    (espeto)   60   0.95    3+3+5+3+7  = 21         8%*       -   (the desert)
                                   * five hits, not three -- P(all five) is 1 in 12
 CHARUTOBI (charutobi) 30  0.95*   NO PUNCH -- 12 on the death blast (the desert)
@@ -4414,8 +4417,30 @@ draw call, not a rebuild.
 
 `drawScale` **2.3194** for both, and it got there in four requested steps rather
 than by measurement: 1.452 (the cigarettes') × 1.3 × 1.3 × 0.9 × 1.05. Both
-sheets cut to an identical 167.8 px body, so the pair is drawn at one number and
-there is no ratio to preserve between them.
+sheets cut to an identical **317.2 px** body, so the pair is drawn at one number
+and there is no ratio to preserve between them.
+
+> ⚠️ **THE ATLAS WAS 167.8 px UNTIL 2026-09-10, AND THAT MEANT EVERY ROACH ON
+> SCREEN WAS A 1.89× UPSCALE.** Reported as *"eles foram downscaled no corte, e
+> depois fizemos upscale no tamanho da barata tanto, que ficou esquisito."*
+> `sheets.js` scales a pack by `fighterSizePx / bodyH` **and multiplies by
+> `drawScale`**, so the cutter's target is `fighterSizePx × drawScale`, not
+> `fighterSizePx` — and the cutter's comment said the second. Re-cut at
+> `scale` 0.4538 the atlas body is 317.2 px and the pack draws at **1.000×**.
+>
+> ⚠️ **This number is tied to `drawScale` and has to follow it.** That field has
+> moved five times and each move quietly cost another slice of sharpness, with
+> nothing to see in the diff. Move it again and re-cut:
+> `scale = fighterSizePx × drawScale / nativeBodyH` (native is 699.2 here).
+>
+> ⚠️ **Nobody else is anywhere near as bad, but nobody else is at 1.0 either.**
+> Measured across the cast: horse **1.37×**, cigarro2/3 **1.36×**, cigarro
+> **1.17×**, barril 1.12×, espeto 0.90×, charutobi 0.74×. Left alone — this
+> session was about the roach — but the same one-line fix applies to each.
+>
+> Cost: the two atlases go 869×679 → **1643×1283**, decoded texture 4.7 MB →
+> 16.9 MB. In context the game's 31 atlases total **340.8 MB** and HORÁCIO alone
+> is 117 MB, so this is +3.7%.
 
 > ⚠️ **Their reaches have never moved with it**, and that is the standing warning
 > on `drawScale`: it is drawn size only. The hurtbox, the punch boxes and the
@@ -4434,15 +4459,34 @@ cockroach does neither. What they have instead is the charge.
 |---|---|---|
 | 1 idle | 4 | |
 | 2 walk | 5 | |
-| 3 combo | 5 | frame 0 is a guard; **1, 2, 3 are the punches**; 4 is spare |
+| 3 combo | 5 | frame 0 is a guard; **1, 2, 3, 4 are the punches** — all four wired |
 | 4 hurt | 2 | both cycle |
 | 5 death | 3 | frames 1–2 are the hurt pair again — they dedupe to one tile |
 | 6 ball | 5 | frame 0 is the tuck, 1–4 spin |
 
-Their `combo1..3` are **one drawing each**, which is why they need per-character
+Their `combo1..4` are **one drawing each**, which is why they need per-character
 pose overrides — the shared table slices a combo row into wind-up/strike pairs
 and would cut every one of these punches in half. `down` borrows the death
 row's last frame, the roach on its back.
+
+> ⚠️ **THE FOURTH PUNCH WAS CUT AND UNREACHABLE UNTIL 2026-09-10** — *"barata tem
+> um quarto soco, e não está usando ele direito."* It was in the atlas from the
+> first build; what was missing was a pose, a string entry **and a fourth
+> weight**. Leaving any one of those out shows nothing and warns nothing:
+> `_rollChain` reads `min(weights.length, combo.length)`, so a three-long weights
+> array silently caps the string at three — the same trap espeto's five-entry
+> note was written about.
+>
+> ⚠️ **The first three hits are untouched**, so a string that rolls 1–3 plays
+> exactly as before. The fourth is a *tail* past the punish window, weighted
+> **1 in 11** (espeto's finisher is 1 in 12). Which means combo3's 430 ms
+> recovery now happens **mid-string** on a four-roll — deliberate, and the same
+> shape espeto's heavy third has.
+>
+> ⚠️ **Its reach is combo3's, not longer, and that was measured.** The drawing
+> reads like a bigger swing, but the four strikes' arm tips land within 5 px of
+> each other off the anchor (93.2 / 93.1 / 87.9 / **88.9** game px). A longer box
+> would be a hitbox the picture does not have.
 
 ### The charge — `CONFIG.BARATA_CHARGE`
 
