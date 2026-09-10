@@ -66,6 +66,17 @@
  * hand-off, nothing to time. The lift legs only have to dress the wall BETWEEN
  * those two, which is what `perLiftScreen` is for.
  *
+ * ⚠️ AND THAT PARAGRAPH IS EXACTLY WHY *"RETIRAR TODOS OS VERMES DE CIMA DOS
+ * ELEVADORES"* (2026-09-10) IS **NOT** `perLiftScreen`. I read it as this knob
+ * and zeroed it, and was corrected: *"at the end of the lifts, when you arrive in
+ * the next floor, THOSE are the ones you should have removed, not the vertical
+ * ones."* Because shelf N+1's patches arrive from the TOP before the ride ends,
+ * the worms over the slab you step off are the WALK leg's, not the lift's --
+ * measured, shelf 2 is in frame from 80% of lift 1 and the lift's own are gone by
+ * 85%. Turning the lift's own off emptied the MIDDLE of the climb, which is the
+ * one stretch nobody asked about. The cut lives in the walk branch of
+ * `enterRoom` (`arriving`); the lift legs are untouched and back at 22.
+ *
  * ⚠️ A LIFT LEG'S OWN PATCHES MUST NOT REACH EITHER END OF ITS TRAVEL, and that
  * is not a nicety. A walk leg barely moves in y, so a patch that is on screen at
  * the moment a ride starts is on screen for very nearly the WHOLE of the walk
@@ -234,7 +245,30 @@ class Vermes {
        screen" has to mean for art anchored at its CENTRE. Used as the margin at
        both ends of a lift's window and across a lift's width. */
     const PAD = 360;
-    let n = 0;
+    /* ⚠️ THE HASH SEED IS PER LEG, NOT A COUNTER RUNNING ACROSS THEM, and that
+       stopped being a detail on 2026-09-10. It used to be one `n++` walking
+       through every patch in the room, so a leg's scatter depended on HOW MANY
+       PATCHES EVERY EARLIER LEG HAPPENED TO LAY -- turning `perLiftScreen` off
+       re-rolled shelves 2 and 3, which nobody asked for and which is exactly the
+       kind of change that makes a removal impossible to judge. A leg's stream is
+       its own now, so `perLeg` and `perLiftScreen` move only the leg they name.
+
+       ⚠️ THE STRIDE ONLY HAS TO OUTRUN THE BIGGEST COUNT -- 609 against a
+       `perLeg` of 58 is not tight -- so its VALUE is free, and it was picked
+       rather than defaulted. `li * stride + i` is `i` on leg 0 whatever the
+       stride, so **shelf 1 is byte-identical to the wall already approved** for
+       nothing; 609 is the value whose draw also brought shelves 2 and 3 back to
+       that wall's density (+0.2% / -0.2%, against +15.9% / +8.8% for the first
+       value tried, 1000). Those two have since been cut back on purpose by the
+       arrival window below, and what is still dressed measures -4.4% / +2.0%.
+
+       ⚠️ AND THAT IS WORTH KNOWING FOR ITS OWN SAKE: sweeping every legal
+       stride moves leg 2 between -33% and +43%. `perLeg` is a LOTTERY over nine
+       knots that differ 20x in area, so "58 patches" is worth about a third
+       either way depending on the draw -- which is why that knob was measured on
+       screen rather than reasoned about, and why it has to be re-measured and
+       not scaled. Change this number and you are re-rolling two shelves. */
+    const SEED_STRIDE = 609;
     for (let li = 0; li < legs.length; li++) {
       const L = legs[li];
       if (!L.film) continue;
@@ -279,10 +313,70 @@ class Vermes {
         lo = rx.min - GW;
         span = (rx.max - rx.min) + GW * 2;
         count = Math.max(0, Math.round(C.perLeg != null ? C.perLeg : 12));
+        /* ⚠️ THE WALL YOU LAND ON IS BARE, and it is a WALK leg's job to leave
+           it that way. Asked for 2026-09-10, then corrected in the same breath
+           when I took the ride's own patches out instead: *"at the end of the
+           lifts, when you arrive in the next floor, THOSE are the ones you
+           should have removed, not the vertical ones"*.
+
+           ⚠️ THE ONES ON SCREEN AT AN ARRIVAL BELONG TO THE LEG YOU ARE ARRIVING
+           ON, WHICH IS WHY TURNING THE LIFT OFF DID NOT TOUCH THEM. A ride ends
+           with the film already showing the next shelf: measured, shelf 2's
+           patches are in frame from 80% of lift 1 and the lift's own are gone by
+           85%. They arrive from the TOP of the screen as the film pans up, over
+           the slab he is about to step off. So the cut has to come out of THIS
+           leg's window, not out of the lift's.
+
+           ⚠️ AND IT IS ONE SCREEN, NOT THE SLAB'S WIDTH, because "above the
+           elevator" is the whole frame. The worms live on the books at the top
+           (`yFrom`/`yTo` put their centres ABOVE y0) and the slab sits on the
+           belt line at the bottom -- they never overlap vertically, so there is
+           no narrower thing to cut. `PAD` at each end is what keeps a knot from
+           peeking in at the edge: the widest is 408 drawn and the anchor is its
+           centre, so 360 clears it.
+
+           ⚠️ THE ARRIVAL IS ALWAYS AT ONE EXTREME OF THE LEG'S RANGE, which is
+           what makes this a shrink rather than a hole to reject-sample around.
+           Which extreme depends on the leg's direction, so it is asked rather
+           than assumed -- shelf 2 walks LEFT and starts at its own maximum.
+
+           ⚠️ THE DEPARTURE END IS DELIBERATELY LEFT ALONE. The lift standing at
+           the far end of a shelf has worms above it for the whole ~4s approach,
+           and that was not what was reported; it is the same cut on `w1` if it
+           ever is. */
+        const arriving = !!(legs[li - 1] && legs[li - 1].kind !== 'walk');
+        if (arriving) {
+          const keepLo = w0.x - PAD, keepHi = w0.x + GW + PAD;
+          const hi = lo + span;
+          const startsHigh = (w0.x - rx.min) > (rx.max - w0.x);
+          const nlo = startsHigh ? lo : keepHi;
+          const nhi = startsHigh ? keepLo : hi;
+          /* ⚠️ THE COUNT FOLLOWS THE WINDOW, or the shelf simply gets denser.
+             `perLeg` is patches over a leg's FULL wall; holding it while the
+             wall shrinks would pack the same 58 knots into two thirds of the
+             shelf and read as more worms, not fewer.
+
+             ⚠️ AND IT IS SCALED ON THE **VISIBLE** SPAN, NOT ON THE WINDOW.
+             The window opens a whole screen BELOW `rx.min` -- margin, so a patch
+             is never born half-visible -- and the camera never reaches it, so
+             those patches are laid on wall nobody sees. A leg that begins at its
+             own minimum (shelf 3) has its cut land on top of that margin, and
+             scaling by the raw window then charges it for wall it was not using:
+             measured, 29 patches where the density asks for 35. Same trap the
+             header describes for the old `-GAME_W` layout, one level up. */
+          const seen = (a, b2) => Math.max(0, Math.min(b2, rx.max + GW + PAD)
+                                            - Math.max(a, rx.min - PAD));
+          const was = seen(lo, lo + span), now = seen(nlo, nhi);
+          if (nhi - nlo > 0 && was > 0) {
+            count = Math.max(0, Math.round(count * now / was));
+            lo = nlo; span = nhi - nlo;
+          }
+        }
       }
       if (span <= 0 || count <= 0) continue;
 
-      for (let i = 0; i < count; i++, n++) {
+      for (let i = 0; i < count; i++) {
+        const n = li * SEED_STRIDE + i;
         const b = i % bands;
         const sc = Vermes._band(C.bandScale, bands, b);
         /* SPREAD, THEN JITTERED OFF THE SLOT. An even row of patches reads as

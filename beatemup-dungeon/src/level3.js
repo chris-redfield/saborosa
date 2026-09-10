@@ -263,13 +263,41 @@ const Level3 = {
    * since the bands are 4000px apart, `minX` comes out ABOVE `maxX`, the clamp
    * resolves to `minX`, and the player is teleported to the far end of the
    * shelf. Shelf 2 completed in a single frame exactly this way.
+   *
+   * ⚠️ `screenX` IS "LEAVE HIM WHERE HE IS", AND IT IS WHAT A LIFT HANDS OVER.
+   * Without it this always seats him at `b.from` -- the band's own arrival
+   * point, which is the LANDING's screen offset (940 walking right, 340 walking
+   * left) put back into the new band's world x. That is exactly right for a
+   * rider who never moved, and wrong for every other one: the lift's walls pen
+   * him to `platX +/- widthPx * standHalfRel`, so he may spend the ride walking
+   * anywhere in a 672px-wide window, and arriving snapped him back to the
+   * landing -- up to 636px sideways, on the frame the new shelf appeared.
+   * Reported 2026-09-10 as *"o personagem muda de posicao no elevador quando ele
+   * CHEGA num novo andar"*.
+   *
+   * ⚠️ AND HIS SCREEN x IS THE THING TO CARRY OVER, NOT HIS WORLD x. The bands
+   * are 4000px apart and the new leg may run the other way, so world x means
+   * nothing across the seam; screen x means everything, because the slab is
+   * painted at the same screen spot on both sides of it (`platScreenX` from the
+   * lift, `arrivalPlatX` from the new band, and the camera is pinned at both).
+   * Handing his own offset back is what makes the hand-over move NOTHING --
+   * which is what the rest of this file is already built for.
+   *
+   * ⚠️ NO CLAMP IS NEEDED, AND THAT IS A FACT ABOUT THE TWO WINDOWS rather
+   * than luck. The lift pens him to screen 304..976 (`platScreenX` 640 +/- 336)
+   * and the new leg's walls are the view minus `gateMarginX`, screen 40..1240.
+   * The first is inside the second at both ends, so anywhere he can legally
+   * stand on the lift is somewhere he can legally stand on the shelf. Move
+   * `platScreenX`, `standHalfRel` or `widthPx` far enough and that stops being
+   * true, and a clamp to `bounds()` is what it would need.
    */
-  _place(player, stage) {
+  _place(player, stage, screenX) {
     const b = this._bands && this._bands[this.leg];
     if (!b) return;
     const L = this.current();
-    if (player) player.x = b.from;
-    this._camX = (L && L.dir < 0) ? b.camHi : b.camLo;
+    const cam = (L && L.dir < 0) ? b.camHi : b.camLo;
+    if (player) player.x = (screenX != null) ? cam + screenX : b.from;
+    this._camX = cam;
     if (stage) { stage.camX = this._camX; stage.camTarget = this._camX; }
   },
 
@@ -419,6 +447,13 @@ const Level3 = {
   },
 
   _nextLeg(stage, player) {
+    /* ⚠️ READ BEFORE THE INCREMENT, because it is the leg being LEFT that says
+       whether the player is standing on a lift right now. He is free to walk
+       about up there -- bounds() closes the WALLS, it does not freeze the input
+       -- so where he ends the ride is not where he boarded. See `_place`. */
+    const leaving = this.current();
+    const rodeTo = (leaving && leaving.kind === 'lift' && player)
+                 ? (player.x - this._camX) : null;
     this.leg++;
     this.legT = 0;
     const L = this.current();
@@ -430,7 +465,7 @@ const Level3 = {
          before he could reach the landing at all. */
       return null;
     }
-    this._place(player, stage);
+    this._place(player, stage, rodeTo);
     return null;
   },
 

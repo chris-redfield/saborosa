@@ -4287,7 +4287,33 @@ const CONFIG = {
        end of a ride are the walk legs' own wall and they are already infested --
        shelf 1's worms ride down out of frame as the film climbs and shelf 2's
        arrive before you get there. This is what fills the middle, which is why
-       it is smaller than `perLeg` and is not the same kind of number. */
+       it is smaller than `perLeg` and is not the same kind of number.
+
+       ⚠️ IT WENT TO 0 ON 2026-09-10 AND CAME STRAIGHT BACK, AND THE ROUND TRIP
+       IS THE NOTE. *"Retirar todos os vermes de cima dos elevadores"* reads like
+       this knob and is not: *"at the end of the lifts, when you arrive in the
+       next floor, THOSE are the ones you should have removed, not the vertical
+       ones."* The worms on screen when a ride ENDS belong to the WALK leg you
+       are arriving on -- the film is already showing the next shelf -- so
+       zeroing this emptied the middle of the climb, which is the one stretch of
+       wall he was not talking about. The cut is in vermes.js's walk branch now
+       (`arriving`); this is back to what it was.
+
+       ⚠️ MEASURED SPLIT, WHICH IS WHAT SETTLED IT. Counting every patch
+       `Vermes.draw()` paints over lift 1 at 5% steps and attributing it to the
+       leg that laid it: shelf 1's are gone by 28%, the LIFT's own are the only
+       thing on screen 28%..80%, and shelf 2's are in frame from 80% while the
+       lift's own are gone by 85%. An arrival is dressed entirely by the shelf.
+
+       ⚠️ AND THE STUTTER REPORTED IN THE SAME MESSAGE IS STILL HERE, because it
+       lives in these patches. *"Tem um momento que da uma engasgada a posicao
+       dos vermes, depois da metade"* on lift 1 is at rel 0.73-0.78, where the
+       filmed pan accelerates to -31 canvas px per frame against a -12 mean --
+       the fastest part of the climb, which is exactly where the phase
+       correlation behind `level-3-wall-track.json` is known to wrap. The worms
+       are welded to a track that is wrong there. ⚠️ THE FIX IS THE MEASUREMENT,
+       NOT THIS KNOB: re-run tools/build-level-3-plate.py --track at full
+       resolution over that window before reaching for the count. */
     perLiftScreen: 22,
     /* THE PLANES. ⚠️ THEY NO LONGER DIFFER IN SIZE, ON REQUEST 2026-09-04:
        *"make them all have the same size"*. `bandScale` was [0.90, 1.15, 1.45]

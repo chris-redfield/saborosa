@@ -1445,6 +1445,37 @@ frame.
 > — he is at 667.6 or 407.6 and nowhere between. Measured: film gaps at the two
 > hand-overs are **0.00s and 0.03s**, i.e. the shelf completes exactly.
 
+> ⚠️ **STEPPING OFF LEAVES HIM WHERE HE IS — `_place(player, stage, screenX)`.**
+> Fixed 2026-09-10: *"o personagem muda de posição no elevador quando ele CHEGA
+> num novo andar"*. The new leg used to seat him at its band's `from`, which is
+> the **landing's** screen offset (940 rightward, 340 leftward) put back into the
+> new band's world x — right for a rider who never moved and wrong for every
+> other one. Input is not disabled up there, so the lift's walls let him walk
+> anywhere in a **672px window** (`platScreenX` 640 ± `widthPx × standHalfRel`),
+> and arriving snapped him back to the landing: **measured 636px sideways**, on
+> the frame the new shelf appeared. Driving the real `Level3` through the whole
+> climb, every hand-over is now **0.0px** whether he rides left, right or stands
+> still. Before: 636px on lift 1 riding left / 636px on lift 3 riding right (the
+> big one swaps lifts because shelf 1 is walked rightward and shelf 3 leftward),
+> 36px the other way round, and **3.7px even standing still** — he overshoots the
+> landing by a frame of walking before the leg ends, which is what hid this from
+> anyone who did not press a direction on the way up.
+>
+> ⚠️ **Screen x is what carries over, not world x.** The bands are 4000px apart
+> and the next leg may run the other way, so world x means nothing across the
+> seam — but the slab is painted at the same screen spot on both sides of it
+> (`platScreenX` during the ride, `arrivalPlatX` after), because the camera is
+> pinned at both. Handing his own offset back is what makes the hand-over move
+> nothing, which is what the rest of the file is already built for.
+>
+> ⚠️ **No clamp, and that is a fact about the two windows.** The lift pens him to
+> screen 304..976; the new leg's walls are the view minus `gateMarginX`, 40..1240.
+> The first is inside the second at both ends, so anywhere he can stand on the
+> lift he can stand on the shelf — and he is still inside `arrivalPlatX ±
+> standHalfRel`, so `Elevador.tickRider` keeps him up on the slab and he steps
+> down by walking off it. Move `platScreenX`, `standHalfRel` or `widthPx` far
+> enough and a clamp to `bounds()` is what it would need.
+
 > ⚠️ **`sec` is the film's own duration and should stay that way.** 13.7s is a
 > long time to stand there — the answer is enemies riding up with you, **not a
 > faster lift**. A filmed plate cannot fast-forward convincingly.
@@ -1659,15 +1690,89 @@ leg 4  walk       x  +3396   y    −66
 > is laid over its x *range* rather than its starting x: 232 px of slide would
 > come off one edge of the frame and leave the other bare.
 
+> ⚠️ **`perLiftScreen` WENT TO 0 AND CAME STRAIGHT BACK — IT IS THE WRONG KNOB**
+> (2026-09-10). *"Os vermes perto do elevador não é vantagem — retirar todos os
+> vermes de cima dos elevadores"* reads like this number, and is not:
+> *"at the end of the lifts, when you arrive in the next floor, **those** are the
+> ones you should have removed, not the vertical ones."*
+>
+> **The worms over an arriving elevator belong to the WALK leg you are landing
+> on.** A ride ends with the film already showing the next shelf, so its patches
+> come down from the top of the frame before the lift stops. Measured through
+> `Vermes.draw()` at 5% steps of lift 1, attributing every painted patch to the
+> leg that laid it:
+>
+> | part of the ride | who is on screen |
+> |---|---|
+> | 0–28% | shelf 1's worms, riding down out of frame |
+> | 28–80% | **the lift's own** — nothing else |
+> | 80–100% | shelf 2's, arriving from the top |
+>
+> So zeroing `perLiftScreen` emptied the *middle* of the climb — the one stretch
+> that was not the complaint. It is back at 22 and the cut is in `vermes.js`'s
+> walk branch instead.
+
+> ⚠️ **THE ARRIVAL WINDOW (`arriving` in `vermes.js`).** A walk leg preceded by a
+> lift drops the patches on the wall it lands on: the keep-out is
+> `[w0.x − PAD, w0.x + GAME_W + PAD]`, one screen plus a knot at each end, cut off
+> whichever end of the leg's range it starts at (shelf 2 walks **left**, so it
+> starts at its own maximum — the direction is asked, not assumed).
+>
+> ⚠️ **One screen, not the slab's width.** "Above the elevator" is the whole
+> frame: the worms sit on the books at the top (`yFrom`/`yTo` put their centres
+> *above* y0) and the slab is on the belt line at the bottom, so they never
+> overlap vertically and there is no narrower thing to cut. `PAD` 360 clears the
+> widest knot (408 drawn, anchored at its centre).
+>
+> ⚠️ **The count follows the VISIBLE span, not the window.** The window opens a
+> whole screen below `rx.min` as margin, and the camera never reaches it — a leg
+> that starts at its own minimum (shelf 3) has its cut land on that margin, and
+> scaling by the raw window charges it for wall it was not using: **29 patches
+> where the density asks for 35.** Same trap as the old `−GAME_W` layout, one
+> level up.
+>
+> Measured: shelf 1 **byte-identical**; the still-dressed part of shelves 2 and 3
+> **−4.4% / +2.0%** worm px above y300 against the approved wall; whole-shelf
+> totals **−23.7% / −22.3%**, which is the bare arrival and is the point. Each
+> arrival is **0 worms drawn** for the last 20% of the ride and the first ~15–25%
+> of the shelf, then they slide in from the leading edge.
+>
+> ⚠️ **The departure end is deliberately left alone** — the lift at the *far* end
+> of a shelf still has worms above it through its ~4s approach. That was not what
+> was reported; it is the same cut on `w1` if it ever is.
+
+> ⚠️ **THE STUTTER ON LIFT 1 IS STILL THERE, AND IT IS THE TRACK.** *"Tem um
+> momento que dá uma engasgada a posição dos vermes, depois da metade"* sits at
+> rel 0.73–0.78 of that ride, where the filmed pan accelerates to **−31 canvas px
+> per frame against a −12 mean** — the fastest part of the climb, which is exactly
+> where the phase correlation behind `level-3-wall-track.json` is recorded as
+> wrapping. Those are the lift's own patches, welded to a track that is wrong
+> there. **The fix is re-measuring that window at full resolution, not the count.**
+
 > ⚠️ **`perLiftScreen` is patches ON SCREEN, not per lift.** The two rides climb
 > 4826 and 2296 px, so one count would make the short one a carpet or the long one
 > a desert. `vermes.js` converts it by how much of the climb a knot is visible for
-> (`GAME_H + 2 × 360`), which gives 52 patches on lift 1 and 13 on lift 3.
+> (`GAME_H + 2 × 360`), which gives 51 patches on lift 1 and 13 on lift 3.
 > Swept 10 / 14 / 22 against the plate: **10 and 14 leave bald patches** mid-ride
 > (the knot lottery again — 6.9k worm px at t=25 against 14.6k at t=29 on the same
-> setting). **22 is even.** It reads denser than a walk leg because on a walk leg
-> most of every knot is clipped off the top of the screen; the climb reveals what
-> was always up there.
+> setting). **22 is even**, and still is on the new draw: mid-ride coverage
+> measured 0.97–2.91M px before against 0.63–3.15M after on lift 1, and *better*
+> on lift 3 (mean 650k → 826k).
+
+> ⚠️ **THE PATCH SEED IS PER LEG (`SEED_STRIDE`), NOT A COUNTER RUNNING ACROSS
+> THEM.** It used to be one `n++` walking every patch in the room, so a leg's
+> scatter depended on how many patches every *earlier* leg happened to lay —
+> changing `perLiftScreen` re-rolled shelves 2 and 3 as a side effect. Now
+> `perLeg` and `perLiftScreen` move only the leg they name.
+>
+> The stride only has to outrun the biggest count, so its value is free and was
+> **picked**: `li × stride + i` is `i` on leg 0 whatever the stride, so shelf 1 is
+> byte-identical to the approved wall, and **609** is the value whose draw also
+> brought shelves 2 and 3 back to it (+0.2% / −0.2%; the first value tried, 1000,
+> came back +15.9% / +8.8%). ⚠️ **Sweeping every legal stride moves leg 2 between
+> −33% and +43%** — `perLeg` is a lottery over nine knots that differ 20× in area,
+> which is why that knob was measured on screen rather than reasoned about. Change
+> the stride and you are re-rolling two shelves.
 
 ### Per leg, not per room — the COUNT
 

@@ -4643,6 +4643,11 @@ is even. It reads denser than a walk leg **because on a walk leg most of every
 knot is clipped off the top of the screen**; the climb reveals what was always up
 there.
 
+> ⚠️ **STILL 22, AND IT SURVIVED A WRONG FIX ON 2026-09-10.** It was zeroed for
+> *"retirar todos os vermes de cima dos elevadores"* and put straight back — the
+> worms over an arriving lift are the WALK leg's, not the ride's. See *The lifts*
+> at the end of this file.
+
 ### The drunk cameraman (2026-09-04, same day, second pass)
 
 *"sometimes the camera slips a little bit (sorry the cameraman was drunk), and it
@@ -9389,3 +9394,169 @@ lockstep clocks, and whether the beam now reads as leaving the propeller.
   the hand-drawn bar, and it still applies to whatever turns them back on: the
   hand-drawn bar is 11 inked squares in a 333px frame, and at the ~50px a
   floating bar occupies they turn to mush.
+
+
+## The lifts: nothing on the wall, and nothing moves when you step off (2026-09-10)
+
+Two asks, both about level 3's elevators, and they turned out to touch nothing
+else in the game.
+
+### ⚠️ HE WAS SNAPPED 636px SIDEWAYS THE MOMENT A SHELF ARRIVED
+
+*"corrigir o bug do elevador; o personagem muda de posição no elevador quando ele
+CHEGA num novo andar."*
+
+`Level3._nextLeg` ends a ride by calling `_place`, and `_place` seated him at the
+new band's `from` — which is the **landing's** screen offset (940 walking right,
+340 walking left) converted into the new band's world x. That is exactly right
+for a rider who never moved, and it is wrong for every other one.
+
+**And every other one is the common case, because input is not disabled on a
+lift.** `bounds()` closes the WALLS to the slab and deliberately leaves the
+controls alive (*"a rider who cannot even turn round reads as the game having
+hung"*), so he may spend the 13.7s walking anywhere in a **672px window** —
+`platScreenX` 640 ± `widthPx × standHalfRel`, screen 304..976. Arriving threw all
+of that away.
+
+Driven through the shipping `Level3` end to end, jump at each ride's hand-over,
+by what the rider did on the way up:
+
+    rider           lift 1 (leg 1 -> 2)     lift 3 (leg 3 -> 4)
+    walks LEFT          636.0 px                 36.0 px
+    stands still         -3.7 px                  3.7 px
+    walks RIGHT         -36.0 px               -636.0 px
+
+⚠️ **THE BIG NUMBER SWAPS LIFTS BECAUSE THE SHELVES DO.** Shelf 1 is walked
+rightward and lands at screen 940, shelf 3 leftward at 340 — so whichever way he
+drifts on a lift, one of the two rides throws him most of the width of the slab
+and the other barely moves him. There is no ride where it is safe.
+
+⚠️ **AND IT WAS NOT ZERO EVEN FOR A RIDER WHO STOOD STILL** — 3.7px, because he
+overshoots the landing by a frame of walking before the leg ends. Small enough to
+have hidden the whole thing from anyone who did not press a direction on the way
+up.
+
+**The fix is that the lift hands his own screen x back**: `_place` takes an
+optional `screenX`, and `_nextLeg` reads `player.x - this._camX` **before the
+increment** (it is the leg being LEFT that says whether he is on a lift). Every
+hand-over is now 0.0px whether he rides left, right, or stands still, and the
+room still reaches `done`.
+
+⚠️ **SCREEN x IS THE ONLY SPACE THE TWO SIDES OF THE SEAM AGREE IN.** The bands
+are 4000px apart and the next leg may run the other way, so his world x means
+nothing across it — but the slab is painted at the same screen spot on both sides
+(`platScreenX` during the ride, `arrivalPlatX` after), because the camera is
+pinned at both. That is the same fact the rest of the file is built on; the
+placement was the one line still ignoring it.
+
+⚠️ **NO CLAMP, AND THAT IS A FACT ABOUT THE TWO WINDOWS RATHER THAN LUCK.** The
+lift pens him to screen 304..976, the new leg's walls are the view minus
+`gateMarginX` (40..1240), and the first is inside the second at both ends. He is
+also still inside `arrivalPlatX ± standHalfRel`, so `Elevador.tickRider` keeps him
+up on the slab and he steps down by walking off it — no vertical pop either. Move
+`platScreenX`, `standHalfRel` or `widthPx` far enough and a clamp to `bounds()`
+is what it would need.
+
+### ⚠️ I REMOVED THE WRONG WORMS, AND THE CORRECTION IS THE WHOLE LESSON
+
+*"Os vermes perto do elevador não é vantagem — retirar todos os vermes de cima dos
+elevadores"*, plus *"para o primeiro elevador, tem um momento que dá uma engasgada
+a posição dos vermes, depois da metade."*
+
+I read "de cima dos elevadores" as the ride and zeroed `perLiftScreen`. Corrected
+in one line: *"you didn't remove the vermins at the end of the lifts, they
+probably count as horizontal placing vermings. At the end of the lifts, when you
+arrive in the next floor, those are the ones you should have removed, not the
+vertical ones."*
+
+⚠️ **AND MY OWN MEASUREMENT HAD ALREADY PRINTED THE ANSWER.** The split I ran to
+justify the change says it outright:
+
+    lift 1    0%..28%   shelf 1's worms, riding down out of frame
+             28%..80%   THE LIFT'S OWN -- nothing else
+             80%..100%  shelf 2's, ARRIVING FROM THE TOP
+
+**The last row is the picture he described** — a ride ends with the film already
+showing the next shelf, so the worms over the slab you step off were never the
+lift's. I used that table to argue the middle was "the whole of what was asked
+for" and never asked which row matched the words. **A split that answers the
+question is not the same as reading it.**
+
+⚠️ **AND "ALL OF THEM" WAS THE PART THAT MISLED ME.** *Todos* sounded like the
+bigger set, so the bigger set is what I removed. It was a locative — *de cima dos
+elevadores*, the wall directly above them — not a quantity. Same family as
+[[target_restated_as_correction]]: the sentence was precise and I read the
+emphasis instead of the noun.
+
+### The fix: an arrival window on the WALK legs
+
+`perLiftScreen` back to **22**. A walk leg preceded by a lift now drops the
+patches on the wall it lands on — keep-out `[w0.x − PAD, w0.x + GAME_W + PAD]`,
+cut off whichever end of the leg's range it starts at (asked, not assumed: shelf
+2 walks **left** and starts at its own maximum).
+
+⚠️ **ONE SCREEN, NOT THE SLAB'S WIDTH.** "Above the elevator" is the whole frame.
+The worms are on the books at the top — `yFrom`/`yTo` put their centres *above*
+y0 — and the slab is on the belt line at the bottom, so they never overlap
+vertically and there is no narrower thing to cut. This is also why the draw order
+was checked first and was innocent: `vermes` is a layer BELOW `fighters`, and the
+lift is drawn in the fighters' pass, so nothing was ever painted over the slab.
+
+⚠️ **THE COUNT SCALES ON THE *VISIBLE* SPAN, NOT ON THE WINDOW.** The window opens
+a whole screen below `rx.min` as margin and the camera never reaches it. A leg
+that starts at its own minimum (shelf 3) has its cut land on that margin, so
+scaling by the raw window charges it for wall it was not using: **29 patches
+where the density asks for 35.** Exactly the trap the file's own header describes
+for the old `−GAME_W` layout, one level up — and I walked into it in the same
+function.
+
+Measured: shelf 1 **byte-identical**; the still-dressed part of shelves 2 and 3
+**−4.4% / +2.0%** worm px above y300 against the approved wall; whole-shelf totals
+**−23.7% / −22.3%**, which is the bare arrival and is the point. Every arrival is
+**0 worms drawn** for the last 20% of the ride and the first ~15–25% of the shelf.
+The rides came back on a new draw and are still even (lift 1 mid-ride 0.97–2.91M
+px before against 0.63–3.15M after; lift 3 *better*, mean 650k → 826k).
+
+⚠️ **THE DEPARTURE END IS DELIBERATELY LEFT ALONE.** The lift at the far end of a
+shelf still has worms above it through its ~4s approach. That was not what was
+reported, and it is the same cut on `w1` if it ever is.
+
+### ⚠️ THE "ENGASGADA" IS THE TRACK, AND IT IS STILL THERE
+
+Profiling `level-3-wall-track.json` across lift 1: the filmed pan runs −12 canvas
+px/frame on average and hits **−31 over rel 0.73–0.78**, then eases and briefly
+goes *positive* near the top. That is the fastest part of the climb — exactly the
+window this track was already recorded as wrapping in. Those are the lift's own
+patches, welded to a measurement that is wrong there.
+
+⚠️ **Zeroing `perLiftScreen` "fixed" it by deleting the only art that could show
+it, which is not a fix and I reported it as one.** The knob is back at 22 and the
+stutter with it. **The fix is re-running `tools/build-level-3-plate.py --track` at
+full resolution over that window** — a validator that agrees at rest and disagrees
+at speed is usually the validator, and this is the same window that note was
+written about.
+
+### ⚠️ AND THE REMOVAL RE-ROLLED TWO SHELVES NOBODY ASKED ABOUT
+
+`Vermes.enterRoom` seeded every patch from a single `n++` walking the whole room,
+so **a leg's scatter depended on how many patches every earlier leg happened to
+lay.** Changing the lift legs therefore re-rolled shelves 2 and 3 — measured,
+**+15.9% and +8.8%** worm pixels above y300, on a wall that had been tuned by eye.
+(Found while chasing the wrong fix, and it would have bitten the right one too.)
+
+The seed is per leg now (`li * SEED_STRIDE + i`), so `perLeg` and `perLiftScreen`
+move only the leg they name.
+
+⚠️ **THE STRIDE'S VALUE IS FREE, SO IT WAS PICKED RATHER THAN DEFAULTED.**
+`li * stride + i` is `i` on leg 0 whatever the stride, so shelf 1 comes back
+byte-identical for nothing; legs 2 and 4 land on a new draw either way, and
+**609** is the value whose draw returns them to the density already approved
+(+0.2% and −0.2%; the first value tried, 1000, is the +15.9% / +8.8% above). Those
+two have since been cut back on purpose by the arrival window; what is still
+dressed measures −4.4% / +2.0%.
+
+⚠️ **AND THE SWEEP IS THE FACT WORTH KEEPING: over every legal stride, leg 2
+moves between −33% and +43%.** `perLeg` is a lottery over nine knots that differ
+20× in area, so "58 patches" is worth about a third either way depending on the
+draw. That is why that knob was measured on screen instead of reasoned about —
+and why re-rolling it is a real change, not a shuffle.
