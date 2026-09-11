@@ -4813,6 +4813,20 @@ enemyComboWeights.verme:    [5, 3, 2, 1, 1]
 > ⚠️ **No knockdown row and no jump row.** `down` borrows the death row's second
 > frame — the first drip. He can never jump in.
 
+> ⚠️ **`groundNudgePx: 10` — he is drawn 10px into the floor, and the cut is not
+> why.** *"He is floaty, he looks like he is hovering over the ground and his
+> shadow."* Measured, his anchor is on his lowest pixel at **+0.0px**, the same
+> as the cigarettes and the roaches — it is the *shape*: a rounded taper that
+> narrows to 11 atlas px against 147 at its widest touches the floor at a point,
+> while the 63px shadow ellipse sits under the fat part. **Geometry agreeing
+> with the cast is not the same as looking planted.**
+>
+> It is **drawn size only** — hurtbox, reaches, belt z and the shadow all
+> untouched, which is the point. ⚠️ **Not fixed with `bodyMinRun`**: that moves
+> `bodyH`, which feeds the pack scale, the drawn size and the measured reaches,
+> so "bring him down a little" would have made him 5.7% bigger and shifted every
+> punch box. Available to any pack; only the verme uses it.
+
 > ⚠️ **Reaches measured at the arm tip**: 96.1 / 96.1 / 94.3 / 96.1 / **116.0**
 > game px → 133 / 133 / 131 / 133 / **161** in `BODY_SCALE` units. The fifth
 > really does reach further.
@@ -4866,6 +4880,41 @@ enemyComboWeights.verme:    [5, 3, 2, 1, 1]
 | `returnMs` | 1500 / 2100 off-screen. This is what the move costs him |
 | `minX` / `maxX` | the band he will charge from |
 | `exitMarginPx` | how far past the wall counts as gone |
+
+## TIME ATTACK's lettering
+
+`batidao-letter-timeattack-001.png` → `tools/build-timeattack-words.py` →
+`batidao-timeattack-*` (123 frames, key `taWords`). `CONFIG.TIME_ATTACK.LETTER`.
+
+```js
+LETTER: { scale: 0.52,      // ONE scale for the pack -- cards big, HUD small, as drawn
+          clockMul: 1.1,    // the ONE exception, and it was a request
+          wordGapPx: 10, digitGapPx: 6 }
+inBeatMs: 1100              // PER PHRASE of the entry; total = x ENTRY_BEATS (3)
+```
+
+| what | drawn from |
+|---|---|
+| the clock | one whole-number tile, `n0`…`n100` — **whole seconds**, no decimal in the pack |
+| `RODADA 1/3`, `MOSCAS 4/8` | label + number tile + `slash` + number tile |
+| the entry, 3 beats | `RODADA 01` → `DESTRUA 8 MOSCAS` → `VAI!` |
+| between rounds | `RODADA 02 OK` |
+| endings | `TEMPO ESGOTADO` · `DESAFIO COMPLETO` · **ABATIDO! is still type** |
+
+> ⚠️ **Small numbers are whole tiles, card numbers are assembled.** The sheet
+> carries 0–100 at HUD size and only 0–9 at card size — that asymmetry is the
+> instruction.
+
+> ⚠️ **`XX` in a phrase is a hole.** The cutter throws the X's away and emits the
+> parts either side **plus the measured gaps**, so the number lands at the
+> spacing it was drawn with.
+
+> ⚠️ **`inBeatMs` is per phrase and the total is derived.** The ask was a floor
+> ("at least 1 second each"); a floor written as a total stops holding the next
+> time anyone retimes it.
+
+> ⚠️ **No strip behind the cards** — the drawn lettering has its own outline. The
+> typed fallback lost it too, on purpose.
 
 ## The flies in the sky
 

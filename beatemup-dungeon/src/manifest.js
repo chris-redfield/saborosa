@@ -163,6 +163,20 @@ function assetManifest() {
     out.push({ key: 'pauseWords', src: P + '-sprites.json', how: 'json' });
   }
 
+  /* THE MINIGAME'S LETTERING -- its HUD labels, every number 0..100, the card
+     digits and the cards. `image`, not `big`: the atlas is 2033x1104 and its
+     biggest frame is drawn at ~94px from 185, so a downscale pass would only
+     spend the headroom. ⚠️ Keyed `taWords` -- `goWords` is the GAME OVER pack
+     and `goPrompt` the arena prompt; run `node tools/build-manifest.js --list`
+     after adding a key, which is what caught that collision. */
+  if (CONFIG.TIME_ATTACK && CONFIG.TIME_ATTACK.on !== false
+      && CONFIG.TIME_ATTACK.LETTER && CONFIG.TIME_ATTACK.LETTER.on !== false
+      && CONFIG.TIME_ATTACK.LETTER.SHEET) {
+    const T = CONFIG.TIME_ATTACK.LETTER.SHEET;
+    out.push({ key: 'taWords', src: T + '-game.png', how: 'image' });
+    out.push({ key: 'taWords', src: T + '-sprites.json', how: 'json' });
+  }
+
   /* TIME ATTACK -- the minigame between the desert and HORÁCIO. The PLANE art
      is NOT here: `TaPlane.load()` walks CHARACTERS x CH_FRAMES and builds its
      own keys, which is how Still Life has always loaded it. What the manifest

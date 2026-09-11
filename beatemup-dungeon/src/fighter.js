@@ -1428,8 +1428,35 @@ class Fighter {
       }
       /* ⚠️ MARKED BEFORE THE SPRITE AND DRAWN AFTER IT -- see the tail of this
          method. An explosion goes OVER the body it is destroying. */
+      /* ⚠️ `groundNudgePx` -- HOW FAR INTO THE FLOOR THIS PACK IS DRAWN, and it
+         exists because a cut that is geometrically right can still look wrong.
+         Reported 2026-09-11 of the VERME: *"he is floaty, he looks like he is
+         hovering over the ground and his shadow."*
+
+         Measured, his anchor is exactly on his lowest pixel -- +0.0px, the same
+         as the cigarettes and the roaches -- so nothing was mis-cut. What
+         differs is the SHAPE: those packs meet the floor across a flat span,
+         and the worm's body is a rounded taper that narrows to 11px at the
+         bottom against 147px at its widest. A curve touching at a point reads
+         as resting ON something, and the shadow ellipse (63px wide) sits under
+         the fat part with air between. **Geometry agreeing with the rest of the
+         cast is not the same as looking planted**; the eye is the spec.
+
+         ⚠️ DRAWN SIZE ONLY. The hurtbox, the reaches, the belt z and the SHADOW
+         are all untouched -- the shadow marks the floor and the point of this
+         is to move the body relative to it. ⚠️ AND IT IS NOT THE CUT: fixing
+         this with `bodyMinRun` would have moved `bodyH`, which feeds the pack
+         scale, the drawn size and the measured reaches, so "bring him down a
+         little" would have made him 5.7% bigger and shifted every punch box.
+
+         ⚠️ SCALED BY DEPTH like the emerge hop above it: it is a distance in
+         the world, so a worm at the back of the belt must not sink as far in
+         canvas px as one at the front. */
+      /* `pack` is the one resolved at the top of this method for the corpse
+         fade -- one lookup per draw, not two. */
+      const nudge = (pack.groundNudgePx || 0) * this.depthScale();
       sheets.draw(ctx, this.kind, this.facing, pose, this.frameStep(sheets),
-                  gx, gy + sinkPx, { alpha, rotate, flash: this.flash * 0.55,
+                  gx, gy + sinkPx + nudge, { alpha, rotate, flash: this.flash * 0.55,
                             scale: this.depthScale(),
                             tint: t && t.tint, tintAlpha: t && t.tintAlpha });
       if (sinkPx > 0) ctx.restore();

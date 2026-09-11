@@ -47,6 +47,11 @@
  * gesture, and a blit from a video with no data silently draws nothing.
  */
 class TimeAttack {
+  /* HOW MANY PHRASES THE ENTRY SHOWS: RODADA nn / DESTRUA n MOSCAS / VAI!.
+     ⚠️ ONE PLACE, because the state's length and the draw's index both divide
+     the same clock by it -- see `_entryBeatMs`. */
+  static ENTRY_BEATS = 3;
+
   constructor(assets, input, sound) {
     this.assets = assets;
     this.input = input;
@@ -86,6 +91,11 @@ class TimeAttack {
     this.coins.length = 0;
     this.respawnT = 0;
     this.lastCard = '';
+    /* The clock's punch: the second last drawn, and how long it has been up.
+       ⚠️ `-1` rather than 0 so the very first frame of a round counts as a
+       change and the clock arrives with the same beat every other second has. */
+    this._clockShown = -1;
+    this._clockPopT = 0;
     /* ⚠️ THE LAST RAY THE RESOLVER ACTUALLY BUILT, kept only so the C overlay
        can draw THAT and not a second one derived the same way. A debug view that
        recomputes what it is inspecting can agree with itself while disagreeing
@@ -264,6 +274,22 @@ class TimeAttack {
 
   round0() { return this._cfg().ROUNDS[Math.min(this.round, this._cfg().ROUNDS.length - 1)]; }
 
+  /**
+   * Set a round up: its number, its quota, its clock, and an EMPTY field.
+   *
+   * ⚠️ IT NO LONGER PUTS ANYTHING IN THE AIR -- `_populate` does, and it is
+   * called when the entry card leaves. Asked for 2026-09-11: *"the stage enemies
+   * only spawn after the instructions in the middle disappear."* Before this
+   * the flies were already circling behind RODADA 01 / DESTRUA 8 MOSCAS / VAI!,
+   * which reads as the round having started while the card still says it has
+   * not.
+   *
+   * ⚠️ THE TWO HALVES RUN AT DIFFERENT MOMENTS ON PURPOSE. The quota has to be
+   * the NEW round's while `DESTRUA 8 MOSCAS` is on screen, so this half runs
+   * before the card; the bodies must not be, so that half runs after it. Fusing
+   * them back together puts one of those two things wrong whichever end you
+   * pick.
+   */
   _spawnRound(i) {
     const c = this._cfg(), R = c.ROUNDS[Math.min(i, c.ROUNDS.length - 1)];
     this.round = i;
@@ -272,6 +298,85 @@ class TimeAttack {
        rewards a fast round with an easier next one, which is the opposite of a
        rising quota; off by default for that reason. */
     if (!c.carryTime || this.clockMs <= 0) this.clockMs = R.timeMs;
+    this.flies.length = 0;
+    this.coins.length = 0;
+  }
+
+  /**
+   * How many phrases the entry shows, and how long the whole of it lasts.
+   *
+   * ⚠️ THE BEAT IS THE KNOB AND THE TOTAL IS DERIVED, NOT THE OTHER WAY ROUND.
+   * It was `inMs` (900) split three ways -- 300ms a phrase, too fast to read --
+   * and the ask was a FLOOR rather than a total: *"each phrase must be in
+   * screen for at least 1 second."* A floor expressed as a total is a floor
+   * that quietly stops holding the next time anyone retimes the entry, or adds
+   * a fourth phrase. `inBeatMs` is per phrase, so it cannot.
+   *
+   * ⚠️ `ENTRY_BEATS` IS 3 IN ONE PLACE. The draw picks which phrase to show by
+   * dividing the same clock by the same number; two copies of "there are three
+   * of them" is how a fourth phrase ends up showing for a third of the time it
+   * was given.
+   */
+  _entryPhrases() {
+    const c = this._cfg();
+    const E = c.ENTRY;
+    if (E && E.length) return E;
+    const ms = Math.max(1, (c.inBeatMs != null ? c.inBeatMs : 1100));
+    const out = [];
+    for (let i = 0; i < TimeAttack.ENTRY_BEATS; i++) out.push({ ms: ms });
+    return out;
+  }
+  _entryMs() {
+    let t = 0;
+    for (const e of this._entryPhrases()) t += Math.max(1, e.ms || 0);
+    return t;
+  }
+  /** Which phrase is up, and how long it has been up. */
+  _entryAt(ms) {
+    const P = this._entryPhrases();
+    let t = 0;
+    for (let i = 0; i < P.length; i++) {
+      const d = Math.max(1, P[i].ms || 0);
+      if (ms < t + d || i === P.length - 1) return { i, t: ms - t, def: P[i] };
+      t += d;
+    }
+    return { i: 0, t: 0, def: P[0] };
+  }
+
+  /* THE PUNCH -- the main game's character-select lock-in, the same numbers
+     title.js already ports (pop 1.25 -> 1.0 on an easeOutBack over 400ms, a
+     9px shake decaying over 180ms at 82/71 rad/s). Reproduced here rather than
+     reached for across files because `Title` holds it against ITS clock; what
+     is shared is the FEEL, and the feel is the numbers. */
+  static _easeOutBack(p) {
+    const c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2);
+  }
+  _punchAt(ms, block) {
+    const P = (this._cfg().LETTER || {})[block || 'PUNCH'];
+    if (!P || P.on === false) return { k: 1, x: 0, y: 0 };
+    const sm = P.stampMs != null ? P.stampMs : 400;
+    const k = sm > 0
+      ? 1 + (P.pop != null ? P.pop : 0.25)
+            * (1 - TimeAttack._easeOutBack(Math.min(1, ms / sm)))
+      : 1;
+    const shMs = P.shakeMs != null ? P.shakeMs : 180;
+    const amp = (P.shakeAmp != null ? P.shakeAmp : 9)
+              * Math.max(0, 1 - ms / Math.max(1, shMs));
+    /* SECONDS, because the frequencies are the main game's rad/sec numbers and
+       are copied unchanged. */
+    const t = ms / 1000;
+    return { k,
+             x: amp > 0.01 ? Math.sin(t * (P.shakeFreqX != null ? P.shakeFreqX : 82)) * amp : 0,
+             y: amp > 0.01 ? Math.cos(t * (P.shakeFreqY != null ? P.shakeFreqY : 71)) * amp : 0 };
+  }
+
+  /** Fill the field for the current round. Called as the entry card leaves. */
+  _populate() {
+    const c = this._cfg(), R = this.round0();
+    /* Cleared first, so a second call cannot double the field -- `in` is
+       entered from two places and this is the one thing in it that is not
+       idempotent by itself. */
     this.flies.length = 0;
     this.coins.length = 0;
     for (let n = 0; n < (R.flies || 0); n++) this._spawnFly();
@@ -415,11 +520,26 @@ class TimeAttack {
     const dt = dtSec * 1000;
     this.stateT += dt;
     if (this.state === 'in') {
-      if (this.stateT >= (c.inMs || 0)) { this.state = 'play'; this.stateT = 0; }
+      /* ⚠️ THE FIELD IS FILLED HERE, ON THE FRAME THE CARD LEAVES -- see
+         `_populate`. *"The stage enemies only spawn after the instructions in
+         the middle disappear."* */
+      if (this.stateT >= this._entryMs()) {
+        this.state = 'play'; this.stateT = 0; this._populate();
+      }
     } else if (this.state === 'card') {
       if (this.stateT >= (c.roundCardMs || 0)) {
         this.stateT = 0;
-        if (this.round + 1 < c.ROUNDS.length) { this.state = 'play'; this._spawnRound(this.round + 1); }
+        /* ⚠️ THE NEXT ROUND GETS ITS OWN THREE-BEAT ENTRY, which is why this
+           hands to `in` rather than straight to `play`. *"When entering, it
+           will be RODADA 01, or 02, or 03"* -- the number is the ROUND, so
+           every round is entered the same way and not just the first.
+           `_spawnRound` runs BEFORE the card so `R.coins` is the new round's
+           quota while DESTRUA is on screen; the clock does not tick outside
+           `play`, so holding here costs the player nothing. */
+        if (this.round + 1 < c.ROUNDS.length) {
+          this._spawnRound(this.round + 1);
+          this.state = 'in';
+        }
         else { this.state = 'out'; }
       }
     } else if (this.state === 'out') {
@@ -436,6 +556,17 @@ class TimeAttack {
       this.clockMs -= dt;
       if (this.clockMs <= 0) { this.clockMs = 0; this.state = 'out'; this.stateT = 0; }
     }
+    /* ⚠️ THE CLOCK'S PUNCH IS FIRED BY THE TICK, NOT DERIVED FROM `clockMs`.
+       The displayed second is `ceil(clockMs / 1000)`, so "how long since it
+       changed" is `1000 - clockMs % 1000` -- one line, and wrong in three
+       places: it is frozen with the clock during a card (a pop stuck half
+       swollen), it reads 0 for every frame the clock sits at 0, and a round
+       reset lands mid-curve. Watching the VALUE change and zeroing a clock of
+       its own has none of that, and it is the same rule the impact burst and
+       the game over word follow -- freeze the effect on the EVENT. */
+    const shown = Math.ceil(this.clockMs / 1000);
+    if (shown !== this._clockShown) { this._clockShown = shown; this._clockPopT = 0; }
+    else this._clockPopT += dt;
 
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     for (const f of this.flies) f.update(dt, W, H, false);
@@ -495,8 +626,22 @@ class TimeAttack {
                  noise being hit here as he does on the street, and the same one
                  on the way out. `isDead()` picks which -- two vocal samples
                  from one body in one frame is a mess, so the death REPLACES the
-                 hit rather than layering, exactly as the fighting does. */
-              this.sound.play(this.plane.isDead() ? 'playerDeath' : 'playerHit');
+                 hit rather than layering, exactly as the fighting does.
+
+                 ⚠️ THE HIT GRUNT IS OFF IN THIS MODE (2026-09-11): *"remove the
+                 SFX from when he takes a hit, ONLY AT THE TIME ATTACK."*
+                 `hitVoice: false` is the mode's own knob, so the street and the
+                 desert are untouched -- the sample is shared and deleting the
+                 call would have silenced every punch the player takes in the
+                 whole game.
+
+                 ⚠️ THE DEATH VOICE STAYS. The ask names the hit; being shot
+                 down is a different event, it happens once, and it is the only
+                 thing left announcing the end of a run out loud. If that should
+                 go too it is the same flag with a second name. */
+              const dead = this.plane.isDead();
+              if (dead) this.sound.play('playerDeath');
+              else if (c.hitVoice !== false) this.sound.play('playerHit');
             }
             break swarm;
           }
@@ -727,19 +872,208 @@ class TimeAttack {
     ctx.drawImage(v, (W - dw) / 2, (H - dh) / 2, dw, dh);
   }
 
+
+  /* =======================================================================
+     THE HAND-DRAWN LETTERING (2026-09-11)
+     =======================================================================
+     Everything this mode puts on screen was TYPE until the artist's sheet
+     arrived (`batidao-letter-timeattack-001.png`, cut by
+     tools/build-timeattack-words.py). *"Can you replace the current lettering
+     (generated) by this one (drawed)?"*
+
+     ⚠️ THE NUMBERS ARE WHOLE TILES, NOT ASSEMBLED DIGITS, and that is the
+     sheet's own design: `47` is one drawing, which is why 10..100 were drawn at
+     all. Stated by the user: *"these small numbers should be used for 2 things:
+     1 the clock and 2 the number of flies that were killed."* ⚠️ THE BIG digits
+     ARE assembled -- the sheet carries only 0..9 of them -- and they are what
+     goes in a card's number hole.
+
+     ⚠️ THE CLOCK LOST ITS TENTH WITH THIS. It read `29.4`; there is no decimal
+     point in the pack and the whole-number tiles are what the clock is for. The
+     old comment argued a whole-second readout makes the last five seconds look
+     frozen -- that was a decision about TYPE and it is overruled by the art.
+
+     ⚠️ EVERY DRAW FALLS BACK TO TYPE. A pack that fails to load must cost the
+     lettering's look and not the readout -- the same rule the pause card, the
+     game over panel and the GO prompt follow. `_tw()` returning null is the
+     cue, and every call site has a typed branch behind it. */
+  _tw() {
+    const c = this._cfg();
+    const L = c && c.LETTER;
+    if (!L || L.on === false) return null;
+    const img = this.assets.getDrawable('taWords');
+    const defs = this.assets.getJSON('taWords');
+    return (img && defs && defs.frames) ? { img, defs, k: (L.scale || 0.52) } : null;
+  }
+
+  /** One frame, centred on (cx, cy). Returns its drawn width, or 0. */
+  /* ⚠️ `mul` IS THE ONE DEVIATION FROM "ONE SCALE PER PACK", AND IT IS A
+     REQUEST. *"Make the countdown number 10% larger."* Everything else in the
+     pack is drawn at `LETTER.scale` and keeps the relationships the artist
+     drew; the clock alone takes `LETTER.clockMul` on top, because it is the one
+     readout that has to be findable at a glance while the plane is being flown.
+     Leave it at 1 for anything else. */
+  _wDraw(ctx, W, key, cx, cy, mul) {
+    const f = W.defs.frames[key];
+    if (!f) return 0;
+    const k = W.k * (mul == null ? 1 : mul);
+    ctx.drawImage(W.img, f.x, f.y, f.w, f.h,
+                  cx - f.w * k / 2, cy - f.h * k / 2, f.w * k, f.h * k);
+    return f.w * k;
+  }
+
+  _wWide(W, key) {
+    const f = W.defs.frames[key];
+    return f ? f.w * W.k : 0;
+  }
+
+  /** A whole number 0..100 as ONE tile. Out of range clamps -- see the header. */
+  _wNumW(W, n) {
+    return this._wWide(W, 'n' + Math.max(0, Math.min(100, Math.round(n))));
+  }
+  _wNum(ctx, W, n, cx, cy, mul) {
+    return this._wDraw(ctx, W, 'n' + Math.max(0, Math.min(100, Math.round(n))),
+                       cx, cy, mul);
+  }
+
+  /** A number in the CARD digits, assembled, optionally zero-padded. */
+  _wBigW(W, n, pad, mul) {
+    const t = String(Math.max(0, Math.round(n)));
+    const str = (pad && t.length < pad) ? ('0'.repeat(pad - t.length) + t) : t;
+    const m = mul == null ? 1 : mul;
+    const gap = ((this._cfg().LETTER || {}).digitGapPx || 6) * m;
+    let w = 0;
+    for (let i = 0; i < str.length; i++) w += this._wWide(W, 'b' + str[i]) * m + (i ? gap : 0);
+    return w;
+  }
+  _wBig(ctx, W, n, cx, cy, pad, mul) {
+    const t = String(Math.max(0, Math.round(n)));
+    const str = (pad && t.length < pad) ? ('0'.repeat(pad - t.length) + t) : t;
+    const m = mul == null ? 1 : mul;
+    const gap = ((this._cfg().LETTER || {}).digitGapPx || 6) * m;
+    /* ⚠️ THE POP SWELLS THE NUMBER ABOUT ITS OWN CENTRE, so the run is measured
+       AT the popped size and laid out from there -- measuring at 1.0 and drawing
+       at 1.25 would grow it rightwards out of the hole instead of in place. */
+    let x = cx - this._wBigW(W, n, pad, m) / 2;
+    for (let i = 0; i < str.length; i++) {
+      const w = this._wWide(W, 'b' + str[i]) * m;
+      this._wDraw(ctx, W, 'b' + str[i], x + w / 2, cy, m);
+      x += w + gap;
+    }
+  }
+
+  /**
+   * A card phrase with a number in its hole: `RODADA 01`, `DESTRUA 8 MOSCAS`.
+   *
+   * ⚠️ THE GAPS EITHER SIDE ARE THE ARTIST'S, READ OUT OF THE DEFS. The cutter
+   * measured where the XX sat and how much air was around it, so the number
+   * lands at the spacing it was drawn with instead of at a margin someone
+   * guessed. ⚠️ The number is CENTRED in the hole rather than filling it: the
+   * hole is two X's wide and a one-digit round would otherwise sit against the
+   * word on its left.
+   */
+  _wHole(ctx, W, name, n, cx, cy, pad, o) {
+    const h = (W.defs.holes || {})[name];
+    const lw = this._wWide(W, name + 'L');
+    if (!h || !lw) return;
+    const opt = o || {};
+    const k = W.k;
+    /* ⚠️ `holePadMul` TIGHTENS THE WORDS WITHOUT TOUCHING THE ART'S MEASUREMENT.
+       *"DESTRUA XX MOSCAS, bring the words slightly closer to each other."* The
+       gaps either side of the number hole are what the cutter measured off the
+       sheet; this scales them, so the drawn spacing stays the base and the
+       change is one number. ⚠️ It does NOT touch `holeW` -- the hole is the
+       number's own space, and shrinking it would crowd a two-digit round
+       instead of closing the word gaps. */
+    const LC = this._cfg().LETTER || {};
+    const pm = LC.holePadMul;
+    const mul = pm != null ? pm : 1;
+    /* ⚠️ THE HOLE SHRINKS TO THE NUMBER, AND THAT IS WHERE THE GAP ACTUALLY WAS.
+       The drawn hole is `XX` wide -- 138px on screen, which is exactly a
+       TWO-digit number -- so a one-digit quota sat in it with 35px of empty
+       hole on each side, against only 12px of word pad. Tightening `holePadMul`
+       alone could never close that: *"the words in this phrase are too far away
+       from each other"* was 3/4 hole and 1/4 pad.
+
+       So the hole is the NUMBER plus `holeAirPx` a side, and `holeW` from the
+       defs is no longer the layout -- it is the reference the cutter measured.
+       ⚠️ NO CAP AT THE DRAWN WIDTH, and that was a second pass: capping there
+       gave a two-digit quota 12px of air and a one-digit quota 22px, because
+       `XX` happens to be exactly as wide as `22`. The X is a PLACEHOLDER, not a
+       specification -- what the artist drew is "a number goes here", and every
+       number reading the same is the honest version of that. The phrase is now
+       as wide as its own contents, which is how a line of text behaves.
+       ⚠️ Measured at the number's RESTING width, so the punch's 25% overshoot
+       spends this air rather than a permanent gap being left to fit a moment. */
+    const air = (LC.holeAirPx != null ? LC.holeAirPx : 0) * 2;
+    const hole = this._wBigW(W, n, pad) + air;
+    const padL = h.padL * k * mul, padR = (h.padR || 0) * k * mul;
+    const rw = this._wWide(W, name + 'R');
+    /* ⚠️ THE HOLE IS RESERVED WHETHER OR NOT THE NUMBER IS DRAWN, which is what
+       lets the number arrive late without the words jumping. `hideNum` is the
+       half-second before it lands -- see the entry. */
+    const total = lw + padL + hole + (rw ? padR + rw : 0);
+    let x = cx - total / 2;
+    this._wDraw(ctx, W, name + 'L', x + lw / 2, cy);
+    x += lw + padL;
+    if (!opt.hideNum) {
+      const p = opt.punch;
+      this._wBig(ctx, W, n, x + hole / 2 + (p ? p.x : 0), cy + (p ? p.y : 0), pad,
+                 p ? p.k : 1);
+    }
+    x += hole;
+    if (rw) this._wDraw(ctx, W, name + 'R', x + padR + rw / 2, cy);
+  }
+
+  /** `RODADA 1/3` or `MOSCAS 4/8`, as one drawn run. Returns its width. */
+  _wCount(ctx, W, label, a, b, leftX, cy, measure) {
+    const gap = (this._cfg().LETTER || {}).wordGapPx || 10;
+    const lw = this._wWide(W, label);
+    const aw = this._wNumW(W, a), sw = this._wWide(W, 'slash'), bw = this._wNumW(W, b);
+    const total = lw + gap + aw + sw + bw + gap * 0.4;
+    if (measure) return total;
+    let x = leftX;
+    this._wDraw(ctx, W, label, x + lw / 2, cy); x += lw + gap;
+    this._wNum(ctx, W, a, x + aw / 2, cy);      x += aw;
+    this._wDraw(ctx, W, 'slash', x + sw / 2, cy); x += sw;
+    this._wNum(ctx, W, b, x + bw / 2, cy);
+    return total;
+  }
+
   _drawHud(ctx, W, H) {
     const c = this._cfg(), R = this.round0();
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = CONFIG.hudColor || '#ffd23f';
-    ctx.font = '900 40px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
-    /* THE CLOCK, in seconds with one decimal -- a whole-second readout on a
-       30-second round makes the last five seconds look frozen. */
-    ctx.fillText((this.clockMs / 1000).toFixed(1), W / 2, 46);
-    ctx.font = 'bold 24px ' + (CONFIG.hudFont);
-    ctx.textAlign = 'left';
-    ctx.fillText('ROUND ' + (this.round + 1) + '/' + c.ROUNDS.length, 28, 40);
+    const TW = this._tw();
+    /* THE CLOCK, IN WHOLE SECONDS since the drawn numbers arrived -- see the
+       block above `_tw`. It used to carry a tenth, on the argument that a
+       whole-second readout makes the last five seconds look frozen; the pack
+       has no decimal point and the 0..100 tiles are what the clock is for. */
+    if (TW) {
+      /* ⚠️ THE SAME PUNCH THE NUMBER IN DESTRUA GETS, ON ITS OWN BLOCK -- asked
+         for 2026-09-11: *"add punch also when changing the clock countdown."*
+         `CLOCK_PUNCH` is separate because the INTERVAL is: this fires once a
+         second for thirty seconds, where the other fires once a round. Same
+         curve, shorter and smaller, so it has settled before the next tick
+         instead of the clock permanently vibrating. `PUNCH`'s numbers are one
+         copy away if it should be identical. */
+      const cp = this._punchAt(this._clockPopT, 'CLOCK_PUNCH');
+      this._wNum(ctx, TW, Math.ceil(this.clockMs / 1000),
+                 W / 2 + cp.x, 46 + cp.y,
+                 ((c.LETTER && c.LETTER.clockMul) || 1) * cp.k);
+    }
+    else {
+      ctx.font = '900 40px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
+      ctx.fillText((this.clockMs / 1000).toFixed(1), W / 2, 46);
+    }
+    if (TW) this._wCount(ctx, TW, 'rodada', this.round + 1, c.ROUNDS.length, 28, 40);
+    else {
+      ctx.font = 'bold 24px ' + (CONFIG.hudFont);
+      ctx.textAlign = 'left';
+      ctx.fillText('ROUND ' + (this.round + 1) + '/' + c.ROUNDS.length, 28, 40);
+    }
     /* ⚠️ THE QUOTA IS LABELLED, AND THE BARE NUMBERS WERE A REAL BUG REPORT.
        It read `0 / 8`, which was taken to mean "8 flies exist and you have found
        0" -- *"the time attack has 8 flies, but I only saw 4, I navigated to all
@@ -748,8 +1082,18 @@ class TimeAttack {
        topping up as they die. Nothing was missing and nothing had flown off --
        the HUD simply did not say what it was counting. A number on a HUD with no
        noun is a number the player will give a noun to. */
-    ctx.textAlign = 'right';
-    ctx.fillText((c.quotaLabel || '') + ' ' + this.coinsGot + '/' + R.coins, W - 28, 40);
+    if (TW) {
+      /* ⚠️ MEASURED, THEN DRAWN FROM THE LEFT. The run is right-ALIGNED and it
+         is built left to right, so its width has to be known before the first
+         tile lands -- and the width depends on which number tiles are picked
+         (`100` is twice as wide as `7`). `measure` is the same code path that
+         draws it, not a second estimate of it. */
+      const w = this._wCount(ctx, TW, 'moscas', this.coinsGot, R.coins, 0, 40, true);
+      this._wCount(ctx, TW, 'moscas', this.coinsGot, R.coins, W - 28 - w, 40);
+    } else {
+      ctx.textAlign = 'right';
+      ctx.fillText((c.quotaLabel || '') + ' ' + this.coinsGot + '/' + R.coins, W - 28, 40);
+    }
 
     /* ⚠️ THE HEALTH, AND IT IS NOT OPTIONAL POLISH. The plane took damage
        silently before this: `planeWearSheets` is false, so there is no
@@ -778,9 +1122,69 @@ class TimeAttack {
 
     if (this.state === 'card' || this.state === 'in' || this.state === 'out') {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(0, H / 2 - 70, W, 140);
+      /* ⚠️ NO STRIP BEHIND THE CARD. There used to be a `rgba(0,0,0,0.45)` band
+         across the middle of the screen, drawn to keep 64px of type legible over
+         a moving photograph. The lettering is a drawing now -- it carries its
+         own black outline and does not need a plate under it -- and the strip
+         was cutting the shot in half. Removed on request 2026-09-11.
+         ⚠️ THE TYPED FALLBACK LOST IT TOO, deliberately: two answers to "is
+         there a strip" is how a screen ends up looking different on the machine
+         whose download failed. If type over the plate turns out to be
+         unreadable, the fix is a shadow on the text, not the band back. */
       ctx.fillStyle = CONFIG.hudColor || '#ffd23f';
+      if (TW) {
+        const cy = H / 2;
+        if (this.state === 'in') {
+          /* ⚠️ THE ENTRY IS THREE BEATS IN ONE STRIP, and that is the shape the
+             user described: *"when entering, it will be RODADA 01, or 02, or
+             03. Then 'destrua X moscas', then 'vai!' in the same text strip."*
+             One place on screen, three things in turn -- not three lines
+             stacked. `inBeatMs` is per PHRASE and the total is derived from
+             it, so "each one holds at least a second" is true by construction
+             rather than by arithmetic somebody has to redo -- see `_entryMs`.
+
+             ⚠️ AND IT RUNS BEFORE EVERY ROUND, NOT ONCE. `01 / 02 / 03` is the
+             ROUND number, so rounds 2 and 3 get the same three beats -- see the
+             `card` branch in `update`, which now hands to `in` instead of
+             straight to `play`. */
+          /* ⚠️ THE PHRASES HAVE THEIR OWN LENGTHS NOW, not one shared beat.
+             `DESTRUA` runs 1.5s against the other two at 1.1 -- see
+             `CONFIG.TIME_ATTACK.ENTRY`. `_entryAt` returns which one is up and
+             how long it has been up, so the draw never counts the beats itself. */
+          const at = this._entryAt(this.stateT);
+          if (at.i === 0) this._wHole(ctx, TW, 'round', this.round + 1, W / 2, cy, 2);
+          else if (at.i === 1) {
+            /* ⚠️ THE PHRASE LANDS FIRST AND THE NUMBER ARRIVES INTO IT, which is
+               the emphasis that was asked for: *"it appears without a number
+               during half a second, then the number appears and stays 1 second
+               ... when the number appears, it appears with a punch effect."*
+               The hole is reserved for the whole 1.5s, so the words do not shift
+               when it lands -- a line that re-centres itself mid-read is the
+               opposite of emphasis. */
+            const numAt = at.def.numAtMs != null ? at.def.numAtMs : 0;
+            const hide = at.t < numAt;
+            this._wHole(ctx, TW, 'destrua', R.coins, W / 2, cy, 0,
+                        { hideNum: hide,
+                          punch: hide ? null : this._punchAt(at.t - numAt) });
+          }
+          else this._wDraw(ctx, TW, 'vai', W / 2, cy);
+        } else if (this.state === 'card') {
+          this._wHole(ctx, TW, 'roundOk', this.round + 1, W / 2, cy, 2);
+        } else if (this.lost) {
+          /* ⚠️ THE ONE TYPED LINE LEFT IN THE MODE. There is no ABATIDO band in
+             the sheet, and sharing TEMPO ESGOTADO would tell the player the
+             wrong thing about why they lost. Flagged rather than faked; it is
+             one band away from being drawn like everything else. */
+          ctx.font = '900 64px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
+          ctx.fillText('ABATIDO!', W / 2, cy);
+        } else if (this.coinsGot >= R.coins) {
+          this._wDraw(ctx, TW, 'completo', W / 2, cy);
+        } else {
+          this._wDraw(ctx, TW, 'tempo', W / 2, cy);
+        }
+        ctx.restore();
+        return;
+      }
       ctx.font = '900 64px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
       const msg = this.state === 'in' ? 'TIME ATTACK'
                 : this.state === 'card' ? (this.lastCard + ' OK')

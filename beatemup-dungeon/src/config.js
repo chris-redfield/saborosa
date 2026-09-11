@@ -2201,6 +2201,34 @@ const CONFIG = {
     verme:   { sheet: 'v2:beatemup-dungeon/verme-beat', pack: 'ragged',
                name: 'VERME',
                drawScale: 1.46,
+               /* ⚠️ HE IS DRAWN 10px INTO THE FLOOR, and the cut is not why.
+                  Reported 2026-09-11: *"the verme is floaty, he looks like he
+                  is hovering over the ground and his shadow."*
+
+                  ⚠️ MEASURED FIRST, AND NOTHING WAS MIS-CUT: his anchor sits on
+                  his lowest pixel at +0.0px, the same as the cigarettes
+                  (+0.0) and the roaches (-0.0). It is the SHAPE. Those packs
+                  meet the floor across a flat span; his body is a rounded taper
+                  that narrows to 11 atlas px at the bottom against 147 at its
+                  widest, so it touches at a point -- which reads as resting ON
+                  something -- while the 63px shadow ellipse sits under the fat
+                  part with daylight between. **Agreeing with the rest of the
+                  cast geometrically is not the same as looking planted.** Only
+                  espeto (+14.8px) and charutobi (+5.9) sink at all, and both do
+                  it through the cutter because their spines hang below the feet.
+
+                  ⚠️ NOT FIXED IN THE CUTTER, AND THAT IS DELIBERATE. `bodyMinRun`
+                  would have moved `bodyH`, which feeds the pack scale, the drawn
+                  size and the reaches measured off it -- so "bring him down a
+                  little" would have made him 5.7% bigger and shifted every punch
+                  box. This is drawn size only; the hurtbox, the belt z and the
+                  SHADOW are all untouched, which is the point (the shadow marks
+                  the floor and the body moves relative to it).
+
+                  Judged from a still over a real plate frame with the real
+                  shadow at 0 / 6 / 10 / 14: at 10 the ellipse tucks under the
+                  yellow stumps. */
+               groundNudgePx: 10,
                poses: {
                  /* No knockdown row. Frame 1 of the death row is the first
                     drip: still a worm, already going down. */
@@ -4079,6 +4107,93 @@ const CONFIG = {
        160ms i-frames (`coinHurtMs`) -- the beam is a hitscan re-tested EVERY
        FRAME, so without that a held trigger would buy a minute a second. That
        is Still Life's own lesson and the reason `hit()` returns a boolean. */
+    /* --- THE HAND-DRAWN LETTERING (2026-09-11) ----------------------------
+       Everything this mode says was TYPE until the artist's sheet arrived.
+       `tools/build-timeattack-words.py` cuts `batidao-letter-timeattack-001.png`
+       into 123 frames: the two HUD labels, a slash, EVERY NUMBER 0..100 as its
+       own tile, ten card-sized digits, and the cards.
+
+       ⚠️ THE SMALL NUMBERS ARE WHOLE TILES AND THE BIG ONES ARE ASSEMBLED, and
+       the sheet says which by carrying 0..100 of the first and only 0..9 of the
+       second. Stated by the user: *"these small numbers should be used for 2
+       things: 1 the clock and 2 the number of flies that were killed."*
+
+       ⚠️ THE CLOCK LOST ITS TENTH WITH THIS -- there is no decimal point in the
+       pack. The old argument (a whole-second readout makes the last five
+       seconds look frozen) was about TYPE and the art overrules it.
+
+       ⚠️ ONE SCALE FOR THE WHOLE PACK. A card is drawn big and a HUD number
+       small because that is how they were drawn; `scale` is px-per-atlas-px and
+       moving it moves everything together, which is the point. At 0.52 a card
+       lands ~94px tall against the 64px type it replaces and a HUD number ~34px
+       against 24-40. The atlas carries ~2x headroom over that.
+
+       ⚠️ `quotaLabel` IS NOW ONLY THE FALLBACK'S. The drawn HUD reads `moscas`
+       out of the pack, so changing the label means a new band -- and the note
+       under `quotaLabel` about it having to agree with `coinsPerFly` still
+       holds, in both places. */
+    LETTER: {
+      on: true,
+      SHEET: 'v2:beatemup-dungeon/batidao-timeattack',
+      scale: 0.52,
+      /* ⚠️ THE ONE DEVIATION FROM "ONE SCALE PER PACK", AND IT IS A REQUEST:
+         *"make the countdown number 10% larger."* The clock is the only readout
+         that has to be findable at a glance while the plane is being flown.
+         Nothing else takes a multiplier. */
+      clockMul: 1.1,
+      /* ⚠️ HOW TIGHT THE WORDS SIT ROUND THE NUMBER HOLE, as a multiple of the
+         gaps the cutter MEASURED off the sheet. *"Bring the words slightly
+         closer to each other."* 0.55 halves the air without inventing a
+         spacing: the drawing stays the base and this is the one number.
+         ⚠️ IT DOES NOT TOUCH THE HOLE ITSELF -- that is the number's own space,
+         and shrinking it would crowd a two-digit round rather than close a word
+         gap. */
+      holePadMul: 0.55,
+      /* ⚠️ THE AIR EITHER SIDE OF THE NUMBER *INSIDE* THE HOLE, and it is what
+         actually closed the gap. The hole is drawn `XX` wide -- 138px on screen,
+         exactly a TWO-digit number -- so `DESTRUA 8 MOSCAS` had 35px of empty
+         hole each side against 12px of word pad. `holePadMul` could never reach
+         that: three quarters of the gap was hole.
+
+         The hole is now the NUMBER plus this much a side, and the defs'
+         `holeW` is the cutter's measurement rather than the layout.
+         ⚠️ NO CAP AT THE DRAWN WIDTH: capping there gave a two-digit quota 12px
+         of air and a one-digit quota 22px, because `XX` happens to be exactly as
+         wide as `22`. The X is a PLACEHOLDER, not a specification -- the drawing
+         says "a number goes here", and every number reading the same is the
+         honest version of it. ⚠️ Measured at the number's RESTING width, so the
+         punch's 25% overshoot spends this air instead of a permanent gap being
+         left to fit a moment. */
+      holeAirPx: 10,
+      /* THE PUNCH, when the number lands in DESTRUA's hole. ⚠️ THE MAIN GAME'S
+         OWN CHARACTER-SELECT LOCK-IN, the same numbers title.js ports for the
+         fruit select -- pop 1.25 -> 1.0 on an easeOutBack, a 9px shake decaying
+         over 180ms at 82/71 rad/s. Reproduced rather than shared because
+         `Title` runs it against ITS clock; what is shared is the feel, and the
+         feel is these numbers.
+         ⚠️ THE SHAKE IS ON THE NUMBER ALONE, not the line. Shaking DESTRUA and
+         MOSCAS as well would read as the screen being hit; the ask was to give
+         the NUMBER the emphasis. */
+      PUNCH: { on: true, stampMs: 400, pop: 0.25,
+               shakeAmp: 9, shakeMs: 180, shakeFreqX: 82, shakeFreqY: 71 },
+      /* THE CLOCK'S OWN PUNCH, fired by the SECOND changing. *"Add punch also
+         when changing the clock countdown, it's beautiful."*
+
+         ⚠️ ITS OWN BLOCK BECAUSE THE INTERVAL IS ITS OWN. `PUNCH` fires once a
+         round; this fires once a second, thirty times a round. At 400ms and 9px
+         the clock would be mid-animation 40% of the time and never still --
+         which is jitter, not emphasis. Same curve, 220ms and 3px: the swell is
+         most of the original (0.20 against 0.25) and it has settled long before
+         the next tick.
+
+         ⚠️ IF IT SHOULD BE IDENTICAL, copy PUNCH's four numbers here -- the
+         code path is the same one, and that is why it takes a block name rather
+         than being written twice. */
+      CLOCK_PUNCH: { on: true, stampMs: 220, pop: 0.20,
+                     shakeAmp: 3, shakeMs: 110, shakeFreqX: 82, shakeFreqY: 71 },
+      wordGapPx: 10,     // between a label and its number
+      digitGapPx: 6,     // between two card digits of one number
+    },
     clockAddMs: 5000,
     /* Time left on the board when a round is cleared, carried into the next.
        false = every round starts on its own full `timeMs`. */
@@ -4121,7 +4236,42 @@ const CONFIG = {
        track the way it does for every other room. */
     musicKey: 'musicTimeAttack',
     plateRate: 2,
-    inMs: 900,
+    /* ⚠️ PER PHRASE, NOT PER CARD, AND IT REPLACED `inMs` (900). The entry is
+       three phrases in one strip -- RODADA nn / DESTRUA n MOSCAS / VAI! -- so
+       the whole of it lasts `inBeatMs x TimeAttack.ENTRY_BEATS` = 3.3s.
+
+       ⚠️ THE ASK WAS A FLOOR, NOT A TOTAL: *"each phrase must be in screen for
+       at least 1 second."* Written as a total (`inMs: 3300`) that floor stops
+       holding the moment anyone retimes the entry or adds a fourth phrase, and
+       nothing would say so. Written per phrase it cannot come apart. 1100 is
+       the second, plus a tenth so it does not sit exactly on the limit.
+
+       ⚠️ THE TYPED FALLBACK RIDES THIS TOO and shows its one card for the full
+       3.3s. That is a beat longer than the 900ms it had, and it is deliberate:
+       a screen that lasts a different length depending on whether a PNG
+       downloaded is the same bug as a strip that is only sometimes there. */
+    /* ⚠️ THE FALLBACK BEAT, used only when `ENTRY` below is absent. Kept so the
+       entry still works if that list is ever emptied. */
+    inBeatMs: 1100,
+    /* --- THE ENTRY, PHRASE BY PHRASE --------------------------------------
+       ⚠️ THEY NO LONGER SHARE ONE BEAT, and the reason is the middle one:
+       *"DESTRUA XX MOSCAS ... it appears without a number during half a second,
+       then the number appears and stays 1 second. So total phrase time will be
+       1.5 seconds."* A single `inBeatMs` cannot say that, so the entry is a list
+       and each phrase carries its own length. The earlier floor -- *"each phrase
+       must be in screen for at least 1 second"* -- is still true of every entry
+       here, and it is now checkable by reading the column rather than by
+       dividing a total.
+
+       `numAtMs` is how far into a phrase its number lands; the hole is reserved
+       for the whole phrase either way, so nothing shifts when it arrives.
+
+       Total: 1.1 + 1.5 + 1.1 = 3.7s per round. */
+    ENTRY: [
+      { ms: 1100 },                      // RODADA 01
+      { ms: 1500, numAtMs: 300 },        // DESTRUA [ 8 ] MOSCAS -- see PUNCH
+      { ms: 1100 },                      // VAI!
+    ],
     outMs: 1200,
 
     /* --- WHAT IT PAYS ----------------------------------------------------
@@ -4155,6 +4305,84 @@ const CONFIG = {
     rayThickness: 14,      // Still Life's beam width
     rayDamage: 1,
 
+    /* --- INHERITED FROM STILL LIFE, VERBATIM -----------------------------
+       ⚠️ DO NOT "TIDY" THESE. Each one is read by name in ta-plane.js,
+       ta-fly.js or ta-coin.js -- the classes were copied unchanged, so their
+       config surface came with them. They were pulled out of
+       flying-dungeon/src/config.js programmatically, not retyped.
+       The exceptions, which ARE decisions:
+         GAME_H      720 either way, so it agrees by luck rather than by copy.
+         planeHealth 4 -- Still Life's is 3; see below.
+         timeOverMs  gone: this mode's clock is `ROUNDS[n].timeMs`.
+         /* ⚠️ THE PLANE DOES NOT DISCOLOUR ANY MORE (2026-09-11). *"Remove that
+       drain from the character, the one that makes him more and more gray as he
+       takes hit."*
+
+       ⚠️ THAT WAS TWO EFFECTS COMPOSING IN ONE FILTER STRING, and both are off,
+       because the ask describes one thing on screen:
+
+         `planeWearFilter`  the DAMAGE one -- a sepia/contrast/brightness stage
+                            picked off `stage()`, which is hp. This is the one
+                            that greys him "as he takes hit".
+         `planeDrainOn`     the TIME one -- `saturate()` easing in over the run
+                            from `planeDrainStartMs`, Still Life's world going
+                            grey. Nothing to do with damage, and named "drain",
+                            which is the word the ask used.
+
+       Turning off only the one the words matched would have left the plane
+       still going grey, for the other reason, and read as the change not
+       working.
+
+       ⚠️ DAMAGE IS STILL LEGIBLE, which is what makes this safe to remove: the
+       i-frame BLINK and the flinch say a hit landed, and the HUD's pip row says
+       how many are left. That row exists precisely because the wear filter was
+       never a readable damage channel -- see the note on it in `_drawHud`.
+
+       ⚠️ THE MACHINERY IS KEPT, NOT DELETED. `planeWearFilter: []` makes the
+       term '' and `planeDrainOn: false` makes `drainAt()` return 0 -- one
+       branch each, already written and already commented. The day deteriorated
+       ART lands (`planeWearSheets`) this is where it goes back. ⚠️ And these are
+       `CONFIG.TIME_ATTACK`'s own numbers, so Still Life keeps both. */
+    /* ⚠️ THE PLANE DOES NOT DISCOLOUR ANY MORE (2026-09-11). *"Remove that
+       drain from the character, the one that makes him more and more gray as he
+       takes hit."*
+
+       ⚠️ THAT WAS TWO EFFECTS COMPOSING IN ONE FILTER STRING, and both are off,
+       because the ask describes one thing on screen:
+
+         `planeWearFilter`  the DAMAGE one -- a sepia/contrast/brightness stage
+                            picked off `stage()`, which is hp. This is the one
+                            that greys him "as he takes hit". Emptied, so the
+                            term is '' at every stage.
+         `planeDrainOn`     the TIME one -- `saturate()` easing in over the run.
+                            ⚠️ It was ALREADY dead here: `render(ctx, W, H, 0)`
+                            passes drain 0, so this flag changed nothing on
+                            screen. Turned off anyway so the config says what
+                            the picture does.
+
+       ⚠️ DAMAGE IS STILL LEGIBLE, which is what makes this safe: the i-frame
+       BLINK and the flinch say a hit landed, and the HUD's pip row says how many
+       are left. That row exists precisely because the wear filter was never a
+       readable damage channel.
+
+       ⚠️ THE MACHINERY IS KEPT, NOT DELETED -- one branch each, already written.
+       The day deteriorated ART lands (`planeWearSheets`) this is where it goes
+       back. These are `CONFIG.TIME_ATTACK`'s own numbers; Still Life keeps both.
+
+       ⚠️⚠️ AND THIS BLOCK WAS ONCE DELETED BY ACCIDENT, WHICH IS WHY THE NOTE IS
+       HERE AND NOT AT THE TOP. The first version of this edit rewrote the whole
+       span from `planeWearSheets` to `planeDrainCurve` -- and those two are NOT
+       adjacent: twenty-seven keys sit between them, including `planeHealth`,
+       `planeScale`, `startX/startY` and the whole entry. The mode came up with
+       no plane and no flies. **A range edit on a config assumes the two ends are
+       neighbours; check what is between them before replacing a span.** */
+    /* ⚠️ NO GRUNT WHEN HE IS HIT, IN THIS MODE ONLY (2026-09-11): *"remove the
+       SFX from when he takes a hit, ONLY AT THE TIME ATTACK."* The sample is the
+       main game's own `playerHit`, shared with every punch the player takes on
+       the street -- so this is a flag the MODE reads and not a deleted call, or
+       the whole game would go quiet. ⚠️ `playerDeath` still plays: being shot
+       down is a different event and it happens once. */
+    hitVoice: false,
     /* --- INHERITED FROM STILL LIFE, VERBATIM -----------------------------
        ⚠️ DO NOT "TIDY" THESE. Each one is read by name in ta-plane.js,
        ta-fly.js or ta-coin.js -- the classes were copied unchanged, so their
@@ -4274,13 +4502,8 @@ const CONFIG = {
        ⚠️ AND THE LOOKUP IS NOW CLAMPED in ta-plane.js, so a short array can
        never again read as a repaired plane -- see the note there. Adding
        health without adding an entry now just holds the last tint. */
-    planeWearFilter: [
-      "",
-      "sepia(0.55) contrast(0.9) brightness(0.94)",
-      "sepia(0.9) contrast(0.72) brightness(0.8)",
-      "sepia(0.98) contrast(0.58) brightness(0.68)",
-    ],
-    planeDrainOn: true,
+    planeWearFilter: [],
+    planeDrainOn: false,
     planeDrainStartMs: 60000,
     planeDrainFullMs: 0,
     planeDrainMax: 0.5,

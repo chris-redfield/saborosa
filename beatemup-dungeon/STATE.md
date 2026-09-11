@@ -10428,3 +10428,331 @@ are untouched.
   matte black would put a dark fringe on every letter in the pack — a regression
   across eighteen bands to fix one line. Clearing alpha alone leaves the matte
   as the artist left it.
+
+### ⚠️ "He is floaty" — and the cut was right (2026-09-11)
+
+> *"The verme is floaty, he looks like he is hovering over the ground and his
+> shadow, can you bring him down a little bit?"*
+
+**Measured before touching anything, and nothing was mis-cut.** His anchor sits
+on his lowest pixel at **+0.0px** — identical to `cigarro` (+0.0), `cigarro2/3`
+(−0.0) and both roaches (−0.0). The only packs that sink are espeto (+14.8) and
+charutobi (+5.9), and both do it through the cutter because their spines hang
+below their feet.
+
+**It is the SHAPE.** Those packs meet the floor across a flat span; the worm's
+body is a rounded taper, 11 atlas px wide at the bottom against 147 at its
+widest. A curve touching at a point reads as resting *on* something, and the
+63px shadow ellipse sits under the fat part with daylight between.
+⚠️ **Agreeing with the rest of the cast geometrically is not the same as looking
+planted. The eye is the spec, and a measurement that says "correct" is an
+argument about the wrong question.**
+
+**`CHARACTERS[kind].groundNudgePx`** is new: how far into the floor a pack is
+drawn, in belt px, scaled by `depthScale()` like the emerge hop. The verme is
+10; nobody else declares it.
+
+⚠️ **DRAWN SIZE ONLY.** The hurtbox, the reaches, the belt z and the SHADOW are
+all untouched — the shadow marks the floor, and moving the body relative to it
+is the whole request.
+
+⚠️ **AND IT IS NOT A CUTTER FIX, DELIBERATELY.** `bodyMinRun` would have put the
+anchor where the silhouette is genuinely wide — espeto's treatment — but it also
+moves `bodyH`, which feeds the pack scale, the drawn size and the reaches
+measured off it. "Bring him down a little" would have come out as **5.7% bigger
+with every punch box shifted**. When a fix has a cheap version that changes one
+thing and an in-pipeline version that changes four, the ask decides which.
+
+Judged from a still over a real plate frame with the real shadow at 0 / 6 / 10 /
+14: at 10 the ellipse tucks under the yellow stumps.
+
+---
+
+## TIME ATTACK is hand-lettered now (2026-09-11)
+
+> *"I just added the lettering for the time attack, can you replace the current
+> lettering (generated) by this one (drawed)?"*
+
+`batidao-letter-timeattack-001.png` -> `tools/build-timeattack-words.py` ->
+`batidao-timeattack-game.png` + defs, **123 frames**, key `taWords`.
+`CONFIG.TIME_ATTACK.LETTER`, drawn by `TimeAttack._tw/_wDraw/_wNum/_wBig/_wHole/
+_wCount`.
+
+### ⚠️ THE NUMBERS ARE WHOLE TILES, AND THE SHEET SAYS SO
+
+`47` is ONE drawing. The sheet carries every number **0..100** at HUD size and
+only **0..9** at card size — that asymmetry is the instruction: small numbers are
+picked as a tile, card numbers are assembled from digits. Confirmed by the user:
+*"these small numbers should be used for 2 things: 1 the clock and 2 the number
+of flies that were killed."*
+
+⚠️ **THE CLOCK LOST ITS TENTH.** It read `29.4`; there is no decimal point in the
+pack, and the 0..100 run is what the clock is for. The old code comment argued a
+whole-second readout makes the last five seconds look frozen — that was a
+decision about TYPE and the art overrules it. Said here because the comment is
+gone and somebody will wonder.
+
+### ⚠️ `XX` IN A PHRASE IS A HOLE, NOT LETTERING
+
+`RODADA XX`, `RODADA XX OK` and `DESTRUA XX MOSCAS` are drawn with two X's where
+a number goes. The cutter throws the X's away and emits the part LEFT of the
+hole and the part RIGHT of it, **plus the measured gaps either side** — so the
+runtime lays out `left + number + right` at the spacing the artist drew instead
+of at a margin someone guessed. The number is CENTRED in the hole: it is two X's
+wide, and a one-digit round would otherwise sit against the word on its left.
+
+### The entry is three beats in one strip, before EVERY round
+
+> *"When entering, it will be RODADA 01, or 02, or 03. Then 'destrua X moscas',
+> then 'vai!' in the same text strip."*
+
+    RODADA 01  ->  DESTRUA 8 MOSCAS  ->  VAI!
+
+One place on screen, three things in turn — not three lines stacked. `inMs` is
+split evenly, so retiming is one number and the beats cannot drift apart.
+
+⚠️ **AND IT RUNS BEFORE EVERY ROUND, WHICH IS A STATE CHANGE.** `01/02/03` is the
+ROUND number, so `card` now hands to `in` instead of straight to `play`.
+`_spawnRound` runs BEFORE the card so `R.coins` is the new round's quota while
+DESTRUA is on screen, and the clock does not tick outside `play`, so holding
+there costs the player nothing. ⚠️ `TIME ATTACK` as a title is gone — there is no
+band for it and the user's sequence has no room for one.
+
+### ⚠️ ONE TYPED LINE LEFT: ABATIDO!
+
+The card when the plane is shot down. There is no band for it, and sharing
+`TEMPO ESGOTADO` would tell the player the wrong thing about why they lost. It
+is flagged rather than faked and is one band away from being drawn like
+everything else. **That is the mode's last art gap.**
+
+### Standing notes
+
+* ⚠️ **Specks again.** The master carries nine of them (a 2px fleck 1789px right
+  of the digits row, more in the big digits). `MIN_PIECE_PX` 400 sits in a gap
+  three orders of magnitude wide, and dropped pieces are PRINTED — a genuinely
+  thin glyph could not vanish in silence. Third sheet this month.
+* ⚠️ **Key `taWords`**, not `goWords` (game over) or `goPrompt` (the arena
+  prompt). Checked with `node tools/build-manifest.js --list`, which is what
+  caught the collision earlier today.
+* ⚠️ **Every draw falls back to type.** A pack that fails to load costs the
+  lettering's look and not the readout — the rule the pause card, the game over
+  panel and the GO prompt all follow.
+* ⚠️ **ONE SCALE FOR THE PACK** (`LETTER.scale` 0.52). A card is big and a HUD
+  number small because that is how they were drawn. The clock is therefore a
+  HUD-sized number where it used to be 40px type; if it wants to be louder, the
+  CARD digits are one call away — but that is a look, not a fix.
+* **Unjudged in play**: the scale, `inMs` split three ways (300ms a beat at the
+  current 900 — likely too fast to read three lines, and `inMs` is the knob).
+
+### The pass right after it (2026-09-11)
+
+**`LETTER.clockMul: 1.1`** — *"make the countdown number 10% larger."*
+⚠️ **THE ONE DEVIATION FROM "ONE SCALE PER PACK" IN THIS PACK, AND IT IS A
+REQUEST.** Everything else keeps the relationships the artist drew; the clock
+alone takes a multiplier, because it is the one readout that has to be findable
+at a glance while the plane is being flown. Nothing else may take one without
+the same kind of reason.
+
+**The strip behind the cards is gone** — *"remove the transparent strip that is
+behind the lettering in the middle."* It was `rgba(0,0,0,0.45)` across the middle
+of the screen, drawn to keep 64px of TYPE legible over a moving photograph. The
+lettering carries its own black outline now and does not need a plate under it.
+⚠️ **The typed fallback lost it too, deliberately** — two answers to "is there a
+strip" is how a screen ends up looking different on the machine whose download
+failed. If type over the plate turns out unreadable, the fix is a shadow on the
+text, not the band back.
+
+**Each phrase holds 1.1s** — *"make the timing between the three phrases
+slightly longer. Each phrase must be in screen for at least 1 second."* It was
+`inMs` 900 split three ways: **300ms a phrase**, too fast to read one line let
+alone three.
+
+⚠️ **THE KNOB IS NOW THE BEAT AND THE TOTAL IS DERIVED, WHICH IS THE POINT.**
+`inMs` is gone; `inBeatMs` (1100) is per phrase and the entry lasts
+`inBeatMs × TimeAttack.ENTRY_BEATS` = 3.3s. **The ask was a FLOOR, not a total**,
+and a floor written as a total stops holding the moment anyone retimes the entry
+or adds a fourth phrase — with nothing to say so. Written per phrase it cannot
+come apart. ⚠️ `ENTRY_BEATS` is 3 in ONE place, because the state's length and
+the draw's index divide the same clock by it; two copies of "there are three of
+them" is how a fourth phrase ends up showing for a third of its time.
+
+⚠️ **The typed fallback rides the same clock** and holds its one card for the
+full 3.3s — a beat longer than it had, deliberately. A screen that lasts a
+different length depending on whether a PNG downloaded is the same bug as a
+strip that is only sometimes there.
+
+**Nothing is in the air until the card leaves** — *"the stage enemies only spawn
+after the instructions in the middle disappear."* `_spawnRound` was doing two
+jobs; it now sets the round up (number, quota, clock, empty field) and
+**`_populate`** fills the field on the frame `in` hands to `play`.
+⚠️ **THE TWO HALVES RUN AT DIFFERENT MOMENTS ON PURPOSE**: the quota must be the
+NEW round's while `DESTRUA 8 MOSCAS` is on screen, so that half runs *before* the
+card; the bodies must not be, so that half runs *after* it. Fusing them back
+together puts one of the two wrong whichever end you pick. ⚠️ The respawn top-up
+was already gated on `play`, so nothing else needed to learn this.
+
+### The plane stops discolouring, and stops grunting (2026-09-11)
+
+> *"Remove that drain from the character, the one that makes him more and more
+> gray as he takes hit."* · *"Also remove the SFX from when he takes a hit, ONLY
+> AT THE TIME ATTACK."*
+
+⚠️ **THE GREYING WAS TWO EFFECTS COMPOSING IN ONE FILTER STRING, and both had to
+go**, because the ask describes one thing on screen:
+
+    planeWearFilter   the DAMAGE one -- sepia/contrast/brightness picked off
+                      stage(), which is hp. This is what greys him "as he takes
+                      hit".
+    planeDrainOn      the TIME one -- saturate() easing in from
+                      planeDrainStartMs, Still Life's world going grey. Nothing
+                      to do with damage, and named "drain", which is the word
+                      the ask used.
+
+**Turning off only the one the words matched would have left the plane still
+going grey, for the other reason, and read as the change not working.** When a
+report names one cause and two things produce the symptom, the symptom is the
+spec.
+
+⚠️ **DAMAGE IS STILL LEGIBLE, which is what makes it safe to remove.** The
+i-frame blink and the flinch say a hit landed, and the HUD's pip row says how
+many are left — that row exists *because* the wear filter was never a readable
+damage channel.
+
+⚠️ **THE MACHINERY IS KEPT, NOT DELETED.** `planeWearFilter: []` makes the term
+`''` and `planeDrainOn: false` makes `drainAt()` return 0 — one branch each,
+already written and already commented. The day deteriorated ART lands
+(`planeWearSheets`) this is where it goes back. Both are `CONFIG.TIME_ATTACK`'s
+own numbers, so Still Life keeps them.
+
+⚠️ **THE HIT GRUNT IS A FLAG, NOT A DELETED CALL.** `playerHit` is the main
+game's own sample, shared with every punch the player takes on the street —
+removing the call would have silenced the whole game. `TIME_ATTACK.hitVoice:
+false` is read by the mode alone. ⚠️ **`playerDeath` stays**: the ask names the
+hit, being shot down is a different event, it happens once, and it is the only
+thing left announcing the end of a run out loud.
+
+### ⚠️⚠️ AND THAT EDIT BROKE THE MODE: a range replace over a span I had not read
+
+Reported within minutes: *"time attack is now bugged, the player does not appear
+in the screen. Nothing appears in screen, no player and no enemies."*
+
+The two flags I wanted -- `planeWearFilter` and `planeDrainOn` -- **are not
+adjacent in the file.** `planeWearSheets` and `planeDrainCurve` are 121 lines
+apart and **twenty-seven keys sit between them**: `planeHealth`, `planeScale`,
+`planeOffsetY`, `startX`/`startY`, `moveSpeed`, the whole `planeEntry` block, the
+hit boxes, the shake and the fall. I rewrote the span from one to the other and
+deleted every one of them. Without `planeScale`/`planeHealth` the plane cannot be
+built or drawn, and `flyTouchDamage` went with it.
+
+⚠️ **A RANGE EDIT ASSUMES THE TWO ENDS ARE NEIGHBOURS. Read what is between them
+before replacing a span** -- or do not use a range at all: the repair re-applied
+the same two changes as single-line replacements, which is what they always were.
+
+⚠️ **AND THE SECOND ATTEMPT CUT A COMMENT IN HALF**, because the span I pulled
+back out of HEAD started at the string `planeWearSheets` *inside* the comment
+above it rather than at the key. Anchoring on a bare identifier finds the
+mention, not the declaration.
+
+**The check that would have caught it in one line**, and which is now the thing
+to run after any config surgery:
+
+    node -e "diff the KEYS of the parsed config against git HEAD"
+
+It reported exactly the 27 losses. ⚠️ **`node --check` passes on a config with
+half its keys deleted** -- syntax was never the question.
+
+⚠️ **AND THE BOOT CHECK COULD NOT SEE IT EITHER**, for the third time today:
+headless stops at the logo. What finally showed it was a throwaway copy with the
+logo and title off and a forced `timeAttack.enter(0)` on the first play frame --
+which rendered the plane, the four flies, the HUD and the pips, all in full
+colour. **That recipe is worth keeping**: a copy of the game dir, three config
+flags and one injected line reaches a mode headless Chrome otherwise cannot.
+
+### DESTRUA XX MOSCAS: tighter, and the number lands with a punch (2026-09-11)
+
+> *"Bring the words slightly closer to each other. You should give emphasis with
+> the number: it appears without a number during half a second, then the number
+> appears and stays 1 second. So total phrase time will be 1.5 seconds. Also,
+> when the number appears, it appears with a punch effect."*
+
+**`LETTER.holePadMul: 0.55`** — the gaps either side of the number hole are what
+the cutter MEASURED off the sheet; this scales them, so the drawing stays the
+base and the tightening is one number.
+
+⚠️⚠️ **AND IT WAS NOT ENOUGH, BECAUSE THREE QUARTERS OF THE GAP WAS THE HOLE.**
+*"The words in this phrase are too far away from each other, bring them a little
+closer"* — a second pass, and measuring it is what found the cause. The hole is
+drawn `XX` wide: **138px on screen, which is exactly a two-digit number**. A
+one-digit quota sat in it with **35px of empty hole each side against 12px of
+word pad**, so no value of `holePadMul` could ever have closed it.
+
+The hole is now **the number plus `holeAirPx` (10) a side**, and the defs'
+`holeW` is the cutter's measurement rather than the layout. Air each side: 47.2px
+→ **22.1px**.
+
+⚠️ **NO CAP AT THE DRAWN WIDTH, and that took a third pass.** Capping there gave
+a two-digit quota 12px of air and a one-digit quota 22px — because `XX` happens
+to be exactly as wide as `22`. **The X is a placeholder, not a specification**:
+the drawing says "a number goes here", and every number reading the same is the
+honest version of it. The phrase is now as wide as its own contents, which is how
+a line of text behaves. All three quotas (8 / 14 / 22) now sit at 22.1px.
+
+⚠️ **The air is measured at the number's RESTING width**, so the punch's 25%
+overshoot spends it rather than a permanent gap being left to fit a moment.
+
+**The entry is a LIST now, not one shared beat.**
+
+    ENTRY: [ { ms: 1100 },                  // RODADA 01
+             { ms: 1500, numAtMs: 300 },    // DESTRUA [ 8 ] MOSCAS
+             { ms: 1100 } ]                 // VAI!          total 3.7s
+
+⚠️ **`inBeatMs` COULD NOT EXPRESS THIS**, which is why it became a fallback
+rather than being retuned. The earlier floor — *"each phrase must be in screen
+for at least 1 second"* — is still true of every entry, and is now checkable by
+reading the column instead of by dividing a total.
+
+⚠️ **THE HOLE IS RESERVED FOR THE WHOLE 1.5s, so the words do not shift when the
+number lands** (the number's width is known before it is shown, so the reserved
+space is the same either side of the reveal).** A line that re-centres itself mid-read is the opposite of
+emphasis, and it is the thing that would have gone wrong if the number were
+simply appended late.
+
+**The punch is the main game's character-select lock-in** — pop 1.25 → 1.0 on an
+easeOutBack over 400ms, a 9px shake decaying over 180ms at 82/71 rad/s, the same
+numbers `title.js` ports for the fruit select. ⚠️ **Reproduced rather than
+shared**: `Title` runs it against ITS clock, and what is common is the FEEL,
+which is the numbers. ⚠️ **The shake is on the NUMBER alone, not the line** —
+shaking DESTRUA and MOSCAS too would read as the screen being hit, and the ask
+was to emphasise the number.
+
+⚠️ **THE POP IS MEASURED AT THE POPPED SIZE.** `_wBig` lays the digits out from
+`_wBigW(..., mul)` rather than from the 1.0 width, so the number swells about its
+own centre; measuring at 1.0 and drawing at 1.25 would grow it rightwards out of
+the hole.
+
+### The clock punches on every tick (2026-09-11)
+
+> *"Add punch also when changing the clock countdown, it's beautiful."*
+
+⚠️ **THE TICK IS AN EVENT, NOT SOMETHING DERIVED FROM `clockMs`.** The displayed
+second is `ceil(clockMs / 1000)`, so "how long since it changed" looks like one
+line -- `1000 - clockMs % 1000` -- and is wrong in three places: it is FROZEN
+with the clock during a card (a pop stuck half swollen), it reads 0 on every
+frame the clock sits at 0, and a round reset lands mid-curve. Watching the VALUE
+change and zeroing a clock of its own has none of that. **Same rule as freezing
+the impact burst's pick and the game over word on the event.**
+⚠️ `_clockShown` starts at **-1**, so the first frame of a round counts as a
+change and the clock arrives with the same beat every other second has.
+
+⚠️ **`CLOCK_PUNCH` IS ITS OWN BLOCK BECAUSE THE INTERVAL IS ITS OWN.** `PUNCH`
+fires once a round; this fires once a second, thirty times a round. At 400ms and
+9px the clock would be mid-animation 40% of the time and never still -- which is
+jitter, not emphasis. Same curve, 220ms and 3px: the swell keeps most of the
+original (0.20 against 0.25) and settles 780ms before the next tick.
+
+    t=0ms  x1.20   t=60  x1.03   t=120  x0.98 (the easeOutBack undershoot)
+                   t=220 x1.00 and still until the next second
+
+⚠️ **ONE CODE PATH, TWO BLOCKS.** `_punchAt(ms, block)` takes the block's NAME,
+which is why making the clock identical to the phrase is copying four numbers
+rather than a second implementation.
