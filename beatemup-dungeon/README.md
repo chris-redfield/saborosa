@@ -525,12 +525,40 @@ the stoop.
 opens:
 
 ```js
-goMs: 2600,      // total time on screen
-goFadeMs: 400,   // the fade, taken from the END of goMs -- not added to it
+goMs: 2600,        // total time on screen
+goFadeMs: 400,     // the fade, taken from the END of goMs -- not added to it
+goFadeSteps: 4,    // how many alpha levels that fade may take. 0/1 = glide
 ```
 
-So it is solid for 2200ms and then fades. Raising `goMs` buys solid time. Its
-place, bob and fade are the other `go*` knobs in the same block.
+So it is solid for 2200ms and then leaves. Raising `goMs` buys solid time. Its
+place and bob are the other `go*` knobs in the same block.
+
+> ⚠️ **THE FADE IS SAMPLED, NOT GLIDED — IT BLINKS OUT (2026-09-11).** *"Remove
+> the fade from the vai / go animation. Remember how we did the barrel
+> animation? Like we skip frames, like few frames. We want to fade out of
+> existence with less framerate, like it blinks."* The smooth ramp is still
+> underneath; `goFadeSteps` quantises it, exactly as `PROPS.LIFT_ARC.steps`
+> quantises the barrel's hoist.
+>
+> ```
+> t (ms)     400 ... 300   300 ... 200   200 ... 100   100 ... 0    0
+> alpha         1.00          0.75          0.50         0.25      gone
+> ```
+>
+> Four levels held 100ms each — a **10fps** fade under a 60fps game — and then
+> it is simply not drawn.
+>
+> ⚠️ **It rounds UP where the barrel rounds DOWN, and that difference is the
+> point of each.** The barrel must *arrive*: both ends of its ramp are real
+> positions, so its `floor` form spends a step on each. Here the far end is "not
+> drawn at all", and a step spent at alpha 0 is 100ms of nothing nobody can see.
+> **Do not copy this formula back to the barrel** — the hoist would never reach
+> the hands.
+>
+> ⚠️ **The bob is still smooth**, which is a loose end rather than a decision:
+> the barrel's own note says a thing moving continuously past a thing moving in
+> steps is two motions at two rates, and that is what this now is. Stepping the
+> bob's sine on the same clock is a two-line change if it reads wrong.
 
 ### Five ways of pointing at the exit (2026-09-11)
 
@@ -4753,6 +4781,78 @@ row's last frame, the roach on its back.
 > reads like a bigger swing, but the four strikes' arm tips land within 5 px of
 > each other off the anchor (93.2 / 93.1 / 87.9 / **88.9** game px). A longer box
 > would be a hitbox the picture does not have.
+
+## The VERME — stage 3's enemy (2026-09-11)
+
+`verme-sprites-fim.png`, cut by `tools/build-beat-enemy-defs.py verme`.
+
+| row | frames | what |
+|---|---|---|
+| 1 idle | 3 | |
+| 2 walk | 6 | |
+| 3 combo | 10 | **five wind-up/strike PAIRS** — the cigarettes' shape |
+| 4 comboLow | 10 | the same first eight, two different last drawings — **cut, unwired** |
+| 5 egg | 11 | the EGG BURST — **cut, unwired**, a pose waiting for a mechanic |
+| 6 hurt | 2 | both cycle |
+| 7 death | 8 | melting into a puddle |
+
+```js
+CHARACTERS.verme.drawScale: 1.46      // 199.7px drawn -- a cigarette's height
+cutter scale:               0.49561   // = fighterSizePx * drawScale / 403.0
+enemyHealth.verme:          45
+enemyDamage.verme:          7
+enemyComboWeights.verme:    [5, 3, 2, 1, 1]
+```
+
+> ⚠️ **The dedupe told us the punches are PAIRS.** Row 3 collapsed to
+> `[9,10, 9,10, 11,12, 9,10, 11,13]` — the same two drawings returning three
+> times is a wind-up being re-used. So the shared `POSE_RAGGED` slices
+> `combo1..combo5` correctly and **he needs no combo pose overrides**, unlike
+> the roaches whose punches are one drawing each.
+
+> ⚠️ **No knockdown row and no jump row.** `down` borrows the death row's second
+> frame — the first drip. He can never jump in.
+
+> ⚠️ **Reaches measured at the arm tip**: 96.1 / 96.1 / 94.3 / 96.1 / **116.0**
+> game px → 133 / 133 / 131 / 133 / **161** in `BODY_SCALE` units. The fifth
+> really does reach further.
+
+> ⚠️ **Everything but the cut and the reaches is a guess** — HP, damage, the
+> five durations, the wave sizes. Stage 3 has never had a fight in it.
+
+### The three arenas — `CONFIG.LEVEL3.legs[n].arena`
+
+```js
+{ kind: 'walk', dir: +1, px: 3647, ..., arena: {
+    atRel: 0.50,                       // how far along the WALK it waits
+    enemies: [ { kind: 'verme', sx: 980, z: 150 },
+               { kind: 'verme', sx: 1120, z: 70, delayMs: 900 } ] } }
+```
+
+| leg | shelf | `atRel` | wave |
+|---|---|---|---|
+| 0 | 1 (lowest) | 0.50 | 2 |
+| 2 | 2 (walks **left**) | 0.50 | 3 |
+| 4 | 3 (top) | 0.88 — the far end | 3 |
+
+> ⚠️ **A fight is a leg that has stopped, not a segment.** This room has no
+> `segments`; `Level3._arena` owns it.
+
+> ⚠️ **`sx` is a SCREEN x, not a world x — the one place this room differs from
+> every other arena.** The shelves' world coordinates come from measured film
+> bands that get re-cut whenever the plate is re-timed, so a world x here would
+> be a number nobody could check. `Level3._wave` resolves it against the camera
+> at spawn, into a shallow copy.
+
+> ⚠️ **`atRel` is measured on the player's band, not the camera's** — near the
+> end of a leg the camera pins while the player keeps walking, so a
+> camera-measured 0.88 would fire early on exactly the shelf it is meant for.
+> **0.88 and not 1.0** because the leg ends at the lift.
+
+> ⚠️ **The camera is pinned for the fight, which holds the film with it** —
+> `progress` is a function of `_camX` here. Same deal every arena in the street
+> and the desert already makes. If a held shot reads dead the way the boss
+> room's did, the fix is a narrow camera *band* instead of a pin.
 
 ### The charge — `CONFIG.BARATA_CHARGE`
 

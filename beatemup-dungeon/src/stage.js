@@ -201,6 +201,23 @@ class Stage {
    * finished, so game.js can run the win state without polling.
    */
   update(dt, player, crowd) {
+    /* ⚠️ THE GO PROMPT'S CLOCK, AND IT IS ABOVE THE LEVEL 3 RETURN ON PURPOSE.
+       It used to sit below it, which was invisible for as long as only the
+       segment machinery raised the banner -- and the moment the bookcase's
+       arenas started raising one (2026-09-11) the prompt was set by a room
+       whose update returns before anything ticks it. Reported the same day:
+       *"one of the messages POR AQUI got frozen in the screen, it doesn't
+       animate anymore, and does not piss off."*
+
+       ⚠️ FIXED BY MOVING THE TICK, NOT BY TICKING IT IN level3.js. A second
+       decrement would be a second thing to keep in step, and the next room that
+       returns early would arrive with the same bug -- this is the family this
+       game has produced six times (something mid-state when the thing driving
+       it changes underneath), and the version with teeth is structural. A clock
+       that belongs to the STAGE is ticked by the stage, before any branch may
+       leave. ⚠️ It also runs before `Level3._arena` reads `stage.banner` to
+       decide whether a prompt is new, which is the value that read wants. */
+    if (this.banner > 0) this.banner -= dt;
     /* LEVEL 3 HOOK 3/5, AND IT IS THE LOAD-BEARING ONE. The bookcase never
        reaches the segment machinery below: its shot is a switchback, and the
        scroll branch completes on `player.x >= toX` -- the rightward assumption
@@ -215,7 +232,6 @@ class Stage {
       if (r) this.done = true;
       return r;
     }
-    if (this.banner > 0) this.banner -= dt;
     const s = this.segment();
     if (!s) { this.done = true; return null; }
 

@@ -96,6 +96,12 @@ const Level3 = {
   _board: false,    // walking him onto the slab; the ride waits. See tickBoarding
   _boardWalked: false, // he has reached the middle; the camera may still be panning
   _boardT: 0,       // how long that has been going on -- the stuck-hook guard
+  /* THE FIGHTS. `_fight` is the wave that is up right now ({leg, camX}); `_fought`
+     is the legs whose wave has been cleared, so a shelf is never fought twice --
+     the player may walk back over the spot and the film may rewind with him. See
+     `_arena`. */
+  _fight: null,
+  _fought: null,
 
   /** Is this the bookcase? The guard every hook is wrapped in. */
   owns(room) { return !!(room && room.level3 && CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false); },
@@ -108,6 +114,8 @@ const Level3 = {
     this.progress = 0;
     this.leg = 0;
     this.legT = 0;
+    this._fight = null;
+    this._fought = [];
     this.done = false;
     this._bands = null;
     this._camX = 0;
@@ -395,7 +403,14 @@ const Level3 = {
    * Drive the room. Returns 'clear' on the frame the last leg finishes, which
    * is the same contract stage.update() has with game.js.
    */
-  update(dt, stage, player) {
+  /* ⚠️ `crowd` IS THE FOURTH PARAMETER AND IT WAS MISSING FROM THIS LIST UNTIL
+     2026-09-11. `Stage.update` has passed it since the hook was written and
+     this signature simply dropped it -- harmless for as long as nothing here
+     wanted a crowd, and an instant `ReferenceError: crowd is not defined` on
+     the first frame of the room the moment `_arena` did. **A caller passing
+     more arguments than the callee declares fails silently until someone
+     names the argument**, and JS gives you no warning on either side. */
+  update(dt, stage, player, crowd) {
     const L = this.current();
     if (!L || this.done) return this._finish(stage);
     this.legT += dt;
@@ -502,6 +517,11 @@ const Level3 = {
 
     // --- a walk leg --------------------------------------------------------
     const b = this._bands[this.leg];
+    /* ⚠️ A FIGHT IS A WALK LEG THAT HAS STOPPED, and it is handled before the
+       camera because it OWNS the camera while it lasts. See `_arena`. It
+       returns true while a wave is up, and everything below -- the follow, the
+       film, the leg's end test -- is skipped for as long as that is true. */
+    if (this._arena(stage, player, crowd, L, b)) { this._tickBoil(dt, false); return null; }
     this._camera(dt, stage, player, L, b);
     this._tickBoil(dt, false);
 
@@ -684,6 +704,114 @@ const Level3 = {
    * to the leg's own band so it can never wander onto ground the film is not
    * showing.
    */
+  /**
+   * The fights on the shelves — stage 3's arenas (2026-09-11).
+   *
+   * Returns TRUE while a wave is up, which is the caller's cue to skip the
+   * camera follow, the film and the leg's end test for this frame.
+   *
+   * ⚠️ A FIGHT IS A LEG THAT HAS STOPPED, NOT A SEGMENT. The bookcase has no
+   * `segments` -- it is a list of walk/lift LEGS and it runs its own loop (see
+   * the header). So an arena is declared ON the leg, `legs[n].arena`, with
+   * `atRel` saying how far along the walk it waits and `enemies` in exactly the
+   * shape `CONFIG.ROOMS[n].segments` uses everywhere else.
+   *
+   * ⚠️ `atRel` IS MEASURED ON THE PLAYER'S BAND AND NOT ON THE CAMERA'S. The
+   * two are a screen apart, and near the end of a leg the camera pins while the
+   * player keeps walking -- so a camera-measured 0.9 would fire early on the
+   * shelf whose fight is meant to be at the far END of it, which is exactly the
+   * one the ask names. `dir` decides which end 0 is: shelf 2 walks LEFT.
+   *
+   * ⚠️ THE CAMERA IS PINNED FOR THE FIGHT, WHICH HOLDS THE FILM TOO. `progress`
+   * is a function of `_camX` in this room, so pinning one freezes the other
+   * with nothing else to write -- and that is the same deal every arena in the
+   * street and the desert already makes (a `video` plate is scrubbed by camera
+   * position and `setMode('plate','play')` is a no-op on it). ⚠️ If a held shot
+   * reads dead in the library the way it did in the BOSS ROOM on 2026-08-24,
+   * the fix is to give the fight a narrow camera BAND rather than a pin -- not
+   * to make the plate play, which this game cannot do.
+   *
+   * ⚠️ THE WAVE IS SPAWNED BY `Stage._spawn`, NOT BY A COPY OF IT. That one
+   * call carries the walk-in from off screen, `from: 'behind'`, `from:
+   * 'ground'`, the entry stagger, the overhang measurement and
+   * `crowd.clearLiving()`. A second implementation here would be a second thing
+   * to keep in step with the cast. ⚠️ It reads `stage.camX`, so the pin is
+   * written onto the stage BEFORE it is called.
+   *
+   * ⚠️ A CLEARED SHELF IS REMEMBERED BY INDEX, because this room can walk
+   * BACKWARDS over its own ground -- the film rewinds with a backward step by
+   * design -- and a mark tested every frame would re-spawn the wave every time
+   * the player stepped back across it.
+   *
+   * ⚠️ AND IT RAISES THE GO PROMPT ITSELF. `Stage._goPrompt` gates on the next
+   * SEGMENT being a scroll, and this room has no segments; the prompt still
+   * means exactly what it means everywhere else here -- the way on has opened
+   * -- so the banner and the phrase ticket are set directly. See `Hud.drawGo`.
+   */
+  _arena(stage, player, crowd, L, b) {
+    if (!crowd) return false;
+    if (this._fight) {
+      /* PINNED. Written every frame rather than once, because `_place` and the
+         boil both read the stage's copy and a single write would go stale the
+         moment anything else touched it. */
+      this._camX = this._fight.camX;
+      stage.camX = this._camX;
+      stage.camTarget = this._camX;
+      this._camDX = 0;
+      if (!crowd.cleared || !crowd.cleared()) return true;
+      this._fought.push(this._fight.leg);
+      this._fight = null;
+      if (stage.banner <= 0) stage.goSeq++;
+      stage.banner = (CONFIG.goMs || 1600) / 1000;
+      return false;
+    }
+    const A = L && L.arena;
+    if (!A || !A.enemies || !A.enemies.length) return false;
+    if (this._fought.indexOf(this.leg) >= 0) return false;
+    const rel = Math.max(0, Math.min(1, A.atRel != null ? A.atRel : 0.5));
+    const span = b.hi - b.lo;
+    const mark = (L.dir < 0) ? b.hi - span * rel : b.lo + span * rel;
+    const hit = (L.dir < 0) ? (player.x <= mark) : (player.x >= mark);
+    if (!hit) return false;
+    this._fight = { leg: this.leg, camX: this._camX };
+    stage.camX = this._camX;
+    stage.camTarget = this._camX;
+    this._camDX = 0;
+    stage.banner = 0;          // penned in; nothing to walk to yet
+    stage._spawn(this._wave(A), crowd);
+    return true;
+  },
+
+  /**
+   * The wave, with its marks resolved into world x.
+   *
+   * ⚠️ AN ARENA HERE DECLARES ITS ENEMIES BY SCREEN x (`sx`), NOT BY WORLD x,
+   * AND THAT IS THE DIFFERENCE BETWEEN THIS ROOM AND EVERY OTHER. Elsewhere a
+   * fight happens at a place, so `x` is a place and `CONFIG.ROOMS[n].segments`
+   * says 3500. Here a fight happens wherever `atRel` puts it along a shelf, and
+   * the shelf's world coordinates are derived from MEASURED film bands that get
+   * re-cut whenever the plate is re-timed -- so a world x written here would be
+   * a number nobody could check, silently landing off screen the first time the
+   * bands move. `sx` is "how far across the frame", which is what the fight
+   * actually is, and it survives a re-cut untouched.
+   *
+   * ⚠️ THE COPY IS SHALLOW AND DELIBERATE. `Stage._spawn` reads `seg.enemies`
+   * and nothing else off the object, and rewriting `x` in place would burn the
+   * config entry the first time a fight ran -- a retry would then spawn against
+   * last run's camera. A `world x` field is never written back.
+   */
+  _wave(A) {
+    const cam = this._camX;
+    const list = [];
+    for (const e of A.enemies || []) {
+      const o = {};
+      for (const k in e) o[k] = e[k];
+      if (e.sx != null) o.x = cam + e.sx;
+      list.push(o);
+    }
+    return { enemies: list };
+  },
+
   _camera(dt, stage, player, L, b) {
     const focus = CONFIG.GAME_W * CONFIG.camFocusX;
     const dz = CONFIG.camDeadzone;

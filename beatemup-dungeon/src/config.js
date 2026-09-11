@@ -2094,6 +2094,21 @@ const CONFIG = {
                   starts to read wrong in play, the fix is ENEMY_COMBOS'
                   reaches, not this number. */
                drawScale: 2.55134,
+               /* ⚠️ THE CORPSE BLINKS OUT INSTEAD OF DISSOLVING (2026-09-11),
+                  asked for right after the GO prompt got the same treatment:
+                  *"apply the same effect in the cockroach enemies, when they
+                  are fading out of existence."* 4 alpha levels over
+                  `corpseFadeS` 0.55 = 137ms holds, about 7fps.
+
+                  ⚠️ THE ROACHES ONLY, AND THAT IS THE ASK RATHER THAN A
+                  PREFERENCE -- the cigarettes, ESPETO and everyone else still
+                  dissolve. It is a per-pack field for the same reason
+                  `corpseFade: false` is (ESPETO refuses the fade entirely):
+                  how a body leaves belongs to the body.
+
+                  ⚠️ OPACITY ONLY. `corpseGone()` does not read it, so a stepped
+                  corpse is reaped on exactly the same clock as every other. */
+               corpseFadeSteps: 4,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -2120,6 +2135,21 @@ const CONFIG = {
                // share a screen. The atlas was re-cut with it -- see the tan
                // one's note, and build-beat-enemy-defs.py.
                drawScale: 2.55134,
+               /* ⚠️ THE CORPSE BLINKS OUT INSTEAD OF DISSOLVING (2026-09-11),
+                  asked for right after the GO prompt got the same treatment:
+                  *"apply the same effect in the cockroach enemies, when they
+                  are fading out of existence."* 4 alpha levels over
+                  `corpseFadeS` 0.55 = 137ms holds, about 7fps.
+
+                  ⚠️ THE ROACHES ONLY, AND THAT IS THE ASK RATHER THAN A
+                  PREFERENCE -- the cigarettes, ESPETO and everyone else still
+                  dissolve. It is a per-pack field for the same reason
+                  `corpseFade: false` is (ESPETO refuses the fade entirely):
+                  how a body leaves belongs to the body.
+
+                  ⚠️ OPACITY ONLY. `corpseGone()` does not read it, so a stepped
+                  corpse is reaped on exactly the same clock as every other. */
+               corpseFadeSteps: 4,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -2128,6 +2158,55 @@ const CONFIG = {
                     as the other three: this row is four strikes, not pairs. */
                  combo4: { anim: 'combo', from: 4, to: 5 },
                  down:   { anim: 'death', from: 2, to: 3 },
+               } },
+
+    /* THE VERME -- THE LIBRARY'S ENEMY, and the first one stage 3 has ever had
+       (2026-09-11). A hooked tan worm with two yellow stumps and a red mouth,
+       cut by tools/build-beat-enemy-defs.py from `verme-sprites-fim.png`.
+
+       SEVEN ROWS, NAMED BY THE USER: idle / walk / combo 1 / combo 2 / EGG
+       BURST / taking hits / melting death.
+
+       ⚠️ HIS COMBO ROWS ARE WIND-UP/STRIKE PAIRS, WHICH IS THE CIGARETTES'
+       SHAPE AND NOT THE BARATAS'. Five pairs each, and the cutter proved it
+       rather than anyone reading it off a thumbnail: the dedupe collapsed row 3
+       to `[9,10, 9,10, 11,12, 9,10, 11,13]` -- the same two drawings returning
+       three times is a wind-up being re-used. So `combo1..combo5` in the SHARED
+       `POSE_RAGGED` slice it correctly and he needs NO combo overrides, unlike
+       the roaches whose punches are one drawing each.
+
+       ⚠️ ROWS 3 AND 4 SHARE THEIR FIRST EIGHT DRAWINGS and differ only in the
+       last two -- `[...,9,10, 11,13]` against `[...,9,10, 14,15]` -- which is
+       two endings on one wind-up, exactly the bargain espeto's rows 5/6 make.
+       The alternate ending (`comboLow`) is CUT, NAMED AND NOT WIRED, for the
+       same reason espeto's is: nothing in the enemy brain picks between two
+       finishers yet. Two drawings waiting for a mechanic, not a mistake.
+
+       ⚠️ THE EGG BURST IS CUT AND NOT WIRED EITHER. Row 5 is eleven frames of
+       him swelling, opening at the top, laying a white egg and settling back;
+       nothing in this game does that. `egg` is a pose so that wiring it is a
+       behaviour change and not another trip through the cutter -- the same
+       order the barata's `ball` row was done in.
+
+       ⚠️ NO KNOCKDOWN ROW AND NO JUMP ROW. `down` borrows the death row's
+       SECOND frame -- the first drip, where the body is already collapsing but
+       is still a worm -- exactly as the baratas' borrows theirs. He can never
+       jump in; there is no art for it and `ENEMY_LEAP` has no entry.
+
+       ⚠️ `drawScale` 1.46 PUTS HIM AT 199.7px, A CIGARETTE'S HEIGHT, beside a
+       123px player. And the CUT WAS SOLVED AGAINST IT rather than the other way
+       round -- cutter `scale` 0.49561 = fighterSizePx * drawScale / 403.0, so he
+       is drawn at 1.000x his own texture. **Move this and re-cut in the same
+       edit**; that pair is what the baratas cost a session to learn. */
+    verme:   { sheet: 'v2:beatemup-dungeon/verme-beat', pack: 'ragged',
+               name: 'VERME',
+               drawScale: 1.46,
+               poses: {
+                 /* No knockdown row. Frame 1 of the death row is the first
+                    drip: still a worm, already going down. */
+                 down: { anim: 'death', from: 1, to: 2 },
+                 /* CUT, NAMED, UNWIRED -- see the note above. */
+                 egg:  { anim: 'egg' },
                } },
 
     /* THE HORSE. THE FINAL BOSS, and the only entry here that is not a mook --
@@ -3462,7 +3541,11 @@ const CONFIG = {
      out of the death row, see DEATH_BLAST), so this buys distance, not safety.
      ⚠️ IT IS THE NUMBER TO MOVE FIRST IF THE RUN READS UNFAIR -- before the
      speed, which is what makes the move read as a run at all. */
-  enemyHealth: { cigarro2: 40, cigarro: 34, cigarro3: 55, barata: 50, barata2: 66,
+  /* ⚠️ `verme` 45 -- BETWEEN A CIGARRO (34) AND A CIGARRO3 (55), and it is a
+     GUESS. Stage 3 has never had a fight in it, so there is no time-to-kill in
+     that room to balance against; this is the first number to move once it has
+     been played. */
+  enemyHealth: { verme: 45, cigarro2: 40, cigarro: 34, cigarro3: 55, barata: 50, barata2: 66,
                  espeto: 60, charutobi: 30 },
 
   /* =========================================================================
@@ -5026,7 +5109,7 @@ const CONFIG = {
      ENEMY_COMBOS below. The cigarette's entry is kept as the number his string
      was balanced against (JUIXY's old swing), and because dropping him out of
      these three tables would make him look like a kind that has no stats. */
-  enemyDamage: { cigarro2: 7, cigarro: 5, cigarro3: 10, barata: 6, barata2: 8,
+  enemyDamage: { verme: 7, cigarro2: 7, cigarro: 5, cigarro3: 10, barata: 6, barata2: 8,
                  /* IGNORED, like every other kind with a string -- his hits
                     carry their own damage in ENEMY_COMBOS.espeto. Listed for
                     the reason the cigarette's is: it is the single number his
@@ -5288,6 +5371,44 @@ const CONFIG = {
       { pose: 'combo4', startupMs: 260, activeMs: 130, recoverMs: 600,
         cancelMs: 0, damage: 10, reachX: 118 * BODY_SCALE, reachZ: 46 * BODY_SCALE,
         knockback: 300, lift: 0 },
+    ],
+
+    /* THE VERME -- five hits, and the ART is where the five came from: his
+       combo row is five wind-up/strike PAIRS, which the cutter's dedupe proved
+       (see CONFIG.CHARACTERS.verme). Shaped on espeto's five rather than on a
+       cigarette's three, because that is the pack shape he shares.
+
+       ⚠️ THE REACHES ARE MEASURED AT THE ARM TIP, NOT GUESSED AND NOT TAKEN
+       FROM THE BOUNDING BOX. Anchor-aligned, the five strike frames put their
+       yellow stump at 96.1 / 96.1 / 94.3 / 96.1 / 116.0 game px from his
+       centre; divided by BODY_SCALE that is 133 / 133 / 131 / 133 / 161. **The
+       fifth really does reach further** -- unlike the barata's fourth, which
+       only looked as though it did. Same rule either way: measure the fist.
+
+       ⚠️ AND `reachX` IS NOT THE WHOLE REACH. The test is `|dx| < reachX +
+       the TARGET's half-width` (26.6px), so these numbers are "the fist touches
+       the body", which is what the drawings show. Forgetting that produced a
+       wrong "the strings never connect" claim that stood for a session.
+
+       ⚠️ EVERY DURATION AND DAMAGE HERE IS A GUESS off espeto's, and stage 3
+       has never had a fight to balance them against. Expect to move them. */
+    verme: [
+      { pose: 'combo1', startupMs: 210, activeMs: 90, recoverMs: 210,
+        cancelMs: 0, damage: 3, reachX: 133 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 45, lift: 0 },
+      { pose: 'combo2', startupMs: 170, activeMs: 90, recoverMs: 210,
+        cancelMs: 0, damage: 3, reachX: 133 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 45, lift: 0 },
+      { pose: 'combo3', startupMs: 220, activeMs: 110, recoverMs: 430,
+        cancelMs: 0, damage: 5, reachX: 131 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 150, lift: 0 },
+      { pose: 'combo4', startupMs: 170, activeMs: 90, recoverMs: 210,
+        cancelMs: 0, damage: 3, reachX: 133 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 45, lift: 0 },
+      // The finisher, and the one strike whose drawing really does reach out.
+      { pose: 'combo5', startupMs: 250, activeMs: 120, recoverMs: 530,
+        cancelMs: 0, damage: 7, reachX: 161 * BODY_SCALE, reachZ: 48 * BODY_SCALE,
+        knockback: 260, lift: 0 },
     ],
 
     cigarro3: [
@@ -6072,7 +6193,32 @@ const CONFIG = {
        false and the ride starts the instant he steps on, as it did before. */
     boardWalk: true,
     legs: [
-      { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98] },
+      /* ⚠️ THE THREE FIGHTS (2026-09-11) -- stage 3's first enemies, after a
+         fortnight of the room being deliberately empty. *"There are several
+         arenas in stage 3, but let's begin with the easiest ones, 3 arenas, 1
+         for each floor at the lowest and middle, they will be at the middle of
+         the horizontal stretch; at the 3rd floor it should be at the end of the
+         floor (rightmost end)."*
+
+         `arena` is declared ON A LEG because this room has no segments -- it is
+         a list of walk/lift legs running its own loop. `atRel` is how far along
+         the WALK it waits, measured on the player's band and with `dir`
+         deciding which end 0 is (⚠️ SHELF 2 WALKS LEFT, so 0.5 there is still
+         its middle but 1.0 is its LEFT end). `enemies` is the shape every other
+         arena in the game uses, except that `sx` is a SCREEN x -- see
+         `Level3._wave` for why a world x would be unusable here.
+
+         ⚠️ 0.88 AND NOT 1.0 ON THE TOP SHELF. The leg ENDS at the lift, and a
+         fight at 1.0 would spawn on the boarding walk; 0.88 of 3390px leaves
+         ~400px of shelf past it, which is the walk-on the GO prompt points at.
+
+         ⚠️ THE WAVES ARE GUESSES -- two, then three, then three. Nothing about
+         this room's difficulty has ever been played. */
+      { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98],
+        arena: { atRel: 0.50, enemies: [
+          { kind: 'verme', sx: 980, z: 150 },
+          { kind: 'verme', sx: 1120, z: 70, delayMs: 900 },
+        ] } },
       /* ⚠️ `sec` IS THE FILM'S OWN DURATION AND SHOULD STAY THAT WAY. A rise is
          the shot going up; play it at anything other than 1x and it reads as
          fast-forward, which is exactly what a filmed plate cannot do
@@ -6080,9 +6226,23 @@ const CONFIG = {
          to do — the answer to that is enemies riding up with you, not a faster
          lift. */
       { kind: 'lift', sec: 13.67, film: [18.98, 32.65] },
-      { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96] },
+      { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96],
+        /* ⚠️ HE IS WALKING LEFT HERE, so the wave comes in from the LEFT: `sx`
+           is still a screen x, and the low ones are the ground he is heading
+           into. `from: 'behind'` is the RIGHT for this leg -- it means "the way
+           he came", and _spawn takes it from the side, not from a compass. */
+        arena: { atRel: 0.50, enemies: [
+          { kind: 'verme', sx: 300, z: 150 },
+          { kind: 'verme', sx: 160, z: 70, delayMs: 800 },
+          { kind: 'verme', sx: 980, z: 110, delayMs: 2200, from: 'behind' },
+        ] } },
       { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
-      { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97] },
+      { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97],
+        arena: { atRel: 0.88, enemies: [
+          { kind: 'verme', sx: 980, z: 150 },
+          { kind: 'verme', sx: 1120, z: 60, delayMs: 700 },
+          { kind: 'verme', sx: 300, z: 110, delayMs: 2000, from: 'behind' },
+        ] } },
     ],
     /* THE ELEVATOR. Three hand-drawn frames of one platform, cut by
        tools/build-beat-elevador-defs.py. It replaced a DRAWN placeholder — a
@@ -7647,6 +7807,19 @@ const CONFIG = {
        that were played and confirmed. */
     barata:  [2, 3, 4, 4],
     barata2: [3, 3, 4, 4],
+    /* THE VERME, ON ESPETO's SHAPE -- five entries because his string has five
+       hits, weighted hard toward the short one for espeto's reason: at flat
+       weights a five-hit string is a fighter who pins you to a wall and empties
+       a magazine. He averages 2.2 hits, jabs once 5 times in 12, and reaches
+       the finisher 1 in 12.
+
+       ⚠️ FIVE ENTRIES OR THE LAST DRAWINGS ARE NEVER SEEN. `_rollChain` reads
+       `min(weights.length, combo.length)`, so a short array caps the string
+       silently -- the trap that cost the barata's fourth punch two sessions.
+       ⚠️ AND "WIRED" IS NOT "SEEN": 1 in 12 behind ~2s of not being hit is how
+       the roach's fourth stayed invisible. Judge this by watching, not by
+       reading the table. */
+    verme:   [5, 3, 2, 1, 1],
   },
   /* =========================================================================
      THE BARATA CHARGE
@@ -9100,6 +9273,68 @@ const CONFIG = {
        walking and the game begins. The whole feature is behind this. */
     on: true,
     PROMPT: 'ESCOLHA SUA FRUTA',
+    /* --- ONE DEDINHO DOWN (2026-09-11) -------------------------------------
+       *"In the escolha seu coco screen, bring all the lettering and drawings
+       down by 1 finger (1 dedinho). Of course the background doesn't need to go
+       down, only the front stuff."*
+
+       24px, the same number `LETTERS.titleNudgePx` settled on for the same
+       request on the title -- a dedinho is a unit this project has already
+       measured once, and answering it with a second value would make the two
+       screens disagree about what a finger is.
+
+       ⚠️ IT IS A SECOND KNOB, NOT A SHARE OF THE TITLE'S. That one's note is
+       explicit that it does not reach the other front-end screens; OPCOES and
+       the credits still were not in an ask, and one nudge across all of them
+       would move four screens to fix one.
+
+       ⚠️ FIVE DRAW SITES TAKE IT, and the list is the whole of "the front
+       stuff": the drawn prompt (`LETTERS.chooseYRel`), its typed fallback
+       (`promptYRel`), the two names under the coconuts (`pickNameYRel`), and
+       the art at BOTH paths -- the four-layer one and the single-picture
+       fallback (`artYRel`). ⚠️ The fallbacks matter: miss one and the screen is
+       laid out differently on exactly the machine whose download failed.
+
+       ⚠️ THE BACKGROUND IS NOT ONE OF THEM, WHICH IS THE ASK. The photograph is
+       cover-fit by the title's plate pass and is never offered this offset.
+       Neither is the WALK-ACROSS after the choice: his feet are on a ground line
+       read off that photograph (`titleWalkGroundYRel`), so nudging him would
+       sink them into it.
+
+       ⚠️ NOTHING CLIPS, AND IT WAS MEASURED RATHER THAN ASSUMED. The art rect
+       is `artYRel` 0.436 +/- `artHRel` 0.64/2 -- y 83.5..544.3 -- and the lowest
+       ink in the four layer files (`coco-01`, source row 918 of 951, drawn at
+       460.8/951) lands at y 528.8. At +24 it is 552.8 of 720, with 167px to
+       spare; the names below it sit at 594.2. There is room for several more
+       dedinhos before anything is near the edge.
+
+       ⚠️⚠️ AND THE FIRST VERSION OF THIS NOTE SAID THE OPPOSITE, off the
+       DEFAULTS IN THE CODE (`_sel('artYRel', 0.60)`, `artHRel` 0.80) rather
+       than off the values right here -- which put the rect's bottom edge flush
+       with y=720 and produced a confident "4.6px of the lower coconut is
+       clipped". Every number in it was arithmetic on a fallback that has not
+       been the live value for a long time. **A default in a `||` or a second
+       argument is what happens when the config is SILENT; read the config.**
+       Same family as the knob set to 0 that did nothing. */
+    nudgePx: 24,
+    /* --- WHEN THE QUESTION ARRIVES -----------------------------------------
+       ⚠️ ABSENT ON PURPOSE, AND ABSENT MEANS "WITH THE PICTURES". `Title._askMs`
+       falls back to `artFadeMs`, so ESCOLHA SEU COCO finishes falling at the
+       same instant the two coconuts and their names finish fading up.
+
+       It used to take `CONFIG.titleDropMs` (900) while the art faded over 320 --
+       the pictures fully there, the question still on its way down for another
+       580ms. Reported 2026-09-11: *"the escolha seu coco letters come only
+       later, it should come at the same moment that the other stuff enters the
+       screen."*
+
+       ⚠️ WRITING 320 HERE WOULD FIX IT TODAY AND DRIFT TOMORROW -- two numbers
+       that have to match, with nothing saying so. Leave it absent unless the
+       two are deliberately wanted apart; `artFadeMs` then moves both.
+
+       ⚠️ AND IT NO LONGER TOUCHES `titleDropMs`, which is the TITLE screen's
+       drop. Sharing that is why this was 900. */
+    // dropMs: 320,
     /* ⚠️ NOBODY HIGHLIGHTED -- AND THE SCREEN NO LONGER OPENS ON IT. It is kept
        for two reasons: it is the fallback if a hero's own picture fails to load
        (a missing highlight must cost the highlight, never the ability to
@@ -10708,6 +10943,32 @@ const CONFIG = {
   goBackNudgeS: 1.2,
   goMs: 2600,
   goFadeMs: 400,          // the fade as it leaves; part of goMs, not extra
+  /* ⚠️ THE FADE IS SAMPLED, NOT GLIDED -- IT BLINKS OUT (2026-09-11). *"Remove
+     the fade from the vai / go animation. Remember how we did the barrel
+     animation? Like we skip frames, like few frames. We want to fade out of
+     existence with less framerate, like it blinks."*
+
+     `goFadeSteps` is how many alpha levels the fade is allowed to take. At 4
+     over `goFadeMs` 400 the sign holds full, 0.75, 0.5 and 0.25 for 100ms each
+     -- a 10fps fade under a 60fps game -- and then it is simply gone. The
+     smooth ramp is still underneath; this quantises it, exactly as
+     `PROPS.LIFT_ARC.steps` quantises the barrel's hoist. 0 or 1 restores the
+     glide.
+
+     ⚠️ IT ROUNDS UP WHERE THE BARREL ROUNDS DOWN, AND THE DIFFERENCE IS THE
+     POINT OF EACH. The barrel must ARRIVE -- both ends of its ramp are real
+     positions, so its `floor` form spends a step at each. Here the far end is
+     "not drawn at all", and a step spent at alpha 0 is 100ms of nothing that
+     nobody can see: rounding up spends every step on a visible level and lets
+     the prompt vanish on the frame its clock runs out. ⚠️ So do NOT copy this
+     formula back to the barrel, or the hoist will never reach the hands.
+
+     ⚠️ THE BOB IS STILL SMOOTH, and that is a loose end rather than a decision.
+     The barrel's own note says a thing moving continuously past a thing moving
+     in steps is two motions at two rates -- which is what this now is, a sign
+     sliding smoothly while it dims in jumps. Stepping `goBobFreq`'s sine on the
+     same clock is a two-line change if it reads wrong. */
+  goFadeSteps: 4,
 
   // --- Debug ---------------------------------------------------------------
   /* Hold C: draw the boxes. Same key as the other two games, deliberately —

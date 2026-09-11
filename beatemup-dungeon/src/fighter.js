@@ -1297,7 +1297,34 @@ class Fighter {
       // Fade out where it fell, rather than vanishing. The two numbers are in
       // CONFIG because `corpseGone()` has to agree with this exactly.
       const d = CONFIG.corpseFadeDelayS, f = CONFIG.corpseFadeS;
-      alpha *= Math.max(0, 1 - (this.stateT - d) / f);
+      /* ⚠️ CLAMPED AT BOTH ENDS NOW, AND THE TOP ONE IS NEW BUT CHANGES
+         NOTHING. Before the delay has elapsed this expression is greater than 1
+         (up to 1 + d/f), and `sheets.draw` assigns it straight to
+         `ctx.globalAlpha`, which by spec IGNORES a value outside [0,1] and
+         keeps what it had -- 1, inside the save(). So the old behaviour was
+         "fully opaque" by accident and is now "fully opaque" on purpose. It has
+         to be, because the quantiser below would otherwise round 1.45 up to
+         1.5 and hand the canvas another number it silently drops. */
+      let q = Math.max(0, Math.min(1, 1 - (this.stateT - d) / f));
+      /* ⚠️ AND THE PACK MAY ASK FOR IT TO BLINK OUT RATHER THAN DISSOLVE. The
+         roaches do (2026-09-11, on request): `corpseFadeSteps` is how many
+         alpha levels the fade may take, so at 4 over `corpseFadeS` 0.55 a dead
+         barata drops 1 -> 0.75 -> 0.5 -> 0.25 in 137ms holds and is gone. Same
+         quantiser as the GO prompt's fade and as `PROPS.LIFT_ARC.steps` on the
+         barrel's hoist; absent or under 2, the fade glides as it always has.
+
+         ⚠️ `ceil`, NOT the barrel's `floor`, FOR THE REASON THE GO PROMPT USES
+         IT: the far end of this ramp is "invisible", so a step spent at alpha 0
+         is a slice of the fade nobody can see. Rounding up puts every step on a
+         visible level and reaches 0 exactly when the fade's clock ends, which
+         is also the earliest `corpseGone()` will take the body.
+
+         ⚠️ IT IS THE OPACITY ONLY, exactly like `corpseFade: false` above.
+         `corpseGone()` does not read it, so a stepped corpse is reaped on the
+         same clock as every other one. */
+      const n = pack.corpseFadeSteps | 0;
+      if (n > 1) q = Math.ceil(q * n) / n;
+      alpha *= q;
     }
 
     /* A knocked-down fighter is ROTATED rather than given a lying-down frame,

@@ -350,7 +350,21 @@ class Hud {
       this.goSeq = seq;
       this._rollGo(pack ? pack.defs.frames.length : 0);
     }
-    const a = Math.min(1, t / (CONFIG.goFadeMs / 1000));
+    /* ⚠️ SAMPLED, NOT GLIDED -- THE SIGN BLINKS OUT. The smooth ramp is still
+       underneath and `goFadeSteps` quantises it, the same move `Prop._liftArc`
+       makes on the barrel's hoist: a handful of alpha levels held for equal
+       slices of `goFadeMs`, so the prompt leaves at about 10fps under a 60fps
+       game instead of dissolving. 0 or 1 restores the glide.
+
+       ⚠️ `ceil`, WHERE THE BARREL USES `floor`. The barrel has to ARRIVE, so it
+       spends a step on each end of its ramp; here the far end is "not drawn",
+       and a step spent at alpha 0 is a slice of the fade nobody can see.
+       Rounding up puts every step on a visible level and lets the sign vanish
+       on the frame `t` runs out -- which is the snap that makes it read as a
+       blink rather than as a quick fade. */
+    const raw = Math.min(1, t / (CONFIG.goFadeMs / 1000));
+    const steps = CONFIG.goFadeSteps | 0;
+    const a = steps > 1 ? Math.ceil(raw * steps) / steps : raw;
     // Horizontal, so the prompt nudges toward the exit rather than bouncing.
     const bob = Math.sin(t * CONFIG.goBobFreq) * CONFIG.goBobAmp;
     let right = CONFIG.GAME_W - CONFIG.goMarginRight + bob;

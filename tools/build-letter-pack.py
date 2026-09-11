@@ -139,6 +139,49 @@ def main():
 
     im = Image.open(a.src).convert('RGBA')
     arr = np.array(im)
+
+    # ⚠️ THE NEAR-WHITE PIXELS ARE ERASED, AND THE BUG THEY CAUSED IS WORTH
+    # STATING. Reported 2026-09-11: *"there is a bug with the lettering cut, the
+    # word ESCOLHA comes with a small horizontal line, almost transparent, but
+    # it can be seen."* It is a ruled line off the master, pure white
+    # (255,255,255) at alpha 55-68, running under ESCOLHA at y 149-150 of that
+    # frame.
+    #
+    # ⚠️ THE BANDING NEVER SAW IT, WHICH IS EXACTLY WHY IT SHIPPED. `ink` below
+    # already excludes near-white (`sum < 720`), so the line could not move a
+    # band or a column piece -- but `ink` is only used to FIND the frames, and
+    # the crop takes raw pixels from `im`. **A mask that decides where to cut is
+    # not a mask that decides what to keep**, and anything the first one ignores
+    # rides along into the atlas invisible to every check in this tool.
+    #
+    # ⚠️ ERASING *NEAR-WHITE* AND NOT "EVERYTHING `ink` REJECTS". The ink test
+    # also rejects alpha <= 16, which is the letters' own antialiasing; zeroing
+    # that would harden every outline in the pack to fix one line. Near-white is
+    # safe because it is never real ink here, and that was MEASURED rather than
+    # assumed: in the built atlas there are 1008 near-white pixels, all of them
+    # under alpha 128 and ZERO at alpha 128 or above. The pack is yellow and
+    # black.
+    #
+    # ⚠️⚠️ ONLY THE ALPHA IS CLEARED, AND ONLY WHERE THE PIXEL IS ALREADY
+    # VISIBLE. Two traps, both found by measuring instead of shipping:
+    #
+    #   * THE MASTER'S TRANSPARENT BACKGROUND IS WHITE. 85,284,369 of its
+    #     109M pixels are (255,255,255) at alpha 0 -- so `min(rgb) >= 235`
+    #     matches almost the whole page and only 12,864 of those matches are
+    #     the artifact. The `alpha > 0` term is what makes this a fix for a
+    #     line rather than a pass over the entire sheet.
+    #   * AND RGB IS KEPT, NOT ZEROED. Transparent pixels still carry colour
+    #     into a LANCZOS downscale (the resample is not premultiplied), so
+    #     turning a white matte black would put a dark fringe on every letter
+    #     in the pack -- a regression across eighteen bands, to fix one line.
+    #     Clearing alpha alone leaves the matte exactly as the artist left it.
+    white = (arr[..., :3].astype(int).min(2) >= 235) & (arr[..., 3] > 0)
+    if white.any():
+        print('erased %d visible near-white px (the ruled line off the master)'
+              % int(white.sum()))
+        arr[..., 3][white] = 0
+        im = Image.fromarray(arr, 'RGBA')
+
     ink = (arr[..., 3] > 16) & (arr[..., :3].astype(int).sum(2) < 720)
     B = bands(ink)
     print('bands: %d' % len(B))

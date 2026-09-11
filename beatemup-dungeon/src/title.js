@@ -480,9 +480,12 @@ class Title {
     }
   }
 
-  /** ms into 'ask' when the question has finished falling and can be answered. */
+  /** ms into 'ask' when the question has finished falling and can be answered.
+   *  ⚠️ THE SAME NUMBER THE FALL USES, read from one place -- it IS "the fall
+   *  has finished", and two copies of that would let the screen accept a press
+   *  while the type was still moving (or refuse one after it had landed). */
   _askLandedMs() {
-    return CONFIG.titleDropMs != null ? CONFIG.titleDropMs : 700;
+    return this._askMs();
   }
 
   /** ms into the crossing when he has cleared the visible edge. */
@@ -786,8 +789,33 @@ class Title {
   }
 
   /** 0..1 through the fruit prompt's fall. Same shape as the title's. */
+  /**
+   * How long ESCOLHA SEU COCO takes to fall in, in ms.
+   *
+   * ⚠️ IT DEFAULTS TO THE ART'S OWN FADE, SO THE TWO ARRIVE TOGETHER BY
+   * CONSTRUCTION. It used to be `CONFIG.titleDropMs` (900) while the coconuts
+   * and their names faded up over `artFadeMs` (320) -- so the pictures were
+   * fully there at 320ms and the question was still falling for another 580.
+   * Reported 2026-09-11: *"the escolha seu coco letters come only later, it
+   * should come at the same moment that the other stuff enters the screen."*
+   *
+   * ⚠️ ONE NUMBER, NOT TWO KEPT IN STEP. Setting `SELECT.dropMs` to 320 by hand
+   * would have fixed it today and drifted the first time `artFadeMs` moved --
+   * the pair would have to be edited together with nothing saying so. Reading
+   * the fade as the DEFAULT means "together" survives a retune, and an explicit
+   * `dropMs` is there for anyone who deliberately wants them apart.
+   *
+   * ⚠️ AND IT NO LONGER TOUCHES `titleDropMs`, which is the TITLE's drop and
+   * belongs to the other screen. Sharing it was why this was 900 in the first
+   * place.
+   */
+  _askMs() {
+    const S = CONFIG.SELECT || {};
+    return S.dropMs != null ? S.dropMs : this._sel('artFadeMs', 320);
+  }
+
   _askP() {
-    const ms = CONFIG.titleDropMs != null ? CONFIG.titleDropMs : 700;
+    const ms = this._askMs();
     if (ms <= 0) return 1;
     const p = Math.min(1, this.stageT / ms);
     return (CONFIG.titleBouncePx > 0) ? p * p : 1 - Math.pow(1 - p, 3);
@@ -856,7 +884,7 @@ class Title {
       if (!iw || !ih) continue;
       const base = H * this._sel('artHRel', 0.80);
       const bw = base * iw / ih;
-      const cy = H * this._sel('artYRel', 0.60);
+      const cy = H * this._sel('artYRel', 0.60) + this._selNudge();
       const x0 = (W - bw) / 2, y0 = cy - base / 2;
       const m = l.on ? pop : 1;
       // The figure's centre on screen, and the layer swollen about it.
@@ -887,7 +915,10 @@ class Title {
        swells it in place instead of pushing it down and right off its corner. */
     const dh = H * this._sel('artHRel', 0.80) * this._popK();
     const dw = dh * iw / ih;
-    const cy = H * this._sel('artYRel', 0.60);
+    /* THE FALLBACK TAKES THE NUDGE TOO -- see `_selNudge`. A failed download
+       already costs the per-coconut highlight; it must not also move the
+       layout, or the screen is laid out differently on a bad connection. */
+    const cy = H * this._sel('artYRel', 0.60) + this._selNudge();
     ctx.save();
     ctx.globalAlpha = a;
     ctx.imageSmoothingEnabled = true;
@@ -995,6 +1026,43 @@ class Title {
    * timing numbers changing.
    */
   _nudge() { return this._lcfg('titleNudgePx', 0); }
+
+  /**
+   * The same idea for the FRUIT SELECT, and a second knob rather than a share of
+   * the first.
+   *
+   * *"In the escolha seu coco screen, bring all the lettering and drawings down
+   * by 1 finger (1 dedinho). Of course the background doesn't need to go down,
+   * only the front stuff."* (2026-09-11)
+   *
+   * ⚠️ IT IS ITS OWN NUMBER BECAUSE `titleNudgePx`'s NOTE SAYS SO. That one is
+   * explicit that it does not reach the other front-end screens -- the select,
+   * OPCOES and the credits have their own layouts and were not in that ask, and
+   * a shared nudge would move four screens to fix one. This ask is the select,
+   * so the select gets a nudge of its own and the title's 24 is untouched.
+   *
+   * ⚠️ IT MOVES THE PICTURE AS WELL AS THE TYPE, which is why it lives in
+   * `CONFIG.SELECT` and not in `CONFIG.LETTERS`: it is a property of the SCREEN,
+   * not of the lettering pack. Four sites take it -- the drawn prompt, its typed
+   * fallback, the two names under the coconuts, and the art (both the layered
+   * path and the single-picture fallback). Miss one and the screen comes apart
+   * on exactly the machine whose download failed.
+   *
+   * ⚠️ THE BACKGROUND IS NOT ONE OF THEM, AND THAT IS THE ASK. The photograph is
+   * drawn cover-fit by the title's own plate pass and is never offered this
+   * offset; the walk-across after the choice is not either, because his feet are
+   * on a ground line read off that photograph and moving him would sink them
+   * into it.
+   *
+   * ⚠️ ADDED TO THE RESTING POSITION, NOT TO THE ANIMATION -- same rule as
+   * `_nudge`. The prompt's fall, bounce and lift are offsets from where it comes
+   * to rest, and the pop's anchor is derived from the art's rect, so both follow
+   * this without a timing or a scale number moving.
+   */
+  _selNudge() {
+    const S = CONFIG.SELECT || {};
+    return S.nudgePx != null ? S.nudgePx : 0;
+  }
 
   /**
    * The three menu items, under the name.
@@ -1124,7 +1192,7 @@ class Title {
     const L = this._art();
     if (!L || a <= 0) return;
     const dx = W * this._lcfg('pickNameXRel', 0.235);
-    const y = H * this._lcfg('pickNameYRel', 0.90);
+    const y = H * this._lcfg('pickNameYRel', 0.90) + this._selNudge();
     const mul = this._lcfg('selectedMul', 1.10);
     const names = ['pickLEBRON', 'pickIPANEIMA'];
     for (let i = 0; i < names.length; i++) {
@@ -1149,7 +1217,7 @@ class Title {
 
     if (this.stage === 'ask' || this.stage === 'chosen') {
       const size = this._sel('promptSize', 58);
-      const py = H * this._sel('promptYRel', 0.11);
+      const py = H * this._sel('promptYRel', 0.11) + this._selNudge();
       /* FALLING IN, or -- once the choice is made and the hold is over --
          accelerating back out of the top, exactly as the name did. */
       const dy = (this.stage === 'ask')
@@ -1163,7 +1231,8 @@ class Title {
          the coconuts went. */
       const L = this._art();
       if (L && L.has('choose')) {
-        L.draw(ctx, 'choose', W / 2, H * this._lcfg('chooseYRel', 0.11) + dy);
+        L.draw(ctx, 'choose', W / 2,
+               H * this._lcfg('chooseYRel', 0.11) + this._selNudge() + dy);
         this._drawPickNames(ctx, W, H, this._artAlpha());
         return;
       }

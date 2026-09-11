@@ -444,6 +444,63 @@ SHEETS = {
         ],
     },
 
+    # THE VERME -- the LIBRARY's enemy, and stage 3's first (2026-09-11). A
+    # hooked tan worm with two yellow stumps and a red mouth, drawn 4882x6243.
+    #
+    # SEVEN ROWS, NAMED BY THE USER when the sheet arrived, in this order:
+    #
+    #     idle / walk / combo 1 / combo 2 / EGG BURST / taking hits / melting death
+    #
+    # ⚠️ THE ASK NUMBERED TWO OF THEM "row4" AND STOPPED AT SIX, which is a typo
+    # and not an ambiguity: the sheet bands into exactly SEVEN, and seven
+    # animations were named in one ordered list. The order is what is load
+    # bearing and it is the user's; only the numbering was off. Written down
+    # because the next reader will compare this list against that message.
+    #
+    # ⚠️ ROW 5 IS THE EGG BURST AND IT IS NOT A PUNCH. He swells, opens at the
+    # top and a white egg comes out (frames 8-10), then he is back to normal on
+    # 11. Nothing in this game does that yet, so it is cut and named here and
+    # wired separately -- the same order the barata's `ball` row was done in.
+    #
+    # ⚠️ THERE IS NO KNOCKDOWN ROW AND NO JUMP ROW. Six of the cast have both;
+    # this one has neither, so `down` has to borrow (see CONFIG.CHARACTERS.verme)
+    # exactly as the baratas' does, and he can never jump in.
+    #
+    # `native` IS RIGHT: the yellow stump swings out to the RIGHT of the body on
+    # the strike frames of both combo rows, the same test espeto's note
+    # describes. Getting it wrong does not error -- he simply walks backwards
+    # for a whole build.
+    #
+    # `baseWhite` IS FALSE: he is tan, yellow and red with no white base for the
+    # cigarettes' centroid to find. Same as espeto, charutobi and the horse.
+    'verme': {
+        'src': 'assets-v2/beatemup-dungeon/verme-sprites-fim.png',
+        'base': 'verme-beat',
+        'native': 'right',
+        # ⚠️ SOLVED AGAINST `drawScale`, NOT PICKED. sheets.js scales a pack by
+        # `fighterSizePx / bodyH` and MULTIPLIES BY `drawScale`, so the cut must
+        # target `fighterSizePx * drawScale`, never `fighterSizePx` -- the rule
+        # the baratas cost a session to learn.
+        #     scale = fighterSizePx * drawScale / nativeBodyH
+        #            = 136.8 * 1.46 / 403.0 = 0.49561
+        # native body is 403.0px (measured: 161.2 at a trial scale of 0.40), and
+        # 1.46 puts him at 199.7px drawn -- a cigarette's height, which is where
+        # a library mook belongs beside a 123px player. He is drawn at 1.00x his
+        # own texture. ⚠️ MOVE `drawScale` AND RE-CUT WITH IT, in the same edit.
+        'scale': 0.49561,
+        'baseWhite': False,
+        'bodies': 50,
+        'rows': [
+            ('idle',     1,  3),   # parado
+            ('walk',     2,  6),   # andando
+            ('combo',    3, 10),   # combo 1
+            ('comboLow', 4, 10),   # combo 2
+            ('egg',      5, 11),   # a bota o ovo -- wired separately
+            ('hurt',     6,  2),   # apanhando; both frames cycle
+            ('death',    7,  8),   # derretendo
+        ],
+    },
+
     # THE HORSE BOSS, and the first thing through this cutter that is not a
     # cigarette. Five rows, 55 frames, named by the illustrator in one line.
     #

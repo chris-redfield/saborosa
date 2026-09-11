@@ -10163,3 +10163,268 @@ that needs a bigger cut (`--scale` in the tool) rather than a bigger number in
 config. **Same coupling as the barata's `drawScale` and its cutter scale**, and
 the same rule: the draw-time number and the cut-time number are one pair, and
 only one of them shows up in a diff.
+
+### And then the fade was made to blink (2026-09-11)
+
+> *"Remove the fade from the vai / go animation. Remember how we did the barrel
+> animation? Like we skip frames, like few frames. We want to fade out of
+> existence with less framerate, like it blinks."*
+
+`goFadeSteps: 4`. The smooth ramp is still underneath and the new knob
+quantises it — **the same move `Prop._liftArc` makes on the barrel's hoist**,
+which is what the ask was pointing at:
+
+    t (ms)     400 ... 300   300 ... 200   200 ... 100   100 ... 0    0
+    alpha         1.00          0.75          0.50         0.25      gone
+
+Four levels held 100ms each: a 10fps fade under a 60fps game, and then it is
+simply not drawn.
+
+⚠️ **IT ROUNDS UP WHERE THE BARREL ROUNDS DOWN, AND THAT DIFFERENCE IS THE POINT
+OF EACH.** `_liftArc` uses `floor(q * steps) / (steps - 1)` because the barrel
+must ARRIVE — both ends of its ramp are real positions and it spends a step on
+each. Here the far end is "not drawn at all", so a step spent at alpha 0 is
+100ms of nothing that nobody can see; `ceil(raw * steps) / steps` puts every
+step on a visible level and lets the sign vanish on the frame its clock runs
+out, which is the snap that makes it read as a blink rather than as a quick
+fade. ⚠️ **Do not copy this formula back to the barrel** — the hoist would stop
+one step short of the hands.
+
+⚠️ **THE BOB IS STILL SMOOTH, and that is a loose end rather than a decision.**
+The barrel's own note says a thing moving continuously past a thing moving in
+steps is two motions at two rates — which is exactly what the prompt now is, a
+sign sliding smoothly while it dims in jumps. It was left alone because it was
+not asked for; stepping `goBobFreq`'s sine on the same clock is a two-line
+change if it reads wrong.
+
+---
+
+## Stage 3 has enemies: the VERME (2026-09-11)
+
+The bookcase had been deliberately empty since it was built. It now has three
+fights and a cast of one.
+
+> *"I have a new enemy to be added to the library stage (stage 3) —
+> verme-sprites-fim.png. First of all, there are several arenas in stage 3, but
+> let's begin with the easiest ones, 3 arenas, 1 for each floor at the lowest,
+> and middle, they will be at the middle of the horizontal stretch; at the 3rd
+> floor, it should be at the end of the floor (rightmost end). Row1 - idle;
+> row2 - walk cycle; row3 - combo 1; row4 - combo2; row4 - egg burst attack;
+> row5 - taking hits; row6 - melting death."*
+
+⚠️ **THE ROW NUMBERING IN THAT MESSAGE HAS A TYPO AND THE ORDER DOES NOT.** Two
+rows are called `row4` and the list stops at 6 while naming seven animations.
+The sheet bands into exactly SEVEN, and seven were named in one ordered list —
+so the order is the spec and only the numbers slipped. Written down because the
+next reader will compare `build-beat-enemy-defs.py` against that message.
+
+### The cut
+
+```
+verme-beat-game.png  1808x1305   36 unique frames for 50 slots, body 199.7px
+  idle 3 | walk 6 | combo 10 | comboLow 10 | egg 11 | hurt 2 | death 8
+```
+
+⚠️ **THE DEDUPE TOLD US WHAT SHAPE HIS PUNCHES ARE, which is worth more than
+the tiles it saved.** Row 3 collapsed to `[9,10, 9,10, 11,12, 9,10, 11,13]` —
+the same two drawings returning three times is a WIND-UP being re-used, so his
+combo rows are five wind-up/strike PAIRS. That is the cigarettes' shape, not the
+baratas' one-drawing-per-punch, so the shared `POSE_RAGGED` slices `combo1..5`
+correctly and **he needs no pose overrides for his punches at all.** Nobody had
+to read that off a thumbnail.
+
+⚠️ **ROWS 3 AND 4 SHARE THEIR FIRST EIGHT DRAWINGS** (`...9,10, 11,13` against
+`...9,10, 14,15`) — two endings on one wind-up, the same bargain espeto's rows
+5/6 make. `comboLow` is cut, named and **not wired**, exactly as espeto's is:
+nothing in the enemy brain picks between two finishers yet.
+
+⚠️ **THE EGG BURST IS CUT AND NOT WIRED.** Eleven frames of him swelling,
+opening at the top, laying a white egg and settling back. Nothing in this game
+does that. `egg` is a POSE so that wiring it is a behaviour change rather than
+another trip through the cutter — the order the barata's `ball` row was done in.
+
+⚠️ **NO KNOCKDOWN ROW AND NO JUMP ROW.** `down` borrows the death row's SECOND
+frame — the first drip, still a worm and already going down — the way the
+baratas' borrows theirs. He can never jump in; there is no art and no
+`ENEMY_LEAP` entry.
+
+⚠️ **THE CUT WAS SOLVED AGAINST `drawScale`, NOT PICKED.** `scale` 0.49561 =
+`fighterSizePx * drawScale / 403.0` with `drawScale` 1.46, so he lands at
+199.7px — a cigarette's height beside a 123px player — and is drawn at **1.000x
+his own texture**. Move one and re-cut in the same edit; that is what the
+baratas cost a session to learn.
+
+⚠️ **THE REACHES ARE MEASURED AT THE ARM TIP.** Anchor-aligned, the five strike
+frames put the yellow stump at 96.1 / 96.1 / 94.3 / 96.1 / **116.0** game px
+from his centre → 133 / 133 / 131 / 133 / **161** in `BODY_SCALE` units. The
+fifth really does reach further, unlike the barata's fourth which only looked as
+though it did. Same rule either way: measure the fist, not the bounding box and
+not the eye.
+
+⚠️ **`verme` DOES NOT COLLIDE WITH `vermes`** (the background worms welded to
+the bookcase) or `vermin0..2` (the flying dungeon's game-over crawlers). Checked
+with `node tools/build-manifest.js --list` — the same check that caught the GO
+prompt's `goWords` collision an hour earlier.
+
+### The arenas — `legs[n].arena`
+
+⚠️ **A FIGHT IS A LEG THAT HAS STOPPED, NOT A SEGMENT.** The bookcase has no
+`segments`; it is a list of walk/lift LEGS running its own loop. So an arena is
+declared ON the leg and `Level3._arena` owns it.
+
+    leg 0  shelf 1   atRel 0.50   2 vermes
+    leg 2  shelf 2   atRel 0.50   3 vermes   (this shelf walks LEFT)
+    leg 4  shelf 3   atRel 0.88   3 vermes   (the far end, per the ask)
+
+⚠️ **`atRel` IS MEASURED ON THE PLAYER'S BAND, NOT THE CAMERA'S.** The two are a
+screen apart, and near the end of a leg the camera PINS while the player keeps
+walking — so a camera-measured 0.88 would fire early on exactly the shelf whose
+fight is meant to be at the far end. `dir` decides which end 0 is.
+
+⚠️ **0.88 AND NOT 1.0 ON THE TOP SHELF.** The leg ends at the lift, and 1.0
+would spawn the wave on the boarding walk. 0.88 of 3390px leaves ~400px of shelf
+past it, which is the walk-on the GO prompt points at.
+
+⚠️ **ENEMIES ARE DECLARED BY SCREEN x (`sx`), NOT WORLD x — the one place this
+room differs from every other arena in the game.** Elsewhere a fight happens at
+a place and `x` is that place. Here it happens wherever `atRel` puts it along a
+shelf, and the shelf's world coordinates come from MEASURED film bands that get
+re-cut whenever the plate is re-timed — so a world x written in config would be
+a number nobody could check, landing off screen the first time the bands moved.
+`Level3._wave` resolves `sx` against the camera at spawn, into a shallow COPY:
+writing `x` back would burn the config entry and make a retry spawn against last
+run's camera.
+
+⚠️ **THE WAVE IS SPAWNED BY `Stage._spawn`, NOT A COPY OF IT.** That one call
+carries the walk-in from off screen, `from: 'behind'`, `from: 'ground'`, the
+entry stagger, the overhang measurement and `crowd.clearLiving()`. It reads
+`stage.camX`, so the pin is written onto the stage *before* it is called.
+
+⚠️ **THE CAMERA IS PINNED FOR THE FIGHT, WHICH HOLDS THE FILM WITH IT.**
+`progress` is a function of `_camX` in this room, so one pin freezes both with
+nothing else to write — and that is the deal every arena in the street and the
+desert already makes (a `video` plate is scrubbed by camera position, and
+`setMode('plate','play')` is a no-op on it). ⚠️ **If a held shot reads dead here
+the way it did in the BOSS ROOM on 2026-08-24, the fix is to give the fight a
+narrow camera BAND instead of a pin** — not to make the plate play, which this
+game cannot do.
+
+⚠️ **A CLEARED SHELF IS REMEMBERED BY INDEX.** This room walks backwards over
+its own ground by design and the film rewinds with it, so a mark tested every
+frame would re-spawn the wave every time the player stepped back across it.
+
+⚠️ **AND IT RAISES THE GO PROMPT ITSELF.** `Stage._goPrompt` gates on the next
+SEGMENT being a scroll and this room has no segments, so the banner and the
+phrase ticket (`goSeq`) are set directly — the prompt means the same thing here
+as everywhere else.
+
+### ⚠️ IT SHIPPED BROKEN AND THE CAUSE WAS A PARAMETER THAT WAS NEVER DECLARED
+
+*"Uncaught ReferenceError: crowd is not defined — level3.js:517"*, on the first
+frame of the room.
+
+`Stage.update` has called `Level3.update(dt, this, player, crowd)` since the hook
+was written. `Level3.update` declared `(dt, stage, player)`. **JavaScript drops
+the extra argument in silence**, and it was harmless for as long as nothing in
+this file wanted a crowd — the moment `_arena` named `crowd`, it resolved to
+nothing at all and threw on entry. One word fixed it.
+
+⚠️ **A CALLER PASSING MORE ARGUMENTS THAN THE CALLEE DECLARES IS INVISIBLE FROM
+BOTH ENDS**, and reading the CALL SITE is what made it look correct: the call
+site was right. **When adding a use of an argument to an existing hook, check
+the signature, not the caller.**
+
+⚠️ **AND THE BOOT CHECK COULD NOT HAVE CAUGHT IT.** Headless Chrome loads the
+game and proves the files parse, but it cannot advance past the logo here (a
+throwaway copy with `title: false` and `DEV.startRoom: 3` was tried and still
+screenshotted the logo — `Title`/`Logo` clocks do not advance under
+virtual-time). A room entered is not a room checked. Say which of the two a
+green result is.
+
+### What is a guess
+
+**All of it except the cut and the reaches.** HP 45, damage 7, the five
+durations, the wave sizes (2/3/3) and `atRel` have never been played — stage 3
+has never had a fight in it, so there is no time-to-kill in that room to balance
+against. ⚠️ And his string is weighted `[5,3,2,1,1]`: the finisher is 1 in 12,
+which is **wired, not seen** — the roach's fourth punch spent two sessions being
+correct and invisible at those odds.
+
+---
+
+## Three fixes on the select screen and the GO prompt (2026-09-11, late)
+
+### 1. ⚠️ THE FROZEN "POR AQUI" — a clock nobody ticked
+
+> *"One of the messages POR AQUI got frozen in the screen, it doesn't animate
+> anymore, and does not piss off."*
+
+`Stage.update`'s **`if (this.banner > 0) this.banner -= dt;` sat BELOW the level 3
+early return.** That was invisible for as long as only the segment machinery
+raised a banner — and the bookcase's new arenas raise one, in a room whose update
+returns before anything ticks it. The prompt went up and stayed up for ever.
+
+⚠️ **FIXED BY MOVING THE TICK, NOT BY TICKING IT IN level3.js.** A second
+decrement would be a second thing to keep in step, and the next room that returns
+early would arrive with the same bug. **A clock that belongs to the stage is
+ticked by the stage, before any branch may leave.** This is the family this game
+has produced six times — something mid-state when the thing driving it changes
+underneath — and the version with teeth is structural.
+
+⚠️ **AUDITED, AND IT IS THE ONLY ONE.** `grep -n '[-+]= dt' src/stage.js`
+returns exactly one line. Nothing else in `Stage.update` has a clock the level 3
+return could strand.
+
+### 2. The question now arrives with the pictures
+
+> *"The escolha seu coco letters come only later, it should come at the same
+> moment that the other stuff enters the screen."*
+
+The prompt fell over `CONFIG.titleDropMs` (**900ms**) while the coconuts and
+their names faded up over `SELECT.artFadeMs` (**320ms**) — the art fully there at
+320, the question still on its way down for another 580.
+
+`Title._askMs()` is new and **defaults to `artFadeMs`**, so the two finish
+together by construction. `SELECT.dropMs` overrides it and is deliberately left
+commented out in config.
+
+⚠️ **ONE NUMBER, NOT TWO KEPT IN STEP.** Writing `dropMs: 320` would have fixed
+it today and drifted the first time `artFadeMs` moved, with nothing saying the
+pair had to match. ⚠️ `_askLandedMs()` reads the same function — it *is* "the
+fall has finished", and a second copy would let the screen take a press while
+the type was still moving.
+
+⚠️ **AND IT NO LONGER TOUCHES `titleDropMs`**, which is the TITLE's drop.
+Sharing it is why this was 900.
+
+### 3. The ruled line under ESCOLHA
+
+> *"There is a bug with the lettering cut, the word ESCOLHA comes with a small
+> horizontal line, almost transparent, but it can be seen."*
+
+A ruled line off the master: pure white (255,255,255) at **alpha 55-68**, running
+under ESCOLHA at y 149-150 of that frame.
+
+⚠️ **THE BANDING NEVER SAW IT, WHICH IS EXACTLY WHY IT SHIPPED.**
+`build-letter-pack.py`'s `ink` mask already excludes near-white (`sum < 720`), so
+the line could not move a band or a column piece — but **`ink` only decides where
+to CUT, and the crop takes raw pixels from the image.** A mask that decides where
+to cut is not a mask that decides what to keep, and anything the first one
+ignores rides into the atlas invisible to every check in the tool.
+
+Fixed in the cutter: near-white pixels have their **alpha** cleared. 12,906 of
+them; zero visible near-white left in the whole atlas afterwards, and the letters
+are untouched.
+
+⚠️ **TWO TRAPS ON THE WAY, BOTH FOUND BY MEASURING RATHER THAN SHIPPING:**
+
+* **The master's transparent background IS white** — 85,284,369 of its 109M
+  pixels are (255,255,255) at alpha 0, so `min(rgb) >= 235` matches almost the
+  whole page. The `alpha > 0` term is what makes this a fix for a line rather
+  than a pass over the entire sheet. The first version printed *"erased
+  85,297,275 px"*, which is how it was caught.
+* **RGB is kept, not zeroed.** Transparent pixels still carry colour into a
+  LANCZOS downscale (the resample is not premultiplied), so turning a white
+  matte black would put a dark fringe on every letter in the pack — a regression
+  across eighteen bands to fix one line. Clearing alpha alone leaves the matte
+  as the artist left it.
