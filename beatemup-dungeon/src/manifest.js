@@ -226,8 +226,32 @@ function assetManifest() {
   }
 
   // The GO prompt: the main game's pointing hand, and the hand-lettered word.
+  /* ⚠️ BOTH OF THESE ARE THE GO PROMPT'S FALLBACK SINCE 2026-09-11 and are
+     listed anyway, on purpose: they are what draws the prompt if the phrase
+     pack below fails to load, and a fallback that is not shipped is not a
+     fallback. Together they are 40KB. See CONFIG.GO_WORDS. */
   out.push({ key: 'hand', src: 'intro-hand.png', how: 'image' });
   out.push({ key: 'go', src: CONFIG.GO_SHEET, how: 'image' });
+
+  /* THE FIVE WAYS OF POINTING AT THE EXIT -- the GO prompt's lettering, a
+     drawing now rather than a word and a borrowed cursor. Same two-file shape
+     as the pause words, and dealt from the same kind of shuffle bag.
+
+     `image` rather than `big`: the atlas is 899x905 and the widest phrase is
+     drawn at ~410, so it is already cut close to what the screen wants and a
+     downscale pass would only cost the headroom. */
+  if (CONFIG.GO_WORDS && CONFIG.GO_WORDS.on !== false && CONFIG.GO_WORDS.SHEET) {
+    const G = CONFIG.GO_WORDS.SHEET;
+    /* ⚠️ `goPrompt`, NOT `goWords` -- THAT KEY IS ALREADY TAKEN, by the GAME
+       OVER words a hundred lines above (`goWords` there is g-o for "game
+       over", not for this prompt). Loading this pack under it would have
+       silently repainted the death panel with POR AQUI!, or this prompt with
+       PERDEU!, depending on which download finished last. Nothing would have
+       errored. Caught by `node tools/build-manifest.js --list`, which prints
+       every key and its file -- run it after adding one. */
+    out.push({ key: 'goPrompt', src: G + '-game.png', how: 'image' });
+    out.push({ key: 'goPrompt', src: G + '-sprites.json', how: 'json' });
+  }
 
   /* The impact burst. Sheet plus defs under ONE key, exactly like a character
      pack -- Assets keeps images and JSON in separate maps, so the shared key is

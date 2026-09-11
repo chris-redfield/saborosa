@@ -44,6 +44,17 @@
  * does to a desert. The alpha ramps up along with the colour so dusk is dimmer
  * than noon without a separate darkening pass.
  *
+ * ⚠️ IT IS NOT ONLY A DAY ANY MORE (2026-09-11). The bookcase runs the same
+ * machinery as a NIGHT -- blue, bluish purple, purple -- with its own stops and
+ * its own strength, named by `ROOMS[3].grade: 'night'` and looked up in
+ * `CONFIG.GRADE.PRESETS`. Two things about it are worth knowing here: its ramp
+ * is far heavier than the desert's (which is why a preset carries a strength of
+ * its own, instead of the one shared number both rooms used to divide), and its
+ * CLOCK IS STEPPED -- `Level3.gradeClock01()` holds a colour flat for a whole
+ * shelf and moves to the next one only while a lift is rising. Nothing in this
+ * file knows that; it asks for a number between 0 and 1 and the room decides
+ * what makes it move. That is the same division as the high-water mark.
+ *
  * ⚠️ IT IS DRAWN BEFORE THE HUD AND THAT IS THE WHOLE OF "EXCEPT THE HUD".
  * game.js paints the layers, then the combat FX, then this, then the bars. There
  * is no mask and no second canvas; the exclusion IS the draw order. Anything
@@ -57,6 +68,8 @@ class Grade {
     this.peak = 0;      // furthest through the room the shot has been, 0..1
     this.t = 0;         // 0..1 through the day
     this.stops = null;  // parsed once per room
+    this.strength = 1;  // the room's master level -- per preset, see enterRoom
+    this.saturate = 1;  // the room's saturation pass, 1 = off. See enterRoom
   }
 
   static _rgb(hex) {
@@ -74,10 +87,38 @@ class Grade {
    */
   enterRoom(room, stage) {
     const G = CONFIG.GRADE;
-    this.on = !!(G && G.on && room && room.grade && G.stops && G.stops.length);
+    this.on = false;
     this.peak = 0; this.t = 0; this.stops = null;
-    if (!this.on) return;
-    this.stops = G.stops.map(s => ({ t: s.t, rgb: Grade._rgb(s.color), a: s.alpha }));
+    this.strength = 1; this.saturate = 1;
+    if (!(G && G.on && room && room.grade)) return;
+    /* ⚠️ A ROOM MAY NAME A PRESET INSTEAD OF SAYING `true`, and a preset carries
+       BOTH halves -- its stops AND its own strength. The desert and the library
+       shared one ramp and one multiplier until 2026-09-11, which meant the
+       bookcase could not be pushed without moving stage 2 with it; the library
+       is a NIGHT now (blue -> bluish purple -> purple) and wants a much heavier
+       tint than a sunset does. `true` still means the default day ramp, so
+       nothing that was opted in has to say anything new. */
+    let P = null;
+    if (typeof room.grade === 'string') {
+      P = (G.PRESETS && G.PRESETS[room.grade]) || null;
+      /* ⚠️ LOUD, because the fallback LOOKS FINE: a missing preset would quietly
+         paint an orange sunset over the room that asked for a night. */
+      if (!P && typeof console !== 'undefined') {
+        console.warn('Grade: no preset named "' + room.grade + '", falling back to CONFIG.GRADE.stops');
+      }
+    }
+    const stops = (P && P.stops && P.stops.length) ? P.stops : G.stops;
+    if (!stops || !stops.length) return;
+    this.on = true;
+    /* The preset's own level if it has one, the shared one otherwise. */
+    this.strength = (P && P.strength != null) ? P.strength
+                  : (G.strength != null ? G.strength : 1);
+    /* ⚠️ THE SATURATION PASS IS PER PRESET AND DEFAULTS TO 1 -- OFF -- so a room
+       that says nothing pays nothing, which matters because unlike the tint this
+       one is a full-frame blit rather than a rectangle. See `_saturate`. */
+    this.saturate = (P && P.saturate != null) ? P.saturate
+                  : (G.saturate != null ? G.saturate : 1);
+    this.stops = stops.map(s => ({ t: s.t, rgb: Grade._rgb(s.color), a: s.alpha }));
     /* ⚠️ NOTHING IS MEASURED HERE ANY MORE. The span used to be read off the
        stage on the way in, which was fine while the clock was the camera and
        wrong the moment it was not: level3.js lays its bands out in its OWN
@@ -120,14 +161,73 @@ class Grade {
        and how the weight builds from noon to dusk -- and `strength` is how much
        of it is let through. Tuning "too strong" by editing four alphas is four
        chances to change the shape while trying to change the level; this way the
-       shape is preserved by construction and the dial is one number. */
-    const a = s.a * (CONFIG.GRADE.strength != null ? CONFIG.GRADE.strength : 1);
-    if (!(a > 0)) return;
+       shape is preserved by construction and the dial is one number.
+
+       ⚠️ IT IS THE ROOM'S MULTIPLIER, RESOLVED ON THE WAY IN, not
+       `CONFIG.GRADE.strength` read here. A preset brings its own -- the night
+       over the bookcase needs roughly double the sunset over the desert, and
+       reading the shared number here would have tied the two together again in
+       the one line that was supposed to separate them. */
+    const a = s.a * (this.strength != null ? this.strength : 1);
+    if (a > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = CONFIG.GRADE.mode || 'multiply';
+      ctx.globalAlpha = a;
+      ctx.fillStyle = `rgb(${Math.round(s.rgb[0])},${Math.round(s.rgb[1])},${Math.round(s.rgb[2])})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+    /* ⚠️ AFTER THE TINT, ON PURPOSE AND BY REQUEST -- *"increase the saturation
+       of the image in 10%, ON TOP OF the filter"*. The two are not commutative:
+       saturating first and tinting after would boost the room's own colours and
+       then bury them under the blue; this way the thing being saturated IS the
+       graded picture, so it is the NIGHT that gets its colour back rather than
+       the daylight underneath it. */
+    this._saturate(ctx, w, h);
+  }
+
+  /**
+   * Push the whole composited frame's saturation, in place.
+   *
+   * ⚠️ IT IS A SELF-BLIT, AND THERE IS NO OTHER WAY TO DO THIS ON A 2D CANVAS.
+   * `ctx.filter` applies to what you DRAW, not to what is already down -- so to
+   * filter the frame you have to draw the frame, and the only copy of it is the
+   * canvas itself. `drawImage(ctx.canvas, 0, 0)` is defined against a SNAPSHOT
+   * taken when the call is made, so reading and writing the same bitmap is
+   * well-defined rather than a trick.
+   *
+   * ⚠️ `copy`, NOT source-over, AND THAT IS THE WHOLE CORRECTNESS OF IT. Drawn
+   * normally the saturated frame would be composited ON TOP of the frame it was
+   * made from -- the picture over itself, which for an opaque frame is a no-op
+   * you would never see, and for anything with alpha in it is a double-exposure.
+   * `copy` clears the destination and replaces it. The canvas is created with
+   * `{ alpha: false }` and the source is fully opaque, so nothing is lost.
+   *
+   * ⚠️ IT IS A FULL-FRAME BLIT EVERY FRAME, WHICH IS WHY IT IS OPT-IN. The tint
+   * above is a rectangle; this is 1280x720 read and written through a filter.
+   * Only a room whose preset names `saturate` pays for it, and `1` -- the
+   * default -- returns before touching the context. This game has a VRAM
+   * history on old cards (see PERFORMANCE.md), so if stage 3 ever drops frames
+   * this is the first thing to switch off and the cheapest thing to lose.
+   *
+   * ⚠️ AND IT DEGRADES TO NOTHING RATHER THAN TO WRONG. A browser without
+   * `ctx.filter` ignores the assignment, and the pass becomes an identity copy
+   * of the frame onto itself: wasted, invisible, not broken.
+   *
+   * ⚠️ IT SITS INSIDE `draw`, SO THE HUD IS EXCLUDED FOR FREE. "Everything
+   * except the HUD" is the draw order in this game and nothing else -- see the
+   * header. A saturation pass called from game.js would have been one more
+   * place that has to be kept below the bars by hand.
+   */
+  _saturate(ctx, w, h) {
+    const k = this.saturate;
+    if (!(k > 0) || k === 1) return;
+    if (!ctx.canvas) return;
     ctx.save();
-    ctx.globalCompositeOperation = CONFIG.GRADE.mode || 'multiply';
-    ctx.globalAlpha = a;
-    ctx.fillStyle = `rgb(${Math.round(s.rgb[0])},${Math.round(s.rgb[1])},${Math.round(s.rgb[2])})`;
-    ctx.fillRect(0, 0, w, h);
+    ctx.filter = `saturate(${k})`;
+    ctx.globalCompositeOperation = 'copy';
+    ctx.globalAlpha = 1;
+    ctx.drawImage(ctx.canvas, 0, 0, w, h);
     ctx.restore();
   }
 }

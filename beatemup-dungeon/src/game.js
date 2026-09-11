@@ -1445,7 +1445,7 @@
         && !stage.boss.fleeing) {
       hud.drawBoss(ctx, stage.boss, lifeBar);
     }
-    hud.drawGo(ctx, stage.banner, assets.getDrawable('go'), assets.getDrawable('hand'));
+    hud.drawGo(ctx, stage.banner, stage.goSeq, assets);
 
     /* THE ROOM FADE, drawn over everything including the HUD -- a health bar
        floating over black would give the cut away. Down to black across the

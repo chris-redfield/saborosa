@@ -7498,13 +7498,16 @@ ordered window — so:
 
 * `Stage.dayClock01()` is new: the 0..1 clock for anything that changes ACROSS a
   room. Ordinary rooms get exactly the camera fraction grade.js used to compute
-  itself; the bookcase gets `Level3.progress01()`. **LEVEL 3 HOOK 5/5**, and it
+  itself; the bookcase gets a clock of its own. **LEVEL 3 HOOK 5/5**, and it
   is in stage.js for the reason the other four are — level3.js is reached from
   that file and from nowhere else.
-* `Level3.progress01()` normalises `progress` over the legs' film windows,
+* `Level3.progress01()` normalised `progress` over the legs' film windows,
   **read back off the legs rather than written down**: those windows get re-cut
   whenever the plate is re-timed, and a hard-coded 73.97 would quietly stop the
-  day short of dusk with nothing in the log.
+  day short of dusk with nothing in the log. ⚠️ **REPLACED 2026-09-11 by
+  `Level3.gradeClock01()`** — see *Stage 3 is a night now* below. The reasoning
+  above is why the clock is not `camX`; it is no longer why it is the film
+  position.
 * Grade kept the **high-water mark** and gave up the span. Whether walking back
   rewinds an effect is the effect's question, not the stage's.
 
@@ -9799,3 +9802,364 @@ CUT, not the pose being PLAYED, and the row is unchanged. Two indices into
 `centreFrom` saying it "must agree" is about the cutter and the burst `from`, and
 that agreement is now broken *on purpose*.
 
+---
+
+## Stage 3 is a NIGHT now, and the lifts are what change the colour (2026-09-11)
+
+The bookcase had run the desert's sunset since 2026-09-05. The ask:
+
+> *"O filtro da terceira fase deveria ser noturno — começa num azul mais escuro,
+> aumentar a opacidade do filtro pra deixar ele menos sutil. Ele começa azul e a
+> mudança de cor só é acionada quando você tá no elevador, ele faz a transição
+> durante o elevador para a próxima cor. Vão ser tipo uns tons que é azul, roxo
+> azulado e roxo."*
+
+Three separate changes, and only the first is a colour.
+
+### 1. The clock is STEPPED. A shelf is a colour; a lift is a transition
+
+`Level3.progress01()` is gone and `Level3.gradeClock01()` stands where it stood.
+The old one spread one ramp across the whole climb, so the tint crept for every
+second the player was walking — which is exactly what *"a mudança de cor só é
+acionada quando você tá no elevador"* rules out. The new one counts lifts:
+completed rides, plus `legT / L.sec` of a ride in progress, over the number of
+lifts in `LEVEL3.legs`. With today's legs that is **0 on shelf 1, 0.5 on shelf 2,
+1 on shelf 3**, and nothing at all in between.
+
+⚠️ **THE DENOMINATOR IS COUNTED, NOT WRITTEN DOWN.** `legs` is measured data out
+of `tools/build-level-3-plate.py` and the climb has been re-cut before. Add a
+shelf and a lift and the clock becomes 0 / 0.33 / 0.66 / 1 with no edit in
+level3.js — only a fourth stop in the preset.
+
+⚠️ **BOARDING IS NOT RIDING.** `update` puts `legT` back to zero for every frame
+of the walk onto the slab (the ride's own film mapping depends on that), so the
+colour holds on the shelf he is leaving until the lift actually moves. The two
+readings of `legT` have to stay in step: if one is ever made to count the
+boarding walk, so is the other.
+
+⚠️ **THE HIGH-WATER MARK STAYED IN GRADE.** `gradeClock01()` may still go DOWN
+inside a lift, because a backward step rewinds the film and can hand a leg back.
+Whether that rewinds the effect is the effect's question — the same division the
+clock was built on in the first place.
+
+### 2. A room may now NAME a ramp, and a ramp brings its own strength
+
+`ROOMS[3].grade: 'night'` looks `CONFIG.GRADE.PRESETS.night` up; `true` still
+means the day above it, so the desert said nothing new.
+
+⚠️ **A PRESET CARRIES `strength` AS WELL AS `stops`, AND THAT IS THE WHOLE POINT
+OF HAVING PRESETS.** The 2026-09-05 note in README predicted this exactly: the
+two rooms divided one multiplier, so *"aumentar a opacidade do filtro"* for stage
+3 would have darkened stage 2 by the same amount. Grade resolves the room's
+level on the way in and `draw` uses **that**, not `CONFIG.GRADE.strength` —
+reading the shared number in the one line that was supposed to separate them
+would have tied them straight back together. The desert has not moved: still
+0.70 of 0.16..0.38.
+
+⚠️ **AN UNKNOWN PRESET NAME WARNS.** The fallback is the day ramp, which *looks
+fine* — an orange sunset quietly painted over a room that asked for a night is
+the kind of wrong that survives a playthrough.
+
+### 3. The colours, and why the alphas are so much higher than stage 2's
+
+```js
+night: { strength: 0.476, stops: [
+  { t: 0.00, color: '#16235e', alpha: 0.91 },   // shelf 1  deep night blue
+  { t: 0.50, color: '#2a1d63', alpha: 0.88 },   // shelf 2  bluish purple
+  { t: 1.00, color: '#3f1b66', alpha: 0.85 },   // shelf 3  purple
+] }
+```
+
+That is **0.41..0.43 reaching the screen against the desert's 0.11..0.27**.
+
+⚠️ **THREE VALUES IN ONE DAY, AND THE SECOND CUT WAS EXPLICITLY COMPOUNDED:**
+
+    0.85    the first pass
+    0.595   "reduce the darkness by like 30%"        = 0.7 x 0.85
+    0.476   "20% less dark now, ON TOP OF the 30%"   = 0.8 x 0.595
+
+⚠️ **THAT PHRASE IS THE WHOLE REASON IT IS 0.476 AND NOT 0.425.** Reductions on
+this project are normally quoted against the ORIGINAL, each restatement replacing
+the last — and 20% off 0.85 is 0.68, which is DARKER than what they were looking
+at when they asked. *"On top of"* says stack it. **Neither rule is the default:
+the ask says which, and here it said so in four words.**
+[[target_restated_as_correction]] is the same lesson from the other side.
+
+⚠️ **AND A CUT IN THIS NUMBER IS THE SAME CUT IN THE DARKNESS, WHICH IS NOT A
+COINCIDENCE TO ASSUME TWICE.** Multiply at alpha `a` leaves luma
+`1 − a(1 − L_tint)`, so the light *removed* is linear in `a` and therefore in
+`strength`. Light removed, across the three stops:
+
+    0.85    0.663 / 0.640 / 0.609
+    0.595   0.464 / 0.448 / 0.426     -30.0% on each
+    0.476   0.371 / 0.358 / 0.341     -20.0% on each, -44.0% overall
+
+It holds because the tint colours did not move; change a stop's colour and the
+two percentages come apart.
+
+⚠️ **THE PLATE IS WHY, and it is worth knowing before anyone reads the number as
+heavy-handed.** The bookcase is bright warm wood in full light with no sky in it,
+so a multiply has to do two jobs at once: darken a bright picture and cool a warm
+one. Composited over real frames of `level-3-plate.mp4`, a blue at 0.42 was still
+plainly a lit room with a cast on it; it starts reading as night around 0.7.
+
+⚠️ **THE WEIGHT FALLS AS THE COLOUR WARMS — the opposite of the day above**,
+where alpha climbs because dusk is dimmer than noon. *"Começa num azul mais
+escuro"*: the deepest point is the start. The three are within 0.06, so it is a
+lean and not a fade.
+
+⚠️ **THE PATH STAYS ON ONE SIDE OF THE WHEEL.** Hue walks 228 → 251 → 272 with
+saturation never dropping, so neither leg passes through the grey a straight lerp
+between opposite colours goes through — the thing the desert needed four stops to
+arrange, had for free here.
+
+⚠️ **SEEN AS STILLS, NOT PLAYED.** Five frames of the plate (one per shelf, one
+per lift) with an idle LEBRON composited *under* the grade, in the game's own
+draw order — so the check includes the one thing a colour pass can break, which
+is the fighters going unreadable. They do not at this level. The HUD is drawn
+after the grade and is untouched either way.
+
+### 4. And then a saturation pass over it — `saturate: 1.1`
+
+> *"Increase the saturation of the image in 10%, on top of the filter, when on
+> stage 3."*
+
+⚠️ **"ON TOP OF" IS AN ORDER, NOT A FIGURE OF SPEECH, AND THE TWO DO NOT
+COMMUTE.** Saturated FIRST, the bookcase's own warmth is boosted and then buried
+under the blue; saturated AFTER, the thing whose colour comes back is the
+*night*. `Grade.draw` runs the tint rectangle and then `_saturate`, in that
+order.
+
+⚠️ **IT IS A SELF-BLIT, AND THERE IS NO OTHER WAY TO DO IT ON A 2D CANVAS.**
+`ctx.filter` applies to what you DRAW, not to what is already down — so to
+filter the frame you have to draw the frame, and the only copy of it is the
+canvas. `drawImage(ctx.canvas, 0, 0)` is defined against a snapshot taken when
+the call is made, so reading and writing one bitmap is well-defined rather than
+a trick. ⚠️ **`globalCompositeOperation = 'copy'` is the correctness of it**:
+drawn normally the saturated frame composites *on top of* the frame it was made
+from. The canvas is `{ alpha: false }` and the source is opaque, so `copy` loses
+nothing.
+
+⚠️ **IT COSTS A FULL-FRAME BLIT EVERY FRAME, WHICH IS WHY IT IS OPT-IN.** The
+tint is a rectangle; this is 1280x720 read and written through a filter, in this
+room only. A preset that does not name `saturate` returns before touching the
+context. This game has a VRAM history on old cards (PERFORMANCE.md): **if stage
+3 ever drops frames, this is the first thing to switch off** and the cheapest
+thing to lose. ⚠️ A browser without `ctx.filter` ignores the assignment and the
+pass becomes an identity copy — wasted, invisible, not broken.
+
+⚠️ **IT LIVES INSIDE `Grade.draw`, SO THE HUD IS EXCLUDED FOR FREE.** "Everything
+except the HUD" is the draw order in this game and nothing else; a pass called
+from game.js would have been one more thing to keep below the bars by hand.
+
+⚠️ **`saturate(1.1)` IS +10% BY THE CSS/CANVAS DEFINITION — a linear matrix in
+sRGB, not an HSV multiply.** Measured over real plate frames the mean HSV
+saturation moves **+8.0%** (shelf 1) and **+6.4%** (shelf 3): near-neutral pixels
+have little to gain and clipped ones have nowhere to go. The number asked for is
+the filter's number; if the *measured* figure is what matters, raise it.
+
+---
+
+## The roach: the fourth punch nobody could see, and +10% of size (2026-09-11)
+
+> *"A barata não está dando 4 socos!!! Testei com a barata vermelha e ela não deu
+> 4 socos em nenhum momento. Além disso, aumentar a baratinha em 10%, fazer de
+> novo o recorte dos sprites, pra ajustar o tamanho, não pegar o atual e aumentar
+> só 10%."*
+
+### ⚠️ NOTHING WAS BROKEN, AND THAT WAS THE FINDING
+
+The fourth punch was wired on 2026-09-10 and **confirmed in play the same day**
+(*"the 4 hit combo works"*). Every piece was re-checked end to end for BOTH
+roaches before anything was changed — the `poses.combo4` override, the
+`ENEMY_COMBOS` fourth step, the fourth `enemyComboWeights` entry,
+`_rollChain`'s `min(weights.length, combo.length)`, `Enemy._think`'s combo
+branch, `Fighter.attack`'s index clamp — and all six were correct.
+
+What made it unreachable in practice was two independent filters multiplying:
+
+* **1 in 11** rolls asked for a four-hit string, and
+* the string had to survive **~2.0 s** — the red one's first three hits are
+  560 + 540 + 870 ms — **without him being hit once**, because `hurt()` clears
+  `atk` and puts the ai back to `approach`.
+
+**A 9% branch behind a two-second no-hit condition is a branch nobody will ever
+see.** *"It is wired correctly"* and *"it happens"* are different claims, and
+only the first one had been checked on 2026-09-10.
+
+⚠️ **ONE HYPOTHESIS WAS CHECKED AND THROWN OUT, WHICH IS WHY IT IS WORTH
+WRITING DOWN.** combo3 carries `knockback` 240 (the red one), and the obvious
+story is that hit three shoves the player out of the string so hit four whiffs
+into empty air. **The numbers say no**: knockback is a velocity decayed at
+`knockbackDecay` 6, so the total shove is `240 / 6` = **40 px** against a reach
+of `118 × BODY_SCALE` + the target's half-width ≈ 112 px. It does not push
+anyone out of range. Naming a plausible cause is not finding one — the same
+lesson the reach rule cost a session over.
+
+### The fix is the weights and only the weights
+
+```
+barata   [2,3,5,1] -> [2,3,4,4]     P(len 4):  9.1% -> 30.8%
+barata2  [3,3,4,1] -> [3,3,4,4]     P(len 4):  9.1% -> 28.6%
+```
+
+The fourth is now as likely as the third. The red one still leans shorter at the
+FRONT (3,3 against the tan one's 2,3) — the heavier fighter promises less often,
+the rule cigarro2/cigarro3 already follow. What moved is the tail, on both.
+
+⚠️ **IT COSTS DAMAGE AND THAT HAS TO BE SAID OUT LOUD.** Average damage per
+completed string goes **11.18 → 13.23 (+18%)** and **13.64 → 16.93 (+24%)**.
+That is the price of the drawing being visible at all. Nothing else moved with
+it: **dial the weight, not the damage** — the four per-hit damage numbers are
+the ones that were played and confirmed.
+
+### +10% of size, through the CUTTER as well as `drawScale`
+
+```
+drawScale     2.3194  ->  2.55134      (x1.1)
+cutter scale  0.4538  ->  0.49918      (x1.1)
+atlas body    317.2   ->  348.9 px     drawn at 349.0  =  1.000x
+atlas         1643x1283  ->  1807x1412
+```
+
+⚠️ **THE ASK NAMED THE METHOD, NOT JUST THE NUMBER** — *"fazer de novo o recorte
+dos sprites... não pegar o atual e aumentar só 10%."* Raising `drawScale` alone
+would have magnified a cut deliberately made to match it, re-introducing the
+1.89x upscale fixed the day before. `scale = fighterSizePx * drawScale /
+nativeBodyH` (native 699.2), so the two move together or not at all. Re-run:
+
+```
+python3 tools/build-beat-enemy-defs.py barata
+python3 tools/build-beat-enemy-defs.py barata2
+```
+
+⚠️ **THE RE-CUT IS PROVABLY THE SAME CUT, BIGGER.** Both sheets came out with
+the identical 19-unique-frames-for-24-slots dedupe and byte-identical anim maps
+(`combo -> [6,7,8,9,10]`, `death -> [11,12,13]` against `hurt -> [11,12]`), so
+nothing downstream moved. That match is the check that the scale was the only
+thing that changed.
+
+⚠️ **APPLIED TO BOTH ROACHES THOUGH ONLY THE RED ONE WAS PLAYED.** They are one
+animal in two colours — same rows, same counts, same master dimensions, one
+`drawScale` between them — and sizing them apart would be a difference nobody
+asked for, visible the first time they share a screen.
+
+⚠️ **THE REACHES DID NOT MOVE.** `drawScale` is drawn size only; the hurtbox,
+the punch boxes and the charge lane are global or per-attack numbers and none of
+them knows about it. The picture is now ~29% wider than the boxes under it. If
+that starts to read wrong, the fix is `ENEMY_COMBOS`' reaches, not `drawScale`.
+
+---
+
+## The GO arrow became five phrases (2026-09-11)
+
+> *"Time to use this lettering: batidao-letter-poraqui-001.png — use these to
+> replace the current GO (tiny hand pointing rightward), use the same mechanic
+> that we use for the pause lettering, sampling without substitution etc."*
+
+**PRA LÁ' · VAI! · POR AQUI! · VÁ · ANDA LOGO!**, dealt without replacement per
+prompt. `tools/build-go-words.py`, `CONFIG.GO_WORDS`, `Hud._rollGo`/`drawGo`,
+`Stage.goSeq`. It is the third time this bag has been built — game over words,
+pause words, now this — and it was copied whole both times rather than rewritten.
+
+### ⚠️ TWO PICTURES BECAME ONE, AND THAT IS THE REAL SHAPE OF THE CHANGE
+
+The old prompt was a hand-lettered `GO!` cut off the title sheet **plus** the
+main game's pointing hand (`assets/intro-hand.png`), laid out side by side with
+`goGap` between them and each independently optional. **Every band of the new
+sheet is a complete prompt with its own pointer already drawn on it** — three a
+pointing fist, two a solid arrow, the artist's choice per phrase. So there is no
+gap to tune, no second image to be missing, and no layout to close up around it.
+`goH`, `goHandH` and `goGap` now describe the FALLBACK only, which is kept whole
+and still shipped: a sheet that fails to load should cost the lettering's look
+and not the prompt, because a player stranded in a cleared arena with nothing
+saying the game is waiting is the worse outcome.
+
+### ⚠️ THE ANCHOR IS THE RIGHT EDGE — THE ONE PLACE THIS PACK DIFFERS
+
+The pause card and the death panel centre their word, because that is what those
+screens do with a word. This prompt is pinned to the right margin and points at
+the exit, and **the pointer is at the right-hand end of every band** — so the
+pointer is the thing that must not move between picks, and the phrases grow
+leftward out of it. Centred instead, `POR AQUI!` (410px drawn) and `VÁ` (247px)
+would put their fists 80px apart and the prompt would appear to jump around the
+screen from one cleared fight to the next. The anchor is written into the JSON
+by the cutter (`ax = w`), not applied in the draw.
+
+### ⚠️ THE PICK IS ON A TICKET, BECAUSE THE PROMPT IS RE-RAISED WHILE IT IS UP
+
+`_goPrompt` is called from two places: a cleared arena, and `tryingBack` — once
+every `goBackNudgeS` (1.2s) while a player leans on the left wall. **The second
+is a re-nudge of a prompt already on screen**, and dealing a new phrase there
+would swap it out from under the player mid-read, roughly twice a second of
+leaning. So `Stage.goSeq` is bumped only when `banner <= 0`, and the HUD deals
+whenever the number it last saw has changed.
+
+⚠️ **A COUNTER AND NOT AN EDGE WATCHED ON `banner`.** The bag has to live with
+the pack — only the HUD knows how many phrases were cut — and an edge detected
+inside the drawing code would be a float compared against last frame's copy of
+itself, which is the exact shape `enemy.js` documents as a real bug it had. The
+one place that knows a new prompt started says so, once. ⚠️ And `goSeq` is
+declared in the constructor and deliberately **not** reset: no reader ever looks
+at its value, only at whether it changed.
+
+### ⚠️ THE KEY COLLISION THAT WOULD HAVE REPAINTED THE DEATH PANEL
+
+The obvious key for this pack is `goWords`. **That key already exists and it is
+the GAME OVER words** — g-o for "game over", not for this prompt. Loading the
+new atlas under it would have silently given the death panel `POR AQUI!`, or
+this prompt `PERDEU!`, depending on which download finished last; nothing would
+have errored. It is `goPrompt`. ⚠️ **Caught by `node tools/build-manifest.js
+--list`**, which prints every key beside its file — the same class of bug as
+TIME ATTACK's `fly` colliding with the scenery swarm, and the same tell. **Run
+that after adding a key.**
+
+### The sheet had a fleck on it
+
+Row-banding found SIX bands for five phrases: the master carries one stray
+opaque pixel at y=6278, between `VÁ` and `ANDA LOGO!`. `MIN_BAND_PX` is 2000 —
+1 px against the smallest real phrase's 1,980,576, a gap five orders of
+magnitude wide, so it is not a number that decides anything. ⚠️ **Dropped bands
+are PRINTED**: a silent filter is how a genuinely thin phrase (a lone accent, a
+hyphen) would disappear with nothing in the log, and the band-count check would
+then report a missing WORD rather than the speck that caused it.
+
+### What was measured
+
+* **200,000 draws against the real `Hud._rollGo`** (eval'd out of hud.js, not
+  reimplemented): zero back-to-back repeats, 40,000 of each of the five, every
+  cycle complete, no broken cycles.
+* **All five composited over a real street-plate frame** at the real `wRel`,
+  with the anchor and `goY` drawn in: the five pointers land on one x.
+
+### `wRel` 0.32 -> 0.416 -> 0.4576, all the same day
+
+    wRel      POR AQUI!     VÁ          what it was
+    0.32       410 x  84    248 x  88   the first pass
+    0.416      532 x 109    322 x 114   "make the sign 30% bigger"
+    0.4576     586 x 120    354 x 126   "now make it 10% bigger"
+
+(the old `GO!`+hand prompt this replaced occupied 355 x 106.)
+
+The first pass had made the prompt wider than what it replaced but *shorter* —
+a whole phrase plus a pointer has to fit a span that used to hold two
+characters, so the letters came out smaller than the old `GO!`'s. At 0.4576 the
+tallest pick spans y 87..213 around `goY` 150 and the widest starts at x=634,
+clear of the left edge.
+
+⚠️ **THE BASE IS WHATEVER MAKES THE ASK TRUE, AND HERE ARITHMETIC SETTLED IT
+RATHER THAN WORDING.** Percentages on this project are normally quoted against
+the ORIGINAL, each restatement replacing the last — but 10% of 0.32 is 0.352,
+which is *smaller* than the 0.416 on screen when "bigger" was said, so that
+reading contradicts the word. Compare the night grade's `strength` the same
+afternoon, where both readings were possible and *"on top of"* had to settle it
+in four words. **Check which base the ask can even mean before applying a
+convention.**
+
+⚠️ **CHECK THE ATLAS HEADROOM WHENEVER THIS GOES UP.** The widest phrase is cut
+at 899px, so 0.4576 draws it at 0.65x — still a downscale. It stops being one
+around `wRel` 0.70, **which is one more +10% away**: the next bump is the one
+that needs a bigger cut (`--scale` in the tool) rather than a bigger number in
+config. **Same coupling as the barata's `drawScale` and its cutter scale**, and
+the same rule: the draw-time number and the cut-time number are one pair, and
+only one of them shows up in a diff.

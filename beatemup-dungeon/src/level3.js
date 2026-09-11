@@ -73,7 +73,7 @@
  *   stage.js   enterRoom()    -> Level3.enterRoom(room, player, stage)
  *   stage.js   update()       -> returns Level3.update(...)   (before anything)
  *   stage.js   bounds()       -> returns Level3.bounds(...)
- *   stage.js   dayClock01()   -> returns Level3.progress01()  (the colour grade)
+ *   stage.js   dayClock01()   -> returns Level3.gradeClock01() (the colour grade)
  *   game.js    the draw loop  -> the backdrop gets filmScroll() in place of camX
  *   game.js    the draw loop  -> Level3.drawPlatform() under the fighters
  */
@@ -346,37 +346,49 @@ const Level3 = {
   },
 
   /**
-   * The same number as `filmScroll`, normalised to 0..1 across the whole climb
-   * — what `Stage.dayClock01` hands the colour grade.
+   * The colour grade's clock for this room, 0..1 — what `Stage.dayClock01`
+   * hands it. ONE STOP PER SHELF, AND THE LIFTS ARE THE TRANSITIONS.
    *
-   * ⚠️ IT IS `progress` AND NOT `camX`, WHICH IS THE ONLY REASON A GRADE CAN
-   * WORK IN THIS ROOM AT ALL. The switchback visits the same camX three times
-   * at three different heights (see the header), so a camera-driven clock reads
-   * the same value on shelf 1 and shelf 3 -- and on shelf 2, which walks LEFT,
-   * it runs BACKWARDS for a whole leg while the player is plainly climbing. The
-   * film position has none of that: each leg maps into its own ordered window.
+   * ⚠️ IT IS NOT THE FILM POSITION, AND THAT IS THE POINT. It used to be
+   * (`progress01`, the climb's whole film window normalised end to end), which
+   * spread one continuous ramp across every shelf and every ride alike. Asked
+   * for 2026-09-11: *"a mudança de cor só é acionada quando você tá no
+   * elevador, ele faz a transição durante o elevador para a próxima cor"* — so
+   * a shelf is a COLOUR, held flat for as long as the player is on it, and a
+   * ride is the only thing that moves between two of them. A player who lingers
+   * on shelf 2 sees no drift at all, which is the difference.
    *
-   * ⚠️ THE RANGE IS DERIVED FROM THE LEGS, NOT WRITTEN DOWN. `film` windows are
-   * data and get re-cut whenever the plate is re-timed; a hard-coded end would
-   * quietly stop the day short of dusk, or reach it two shelves early, with
-   * nothing in the log. Reading the extremes back is one loop and cannot drift.
+   * ⚠️ THE DENOMINATOR IS THE NUMBER OF LIFTS, COUNTED, NOT WRITTEN DOWN.
+   * `legs` is measured data (tools/build-level-3-plate.py) and the climb has
+   * been re-cut before. With two lifts the clock is 0 / 0.5 / 1 and the stops
+   * line up with the shelves for free; add a shelf and a lift and it becomes
+   * 0 / 0.33 / 0.66 / 1 with no edit here — only a fourth stop in the preset.
    *
-   * ⚠️ AND IT IS ALLOWED TO GO DOWN. Backward steps rewind the film -- that is
-   * deliberate, see the clamp note in `update` -- so this is not monotonic
-   * WITHIN a leg. Grade's high-water mark is what decides the evening does not
-   * run backwards; making the promise here would take that choice away from
-   * every future reader.
+   * ⚠️ BOARDING IS NOT RIDING. `update` puts `legT` back to zero for every
+   * frame of the walk onto the slab, so the colour holds on the shelf he is
+   * leaving until the lift actually moves. That is the same number the ride's
+   * film mapping uses; if one is ever made to count the boarding walk, so is
+   * the other.
+   *
+   * ⚠️ AND IT MAY GO DOWN WITHIN A LIFT, because a backward step rewinds the
+   * film and can hand a leg back — see the clamp note in `update`. Grade's
+   * high-water mark is what decides the night does not run backwards; making
+   * that promise here would take the choice away from every future reader.
    */
-  progress01() {
+  gradeClock01() {
     const legs = this.legs() || [];
-    let lo = Infinity, hi = -Infinity;
-    for (const L of legs) {
-      if (!L || !L.film) continue;
-      lo = Math.min(lo, L.film[0], L.film[1]);
-      hi = Math.max(hi, L.film[0], L.film[1]);
+    let lifts = 0;
+    for (const L of legs) if (L && L.kind === 'lift') lifts++;
+    if (!lifts) return 0;
+    let f = 0;
+    for (let i = 0; i < this.leg && i < legs.length; i++) {
+      if (legs[i] && legs[i].kind === 'lift') f++;
     }
-    if (!(hi > lo)) return 0;
-    return Math.max(0, Math.min(1, (this.progress - lo) / (hi - lo)));
+    const L = legs[this.leg];
+    if (L && L.kind === 'lift' && L.sec > 0) {
+      f += Math.max(0, Math.min(1, this.legT / L.sec));
+    }
+    return Math.max(0, Math.min(1, f / lifts));
   },
 
   /**

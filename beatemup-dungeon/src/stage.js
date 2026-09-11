@@ -32,6 +32,15 @@ class Stage {
   constructor(backdrop, sheets) {
     this.backdrop = backdrop;
     this.sheets = sheets;
+    /* ⚠️ THE GO PROMPT'S TICKET, AND IT IS DELIBERATELY OUTSIDE `reset()`.
+       `_goPrompt` bumps it each time the prompt RISES from nothing, and the HUD
+       deals a new phrase whenever the number it last saw has changed -- see
+       `Hud.drawGo`. It counts prompts for the life of the page: a restart is
+       not a reason to deal the same phrase twice in a row, which is exactly
+       what a counter reset to 0 against a HUD still holding the old value would
+       either cause or narrowly avoid depending on the count. Monotonic, and no
+       reader ever looks at its VALUE -- only at whether it changed. */
+    this.goSeq = 0;
     this.reset();
   }
 
@@ -101,12 +110,18 @@ class Stage {
    * four of the others are: the bookcase's own module is reached from THIS file
    * and from nowhere else. A shot that visits the same camX three times at three
    * different heights has no progress in `camX` to read -- see the header of
-   * src/level3.js -- so it answers with the film position it already computes
-   * for the backdrop, which is ordered across the whole climb by construction.
+   * src/level3.js -- so it answers with a clock of its own.
+   *
+   * ⚠️ THAT CLOCK IS STEPPED, NOT CONTINUOUS, AS OF 2026-09-11. The bookcase's
+   * grade is a NIGHT that only changes colour while the player is on a lift:
+   * one colour per shelf, one transition per ride. `Level3.gradeClock01()` is
+   * where that lives -- it replaced `progress01()`, which was this room's film
+   * position spread evenly over the whole climb. Every other room still answers
+   * with its camera fraction, which is a continuous day.
    */
   dayClock01() {
     if (typeof Level3 !== 'undefined' && Level3.owns(this.room())) {
-      return Level3.progress01();
+      return Level3.gradeClock01();
     }
     const span = Math.max(1, this.endX() - CONFIG.GAME_W);
     return Math.max(0, Math.min(1, this.camX / span));
@@ -496,6 +511,21 @@ class Stage {
   _goPrompt() {
     const next = this.segment();
     if (next && next.kind === 'scroll') {
+      /* ⚠️ THE TICKET IS BUMPED ONLY WHEN THE PROMPT RISES FROM NOTHING, AND
+         THAT IS WHAT KEEPS THE PHRASE STILL. `tryingBack` calls this method
+         again, up to once every `goBackNudgeS`, while a player leans on the
+         wall -- and a prompt that is already on screen is being RE-NUDGED, not
+         raised. Bumping unconditionally would deal a new phrase out from under
+         the one the player is reading, roughly every 1.2s. Same rule as the
+         pause card rolling on the pause EDGE and not on every frame of it.
+
+         ⚠️ AND IT IS A COUNTER HANDED TO THE HUD RATHER THAN A ROLL MADE HERE.
+         The bag has to live with the pack -- only the HUD knows how many
+         phrases were cut -- and an edge watched on `banner` inside the drawing
+         code would be a float compared against last frame's copy of itself,
+         which is the shape enemy.js documents as a real bug. This says "a new
+         prompt started" once, in the one place that knows it. */
+      if (this.banner <= 0) this.goSeq++;
       this.banner = (CONFIG.goMs || 1600) / 1000;
     }
   }

@@ -291,6 +291,124 @@ const CONFIG = {
       { t: 0.80, color: '#b0508f', alpha: 0.30 },   // dusk, pink over the sand
       { t: 1.00, color: '#6b3fa0', alpha: 0.38 },   // purple
     ],
+
+    /* --- NAMED RAMPS ------------------------------------------------------
+       A room says `grade: true` for the day above, or `grade: '<name>'` for one
+       of these. ⚠️ A PRESET CARRIES ITS OWN `strength` AS WELL AS ITS OWN STOPS,
+       and that is the whole reason presets exist rather than a second stops
+       list. The library ran the desert's ramp off the desert's multiplier from
+       2026-09-05, so *"aumentar a opacidade do filtro"* for stage 3 would have
+       darkened stage 2 by the same amount. Shape and level both belong to the
+       room now; `strength` is still the one dial per ramp. */
+    PRESETS: {
+      /* ⚠️ STAGE 3 IS A NIGHT, NOT AN EVENING (2026-09-11): *"o filtro da
+         terceira fase deveria ser noturno - começa num azul mais escuro,
+         aumentar a opacidade do filtro pra deixar ele menos sutil ... vão ser
+         tipo uns tons que é azul, roxo azulado e roxo"*.
+
+         ⚠️ ONE STOP PER SHELF, AND `t` IS NOT A DISTANCE HERE. The clock is
+         `Level3.gradeClock01()`, which is 0 on shelf 1, 0.5 on shelf 2 and 1 on
+         shelf 3 and only moves between them WHILE A LIFT IS RISING -- *"a
+         mudança de cor só é acionada quando você tá no elevador"*. So these
+         three t values are not spacing to taste: they are the two lifts, and a
+         fourth colour would need a third lift to arrive on. Move one and a
+         colour lands part-way through a ride instead of on a shelf.
+
+         ⚠️ THE PATH STAYS ON ONE SIDE OF THE WHEEL, which is what the desert's
+         four stops exist to arrange and this ramp gets for free: hue walks 230
+         -> 248 -> 271 and saturation never drops, so neither leg passes through
+         the grey that a straight lerp between opposite colours goes through.
+
+         ⚠️ MULTIPLY MEANS THESE DARKEN AS WELL AS TINT -- black stays black and
+         the wood goes down with the blue, which is what makes it read as night
+         rather than as a blue sheet over a lit room. It is the reason the
+         alphas can be this high at all. */
+      night: {
+        /* ⚠️ THE ONE KNOB, AND IT IS NOWHERE NEAR THE DESERT'S. The day sits at
+           0.70 of alphas 0.16..0.38 -- 0.11..0.27 reaching the screen. This is
+           0.85 of 0.85..0.91, or 0.72..0.77: nearly three times as much tint,
+           which is what *"menos sutil"* costs on THIS plate.
+
+           ⚠️ THE PLATE IS WHY IT HAS TO BE THAT HIGH, and it is worth knowing
+           before anyone reads the number as heavy-handed. The bookcase is bright
+           warm wood in full light with no sky in it, and a multiply tint fights
+           that twice over: it has to darken a bright picture AND turn a warm one
+           cool. Composited over real frames of level-3-plate.mp4, a blue at 0.42
+           was still plainly a lit room with a cool cast on it; night starts to
+           read somewhere around 0.7 and is solid by 0.77.
+
+           ⚠️ SEEN AS STILLS, NOT PLAYED. Five frames of the plate (one per
+           shelf, one per lift) with an idle LEBRON composited under the grade in
+           the game's own draw order. The fighters stay readable at this level;
+           the HUD is above the grade and untouched either way.
+
+           ⚠️ THREE VALUES IN ONE DAY, AND THE SECOND CUT WAS EXPLICITLY
+           COMPOUNDED:
+
+               0.85    the first pass
+               0.595   *"reduce the darkness by like 30%"*   = 0.7 x 0.85
+               0.476   *"20% less dark now, ON TOP OF the 30%"* = 0.8 x 0.595
+
+           ⚠️ THAT PHRASE IS THE WHOLE REASON THIS IS 0.476 AND NOT 0.425.
+           Reductions on this project are normally quoted against the ORIGINAL --
+           each restatement replacing the last -- and 20% off 0.85 would have
+           been 0.68, i.e. DARKER than what they were looking at. *"On top of"*
+           says stack it. **Do not apply either rule from habit: the ask says
+           which, and here it said so in four words.**
+
+           ⚠️ AND A CUT IN THIS NUMBER IS THE SAME CUT IN THE DARKNESS, WHICH IS
+           NOT A COINCIDENCE WORTH ASSUMING TWICE. Multiply at alpha `a` leaves
+           luma `1 - a(1 - L_tint)`, so the DARKENING -- the part subtracted --
+           is linear in `a` and therefore in `strength`. Measured over the three
+           stops, light removed:
+
+               0.85    0.663 / 0.640 / 0.609
+               0.595   0.464 / 0.448 / 0.426     -30.0% on each
+               0.476   0.371 / 0.358 / 0.341     -20.0% on each, -44.0% overall
+
+           ⚠️ It holds because the tint colours did not move; change a stop's
+           colour and the two stop being the same percentage. */
+        strength: 0.476,
+        /* ⚠️ A SECOND PASS, AND THE ONLY ONE IN THE GAME -- *"increase the
+           saturation of the image in 10%, on top of the filter, when on stage
+           3"* (2026-09-11). 1.1 = +10%; 1 is off and is what every other room
+           gets by saying nothing.
+
+           ⚠️ "ON TOP OF THE FILTER" IS AN ORDER, NOT A FIGURE OF SPEECH, and
+           the two passes do not commute. Saturated FIRST, the wood's own warmth
+           would be boosted and then buried under the blue; saturated AFTER, the
+           thing whose colour comes back is the NIGHT. `Grade.draw` runs the
+           tint rectangle and then `_saturate`, in that order, and both land
+           above the HUD line for the same reason everything else does -- the
+           draw order IS the exclusion list.
+
+           ⚠️ IT COSTS A FULL-FRAME BLIT EVERY FRAME, unlike the tint, which is
+           a rectangle. `ctx.filter` applies to what is DRAWN, so filtering the
+           finished frame means drawing the finished frame -- 1280x720 read and
+           written through a filter, once per frame, in this room only. This
+           game has a VRAM history on old cards (PERFORMANCE.md): **if stage 3
+           ever drops frames, this is the first thing to switch off** and the
+           cheapest thing to lose. Setting it to 1 removes the pass entirely
+           rather than making it do nothing expensively.
+
+           ⚠️ AND IT IS A DIFFERENT DIAL FROM `strength`. That one is how much
+           blue is laid over the picture; this is how colourful whatever comes
+           out the other side is. "Too washed out" points here; "too dark" or
+           "too blue" points there. */
+        saturate: 1.1,
+        /* ⚠️ THE WEIGHT FALLS AS THE COLOUR WARMS, WHICH IS THE OPPOSITE OF THE
+           DAY ABOVE -- there the alpha climbs because dusk is dimmer than noon.
+           Here the brief is *"começa num azul mais escuro"*: the deepest point
+           is the START, and the climb opens up very slightly as it goes purple.
+           The three are within 0.06 of each other, so this is a lean and not a
+           fade; flipping it back to rising is three digits and no other edit. */
+        stops: [
+          { t: 0.00, color: '#16235e', alpha: 0.91 },   // shelf 1 -- deep night blue
+          { t: 0.50, color: '#2a1d63', alpha: 0.88 },   // shelf 2 -- bluish purple
+          { t: 1.00, color: '#3f1b66', alpha: 0.85 },   // shelf 3 -- purple
+        ],
+      },
+    },
   },
 
   /* =========================================================================
@@ -1560,22 +1678,25 @@ const CONFIG = {
          here so `stage.endX()` returns something sane if anything asks. It is
          the far end of the last band; see the band layout in level3.js. */
       endX: 24500,
-      /* THE SAME COLOUR GRADE THE DESERT RUNS, and deliberately the same stops
-         rather than a second palette -- *"do mesmo jeito que foi feito na fase
-         2"*, 2026-09-05. `CONFIG.GRADE` is shared, so opting in is the whole
-         change and the library walks orange to purple exactly as the sea of
-         cigarettes does.
+      /* ⚠️ A NIGHT, AND NO LONGER THE DESERT'S RAMP (2026-09-11). It took the
+         same sunset the sea of cigarettes runs on 2026-09-05 -- *"do mesmo jeito
+         que foi feito na fase 2"* -- and that is now a named preset of its own:
+         blue -> bluish purple -> purple, heavier than the day, in
+         `CONFIG.GRADE.PRESETS.night`. The string is the whole opt-in; `true`
+         would still get the desert's orange.
 
-         ⚠️ ITS CLOCK IS NOT THE CAMERA, AND THAT IS THE ONLY REASON THIS ONE
-         WORD IS ENOUGH. The grade asks `stage.dayClock01()`, which for this room
-         answers with `Level3.progress01()` -- the FILM position -- because the
-         shot is a switchback: `camX` visits the same value on shelf 1 and shelf
-         3, and runs backwards for the whole of shelf 2. On a camera clock the
-         evening here would stall for an entire shelf and then jump.
+         ⚠️ ITS CLOCK IS NOT THE CAMERA, AND THAT IS THE ONLY REASON A GRADE CAN
+         RUN IN THIS ROOM AT ALL. The grade asks `stage.dayClock01()`, which for
+         this room answers with `Level3.gradeClock01()` -- because the shot is a
+         switchback: `camX` visits the same value on shelf 1 and shelf 3, and
+         runs backwards for the whole of shelf 2. On a camera clock the colour
+         here would stall for an entire shelf and then jump.
 
-         ⚠️ AND IT REACHES PURPLE ACROSS THE WHOLE CLIMB, not per shelf, since
-         `progress01` spans every leg's film window end to end. */
-      grade: true,
+         ⚠️ AND THAT CLOCK IS STEPPED: ONE COLOUR PER SHELF, THE LIFTS ARE THE
+         TRANSITIONS -- *"a mudança de cor só é acionada quando você tá no
+         elevador"*. It is not the film position spread over the climb any more,
+         so standing still on a shelf changes nothing at all. */
+      grade: 'night',
       /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
          `progress` is monotonic by construction -- so the flag would claim a
          capability the room does not use. The clip is still cut at GOP 12. */
@@ -1942,21 +2063,37 @@ const CONFIG = {
 
                   AND 30% AGAIN, ASKED FOR ON 2026-08-22: 1.888 x 1.3 = 2.4544
                   -- then 10% BACK OFF the same day, 2.4544 x 0.9 = 2.20896,
-                  and a last 5% on 2026-08-23: 2.20896 x 1.05 = 2.3194, which
-                  is where it sits. He is still well past the mass
-                  argument above: this is not matching a cigarette any more, it
-                  is a roach that is bigger than the men, which is a choice
-                  about what the fight looks like rather than a correction.
+                  and a last 5% on 2026-08-23: 2.20896 x 1.05 = 2.3194. He is
+                  still well past the mass argument above: this is not matching
+                  a cigarette any more, it is a roach that is bigger than the
+                  men, which is a choice about what the fight looks like rather
+                  than a correction.
+
+                  AND +10% ON 2026-09-11: 2.3194 x 1.1 = 2.55134.
+
+                  ⚠️⚠️ THAT LAST ONE DID NOT COME ALONE, AND THAT IS THE POINT
+                  OF IT. *"Aumentar a baratinha em 10%, FAZER DE NOVO O RECORTE
+                  DOS SPRITES, pra ajustar o tamanho, nao pegar o atual e
+                  aumentar so 10%."* The atlas was re-cut in the same pass --
+                  `build-beat-enemy-defs.py`, scale 0.4538 -> 0.49918, the same
+                  1.1 -- so the body it is drawn from grew with the size it is
+                  drawn at and he stays at **1.00x his own texture**. Raising
+                  this field alone would have magnified a cut that was
+                  deliberately made to match it, which is the exact regression
+                  fixed on 2026-09-10 (five moves of this number, each a
+                  one-line diff that was also a sharpness cut). **Move one, move
+                  the other, in the same edit:**
+                      cutter scale = fighterSizePx * drawScale / nativeBodyH
 
                   ⚠️ HIS REACHES HAVE NOT MOVED, AND THAT IS THE STANDING
                   WARNING ON THIS FIELD. `drawScale` is drawn size only: the
                   hurtbox, the punch boxes and the charge lane are all global or
-                  per-attack numbers and none of them knows about it. At 2.21
-                  the picture is about 17% wider than the boxes underneath it,
+                  per-attack numbers and none of them knows about it. The
+                  picture is now about 29% wider than the boxes underneath it,
                   so a swing that looks like it grazed him will miss. If that
                   starts to read wrong in play, the fix is ENEMY_COMBOS'
                   reaches, not this number. */
-               drawScale: 2.3194,
+               drawScale: 2.55134,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -1970,12 +2107,19 @@ const CONFIG = {
     barata2: { sheet: 'v2:beatemup-dungeon/barata2-beat', pack: 'ragged',
                name: 'ZIDANE',
                // The same number as the tan one, and measured rather than
-               // assumed: both sheets cut to an identical 167.8px body, so the
-               // pair is drawn at one size and there is no ratio to preserve
-               // between them the way there is between the cigarettes. They
-               // took the 2026-08-22 +30% and the -10% after it together, and
-               // the 2026-08-23 +5% as well, for the same reason.
-               drawScale: 2.3194,
+               // assumed: both sheets cut to an identical body (167.8px then,
+               // 348.9 now), so the pair is drawn at one size and there is no
+               // ratio to preserve between them the way there is between the
+               // cigarettes. They took the 2026-08-22 +30% and the -10% after
+               // it together, the 2026-08-23 +5% as well, and the 2026-09-11
+               // +10% -- 2.3194 x 1.1 -- for the same reason.
+               // ⚠️ THAT LAST ONE WAS ASKED FOR AGAINST THE RED ONE ALONE
+               // (*"testei com a barata vermelha"*) and applied to BOTH: they
+               // are one animal in two colours, and sizing them apart would be
+               // a difference nobody asked for, visible the first time they
+               // share a screen. The atlas was re-cut with it -- see the tan
+               // one's note, and build-beat-enemy-defs.py.
+               drawScale: 2.55134,
                poses: {
                  combo1: { anim: 'combo', from: 1, to: 2 },
                  combo2: { anim: 'combo', from: 2, to: 3 },
@@ -7463,15 +7607,46 @@ const CONFIG = {
        the pose, and still never shown the drawing -- silently, exactly as the
        note on espeto's five warns.
 
-       ⚠️ WEIGHTED RARE -- 1 in 11, against espeto's finisher at 1 in 12. The
-       roach still leans long over his first three (he is the only kind that
-       does), and the fourth sits past the punish window as a surprise rather
-       than as part of the rhythm. It costs the player 7 on top of a string that
-       already cost 14, so at flat weights it would be a different enemy.
-       Measured over the roll: average damage per attack goes 10.2 -> 11.2,
-       about +10%. Dial THIS, not the damage, if he starts to feel unfair. */
-    barata:  [2, 3, 5, 1],
-    barata2: [3, 3, 4, 1],
+       ⚠️⚠️ AND ON 2026-09-11 IT WAS REPORTED AS *STILL* NOT HAPPENING --
+       *"a barata nao esta dando 4 socos!!! Testei com a barata vermelha e ela
+       nao deu 4 socos em nenhum momento."* NOTHING WAS BROKEN. Every piece of
+       the wiring was checked end to end -- the pose, the `ENEMY_COMBOS` step,
+       this weight, `_rollChain`'s `min()`, `Enemy._think`'s combo branch,
+       `Fighter.attack`'s index clamp -- and all six were correct for BOTH
+       roaches. The fourth hit was simply unreachable in practice:
+
+         * 1 in 11 rolls, and
+         * the string has to survive ~2.0s of the red one's first three hits
+           (560 + 540 + 870 ms) without him being hit ONCE, since `hurt()`
+           clears `atk` and drops the ai back to 'approach'.
+
+       Two independent filters, multiplied, over a fight where the player is
+       punching back the whole time. **A 9% branch behind a 2-second no-hit
+       condition is a branch nobody will ever see, and "it is wired correctly"
+       is not the same claim as "it happens".**
+
+       ⚠️ SO THE FIX IS THIS LINE AND ONLY THIS LINE. The fourth is now as
+       likely as the third:
+
+           barata   [2,3,5,1] -> [2,3,4,4]   len 4: 9.1% -> 30.8%
+           barata2  [3,3,4,1] -> [3,3,4,4]   len 4: 9.1% -> 28.6%
+
+       ⚠️ THE RED ONE KEEPS LEANING SHORTER AT THE FRONT (3,3 against the tan
+       one's 2,3) -- the heavier fighter promises less often, the same rule
+       cigarro2/cigarro3 follow. What moved is the TAIL, on both.
+
+       ⚠️⚠️ AND IT COSTS DAMAGE, WHICH IS THE TRADE AND HAS TO BE SAID OUT
+       LOUD. Average damage per completed string:
+
+           barata    11.18 -> 13.23   (+18%)
+           barata2   13.64 -> 16.93   (+24%)
+
+       That is the price of the drawing being visible at all; it is not a
+       balance pass and nothing else moved with it. **Dial THIS, not the
+       damage** -- the four hits' damage numbers in ENEMY_COMBOS are the ones
+       that were played and confirmed. */
+    barata:  [2, 3, 4, 4],
+    barata2: [3, 3, 4, 4],
   },
   /* =========================================================================
      THE BARATA CHARGE
@@ -8381,6 +8556,69 @@ const CONFIG = {
      that choosing to flicker later is a draw-code change rather than another
      trip through the tool. */
   GO_SHEET: 'v2:beatemup-dungeon/saborosa-go.png',
+
+  /* --- FIVE WAYS OF POINTING AT THE EXIT -----------------------------------
+     ⚠️ THIS REPLACED THE PROMPT DESCRIBED ABOVE ON 2026-09-11, and everything
+     in that block is now about the FALLBACK. *"Time to use this lettering:
+     batidao-letter-poraqui-001.png -- use these to replace the current GO (tiny
+     hand pointing rightward), use the same mechanic that we use for the pause
+     lettering, sampling without substitution etc."*
+
+     PRA LA' / VAI! / POR AQUI! / VA / ANDA LOGO!, cut by
+     tools/build-go-words.py. Dealt WITHOUT REPLACEMENT -- all five are seen
+     before any repeats, and the seam between two bags is nudged so a refill
+     cannot open on the phrase still in the player's memory. The bag lives in
+     `Hud`; `Stage.goSeq` is what tells it a new prompt has started.
+
+     ⚠️ THE POINTER IS PART OF THE ART, ONE PER PHRASE. Three carry a pointing
+     fist and two a solid arrow -- the artist's choice, drawn into the band.
+     Nothing in the code knows which a frame has, and `goGap` / `goH` /
+     `goHandH` no longer describe anything the player sees: they belong to the
+     old two-piece prompt, which is still the fallback if this sheet fails to
+     load.
+
+     ⚠️ AND THE ANCHOR IS THE RIGHT EDGE, NOT THE CENTRE, which is where this
+     pack differs from the pause and game over ones. The pointer sits at the
+     right-hand end of every band and it is the part that must not move between
+     picks; the phrases grow leftward out of it. Centred, POR AQUI! and VA would
+     put their fists 130px apart and the prompt would jump about the screen. */
+  GO_WORDS: {
+    on: true,
+    SHEET: 'v2:beatemup-dungeon/batidao-go-words',
+    /* HOW MUCH OF THE CANVAS THE WIDEST PHRASE SPANS, and the one scale for the
+       whole pack -- every other phrase is drawn at that same px-per-source
+       ratio, so VA lands at 543/899 of POR AQUI!'s width because that is how it
+       was drawn. ⚠️ FITTING EACH PHRASE TO THIS IN TURN IS THE OTHER OBVIOUS
+       IMPLEMENTATION AND IT DESTROYS THE PACK -- same rule as the pause words
+       and the cigarette mounds.
+
+       THREE VALUES, ALL ON 2026-09-11, AND THE SECOND AND THIRD COMPOUND:
+
+           wRel     POR AQUI!     VA          what it was
+           0.32      410 x  84    248 x  88   the first pass
+           0.416     532 x 109    322 x 114   "make the sign 30% bigger"
+           0.4576    586 x 120    354 x 126   "now make it 10% bigger"
+
+       (the old GO!+hand prompt this replaced occupied 355 x 106.)
+
+       ⚠️ EACH IS TAKEN AGAINST THE LAST, AND HERE THE ASK SETTLES IT BY
+       ARITHMETIC RATHER THAN BY WORDING. Reductions on this project are
+       normally quoted against the ORIGINAL -- but 10% of 0.32 is 0.352, which
+       is SMALLER than the 0.416 they were looking at when they said "bigger",
+       so that reading contradicts the word. Compare the night grade's
+       `strength`, where "on top of" had to say it in four words because both
+       readings were possible. **Read the base off what makes the ask true.**
+
+       ⚠️ AND THE ATLAS STILL HAS HEADROOM, WHICH IS THE THING TO CHECK WHENEVER
+       THIS GOES UP. The widest phrase is cut at 899px, so at 0.4576 it is drawn
+       at 0.65x -- still a downscale. It would stop being one around `wRel`
+       0.70, which is now ONE MORE +10% AWAY: the next bump is the one that
+       needs a bigger cut (`--scale` in tools/build-go-words.py) rather than a
+       bigger number here. Same coupling as the barata's drawScale and its
+       cutter scale, and the same rule -- the draw-time number and the cut-time
+       number are one pair, and only one of them shows up in a diff. */
+    wRel: 0.4576,
+  },
 
   /* --- The title screen ----------------------------------------------------
      The first thing the game shows: a photograph of a wall, and then the name

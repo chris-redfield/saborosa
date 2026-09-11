@@ -14,6 +14,14 @@
 class Hud {
   constructor(letters) {
     this.flashT = 0;
+    /* THE GO PROMPT'S SHUFFLE BAG. `goPick` is the phrase on screen; `goBag` is
+       the indices still to be dealt this pass; `goLast` is what the player
+       actually last SAW, for the seam between two bags; `goSeq` is the last
+       ticket `Stage` handed over. See `_rollGo` and `drawGo`. */
+    this.goPick = 0;
+    this.goBag = [];
+    this.goLast = -1;
+    this.goSeq = -1;
     /* THE HAND-LETTERED PACK, for the fighter names and the lives. Optional:
        every use of it below falls back to the type it replaced, so the HUD of a
        build whose pack failed to load still says who you are and how many
@@ -250,25 +258,98 @@ class Hud {
     ctx.restore();
   }
 
+  _goPack(assets) {
+    const C = CONFIG.GO_WORDS;
+    if (!assets || !C || C.on === false) return null;
+    /* ⚠️ `goPrompt`. `goWords` is the GAME OVER pack -- see manifest.js. */
+    const img = assets.getDrawable('goPrompt');
+    const defs = assets.getJSON('goPrompt');
+    return (img && defs && defs.frames && defs.frames.length) ? { img, defs } : null;
+  }
+
   /**
-   * "GO [hand]" — shown when an arena clears and the way forward opens.
+   * Choose the phrase. Called once per PROMPT, off `Stage.goSeq`.
    *
-   * The hand is the main game's own pointing cursor (assets/intro-hand.png),
-   * reused rather than redrawn. It already points right, so it is drawn as it
-   * comes with no flip.
+   * ⚠️ SAMPLING WITHOUT REPLACEMENT, NOT INDEPENDENT DRAWS -- lifted whole from
+   * `Pause.roll()`, which lifted it whole from `GameOver.roll()`, seam included,
+   * because it is the same request each time: *"use the same mechanic that we
+   * use for the pause lettering, sampling without substitution etc."* A fresh
+   * `random()` per prompt is memoryless, and memoryless is not what a player
+   * experiences as random: with five phrases an immediate repeat lands one
+   * prompt in five, and POR AQUI! twice running reads as the pack being broken
+   * -- the one outcome a sheet of five phrases exists to prevent.
    *
-   * BOTH PIECES ARE HAND-DRAWN ART off the same title sheet — no typeface is
-   * involved. A geometric sans "GO" next to a hand-inked hand read as two
-   * different games sharing a corner of the screen.
+   * ⚠️ AND THE SEAM BETWEEN TWO BAGS IS THE PART THAT IS EASY TO GET WRONG. A
+   * plain shuffle-and-deal can end one bag on a phrase and open the next on the
+   * same one -- a repeat on the single boundary the shuffle does not cover,
+   * about one refill in five. `goLast` is what was actually SHOWN, and a refill
+   * opening on it is nudged: swapped with the END rather than re-shuffled,
+   * because a re-shuffle can land on it again and a loop that retries is a loop
+   * that can spin.
    *
-   * EACH PIECE IS INDEPENDENTLY OPTIONAL, and the layout closes up around
-   * whichever is missing. If the lettering fails to load the prompt falls back
-   * to drawn text; if the hand fails, the word stands alone. A prompt that
-   * vanished entirely because one PNG 404'd would strand the player in a
-   * cleared arena with no idea the game was waiting for them to walk on.
+   * ⚠️ THE ARENA COUNT IS WHY THIS MATTERS MORE HERE THAN ON THE DEATH PANEL.
+   * A death is rare; the GO prompt goes up after every cleared fight and again
+   * on every back-nudge, so a player sees the whole cycle several times in a
+   * run -- this pack's seam is the pause card's case, not the game over's.
+   *
+   * ⚠️ THE BAG IS NOT PERSISTED. It lasts as long as the page.
    */
-  drawGo(ctx, t, goImg, handImg) {
+  _rollGo(n) {
+    if (!(n > 0)) { this.goPick = 0; return; }
+    if (!this.goBag.length) {
+      for (let i = 0; i < n; i++) this.goBag.push(i);
+      // Fisher-Yates, so every ordering is equally likely.
+      for (let i = this.goBag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        const t = this.goBag[i]; this.goBag[i] = this.goBag[j]; this.goBag[j] = t;
+      }
+      if (n > 1 && this.goBag[0] === this.goLast) {
+        this.goBag[0] = this.goBag[n - 1]; this.goBag[n - 1] = this.goLast;
+      }
+    }
+    this.goPick = this.goBag.shift();
+    this.goLast = this.goPick;
+  }
+
+  /**
+   * THE WAY OUT IS THAT WAY — shown when an arena clears and the way forward
+   * opens. One of FIVE hand-drawn phrases: PRA LÁ', VAI!, POR AQUI!, VÁ and
+   * ANDA LOGO!, dealt without replacement per prompt.
+   *
+   * ⚠️ IT USED TO BE TWO PICTURES AND IS NOW ONE. The prompt was a hand-lettered
+   * `GO!` cut off the title sheet plus the MAIN GAME's pointing hand
+   * (assets/intro-hand.png), laid out side by side with `goGap` between them.
+   * Replaced 2026-09-11 by `batidao-letter-poraqui-001`, where **every phrase is
+   * drawn with its own pointer already on it** — three a pointing fist, two a
+   * solid arrow, the artist's choice per phrase. So there is no gap to tune, no
+   * second image to be missing, and no layout to close up around it. The old
+   * two-piece prompt is kept whole below as the fallback; `goGap`/`goH`/
+   * `goHandH` are read by that path only.
+   *
+   * ⚠️ THE PHRASE IS DEALT ON `Stage.goSeq`, NOT PER FRAME AND NOT PER CALL TO
+   * `_goPrompt`. The prompt is re-nudged while a player leans on the left wall
+   * (`tryingBack`, once every `goBackNudgeS`), and a nudge must not swap the
+   * phrase out from under them. See `_rollGo` and the note on the ticket in
+   * stage.js.
+   *
+   * STILL NO TYPEFACE ANYWHERE IN IT. A geometric sans "GO" beside a hand-inked
+   * hand read as two different games sharing a corner of the screen, and that
+   * is as true of five phrases as it was of one.
+   */
+  drawGo(ctx, t, seq, assets) {
     if (t <= 0) return;
+    const pack = this._goPack(assets);
+    /* ⚠️ THE PICK IS MADE ON THE TICKET, NOT ON THE CLOCK. `Stage.goSeq` changes
+       once per prompt that RISES; comparing it here is the whole of "deal a new
+       phrase". Rolling inside the draw without it would re-roll every frame and
+       flicker five phrases through the 2.6s the prompt is up -- the same bug
+       `GameOver` documents, and the reason its header's "stateless" boast had to
+       be amended. ⚠️ Rolled even with no pack loaded, so the bag's cycle does not
+       depend on whether a PNG arrived. */
+    if (seq !== this.goSeq) {
+      this.goSeq = seq;
+      this._rollGo(pack ? pack.defs.frames.length : 0);
+    }
     const a = Math.min(1, t / (CONFIG.goFadeMs / 1000));
     // Horizontal, so the prompt nudges toward the exit rather than bouncing.
     const bob = Math.sin(t * CONFIG.goBobFreq) * CONFIG.goBobAmp;
@@ -276,6 +357,44 @@ class Hud {
 
     ctx.save();
     ctx.globalAlpha = a;
+
+    if (pack) {
+      /* ONE PICTURE: the phrase and its pointer are one drawing, so there is no
+         gap to close and no second image to be missing.
+
+         ⚠️ ONE SCALE FOR THE WHOLE PACK, off the widest frame -- read from the
+         pack itself rather than written down, so a recut sheet cannot leave the
+         scale behind. Fitting each phrase to `wRel` in turn is the other obvious
+         implementation and it destroys the only thing the pack is doing: VA is
+         drawn 543 against POR AQUI!'s 899 because that is how it was drawn.
+
+         ⚠️ AND IT HANGS OFF THE RIGHT EDGE, WHICH IS THE FRAME'S OWN ANCHOR.
+         The pointer is at the right-hand end of every band, so anchoring there
+         keeps it in one place and lets the words grow leftward. Centred
+         instead, a long phrase and a short one would put their fists in two
+         different spots and the prompt would appear to jump between picks. */
+      const C = CONFIG.GO_WORDS || {};
+      const frames = pack.defs.frames;
+      const f = frames[this.goPick % frames.length];
+      let maxW = 1;
+      for (const q of frames) if (q.w > maxW) maxW = q.w;
+      const k = CONFIG.GAME_W * (C.wRel || 0.32) / maxW;
+      ctx.drawImage(pack.img, f.x, f.y, f.w, f.h,
+                    right - f.ax * k, CONFIG.goY - f.ay * k, f.w * k, f.h * k);
+      ctx.restore();
+      return;
+    }
+
+    /* FALLBACK ONLY, and it is the prompt this pack replaced: the hand-lettered
+       `GO!` off the title sheet plus the main game's pointing hand, laid out
+       side by side. Kept whole rather than deleted for the reason every pack in
+       this game keeps its predecessor -- a sheet that fails to load should cost
+       the lettering's look and not the prompt. A player stranded in a cleared
+       arena with nothing telling them the game is waiting is a worse outcome
+       than a plainer arrow. Each piece is still independently optional and the
+       layout still closes up around whichever is missing. */
+    const goImg = assets && assets.getDrawable('go');
+    const handImg = assets && assets.getDrawable('hand');
 
     if (handImg && handImg.width) {
       const h = CONFIG.goHandH;
@@ -289,7 +408,7 @@ class Hud {
       const w = (goImg.width / goImg.height) * h;
       ctx.drawImage(goImg, right - w, CONFIG.goY - h / 2, w, h);
     } else {
-      // Fallback only — see the note above.
+      // Fallback to the fallback — see the note above.
       ctx.textAlign = 'right';
       ctx.textBaseline = 'middle';
       ctx.font = this._font(CONFIG.goH * 0.8);

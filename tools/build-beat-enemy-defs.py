@@ -264,7 +264,17 @@ SHEETS = {
         # 2.3194); each of those quietly cost another slice of sharpness, with
         # nothing to see in the diff. Move it again and re-cut:
         #     scale = fighterSizePx * drawScale / nativeBodyH,  native 699.2 here
-        'scale': 0.4538,
+        #
+        # ⚠️ 2026-09-11, +10% ON THE ROACH, AND IT CAME THROUGH HERE RATHER THAN
+        # THROUGH `drawScale` ALONE -- asked for in those words: *"aumentar a
+        # baratinha em 10%, fazer de novo o recorte dos sprites, pra ajustar o
+        # tamanho, nao pegar o atual e aumentar so 10%."* drawScale 2.3194 ->
+        # 2.55134 and this 0.4538 -> 0.49918, the SAME 1.1 on both, so the
+        # formula above still balances and he stays drawn at 1.00x his own
+        # texture. Raising only the draw side is the exact regression the block
+        # above documents: it would have been a 1.10x upscale of a cut that was
+        # deliberately made to be 1.00x.
+        'scale': 0.49918,
         'rows': [
             ('idle',   1, 4),
             ('walk',   2, 5),
@@ -282,9 +292,15 @@ SHEETS = {
         'native': 'right',
         # ⚠️ SAME AS `barata`, AND FOR THE SAME REASON -- the target is
         # `fighterSizePx * drawScale`, not `fighterSizePx`; see that spec. The
-        # pair share a `drawScale`, so they share this. 0.4538 -> 317px of body,
-        # drawn at 1.00x instead of the old 1.89x.
-        'scale': 0.4538,
+        # pair share a `drawScale`, so they share this. 0.49918 -> 349px of
+        # body, drawn at 1.00x.
+        #
+        # ⚠️ THE +10% OF 2026-09-11 IS ON BOTH ROACHES EVEN THOUGH ONLY THE RED
+        # ONE WAS BEING PLAYED. The pair is one animal in two colours -- same
+        # rows, same counts, same master dimensions, one `drawScale` between
+        # them -- and sizing them apart would be a difference nobody asked for,
+        # visible the first time they share a screen. See the barata spec.
+        'scale': 0.49918,
         'rows': [
             ('idle',   1, 4),
             ('walk',   2, 5),
