@@ -1165,11 +1165,59 @@ class Fighter {
        artist drew it on. The same reasoning `ball` states one branch up -- that
        one runs off `animT` because a charge has no fixed length, and this one
        does. */
-    if (this.atk && !this.atk.external && p === 'special') {
+    if (this.atk && !this.atk.external && p.indexOf('special') === 0) {
       const d = this.atk.def;
-      const total = (d.startupMs + d.activeMs + d.recoverMs) / 1000;
-      const t = total > 0 ? Math.min(1, this.atk.t / total) : 1;
-      return Math.max(0, Math.min(n - 1, Math.floor(t * n)));
+      const dur = (d.startupMs + d.activeMs + d.recoverMs) / 1000;
+      const t = dur > 0 ? Math.min(1, this.atk.t / dur) : 1;
+      /* ⚠️ ONE DRAWING MAY BE WORTH MORE THAN ONE SHARE -- the same mechanism
+         `airDwell` uses twenty lines up, and the same reason: a row at one flat
+         rate flicks past the drawing that is the actual POINT of the move.
+         *"the last frame, the punch one, hold it on screen for 1 dedinho more,
+         its too fast"* (2026-09-16).
+
+         ⚠️ AND HERE THE MOVE GETS LONGER, WHICH IS THE OPPOSITE TRADE TO THE
+         AIR ARC'S -- read that note before copying this one. Up there the arc
+         cannot stretch, because `jumpMs` is how long he is off the floor and
+         the hit window is measured against it, so a dwell has to be taken OUT
+         of the neighbouring frames. A special owns its own clock: the extra
+         share is PAID FOR in `recoverMs` (see CONFIG.SPECIAL), so the punch
+         holds longer and every frame before it keeps the pace it had. Take the
+         shares out of the others here and "hold the last frame" would have
+         silently sped up the nine before it. */
+      const dw = d.dwell;
+      const extra = dw ? Math.max(1, dw.share || 1) - 1 : 0;
+
+      /* ⚠️ `frameMs` MEANS THE DRAWINGS DO NOT STRETCH, AND IT EXISTS BECAUSE
+         THE STRETCH WAS A BUG THE FIRST TIME IT MATTERED. Spreading the slice
+         over `startup + active + recover` ties the picture to the WINDOWS --
+         which is right for one blow, and wrong the moment a move is three, when
+         the gap between hits has to be widened for the victim's i-frames.
+         Widening a recovery then slowed the ANIMATION with it: LEBRON's first
+         three drawings went from 80ms each to 113ms and he read as sluggish.
+         *"I just asked you to lag the hit, not the animation"* (2026-09-16).
+
+         With `frameMs` the row plays at its own fixed rate and the last drawing
+         HOLDS if the phases outlast it. A hold at the end of a blow is a pose
+         being held; a stretch is every drawing being slower, and only one of
+         those is what "space the hits out" means. */
+      if (d.frameMs) {
+        const per = d.frameMs / 1000;
+        let acc = 0;
+        for (let i = 0; i < n; i++) {
+          acc += per * ((i === (dw && dw.slot)) ? 1 + extra : 1);
+          if (this.atk.t < acc) return i;
+        }
+        return n - 1;                        // held until the phases run out
+      }
+
+      if (!dw) return Math.max(0, Math.min(n - 1, Math.floor(t * n)));
+      const total = n + extra;
+      let acc = 0;
+      for (let i = 0; i < n; i++) {
+        acc += (i === dw.slot) ? 1 + extra : 1;
+        if (t * total < acc) return i;
+      }
+      return n - 1;
     }
 
     if (this.atk && !this.atk.external) {

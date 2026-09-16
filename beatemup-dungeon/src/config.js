@@ -1729,8 +1729,21 @@ const CONFIG = {
          ⚠️ AND THAT CLOCK IS STEPPED: ONE COLOUR PER SHELF, THE LIFTS ARE THE
          TRANSITIONS -- *"a mudança de cor só é acionada quando você tá no
          elevador"*. It is not the film position spread over the climb any more,
-         so standing still on a shelf changes nothing at all. */
-      grade: 'night',
+         so standing still on a shelf changes nothing at all.
+
+         ⚠️⚠️ TURNED OFF TEMPORARILY, 2026-09-16 -- *"remove the filter from the
+         third stage temporarily"*. The preset, the stepped clock and everything
+         above are untouched and still correct; **the one line to put back is
+         `grade: 'night'`**, which is why the value is commented out here rather
+         than deleted or moved to a new flag. `Grade.enterRoom` early-returns on
+         a room with no `grade`, so nothing else in the room notices.
+
+         ⚠️ AND THE HERO GOES BACK INTO THE DEPTH SORT WHILE IT IS OFF, ON ITS
+         OWN. He is drawn after `grade.draw` so the night does not tint him
+         (2026-09-16), and that costs his z-order against the enemies; game.js
+         gates that lift on `grade.on`, so removing the filter removes the cost
+         with it and restoring this line restores both together. */
+      // grade: 'night',
       /* ⚠️ NO `reverse`. The camera never runs the film backwards here --
          `progress` is monotonic by construction -- so the flag would claim a
          capability the room does not use. The clip is still cut at GOP 12. */
@@ -1935,6 +1948,48 @@ const CONFIG = {
                         thirteen rows, so the bounds are his too, not a second
                         reading of a second drawing. */
                      poses: {
+                       /* HIS SPECIAL IS CUT WHERE HIS DRAWINGS CHANGE, and they
+                          are not where LEBRON's do. Nine frames: 0-4 is a
+                          wind-up on both feet with the fists coming out, 5-8 is
+                          the SPIN, which is the move -- so his first blow
+                          carries the whole wind-up and lands as the spin
+                          arrives, and the other two are spin frames.
+                          ⚠️ WITHOUT THESE HE HITS BEFORE HE SPINS, reported the
+                          day it shipped: *"when ipaneima does his special, he
+                          hits the enemies even before he starts spinning"*. The
+                          shared slices in POSE_RAGGED are LEBRON's and put his
+                          first hitbox on frame 0.
+                          ⚠️⚠️ AND THEY MUST LIVE IN **THIS** BLOCK. They were
+                          written as a SECOND `poses:` key higher up the same
+                          object first -- legal JavaScript, parses clean, and
+                          silently discarded by this one. `node --check` says
+                          nothing about a duplicate key. What said something was
+                          the instrument: the pose reported 3 frames where the
+                          slice has 6, and the hit landed on a wind-up drawing.
+                          ONE `poses` PER CHARACTER. */
+                       special1: { anim: 'special', from: 0, to: 6 },
+                       /* ⚠️ STARTS AT 7, NOT 6 -- THE SEVENTH DRAWING IS
+                          DELIBERATELY SKIPPED. Asked for 2026-09-16: *"from
+                          ipaneima animation, remove the seventh frame"*.
+                          Counting the row as the artist drew it, 1..9, the
+                          seventh is index 6.
+                          ⚠️ IT IS SKIPPED, NOT RE-CUT. The frame stays in the
+                          atlas and simply stops being played: a re-cut would
+                          renumber every index after it in both packs' defs for
+                          one unwanted drawing, and this is one number to put
+                          back if it is ever wanted again. */
+                       special2: { anim: 'special', from: 7, to: 8 },
+                       special3: { anim: 'special', from: 8, to: 9 },
+                       /* THE STOP. Asked for 2026-09-16: *"after the end of the
+                          animation, repeat frame number 5, like as if he is
+                          stopping, before going back to our regular frames.
+                          anticipate the stop"*. The fifth drawing is the last
+                          one before the spin starts -- both feet planted, fists
+                          out -- so replaying it after the spin reads as him
+                          coming to a halt instead of snapping to idle.
+                          ⚠️ IT IS A DRAWING, NOT A BLOW. See the fourth entry
+                          in SPECIAL.coconutStrong for how it stays harmless. */
+                       special4: { anim: 'special', from: 4, to: 5 },
                        victory:  { anim: 'jump', from: 2, to: 3 },
                        downLand: { anim: 'knockdown', from: 0, to: 3 },
                        downLie:  { anim: 'knockdown', from: 3, to: 4 },
@@ -2294,6 +2349,25 @@ const CONFIG = {
                   shadow at 0 / 6 / 10 / 14: at 10 the ellipse tucks under the
                   yellow stumps. */
                groundNudgePx: 10,
+               /* NO GROUND SHADOW, ASKED FOR 2026-09-16: *"remove the shadow of
+                  the worms on the library stage"*. Read by `drawShadow` in
+                  game.js off the KIND, which is how a mook can refuse one at all
+                  -- `noShadow` is set per body and the crowd builds these from
+                  nothing but their kind. HORACIO made the same call
+                  (`HORACIO_BOSS.shadow: false`).
+
+                  ⚠️ `groundNudgePx` STAYS, and it is not now pointless. It was
+                  tuned to tuck the ellipse under his yellow stumps, but what it
+                  fixes underneath that is the taper: his body meets the floor at
+                  a POINT, which reads as resting on something. The 10px is what
+                  plants him; the shadow was only how the problem was spotted.
+                  See the note above.
+
+                  ⚠️ AND A SHADOW IS THE DEPTH CUE ON A BELT -- with it gone,
+                  which of two worms is in front is read off their feet alone.
+                  That is the trade HORACIO already makes; if the library's
+                  fights turn out to need it back, this is the one line. */
+               shadow: false,
                poses: {
                  /* No knockdown row. Frame 1 of the death row is the first
                     drip: still a worm, already going down. */
@@ -2754,7 +2828,7 @@ const CONFIG = {
     down:       { anim: 'knockdown' },
     death:      { anim: 'death' },
 
-    /* THE HEROES' SPECIAL -- THE WHOLE ROW AS ONE POSE, 2026-09-16. Both packs
+    /* THE HEROES' SPECIAL -- THE ROW SLICED INTO ITS THREE HITS, 2026-09-16. Both packs
        got a row 14 of their own (see tools/build-beat-coconut-defs.py) and the
        two are not the same length: LEBRON throws ten drawings of a punch
        flurry, IPANEIMA nine of a spin. Nothing here says how many -- the pose
@@ -2762,8 +2836,23 @@ const CONFIG = {
        so the two lengths need no per-pack override, which is the same bargain
        `idle` and `walk` already make.
        ⚠️ `sheets.has()` KEEPS EVERY OTHER PACK OFF IT, like `ball`: only the
-       two coconuts have a `special` animation. */
-    special:    { anim: 'special' },
+       two coconuts have a `special` animation.
+
+       ⚠️ IT WAS ONE POSE FOR HALF A DAY AND THAT WAS THE WRONG SHAPE. The move
+       is THREE BLOWS -- *"we want them to hit the enemies 3 times, 2 with a
+       regular hit and the third hit will be very strong"* -- and one attack can
+       only land one, because `hasHit` closes the box after it connects. So the
+       row is sliced the way the combo row already is, one slice per blow, and
+       `Player._specialStep()` chains them.
+
+       ⚠️ THE CUTS ARE THE DRAWINGS' OWN, WHICH IS WHY IPANEIMA OVERRIDES THEM.
+       These are LEBRON's ten: 0-2 is the stance and the first straight punch,
+       3-7 is the flurry, 8-9 is the wind-up and the big finishing arm. His nine
+       are a long two-footed wind-up and then a spin, so his slices fall
+       somewhere else entirely -- see CHARACTERS.coconutStrong.poses. */
+    special1:   { anim: 'special', from: 0, to: 3 },
+    special2:   { anim: 'special', from: 3, to: 8 },
+    special3:   { anim: 'special', from: 8, to: 10 },
 
     /* THE BARATA'S CHARGE -- ALL FIVE DRAWINGS AS ONE POSE, tell included.
        Frame 0 is him tucking in and frames 1-4 are the spin, and they are one
@@ -3807,21 +3896,164 @@ const CONFIG = {
   SPECIAL: {
     on: true,
     cooldownMs: 1400,
-    /* ⚠️ KEYED BY PACK, AND THE KEY IS `CHARACTERS`' KEY -- `Player.kind` is
-       what looks it up. A pack with no entry here simply has no special, which
-       is what every enemy is. */
-    coconut: {
-      pose: 'special', startupMs: 170, activeMs: 400, recoverMs: 230, cancelMs: 0,
-      damage: 20, reachX: 140 * BODY_SCALE, reachZ: 54 * BODY_SCALE,
-      knockback: 340, lift: 150 * BODY_SCALE, knockdown: true, sweep: true,
-      lungePx: 34 * BODY_SCALE,
-    },
-    coconutStrong: {
-      pose: 'special', startupMs: 260, activeMs: 340, recoverMs: 180, cancelMs: 0,
-      damage: 18, reachX: 104 * BODY_SCALE, reachZ: 58 * BODY_SCALE,
-      knockback: 300, lift: 130 * BODY_SCALE, knockdown: true, sweep: true,
-      radial: true,
-    },
+    /* ⚠️ EACH HERO'S SPECIAL IS A STRING OF THREE BLOWS, NOT ONE. Asked for
+       2026-09-16, the day after it shipped as a single hit: *"we don't want
+       them to hit immediately with the strong hit (and so the enemies get
+       pushed back), we want them to hit the enemies 3 times, 2 with a regular
+       hit and the third hit will be very strong, and push back the enemies even
+       further away"*. `Player._specialStep()` chains them; each one is an
+       ordinary attack def and goes through the ordinary resolver.
+
+       ⚠️⚠️ THE GAP BETWEEN TWO BLOWS CANNOT GO BELOW `hurtMs` 260, AND THAT IS
+       NOT A FEEL DECISION -- it is the difference between a three-hit special
+       and a one-hit special that looks like three. A struck fighter gets 260ms
+       of stun AND i-frames (`Fighter.vulnerable()` is false while `hurtT > 0`),
+       so a second blow landing 150ms after the first passes through everything
+       it already hit and connects with nobody. The hits below land at:
+
+           LEBRON    120ms -> 410ms -> 690ms      gaps 290 / 280
+           IPANEIMA  760ms -> 1070ms -> 1390ms    gaps 310 / 320
+
+       Retime any phase and check those three numbers again.
+
+       ⚠️⚠️ THE GAP LIVES IN THE NEXT BLOW'S `startupMs`, NOT IN THE LAST ONE'S
+       `recoverMs`, AND THAT IS NOT A STYLE CHOICE. During a start-up the next
+       slice is already animating; during a recovery the previous slice has run
+       out of drawings. Both space the hits identically and only one of them
+       keeps the picture moving. It was written the other way round first and
+       LEBRON came back as *"laggy ... a lot slower than it was before"* -- with
+       `frameMs` the drawings no longer stretch either way, but the pacing is
+       still better this way and the reason is worth keeping.
+
+       ⚠️⚠️ AND THE GAP HAS TO CLEAR 260 BY MORE THAN A FRAME, BECAUSE HITSTOP
+       IS SUBTRACTED FROM IT. Every connect freezes the simulation for 60-90ms
+       (`hitstopMs`), and `hurtT` only ticks while it is running -- so a gap that
+       reads 280ms on this table is more like 200ms of the victim's i-frames,
+       and the next blow passes straight through. Measured, not reasoned about:
+       at 290/280 LEBRON landed three hits on one run and TWO on the next. The
+       gaps below are 300, which is 260 plus the 15ms freeze the first two blows
+       now take plus room. ⚠️ THEY WERE 350 WHILE EVERY BLOW FROZE FOR 60 -- cut
+       the freeze and the gap can come in with it, which is what took the move
+       back to its original 880ms.
+
+       ⚠️ AND THE FIRST TWO MUST NOT KNOCK DOWN OR SHOVE HARD, for the same
+       reason. `vulnerable()` is also false while a target is `down`, so a
+       knockdown on blow one means blows two and three hit a body on the floor
+       and do nothing -- and a big `knockback` simply carries everyone out of
+       the box before the next one lands. ⚠️ THAT IS NOT THEORETICAL: at 35 and
+       45 the first two blows slid the crowd far enough back that the FINISHER
+       MISSED THEM on one run in two. 20 and 26 are flinches that hold the crowd
+       in place, which is what makes the third one worth landing, and the
+       finisher also reaches further and steps further in than the other two.
+
+       ⚠️ `frameMs` 80 ON EVERY LEBRON SLICE IS HIS ORIGINAL PACE, not a new
+       number: ten drawings over 800ms is what the move shipped with, and what
+       the punch's 160ms hold was tuned against. His three slices now run 240 /
+       400 / 260ms of phases against 240 / 400 / 240ms of drawings, so nothing
+       stretches and nothing holds for more than one frame's worth at the end.
+       ⚠️ IPANEIMA IS DELIBERATELY LEFT ON THE STRETCH: his first slice is a
+       WIND-UP, and six drawings taking 890ms is what a wind-up looks like --
+       the slow part is the point of his move, where for LEBRON it was a bug.
+       Give him `frameMs: 87` (his own original pace) if it ever reads as
+       sluggish rather than as loading up, and his first spin frame will hold
+       instead.
+
+       ⚠️ THE BOXES ARE MUCH BIGGER THAN THE COMBO'S, on purpose. Reported the
+       same day: *"the special hits must hit all enemies inside the hitbox,
+       because right now it seems like it is hitting only one or few"*. `sweep`
+       was already on and combat.js does sweep every target in the box -- the
+       box was simply the size of a punch. `reachZ` 100-120 x BODY_SCALE covers
+       most of the 190px belt from wherever he is standing, which is what "all
+       the enemies" means on a belt. */
+    coconut: [
+      /* 1 -- the straight punch out of the stance. Three drawings. */
+      { pose: 'special1', frameMs: 80,
+        startupMs: 120, activeMs: 90, recoverMs: 30, cancelMs: 0,
+        damage: 6, reachX: 175 * BODY_SCALE, reachZ: 100 * BODY_SCALE,
+        knockback: 20, sweep: true },
+      /* 2 -- the flurry, five drawings, and the fastest slice of the row. */
+      { pose: 'special2', frameMs: 80,
+        startupMs: 180, activeMs: 90, recoverMs: 130, cancelMs: 0,
+        damage: 6, reachX: 175 * BODY_SCALE, reachZ: 100 * BODY_SCALE,
+        knockback: 26, sweep: true },
+      /* 3 -- THE PUNCH. Two drawings, and the second is held: `dwell` slot 1 of
+         a 2-frame slice at `share: 2` gives 3 shares over 240ms, so the arm is
+         on screen for 160ms against the 80 of everything else -- the hold asked
+         for earlier the same day, carried across the restructure unchanged.
+         ⚠️ Move `recoverMs` and that 160 moves with it; see fighter.js. */
+      { pose: 'special3', frameMs: 80,
+        startupMs: 80, activeMs: 60, recoverMs: 100, cancelMs: 0,
+        dwell: { slot: 1, share: 2 },
+        damage: 14, reachX: 210 * BODY_SCALE, reachZ: 120 * BODY_SCALE,
+        knockback: 420, lift: 150 * BODY_SCALE, knockdown: true, sweep: true,
+        lungePx: 60 * BODY_SCALE },
+    ],
+    coconutStrong: [
+      /* ⚠️ EVERY NUMBER IN THIS STRING IS 20% OFF WHAT IT WAS, 2026-09-16 --
+         *"Make the whole ipaneima animation 20% faster ... also fold the half
+         second that I asked before"*. So the half second went with it: the
+         wind-up is 760 x 0.8 = **608**, and `frameMs` 120 is his stretched
+         ~150ms a drawing x 0.8. Those two are the same decision -- at 120ms a
+         frame his sixth drawing (the first SPIN) arrives at 600ms and the box
+         opens at 608, so the hit still lands on the spin rather than before it.
+         Change one and the hit walks off the spin again.
+
+         ⚠️⚠️ BUT THE MOVE IS 16% SHORTER, NOT 20%, AND THE MISSING 4% IS A HARD
+         FLOOR. The gaps between the three blows cannot go below `hurtMs` 260
+         plus the 15ms freeze -- under that the second and third pass through
+         i-frames and hit NOBODY. A flat 0.8 would have given 240ms gaps and
+         silently turned a three-hit special into a one-hit special that still
+         looks like three. So the drawings and the wind-up took the full 20% and
+         the two gaps sit at 282 and 277, which is the floor plus a frame.
+         The only way further down is a shorter wind-up (and the hit leaves the
+         spin) or fewer hits. 1550ms -> 1307ms.
+
+      /* 1 -- THE WHOLE WIND-UP, AND THE HIT AT THE END OF IT. `startupMs` 760
+         is 500 more than the 260 it shipped with, which is the ask read
+         literally: *"can you delay that hit by half a second"*. It is also the
+         right number by the drawings -- six frames over 890ms puts the first
+         SPIN frame at 742ms, so the box opens 18ms after the spin appears. The
+         two are one decision: retime this slice and the hit walks off the spin.
+         ⚠️ IT MAKES HIS SPECIAL ~1.6s LONG, and that follows from the ask
+         rather than from taste: 760ms of wind-up plus two more blows that
+         cannot be closer than 260ms each. If it plays too slow, this number is
+         the one to cut. */
+      { pose: 'special1', frameMs: 120,
+        startupMs: 608, activeMs: 72, recoverMs: 40, cancelMs: 0,
+        damage: 5, reachX: 130 * BODY_SCALE, reachZ: 100 * BODY_SCALE,
+        knockback: 22, radial: true, sweep: true },
+      /* 2 -- mid-spin. */
+      { pose: 'special2', frameMs: 120,
+        startupMs: 170, activeMs: 72, recoverMs: 40, cancelMs: 0,
+        damage: 5, reachX: 130 * BODY_SCALE, reachZ: 100 * BODY_SCALE,
+        knockback: 28, radial: true, sweep: true },
+      /* 3 -- the last spin frame, held through its own 380ms, and the blow that
+         clears the floor. `radial` like the two before it: a spin has no front,
+         and that is the whole difference between his special and LEBRON's. */
+      { pose: 'special3', frameMs: 120,
+        startupMs: 165, activeMs: 80, recoverMs: 60, cancelMs: 0,
+        damage: 13, reachX: 165 * BODY_SCALE, reachZ: 120 * BODY_SCALE,
+        knockback: 380, lift: 130 * BODY_SCALE, knockdown: true, sweep: true,
+        radial: true },
+      /* 4 -- THE STOP, AND IT IS NOT A BLOW. He plants on the fifth drawing for
+         a beat before idle, so the spin ends rather than vanishes.
+
+         ⚠️⚠️ `activeMs: 0` IS WHAT MAKES IT HARMLESS, and it is worth knowing
+         why it works rather than trusting it. `_updateAttack` walks
+         startup -> active -> recover by comparing against cumulative times, so
+         a zero-length active phase is never entered: `hitbox()` only ever
+         returns a box while `phase === 'active'`, and nothing else in the game
+         asks. No box means no damage, no hitstop, no hit spark, and no swing
+         counted against the player's accuracy -- `countSwing` is called after
+         the box exists, not before.
+
+         ⚠️ SO THE DAMAGE AND REACH BELOW ARE ZEROS THAT ARE NEVER READ. They
+         are written out anyway because a def with missing fields is a def
+         somebody will copy into a slot where they ARE read. */
+      { pose: 'special4', frameMs: 120,
+        startupMs: 140, activeMs: 0, recoverMs: 0, cancelMs: 0,
+        damage: 0, reachX: 0, reachZ: 0, knockback: 0 },
+    ],
   },
 
   /* --- THE FINISHER SWEEPS THE BOX ----------------------------------------
@@ -3955,7 +4187,25 @@ const CONFIG = {
      the game was started -- so this is a rebalance on top of an untested
      baseline. Every enemy's time-to-kill divides by 1.29; nothing else moved.
      Judge it in play and expect to move the HP table rather than this. */
-  hitstopMs: { jab: 55, straight: 70, finisher: 130 },
+  /* ⚠️ A POSE WITH NO ENTRY HERE FREEZES FOR 60ms, AND THAT DEFAULT IS WHAT
+     MADE THE SPECIAL FEEL BROKEN. `_impact` keys this by `box.def.pose`, so the
+     three new `special*` poses silently took 60ms each -- the move went from
+     ONE connect to THREE and the picture now stopped three times inside a
+     900ms move. Reported as *"LEBRON IS NOW LAGGY ... a lot slower than it was
+     before"*, and it was not the animation: the drawings measured 80ms each,
+     their original pace, while the world was frozen for 180ms of the move.
+
+     ⚠️ THE FIRST TWO BLOWS TAKE ALMOST NONE (15ms, one frame) AND THE FINISHER
+     TAKES MORE THAN A NORMAL ONE. That is the whole point of a three-hit
+     special: the first two are a flurry and a flurry that stops dead twice is
+     not fast, it is broken; the last one is the blow that clears the floor and
+     is the only one worth holding the picture for. Same total freeze as before
+     (~160ms), spent where it reads as impact instead of as lag.
+
+     ⚠️ AND A FOURTH ENTRY IS FREE. Anything that gives a def a new `pose` name
+     needs a line here or it silently inherits 60. */
+  hitstopMs: { jab: 55, straight: 70, finisher: 130,
+               special1: 15, special2: 15, special3: 130 },
   /* NO SCREEN SHAKE. There was a shakeAmp/shakeMs/shakeFreq block here and it
      was REMOVED BY REQUEST — the effect is not wanted in this game. Hitstop
      carries the weight of a blow on its own. Noted rather than left as zeroed
@@ -6578,9 +6828,46 @@ const CONFIG = {
          ⚠️ THE WAVES ARE GUESSES -- two, then three, then three. Nothing about
          this room's difficulty has ever been played. */
       { kind: 'walk', dir: +1, px: 3647, film: [0.00, 18.98],
+      /* ⚠️ TWO BARATAS IN EVERY ARENA (2026-09-16), *"add 2 cockroaches in
+         each of the 3 arenas"*. One of each colour per shelf -- `barata` (tan,
+         50 HP / 6 dmg) and `barata2` (red, 66 / 8) -- because they are one
+         animal in two coats and the pair is how the street reads them.
+
+         ⚠️ THEY ARRIVE LAST, AFTER THE WORMS, AND THAT IS THE WHOLE PLACEMENT.
+         A verme walks in and stands; a roach can CURL AND CHARGE, which is the
+         only attack in this room that crosses it. Leading with them would make
+         the shelf a dodging fight from the first beat; trailing them turns each
+         arena into worms, then a roll.
+
+         ⚠️ AND THE CHARGE WORKS HERE FOR FREE BECAUSE A FIGHT PINS THE CAMERA.
+         `Level3.bounds` on a penned camera is `camX + gateMarginX` to
+         `camX + GAME_W - gateMarginX` -- the same screen-wide walls every arena
+         in the street has -- so `BARATA_CHARGE.exitMarginPx` carries him off
+         the side and `gone` -> `enter` walks him back in against the same
+         walls. Nothing about the roll knows it is on a bookcase.
+
+         ⚠️ `from: 'behind'` IS ALWAYS THE LEFT OF THE SCREEN. It is `camX - pad`
+         in `Stage._spawn`, full stop -- it is named for the rightward rooms,
+         where left is the ground already cleared. On SHELF 2 he walks LEFT, so
+         there `from: 'behind'` is the way he is HEADING and the default (the
+         right edge) is the way he came. The roaches below are placed against
+         the code, not the name. ⚠️ The existing verme on shelf 2 marked
+         `from: 'behind'` with `sx: 980` is therefore spawned at the left edge
+         and walks the whole frame to the far side; left alone here because it
+         is an existing fight nobody has played yet, but it is not what its own
+         comment says it is.
+
+         ⚠️ THE HP ON A SHELF ROUGHLY DOUBLES: 90 -> 206, 135 -> 251, 135 -> 251.
+         Two of these are worth more than the three worms beside them. Nothing in
+         this room has ever been balanced in play; if a shelf drags, the roaches'
+         `delayMs` is the first knob, not their health. */
         arena: { atRel: 0.50, enemies: [
-          { kind: 'verme', sx: 980, z: 150 },
-          { kind: 'verme', sx: 1120, z: 70, delayMs: 900 },
+          { kind: 'verme',   sx: 980,  z: 150 },
+          { kind: 'verme',   sx: 1120, z: 70,  delayMs: 900 },
+          /* The tan one from the far side, low on the belt so he is not standing
+             in the worms; the red one out of the ground already cleared. */
+          { kind: 'barata',  sx: 1040, z: 30,  delayMs: 2600 },
+          { kind: 'barata2', sx: 240,  z: 180, delayMs: 4200, from: 'behind' },
         ] } },
       /* ⚠️ `sec` IS THE FILM'S OWN DURATION AND SHOULD STAY THAT WAY. A rise is
          the shot going up; play it at anything other than 1x and it reads as
@@ -6595,16 +6882,28 @@ const CONFIG = {
            into. `from: 'behind'` is the RIGHT for this leg -- it means "the way
            he came", and _spawn takes it from the side, not from a compass. */
         arena: { atRel: 0.50, enemies: [
-          { kind: 'verme', sx: 300, z: 150 },
-          { kind: 'verme', sx: 160, z: 70, delayMs: 800 },
-          { kind: 'verme', sx: 980, z: 110, delayMs: 2200, from: 'behind' },
+          { kind: 'verme',   sx: 300,  z: 150 },
+          { kind: 'verme',   sx: 160,  z: 70,  delayMs: 800 },
+          { kind: 'verme',   sx: 980,  z: 110, delayMs: 2200, from: 'behind' },
+          /* ⚠️ NO `from` ON THE TAN ONE AND THAT IS THE 'BEHIND' HE WANTS: the
+             default side is the RIGHT of the screen, which on this leftward
+             shelf is the ground he has already walked. The red one comes up the
+             way he is going. See the note above. */
+          { kind: 'barata',  sx: 1060, z: 40,  delayMs: 3600 },
+          { kind: 'barata2', sx: 420,  z: 180, delayMs: 5200, from: 'behind' },
         ] } },
       { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
       { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97],
         arena: { atRel: 0.88, enemies: [
-          { kind: 'verme', sx: 980, z: 150 },
-          { kind: 'verme', sx: 1120, z: 60, delayMs: 700 },
-          { kind: 'verme', sx: 300, z: 110, delayMs: 2000, from: 'behind' },
+          { kind: 'verme',   sx: 980,  z: 150 },
+          { kind: 'verme',   sx: 1120, z: 60,  delayMs: 700 },
+          { kind: 'verme',   sx: 300,  z: 110, delayMs: 2000, from: 'behind' },
+          /* ⚠️ THE LAST FIGHT IN THE GAME BEFORE THE ENDING, so the red one is
+             the last body on the shelf. `atRel` 0.88 leaves ~400px of walk-on
+             past it; the charge still has a full screen of walls, since the
+             camera pinned at `camHi` long before the mark. */
+          { kind: 'barata',  sx: 1060, z: 30,  delayMs: 3400 },
+          { kind: 'barata2', sx: 220,  z: 180, delayMs: 5000, from: 'behind' },
         ] } },
     ],
     /* THE ELEVATOR. Three hand-drawn frames of one platform, cut by
@@ -10421,10 +10720,15 @@ const CONFIG = {
          FASE 2 cigarro  Sucuri - Samuraio   MUSIC_TRACKS.musicDesert
          HORACIO         Sucuri -- the room's own track, uninterrupted
          HIPOLITO        unchanged                        BOSS_TRACK
-         FASE 3 estante  Dance Saborosa      MUSIC_TRACKS.musicLevel3
+         FASE 3 estante  Cumbia Corazon      MUSIC_TRACKS.musicLevel3
          ZERAMENTO       Pode Me Chamar      MUSIC_TRACKS.musicEnding
-         MISTER STOP     Cumbia Corazon -- NOT WIRED, he does not exist
-         TIME ATTACK     Cumbia Corazon -- WIRED 2026-09-09 (musicTimeAttack)
+         MISTER STOP     Cumbia Corazon -- NOT WIRED, he does not exist, and it
+                         is now his ROOM's song -- see MUSIC_TRACKS.musicLevel3
+         TIME ATTACK     Dance Saborosa      MUSIC_TRACKS.musicTimeAttack
+
+     ⚠️ THE LAST TWO LINES TRADED FILES ON 2026-09-16 (*"trocar a musica da fase
+     time attack com a fase da biblioteca"*). The KEYS did not move: a key is the
+     ROLE, and `ROOMS[3].music` / `TIME_ATTACK.musicKey` never changed.
 
      ⚠️ AND ITS `MUSIC_LOOP` ENTRY WENT WITH IT. The bed was a three-bar crop
      pinned at 5.115s; this is a 66.8s song that loops at its own end. Leaving
@@ -10506,23 +10810,43 @@ const CONFIG = {
        the same shape HIPOLITO's room already uses -- the ROOM owns the song, so
        a boss who shares it declares nothing. */
     musicDesert: 'v2:beatemup-dungeon/soundtrack/Sucuri - Samuraio.mp3',
-    /* TIME ATTACK -- Cumbia Corazon. ⚠️ WIRED 2026-09-09, AFTER BEING
-       DOCUMENTED-NOT-WIRED SINCE THE SOUNDTRACK LANDED: it was assigned to this
-       stage and to MISTER STOP on 2026-09-08, when neither existed. The stage
-       does now. **MISTER STOP still does not**, and when he arrives he gets his
-       OWN `musicKey` pointing at this same file -- his song differs from his
-       room's, which is the case `bossMusic()` exists for.
-       ⚠️ Until now the mode played over whatever the desert had left running. */
-    musicTimeAttack: 'v2:beatemup-dungeon/soundtrack/Cumbia Corazon - 09-07-26.mp3',
-    /* FASE 3, the bookcase. ⚠️ SWAPPED WITH THE STREET'S ON 2026-09-08 -- this
-       key held Arrocha da Serpente and now holds Dance Saborosa. The KEY is the
-       role and the file behind it changed; see the warning on MUSIC_LOOP, which
-       is the same rule stated from the other side. ⚠️ AND IT IS A 66.8s SONG ON
-       THE LONGEST LEVEL IN THE GAME, where the one it swapped with was 303s: the
-       bookcase will hear this wrap several times over a climb, and the street
-       almost certainly never reached the other one. If a loop is ever going to
-       be noticed, it is this one -- see the seam note in MUSIC_LOOP. */
-    musicLevel3: 'v2:beatemup-dungeon/soundtrack/Dance Saborosa.mp3',
+    /* TIME ATTACK. ⚠️ SWAPPED WITH THE BOOKCASE'S ON 2026-09-16 -- *"trocar a
+       musica da fase time attack com a fase da biblioteca e elevadores"*. This
+       key held Cumbia Corazon and now holds **Dance Saborosa**; `musicLevel3`
+       below took Cumbia. **THE SWAP IS DONE ON THE FILES, NOT ON THE CONSUMERS**
+       -- `TIME_ATTACK.musicKey` and `ROOMS[3].music` are untouched -- because a
+       KEY here is a ROLE and the file behind it is what changes. That is the
+       same move the street and the bookcase made on 2026-09-08, and it is what
+       keeps `MUSIC_GAIN`/`MUSIC_LOOP` (both keyed by ROLE) meaning what they
+       say. ⚠️ Neither song has a `MUSIC_LOOP` pin and both trim at 0.72
+       (-15.9 / -16.0 LUFS), so nothing else had to move with them; if either
+       gains a pin later it belongs to the FILE and must move on the next swap.
+       ⚠️ MISTER STOP was specified to carry Cumbia Corazon as his own
+       `musicKey` -- he still does not exist, and Cumbia is now his ROOM's song,
+       so when he is built his theme is either a different file or he declares
+       nothing at all. See MUSIC_TRACKS.musicLevel3.
+       ⚠️ Until 2026-09-09 the mode played over whatever the desert left running. */
+    musicTimeAttack: 'v2:beatemup-dungeon/soundtrack/Dance Saborosa.mp3',
+    /* FASE 3, the bookcase. ⚠️ SWAPPED TWICE NOW. It held Arrocha da Serpente,
+       then Dance Saborosa (2026-09-08, with the street), and since 2026-09-16 it
+       holds **Cumbia Corazon** -- the trade with TIME ATTACK above. The KEY is
+       the ROLE and the file behind it is what moves; see the warning on
+       MUSIC_LOOP, which is the same rule stated from the other side.
+
+       ⚠️ THE LOOP QUESTION CHANGED SIDES WITH IT, and it is the one thing worth
+       re-checking in play. Dance Saborosa is 66.8s against the longest level in
+       the game, so the climb heard it wrap several times; whether Cumbia is
+       longer decides whether that complaint moves to TIME ATTACK -- a mode that
+       is over in a couple of rounds and may well never reach the seam. Neither
+       track carries a `MUSIC_LOOP` pin, so each simply wraps at its own end.
+
+       ⚠️ MISTER STOP IS NOW SPECIFIED AGAINST HIS OWN ROOM'S SONG. He was
+       assigned Cumbia Corazon on 2026-09-08 as a theme DISTINCT from the room's;
+       the room now plays it. He does not exist, so nothing is broken -- but when
+       he is built, declaring `musicKey: 'musicTimeAttack'` would silently play
+       what the room is already playing (a no-op in `playMusic`) and declaring
+       nothing is the correct way to say "share the room's track". */
+    musicLevel3: 'v2:beatemup-dungeon/soundtrack/Cumbia Corazon - 09-07-26.mp3',
     /* ZERAMENTO -- the ending photograph and the results board after it.
        ⚠️ NOT A ROOM, SO IT IS A `playMusic` CALL rather than a `music:` entry;
        game.js starts it where the ending phase begins. It plays UNDER the
@@ -11338,7 +11662,30 @@ const CONFIG = {
      plays on every death, and the two are a beat apart when they do coincide --
      this one on the blow, that one when the death has finished being watched. */
   PLAYER_DEATH_VOICE: { on: true, sfx: 'playerDeath' },
-  goY: 150,
+  /* ⚠️ THE PROMPT'S VERTICAL CENTRE, AND IT IS ONE NUMBER FOR BOTH SIDES OF THE
+     SCREEN -- which is what *"bring the other side as well, so they are at the
+     exact same height"* asks for: there is no second knob to keep in step.
+
+     ⚠️ 150 -> 198 ON 2026-09-16, TWO DEDINHOS, AND THE SIZE IS MEASURED RATHER
+     THAN PICKED. The prompt only started colliding with anything when it moved to
+     the LEFT margin for the bookcase's middle shelf (`Hud.drawGo`'s mirror) --
+     on the right it hangs over empty sky. What it landed on:
+
+       life bar        y 18 .. 64.1   (lifeBarTop, GAME_W x lifeBarWRel)
+       name + lives    y 70.1 .. 110.7 -- the COCONUTS set that bottom edge, not
+                       the name: 40.6px drawn against the tallest name's 37
+       the prompt      top y 87.1 at goY 150 (VA, the tallest phrase at 125.7px)
+
+     so it overlapped the name row by 23.6px. ⚠️ ONE dedinho is not enough and the
+     arithmetic is why it is not a judgement call: goY 174 puts that top at 111.1,
+     which is 0.4px under the coconuts -- a hairline, and a hairline moves the
+     first time anyone re-cuts a phrase. 198 leaves a clear dedinho of air.
+
+     ⚠️ MEASURED AGAINST THE TALLEST PHRASE, because the pack is drawn as it was
+     drawn: the five are 104.2 to 125.7px tall and they are all centred on this
+     number, so VA is the one that reaches highest. Re-check this if `GO_WORDS.wRel`
+     moves again -- it has gone up twice. */
+  goY: 198,
   /* ⚠️ THE 1.1 IS A SECOND PASS, asked for on 2026-08-26 -- "make the hand with
      the go and the arrow, 10% larger". Kept as a factor rather than folded into
      the number so the two stay obviously the SAME size relative to each other:

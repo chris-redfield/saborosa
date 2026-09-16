@@ -22,6 +22,9 @@ class Hud {
     this.goBag = [];
     this.goLast = -1;
     this.goSeq = -1;
+    /* THE BOB'S CLOCK, free-running seconds. Declared here so the field exists
+       before the first draw; see `tickGo` and the note on `bob` in `drawGo`. */
+    this.goT = 0;
     /* THE HAND-LETTERED PACK, for the fighter names and the lives. Optional:
        every use of it below falls back to the type it replaced, so the HUD of a
        build whose pack failed to load still says who you are and how many
@@ -294,6 +297,18 @@ class Hud {
    *
    * ⚠️ THE BAG IS NOT PERSISTED. It lasts as long as the page.
    */
+  /**
+   * THE GO PROMPT'S BOB CLOCK. Free-running seconds, ticked from game.js's loop
+   * alongside the flies -- in the phases where the world is on screen, and
+   * frozen by hitstop and by the pause card because it is not ticked in them.
+   *
+   * ⚠️ IT IS NEVER RESET, AND THAT IS THE POINT. See the note on `bob` in
+   * `drawGo`: every reset point this could have (a new prompt, a re-nudge, a
+   * cleared arena) is a moment when the banner jumps, which is exactly what
+   * made the sign hop.
+   */
+  tickGo(dt) { this.goT = (this.goT || 0) + dt; }
+
   _rollGo(n) {
     if (!(n > 0)) { this.goPick = 0; return; }
     if (!this.goBag.length) {
@@ -335,8 +350,34 @@ class Hud {
    * STILL NO TYPEFACE ANYWHERE IN IT. A geometric sans "GO" beside a hand-inked
    * hand read as two different games sharing a corner of the screen, and that
    * is as true of five phrases as it was of one.
+   *
+   * ⚠️ `dir` IS WHICH WAY THE EXIT IS, AND IT IS -1 ON EXACTLY ONE SHELF.
+   * Everywhere in this game the way on is to the RIGHT, so the prompt hangs off
+   * the right margin and every pointer was drawn pointing that way. The
+   * bookcase's middle shelf is walked LEFTWARDS (see level3.js), and there a
+   * hand pointing right points back at the fight that was just cleared.
+   *
+   * ⚠️ AND THE BAND MAY NOT BE MIRRORED, WHICH IS THE WHOLE SHAPE OF THIS.
+   * *"voce nao pode flipar a imagem diretamente, porque senao vai quebrar o
+   * texto, pode flipar somente a mao"* -- the phrase and its pointer are one
+   * drawing, so a `scale(-1, 1)` over the frame writes PRA LA' backwards. The
+   * cutter therefore reports where the pointer starts (`px`) and where the
+   * words end (`tw`), and this draws the two pieces separately: the pointer
+   * mirrored, the lettering exactly as it was drawn.
+   *
+   * ⚠️ THE MIRRORED LAYOUT OCCUPIES THE SAME SPAN as the single blit --
+   * `(w - px) + (px - tw) + tw == w` -- so the prompt is the same size on the
+   * left as on the right and the gap the artist left between the words and the
+   * fist survives the flip. That gap is exactly why `tw` is a separate number
+   * from `px`; without it the whitespace lands on the outside and the hand
+   * touches the letters.
+   *
+   * ⚠️ AND THE ANCHOR SWAPS WITH IT. The pointer is what must not move between
+   * picks (a long phrase and a short one would otherwise put their fists in two
+   * places), so rightwards it is pinned to the right margin and leftwards to
+   * the left one, with the words growing away from it either way.
    */
-  drawGo(ctx, t, seq, assets) {
+  drawGo(ctx, t, seq, assets, dir) {
     if (t <= 0) return;
     const pack = this._goPack(assets);
     /* ⚠️ THE PICK IS MADE ON THE TICKET, NOT ON THE CLOCK. `Stage.goSeq` changes
@@ -365,9 +406,38 @@ class Hud {
     const raw = Math.min(1, t / (CONFIG.goFadeMs / 1000));
     const steps = CONFIG.goFadeSteps | 0;
     const a = steps > 1 ? Math.ceil(raw * steps) / steps : raw;
-    // Horizontal, so the prompt nudges toward the exit rather than bouncing.
-    const bob = Math.sin(t * CONFIG.goBobFreq) * CONFIG.goBobAmp;
+    /* Horizontal, so the prompt nudges toward the exit rather than bouncing.
+     *
+     * ⚠️⚠️ ON ITS OWN FREE-RUNNING CLOCK, NOT ON `t`, AND THAT IS A BUG FIX
+     * (2026-09-16). Reported on the bookcase's middle shelf: *"the one after the
+     * arena, once the arena is done, its now doing a little jump"*. It was.
+     *
+     * `t` is the time REMAINING, and a prompt that is already up can be re-raised
+     * -- `tryingBack` nudges it every `goBackNudgeS`, and a cleared arena sets the
+     * banner again. Every one of those sends `t` back up to `goMs`, and a bob read
+     * off `t` therefore jumps its phase by `9 x delta` radians in one frame:
+     * measured, **up to 15.7px sideways, instantly**, on an 8px bob. Nothing was
+     * wrong with the raise; the sign was being drawn from a clock that runs
+     * backwards and gets reset under it.
+     *
+     * A clock that only ever goes forward cannot do that, whatever happens to the
+     * banner. The cost is that a prompt now appears at an arbitrary point in the
+     * cycle rather than at nought -- at most 8px off centre, on a sign that is
+     * bobbing anyway -- which is the whole reason this is a free-running clock
+     * rather than a per-prompt one: a per-prompt clock would have to decide what
+     * a re-raise means and would be the same bug in a new place.
+     *
+     * ⚠️ IT IS TICKED WITH THE FLIES, in game.js's loop, so it freezes on hitstop
+     * and on pause exactly as the world does. See `tickGo`. */
+    const bob = Math.sin((this.goT || 0) * CONFIG.goBobFreq) * CONFIG.goBobAmp;
+    /* ⚠️ THE WHOLE LEFT-HAND LAYOUT IS THIS ONE MIRROR, `x -> GAME_W - x`, and
+       the bob goes through it with everything else: the margin, the anchor and
+       the nudge are one reflection rather than three sign flips to keep in
+       step. `left` is the prompt's LEFT edge there, which is where the pointer
+       goes. */
+    const flip = dir < 0;
     let right = CONFIG.GAME_W - CONFIG.goMarginRight + bob;
+    let left = CONFIG.goMarginRight - bob;
 
     ctx.save();
     ctx.globalAlpha = a;
@@ -393,8 +463,30 @@ class Hud {
       let maxW = 1;
       for (const q of frames) if (q.w > maxW) maxW = q.w;
       const k = CONFIG.GAME_W * (C.wRel || 0.32) / maxW;
+      const top = CONFIG.goY - f.ay * k;
+      /* ⚠️ THE TWO-PIECE PATH IS TAKEN ONLY WHEN IT IS NEEDED, AND ONLY WHEN THE
+         CUT PROVIDES IT. `px`/`tw` arrived on 2026-09-16; an atlas cut before
+         that has neither, and a prompt drawn from a stale JSON must still be a
+         prompt. It costs a pointer aimed the wrong way on one shelf, which is
+         what the game did until that day anyway. */
+      if (flip && f.px != null && f.tw != null) {
+        const pw = (f.w - f.px) * k;     // the pointer, mirrored
+        ctx.save();
+        ctx.translate(left + pw, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(pack.img, f.x + f.px, f.y, f.w - f.px, f.h,
+                      0, top, pw, f.h * k);
+        ctx.restore();
+        /* THE WORDS, AS DRAWN. Placed at `left + (w - tw) * k`, which is the
+           mirror of the single blit's right edge: the pointer's width plus the
+           artist's gap, both measured off this frame rather than assumed. */
+        ctx.drawImage(pack.img, f.x, f.y, f.tw, f.h,
+                      left + (f.w - f.tw) * k, top, f.tw * k, f.h * k);
+        ctx.restore();
+        return;
+      }
       ctx.drawImage(pack.img, f.x, f.y, f.w, f.h,
-                    right - f.ax * k, CONFIG.goY - f.ay * k, f.w * k, f.h * k);
+                    right - f.ax * k, top, f.w * k, f.h * k);
       ctx.restore();
       return;
     }
@@ -410,24 +502,37 @@ class Hud {
     const goImg = assets && assets.getDrawable('go');
     const handImg = assets && assets.getDrawable('hand');
 
+    /* ⚠️ THE FALLBACK MIRRORS TOO, AND HERE IT IS THE EASY CASE: the hand is a
+       file of its own, so flipping "only the hand" is literally that. It is the
+       two-piece layout run backwards -- hand at the outer edge, `GO!` growing
+       inward -- so a missing sheet costs the lettering and not the direction. */
     if (handImg && handImg.width) {
       const h = CONFIG.goHandH;
       const w = (handImg.width / handImg.height) * h;
-      ctx.drawImage(handImg, right - w, CONFIG.goY - h / 2, w, h);
-      right -= w + CONFIG.goGap;
+      if (flip) {
+        ctx.save();
+        ctx.translate(left + w, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(handImg, 0, CONFIG.goY - h / 2, w, h);
+        ctx.restore();
+        left += w + CONFIG.goGap;
+      } else {
+        ctx.drawImage(handImg, right - w, CONFIG.goY - h / 2, w, h);
+        right -= w + CONFIG.goGap;
+      }
     }
 
     if (goImg && goImg.width) {
       const h = CONFIG.goH;
       const w = (goImg.width / goImg.height) * h;
-      ctx.drawImage(goImg, right - w, CONFIG.goY - h / 2, w, h);
+      ctx.drawImage(goImg, flip ? left : right - w, CONFIG.goY - h / 2, w, h);
     } else {
       // Fallback to the fallback — see the note above.
-      ctx.textAlign = 'right';
+      ctx.textAlign = flip ? 'left' : 'right';
       ctx.textBaseline = 'middle';
       ctx.font = this._font(CONFIG.goH * 0.8);
       ctx.fillStyle = CONFIG.hudColor;
-      ctx.fillText('GO!', right, CONFIG.goY);
+      ctx.fillText('GO!', flip ? left : right, CONFIG.goY);
     }
     ctx.restore();
   }

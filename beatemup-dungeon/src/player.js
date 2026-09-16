@@ -100,6 +100,10 @@ class Player extends Fighter {
     /* THE SPECIAL'S COOLDOWN, in seconds, counted down in update(). It is the
        move's only cost -- see CONFIG.SPECIAL. */
     this.specialT = 0;
+    /* The three-blow string in flight, and how far through it he is. Null when
+       no special is running -- see _specialStep(). */
+    this.specialSeq = null;
+    this.specialI = 0;
 
     /* THE LAST DIRECTION ASKED FOR, kept so a jump does not lose its momentum
        the instant it throws a punch. There is no horizontal velocity in a jump
@@ -168,11 +172,39 @@ class Player extends Fighter {
   _special() {
     const S = CONFIG.SPECIAL;
     if (!S || S.on === false) return false;
-    const def = S[this.kind];
-    if (!def || this.specialT > 0 || this.jumping) return false;
-    if (!this.attack([def])) return false;       // busy, hurt, down -- canAct()
+    const seq = S[this.kind];
+    if (!seq || !seq.length || this.specialT > 0 || this.jumping) return false;
+    if (!this.attack([seq[0]])) return false;    // busy, hurt, down -- canAct()
+    this.specialSeq = seq;
+    this.specialI = 0;
     this.specialT = (S.cooldownMs || 0) / 1000;
     return true;
+  }
+
+  /**
+   * DRIVE THE THREE BLOWS -- called once a frame, after the fighter has ticked.
+   *
+   * ⚠️ IT RUNS AFTER `super.update()` AND THAT IS WHY THERE IS NO FLICKER. The
+   * base tick is what ends a blow: it clears `atk` and drops the state to
+   * 'idle'. Chained on the NEXT frame instead, the render in between would draw
+   * one frame of him standing still in the middle of his own special -- 16ms of
+   * idle pose, three times a move.
+   *
+   * ⚠️ ANYTHING THAT IS NOT "FINISHED A BLOW" ENDS THE CHAIN. Hurt, knocked
+   * down, dead, grabbed by a cutscene: `canAct()` covers all of them, and a
+   * special that carried on through a knockdown would be a player throwing
+   * punches off the floor. The cooldown is NOT refunded -- being interrupted
+   * out of a special costs it, which is the same bargain every combo makes.
+   */
+  _specialStep() {
+    if (!this.specialSeq) return;
+    if (this.atk) return;                        // the current blow is running
+    if (this.specialI + 1 >= this.specialSeq.length || !this.canAct()) {
+      this.specialSeq = null;
+      return;
+    }
+    this.specialI++;
+    if (!this.attack([this.specialSeq[this.specialI]])) this.specialSeq = null;
   }
 
   update(dt, input, bounds) {
@@ -423,6 +455,7 @@ class Player extends Fighter {
     }
 
     super.update(dt, bounds);
+    this._specialStep();
   }
 
   /**

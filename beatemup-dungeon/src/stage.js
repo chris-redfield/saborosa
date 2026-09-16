@@ -525,6 +525,17 @@ class Stage {
    * nothing there; it is the boss room's arena→boss hand-off that it fixes.
    */
   _goPrompt() {
+    /* ⚠️ THE BOOKCASE HAS NO SEGMENTS, SO THE TEST BELOW CANNOT SPEAK FOR IT.
+       `CONFIG.ROOMS[3].segments` is a single formality scroll that level3.js
+       never reads, which means the "is the next thing a walk" gate is TRUE at
+       every moment of that room -- including mid-arena, where `tryingBack` was
+       raising an arrow at an exit that had not opened. The room answers for
+       itself instead. Part of the fix for the prompt that hopped after a shelf's
+       fight (2026-09-16): a prompt that never went up mid-fight is not on screen
+       to be RE-raised when the fight clears, and the re-raise was the jump.
+       LEVEL 3 HOOK -- a single guarded early return, like the other five. */
+    if (typeof Level3 !== 'undefined' && Level3.owns(this.room())
+        && Level3.fighting()) return;
     const next = this.segment();
     if (next && next.kind === 'scroll') {
       /* ⚠️ THE TICKET IS BUMPED ONLY WHEN THE PROMPT RISES FROM NOTHING, AND

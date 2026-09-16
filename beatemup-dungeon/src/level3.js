@@ -80,6 +80,10 @@
 const Level3 = {
   progress: 0,      // FILM SECONDS. Monotonic BETWEEN legs -- see the header.
   _camX: 0,         // this room's camera, mirrored onto stage.camX each frame
+  /* WHERE THE PLAYER WAS LAST TIME THE CAMERA FOLLOWED HIM. The follow may only
+     spend the distance he has walked SINCE THEN, so this is null whenever the
+     follow was not running -- a fight, a lift, a new leg. See `_camera`. */
+  _lastPx: null,
   leg: 0,           // index into CONFIG.LEVEL3.legs
   legT: 0,          // seconds spent in the current leg (lifts are timed)
   done: false,
@@ -120,6 +124,7 @@ const Level3 = {
     this._bands = null;
     this._camX = 0;
     this._camDX = 0;
+    this._lastPx = null;   // the follow budget's reference; see `_camera`
     this._boiling = false;
     this._boilT = 0;
     this._board = false;
@@ -328,6 +333,13 @@ const Level3 = {
     const cam = (L && L.dir < 0) ? b.camHi : b.camLo;
     if (player) player.x = (screenX != null) ? cam + screenX : b.from;
     this._camX = cam;
+    /* ⚠️ THE FOLLOW BUDGET IS RE-SEEDED, NOT CARRIED ACROSS A BAND. The bands sit
+       `bandGapPx` (4000) apart and this line is a TELEPORT, so a stale reference
+       would credit the follow with 4000px of walking on the new shelf's first
+       frame -- which is the jump this budget exists to prevent, arriving by the
+       other door. Null means "start from wherever he is", the same thing the
+       first frame of a leg means. */
+    this._lastPx = null;
     if (stage) { stage.camX = this._camX; stage.camTarget = this._camX; }
   },
 
@@ -777,6 +789,13 @@ const Level3 = {
     stage.camX = this._camX;
     stage.camTarget = this._camX;
     this._camDX = 0;
+    /* ⚠️ AND THE FOLLOW BUDGET GOES WITH IT -- the same line `Stage.update`
+       writes when an arena locks (`lastPlayerX = null`). The player is about to
+       cross the arena with the camera held still, and none of that walking may
+       be spendable the frame the camera gets control back. Without this the
+       fight's whole width is credited in one frame and the picture jumps; see
+       `_camera`. */
+    this._lastPx = null;
     stage.banner = 0;          // penned in; nothing to walk to yet
     stage._spawn(this._wave(A), crowd);
     return true;
@@ -819,6 +838,53 @@ const Level3 = {
     let step = 0;
     if (sx > focus + dz) step = sx - (focus + dz);
     else if (sx < focus - dz) step = sx - (focus - dz);
+
+    /* ⚠️⚠️ THE STEP IS PAID FOR OUT OF THE DISTANCE WALKED, AND WITHOUT THAT
+       THE WHOLE SCREEN JUMPS WHEN A FIGHT ENDS. Reported 2026-09-16 on shelf 2:
+       *"once the arena is over, the camera gets the control back... in other
+       stages every arena locks the camera, so the player cannot go back; since
+       in this stage the cameras are not locking in the arenas, we got this weird
+       jump."* Exactly right, and the missing half was here rather than in the
+       arena.
+
+       `step` is the WHOLE framing error, and this used to apply all of it in one
+       frame. That is invisible while walking -- the error is only ever a footstep
+       -- and enormous the frame a pinned fight hands the camera back: the camera
+       held still for the length of the fight while the player roamed the width of
+       the arena, so the error is however far he strayed. Measured against this
+       room's numbers: the walls are the screen edges (camX + 40 .. camX + 1240)
+       and the deadzone band is screen x 407.6..667.6, so a fight that ends with
+       him at either wall snaps the camera **332px in one frame** -- and because
+       `progress` is a function of `_camX`, the FILM cuts that far with it. That
+       is the whole picture jumping, not the camera drifting.
+
+       ⚠️ THE FIX IS THE STREET'S, NOT A NEW ONE. `Stage._followCamera` closes its
+       error out of a budget of exactly the distance walked (`camFollowGain` 1.0),
+       which is why no arena in the street or the desert can do this: the camera
+       physically cannot move further in a frame than the feet did. The same rule
+       is what this room is built on anyway -- the film moves 1:1 with the walk --
+       so the budget is not a compromise here, it is the room's own premise
+       restated. The error is then never CLOSED, it is CARRIED: the player keeps
+       the screen position the fight left him at, which is the street's stated
+       behaviour ("wherever they are when they push the edge is where they stay").
+
+       ⚠️ AND THE BUDGET MUST BE EARNED IN THE DIRECTION THE CAMERA NEEDS. The
+       street's version says so in a comment about a bug it had -- walking left
+       earning rightward budget -- and the same trap is live here in both
+       directions, because this camera is symmetric. Shelf 2 walks LEFT and its
+       camera runs left with it.
+
+       ⚠️ `_lastPx` IS NULLED WHENEVER THIS STOPS BEING CALLED (a fight, a new
+       leg, a reset), never merely stale. That is the other half of the street's
+       line -- `lastPlayerX = null` at the lock -- and it is what makes the first
+       frame after a fight cost ZERO: no distance is credited for ground covered
+       while the camera was not following. */
+    if (this._lastPx == null) this._lastPx = player.x;
+    const moved = player.x - this._lastPx;
+    this._lastPx = player.x;
+    const gain = (CONFIG.camFollowGain != null) ? CONFIG.camFollowGain : 1;
+    if (step > 0) step = Math.min(step, Math.max(0, moved) * gain);
+    else if (step < 0) step = Math.max(step, Math.min(0, moved) * gain);
     /* PENNED TO THE LEG'S OWN BAND. `camLo`/`camHi` are exactly `px` apart --
        the leg's film pan -- so the camera cannot wander onto ground this stretch
        of the shot does not show. */
@@ -833,6 +899,44 @@ const Level3 = {
     this._camDX = this._camX - was;
     stage.camX = this._camX;
     stage.camTarget = this._camX;
+  },
+
+  /**
+   * IS A SHELF'S FIGHT UP RIGHT NOW? Asked by `Stage._goPrompt`.
+   *
+   * ⚠️ THE SCROLL GATE THAT KEEPS THE GO ARROW OUT OF A FIGHT IS INERT IN THIS
+   * ROOM, which is why this exists. `_goPrompt` refuses unless the current
+   * segment is a `scroll` -- the fix for the boss room, where a cleared wave
+   * hands straight to HIPOLITO and the arrow used to point at a wall. The
+   * bookcase's `segments` is a single formality scroll that level3.js never
+   * reads, so that test passes here at every moment of the room, fight or no
+   * fight, and `tryingBack` could raise an arrow mid-arena pointing at an exit
+   * that is not open. Found 2026-09-16 while chasing the prompt that hopped.
+   * ⚠️ Same shape as every other "check what a flag GUARDS, not what it is
+   * named" in this project: the gate is written in the vocabulary of a room
+   * built out of segments, and this room has none.
+   */
+  fighting() { return !!this._fight; },
+
+  /**
+   * WHICH WAY THE EXIT IS, for the GO prompt -- +1 right, -1 left.
+   *
+   * ⚠️ THIS ROOM IS THE ONLY PLACE IN THE GAME WHERE THE ANSWER IS NOT +1.
+   * Every other room is walked rightwards, and the prompt's art is drawn
+   * pointing that way; shelf 2 of the switchback is walked LEFT, so a hand
+   * pointing right there points back at the fight that was just cleared. See
+   * `Hud.drawGo`, which mirrors the POINTER alone -- the lettering cannot be
+   * flipped with it.
+   *
+   * ⚠️ IT ANSWERS FOR THE LEG THE PLAYER IS ON, WHICH IS THE ONLY QUESTION THE
+   * PROMPT ASKS. The banner goes up when a shelf's arena clears and while the
+   * player leans on the near wall, and both of those are on a walk leg; a lift
+   * is a ride with nothing to walk to, so its `dir` is undefined and the
+   * fallback is the game's own default rather than the last shelf's direction.
+   */
+  promptDir() {
+    const L = this.current();
+    return (L && L.kind === 'walk' && L.dir < 0) ? -1 : 1;
   },
 
   /**

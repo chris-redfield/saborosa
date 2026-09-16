@@ -825,6 +825,13 @@
     if (phase === 'play' || phase === 'outro' || phase === 'fade'
         || phase === 'liftout' || phase === 'liftin') {
       flies.update(dt, stage.camX);
+      /* THE GO PROMPT'S BOB, ON THE SAME TERMS AS THE FLIES and for one of the
+         same reasons: it is on screen in phases `update()` never runs in (the
+         walk-out, the room fade), and it must freeze when the world does -- the
+         hitstop return above and the pause branch both skip this block. It is a
+         FREE-RUNNING clock, which is what stops the sign hopping when the banner
+         is re-raised under it; see `Hud.drawGo`. */
+      hud.tickGo(dt);
       /* THE RIDER'S HEIGHT, and it is ticked here for the same reason the flies
          are: the elevator is on screen in phases `update()` never runs in.
          `liftout` and `liftin` are both cutscenes with their own branch below,
@@ -1397,6 +1404,13 @@
        Everything that is genuinely in world space still gets the real camX. */
     const l3 = Level3.owns(stage.room());
     const filmX = l3 ? Level3.filmScroll() : camX;
+    /* ⚠️ HOLDING THE HERO BACK IS GATED ON THERE BEING A FILTER TO HOLD HIM OUT
+       OF, not on the room. Drawing him after the grade is what keeps the night
+       off him, and it costs his place in the z sort (see the note at the second
+       call) -- so with `ROOMS[3].grade` off, that is a real cost bought for
+       nothing. `Grade.on` is written once per room by `enterRoom` and cannot
+       change mid-frame, so reading it here and again below is one answer. */
+    const heroOverGrade = l3 && grade.on;
 
     for (const layer of CONFIG.LAYERS) {
       if (layer.on === false) continue;
@@ -1406,7 +1420,13 @@
         /* THE BETWEEN-ROOMS LIFT, under the fighters like the room's own -- he
            stands ON it. It draws nothing unless a ride is running. */
         liftRide.draw(ctx, stage, assets, camX);
-        drawEntities(camX);
+        /* ⚠️ THE HERO IS HELD BACK IN THE BOOKCASE, AND ONLY THERE. Asked for
+           2026-09-16: *"pegar o heroi e botar ele na frente do filtro, entao o
+           filtro nao deve ser aplicado a ele"*. The grade is one composited
+           rectangle over the whole frame, so "not graded" can only mean "drawn
+           after it" -- see the note above `grade.draw`. He is skipped here and
+           painted again below. */
+        drawEntities(camX, heroOverGrade);
         continue;
       }
       if (layer.scenery) { drawScenery(camX); continue; }
@@ -1428,6 +1448,23 @@
     grade.update(stage);
     grade.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
 
+    /* THE HERO, OVER THE NIGHT -- the bookcase only. See the skip in the layer
+       loop above.
+
+       ⚠️ HIS SHADOW IS NOT LIFTED WITH HIM AND MUST NOT BE. It was drawn in the
+       pass above and is therefore graded, which is correct: a shadow is a mark
+       on the FLOOR, and the floor is in the dark with everything else. Lifting
+       it would put a hard black ellipse on a tinted shelf.
+
+       ⚠️ AND THIS COSTS THE DEPTH SORT FOR ONE FIGHTER. `drawEntities` orders
+       everything by z so a body nearer the camera draws in front; a full-screen
+       rectangle sits between him and that order, so in this room he is now in
+       front of EVERY enemy whatever their z -- an enemy standing below him on
+       the belt no longer overlaps him. That is the price of the exclusion list
+       being a draw order (CONFIG.GRADE's note), not an oversight. If it reads
+       wrong, the fix is a masked grade, not a second sort. */
+    if (heroOverGrade && player) player.draw(ctx, sheets, camX);
+
     if (player) hud.drawPlayer(ctx, player, lifeBar);
     for (const e of crowd.list) hud.drawEnemy(ctx, e, sheets, camX);
     /* The boss's bar: the SAME hand-drawn bar, top-centre and wider. Up only
@@ -1445,7 +1482,14 @@
         && !stage.boss.fleeing) {
       hud.drawBoss(ctx, stage.boss, lifeBar);
     }
-    hud.drawGo(ctx, stage.banner, stage.goSeq, assets);
+    /* ⚠️ THE PROMPT POINTS AT THE EXIT, AND ON ONE SHELF THE EXIT IS LEFT.
+       Asked off `Level3` rather than kept on the stage, because "which way is
+       on" is a fact about a leg of the bookcase and every other room in the
+       game answers +1 without being asked. `Hud.drawGo` mirrors the POINTER by
+       itself -- the lettering is part of the same drawing and may not be
+       flipped. */
+    hud.drawGo(ctx, stage.banner, stage.goSeq, assets,
+               l3 ? Level3.promptDir() : 1);
 
     /* THE ROOM FADE, drawn over everything including the HUD -- a health bar
        floating over black would give the cut away. Down to black across the
@@ -1596,7 +1640,14 @@
     scenery.drawBands(ctx, camX, lo, Infinity);
   }
 
-  function drawEntities(camX) {
+  /**
+   * @param skipPlayer  the bookcase passes true: the hero is drawn again after
+   *   `grade.draw` so the night does not tint him. Everything else about the
+   *   pass is unchanged -- he is still SHADOWED here, and the diggers' dust is
+   *   still fired from his slot in the z order, because both are marks on the
+   *   world rather than on him. See the call site.
+   */
+  function drawEntities(camX, skipPlayer) {
     /* SORTED BY z, AND THIS IS THE WHOLE ILLUSION. Bigger z is nearer the
        camera, so it is drawn later and therefore in front. Sorting by anything
        else — spawn order, x, health — makes fighters pass through each other in
@@ -1651,7 +1702,13 @@
          fighter: the dust belongs to a hole in the world, not to the body that
          came out of it, which is the same reason `Emerge` keeps its own copy of
          the spot. */
-      if (f === player) drawEmergeDust(camX);
+      if (f === player) {
+        drawEmergeDust(camX);
+        /* ⚠️ AFTER THE DUST, NOT INSTEAD OF IT. The burst is anchored to the
+           PLAYER'S SLOT in the z order rather than to the player, so holding
+           his body back must not hold back the hole in the floor. */
+        if (skipPlayer) continue;
+      }
       if (behind && behind.indexOf(f) >= 0) continue;
       if (f === stage.boss) f.draw(ctx, f.usesSheets ? sheets : assets, camX);
       else f.draw(ctx, sheets, camX);
@@ -1706,6 +1763,18 @@
      shrinks and fades with height, which is what makes the arc legible. */
   function drawShadow(f, camX) {
     if (f.noShadow) return;          // the horse -- see its constructor
+    /* ⚠️ Read off `f.kind` rather than `f.feel()` -- this pass draws props too
+       and they are not Fighters. */
+    const D = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[f.kind]) || {};
+    /* A WHOLE KIND MAY REFUSE ITS SHADOW, and that is not the same flag as
+       `noShadow` above. Asked for 2026-09-16 about the library's worms
+       (*"remove the shadow of the worms"*) -- the same call HORACIO's
+       `HORACIO_BOSS.shadow: false` answers, except that a boss has a
+       constructor of its own to set `noShadow` in and a mook is built by the
+       crowd from nothing but its kind. So it is declared where the kind is
+       described. `noShadow` stays what it always was: per BODY and per MOMENT
+       (a digger still under the sand). This one is per KIND and permanent. */
+    if (D.shadow === false) return;
     if (f.dead && f.downPhase === 'lie') return;
     const x = f.groundX(camX);
     /* ⚠️ `riseY` MOVES THE SHADOW, `jumpY` DOES NOT, AND THE DIFFERENCE IS THE
@@ -1762,9 +1831,7 @@
        Deriving would move every shadow in the game to fix one, and a shadow is
        a FOOTPRINT, not a bounding box: the horse is drawn wider still and his
        four feet are not a 344px oval. Anything without the key is untouched.
-       ⚠️ Read off `f.kind` rather than `f.feel()` -- this pass draws props too
-       and they are not Fighters. */
-    const D = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[f.kind]) || {};
+       `D` is looked up at the top of this function -- see the note there. */
     ctx.save();
     ctx.globalAlpha = Math.max(0, 0.34 * (1 - lift * 0.45));
     ctx.fillStyle = '#000';
