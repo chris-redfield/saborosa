@@ -1751,11 +1751,26 @@
        and faintest; past it, it simply stays there. */
     const lift = Math.min(1, Math.max(0, f.jumpY) / CONFIG.shadowLiftRef);
     const s = Math.max(0.05, f.depthScale() * (1 - lift * 0.35));
+    /* A CHARACTER MAY WIDEN ITS OWN SHADOW, and the roach is why. `shadowW/H`
+       are ONE pair for the whole cast, sized against the coconut -- but they do
+       NOT follow `drawScale`, so the bigger a character is drawn the smaller
+       its shadow reads. At `drawScale` 2.55134 the barata is drawn 293px wide
+       against the coconut's 131 and stands on the same 63px smudge: *"fazer a sombra da
+       barata ficar mais comprida, porque esta pequeneninha (e a barata parece
+       estar flutuando)"*.
+       ⚠️ IT IS PER CHARACTER RATHER THAN DERIVED FROM `drawScale`, on purpose.
+       Deriving would move every shadow in the game to fix one, and a shadow is
+       a FOOTPRINT, not a bounding box: the horse is drawn wider still and his
+       four feet are not a 344px oval. Anything without the key is untouched.
+       ⚠️ Read off `f.kind` rather than `f.feel()` -- this pass draws props too
+       and they are not Fighters. */
+    const D = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[f.kind]) || {};
     ctx.save();
     ctx.globalAlpha = Math.max(0, 0.34 * (1 - lift * 0.45));
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(x, y, CONFIG.shadowW * s, CONFIG.shadowH * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y, CONFIG.shadowW * s * (D.shadowWRel || 1),
+                      CONFIG.shadowH * s * (D.shadowHRel || 1), 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }

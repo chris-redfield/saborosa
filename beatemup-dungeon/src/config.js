@@ -2076,6 +2076,23 @@ const CONFIG = {
        branch in Fighter.frame(). */
     barata:  { sheet: 'v2:beatemup-dungeon/barata-beat', pack: 'ragged',
                name: 'CLAUDINHO',
+               /* THE SHADOW IS HIS OWN SIZE, AND IT IS DERIVED. Asked for
+                  2026-09-16: *"fazer a sombra da barata ficar mais comprida,
+                  porque esta pequeneninha (e a barata parece estar
+                  flutuando)"*. `shadowW/H` are one pair for the whole cast and
+                  they do not follow `drawScale`, so his 293px body sat on the
+                  coconut's 63px smudge -- 22% of his width where the coconut
+                  gets 48% of his, which is what reads as floating.
+                  ⚠️ 2.24 IS NOT A TASTE NUMBER: it is his drawn half-width over
+                  the coconut's (146.6 / 65.5), so his shadow covers the same
+                  SHARE of his footprint that the player's covers of his. Both
+                  roaches take it -- one animal in two colours, sized apart by
+                  nothing. Re-derive it if `drawScale` moves again.
+                  ⚠️ THE HEIGHT IS DELIBERATELY LEFT ALONE. He is a long low
+                  insect; widening alone is what "mais comprida" asks for, and
+                  scaling both would put a fat oval under him. `shadowHRel`
+                  exists and is unset. */
+               shadowWRel: 2.24,
                /* THE CIGARETTES' SCALE, 1.452, and they arrived without one at
                   all -- drawn at the bare normalised size while the rest of the
                   cast had been raised 45%, which is most of why they looked
@@ -2155,6 +2172,20 @@ const CONFIG = {
     /* The red one. Same six rows drawn to one plan, heavier in the fight. */
     barata2: { sheet: 'v2:beatemup-dungeon/barata2-beat', pack: 'ragged',
                name: 'ZIDANE',
+               /* THE SHADOW IS HIS OWN SIZE, AND IT IS DERIVED. Asked for 2026-09-16: *"fazer a sombra da barata ficar mais comprida,
+                  porque esta pequeneninha (e a barata parece estar
+                  flutuando)"*. `shadowW/H` are one pair for the whole cast and
+                  they do not follow `drawScale`, so his 293px body sat on the
+                  coconut's 63px smudge -- 22% of his width where the coconut
+                  gets 48% of his, which is what reads as floating.
+                  ⚠️ SAME NUMBER AS THE TAN ONE, and for the same reason the two
+                  share `drawScale`: they are one animal in two colours. See
+                  the tan one's note for where 2.24 comes from.
+                  ⚠️ THE HEIGHT IS DELIBERATELY LEFT ALONE. He is a long low
+                  insect; widening alone is what "mais comprida" asks for, and
+                  scaling both would put a fat oval under him. `shadowHRel`
+                  exists and is unset. */
+               shadowWRel: 2.24,
                // The same number as the tan one, and measured rather than
                // assumed: both sheets cut to an identical body (167.8px then,
                // 348.9 now), so the pair is drawn at one size and there is no

@@ -119,9 +119,44 @@ class Assets {
       .catch(() => { this._tick(); return null; });
   }
 
+  /**
+   * FRAME DEFS (and anything else small and JSON).
+   *
+   * ⚠️⚠️ IT MUST NOT SAY `cache: 'force-cache'`, AND THAT COST A PUBLISHED BUILD.
+   * It did until 2026-09-16, and the baratas came apart on the live site while
+   * being perfect locally -- oversized, mis-cut, drawing lumps of sheet
+   * background (*"ele está completamente quebrado ... they don't break on our
+   * local version, only on the internet's published version"*).
+   *
+   * THE PAIR WAS FETCHED UNDER TWO DIFFERENT CACHE POLICIES. `loadPack` loads a
+   * sheet's PNG through `loadImage`, which is an `<img>` and therefore obeys
+   * ordinary HTTP caching -- GitHub Pages sends `max-age=600`, so it goes stale
+   * after ten minutes and revalidates. This took `force-cache`, which by
+   * definition returns a cached response **fresh or stale, without asking the
+   * server**. So a browser that had ever loaded the game kept the OLD defs for
+   * ever and picked up the NEW sheet: the roaches were re-cut on 2026-09-11
+   * (2355 -> 2381 bytes of defs, 546KB -> 1.44MB of sheet) and every returning
+   * player has been reading the new sheet through the old rectangles since.
+   *
+   * ⚠️ THE FILES ON THE SERVER WERE NEVER WRONG, which is what made it look like
+   * a missing asset: every code file and both barata files were checksummed
+   * against the repo and are byte-identical. Nothing needed pushing. The stale
+   * copy was in the PLAYER'S browser and nowhere else.
+   *
+   * ⚠️ AND IT ONLY EVER SHOWS ON A PACK WHOSE DEFS CHANGED. Every other pack's
+   * cached JSON still matches its image, so the bug arrives one character at a
+   * time, months after the line that caused it, always on the machine you
+   * cannot inspect. A hard reload "fixes" it, which is the worst possible clue.
+   *
+   * Default caching is what pairs with the `<img>`: still cached, still one
+   * conditional request per pack every ten minutes, and a 304 on a 2KB file is
+   * nothing. ⚠️ `loadAudio` and `loadBig` still say `force-cache` and carry the
+   * same trap for a re-baked song or a re-cut plate -- left alone because they
+   * are megabytes each and that is a bandwidth call, not a correctness one.
+   */
   loadJSON(key, src) {
     this.total++;
-    return fetch(this.resolve(src), { cache: 'force-cache' })
+    return fetch(this.resolve(src))
       .then(r => (r.ok ? r.json() : null))
       .then(d => { if (d) this.json[key] = d; this._tick(); return d; })
       .catch(() => { this._tick(); return null; });
