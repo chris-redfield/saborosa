@@ -1533,18 +1533,52 @@ const CONFIG = {
       music: 'musicBoss',
       /* TWO BARRELS AND NOTHING ELSE -- the chicken that was here was removed on
          request the same day. This is the one room where the placement is
-         tactical rather than scenic: they sit BEHIND where the player enters
-         and to either side of the belt, so they are still there when the horse
+         tactical rather than scenic: they are still there when the horse
          arrives -- a thrown barrel is 22 damage against his 150, which is most
          of a clean combo for one press, and it is the answer to a charge you
          cannot get out of the way of.
 
-         ⚠️ THE ROACHES COME FIRST and will happily eat both barrels. That is
+         ⚠️ THEY ARE AGAINST THE RIGHT-HAND WALL BECAUSE THE ELEVATOR OWNS THE
+         MIDDLE. They used to sit at x 620 and 780, which is dead centre of the
+         room, and the lift that takes the player out of here lands on top of
+         them -- *"push them to the far right, so they don't collide with the
+         elevator"*, 2026-09-16.
+
+         ⚠️ AND THE CLEAR BAND IS NARROW, because the lift is placed in SCREEN
+         space and this room's camera is not locked. `LiftRide.startExit` puts
+         the slab at `camX + 640` and it is `widthPx` 960 wide anchored on its
+         centre, so it covers `camX+160 .. camX+1120`; `camX` is frozen wherever
+         the boss died, anywhere in the room's 337px of travel. The worst case
+         is the camera at its stop (337), which puts the slab's right edge at
+         **1457** and the player's mark (`+ half + markGapPx`) at **1527**, with
+         the room's right wall (`endX`) at 1617. So the whole clear band is
+         1457..1617 and the player is STANDING IN THE MIDDLE OF IT waiting for
+         the lift. Move `LIFT_RIDE.widthPx`, `liftScreenX` or `endX` and these
+         numbers move with them.
+
+         ⚠️ WHICH IS WHY THE `z` MOVED TOO, and it is the half of this that is
+         not arithmetic. They used to be 55 and 170 -- either side of the belt --
+         and at the far right the FRONT one (z 170) draws over the mark: rendered
+         it, and the coconut walks to his mark and vanishes behind two barrels
+         for the whole descent, with one yellow hand showing. Both are now
+         BEHIND him (z 40 and 95 against his own 114), so he is drawn in front of
+         them and the corner reads as barrels stacked against the wall. The cost
+         is that they are no longer one per lane; the elevator shot is worth
+         more than that was.
+
+         ⚠️ AND THEN ONE DEDINHO FURTHER RIGHT (+24 each, 2026-09-16), which
+         is the project's measured finger -- the same 24 as `ELEVADOR.liftPx`
+         and `LETTERS.titleNudgePx`. ⚠️ **THAT IS THE LAST ONE.** At +24 the far
+         barrel's right side already meets the frame edge at the camera's stop;
+         rendered a second dedinho (1528/1618) and it is HALF OFF THE SCREEN.
+         Anything further needs `endX` to move, not these. */
+
+      /* ⚠️ THE ROACHES COME FIRST and will happily eat both barrels. That is
          the choice the room is asking: spend them on the wave, or save them for
          the horse. */
       props: [
-        { kind: 'barrel',  x: 620, z: 55 },
-        { kind: 'barrel',  x: 780, z: 170 },
+        { kind: 'barrel',  x: 1528, z: 40 },
+        { kind: 'barrel',  x: 1594, z: 95 },
       ],
       /* 337px of pan + one screen. The camera crosses the whole shot and
          stops, which is the room's right-hand wall. */
@@ -9430,7 +9464,31 @@ const CONFIG = {
      which as a WAIT would be three quarters of a second of a still title
      screen with nobody on it. As over-travel under a fade it costs nothing. */
   titleWalkExitXRel: 1.06,
-  titleWalkSpeed: 210,         // px/s -- the ending's, so the two walks match
+  /* HOW FAST HE CROSSES, px/s. ⚠️ 210 UNTIL 2026-09-16, THEN **300** --
+     *"aumentar a velocidade do coquinho caminhando depois da coconut select
+     screen"*. It is the same walker on the title and after the choice (stage
+     'walk' in title.js), so both crossings sped up; the one that was asked
+     about is the one that is now in every run's way.
+
+     ⚠️ AND 300 IS `walkSpeedX`, NOT A NUMBER I LIKED. It is the speed he
+     actually walks at in the fight, so this screen now moves him at his own
+     pace -- and because `POSE_MS.walk` (124ms) is the same clock in both
+     places, his feet cover the same ground per step here as they do in the
+     level. At 210 the same animation was running against 30% less travel.
+     (IPANEIMA walks the belt at 300 x his `walkScale` 0.90 = 270; the walker
+     is one speed for whoever was picked, which is a simplification this screen
+     has always made.)
+
+     ⚠️ IT IS THE ONLY NUMBER TO CHANGE, because the screen's LENGTH is
+     derived from it: `_walkExitAtMs()` divides the distance to
+     `titleWalkExitXRel` by this, so the fade starts when he is actually gone.
+     The crossing goes 7.6s -> 5.3s and the wait before the fade 7.2s -> 5.0s.
+
+     ⚠️ AND IT NO LONGER MATCHES THE ENDING, which is what this line used to
+     say it did. `ENDING.walkSpeed` is still 210 and was not in the ask -- that
+     walk is the last beat of a won run and is supposed to be a stroll. If the
+     two should agree again, it is that number that moves, not this one. */
+  titleWalkSpeed: 300,
   /* HIS FEET, down the canvas -- and it is DERIVED, not chosen. Asked for
      2026-08-24: "na intro o coco passa um pouquinho mais pra cima no y (ou z):
      ele deve estar alinhado com a posição y que o coco está quando começa o
@@ -10944,8 +11002,23 @@ const CONFIG = {
        arithmetic and these two are arithmetic PLUS a decision. Anyone
        re-deriving the pinned set from a moved bus must reapply the 0.9 to these
        two, or the swoosh silently comes back 11% louder than it was asked to be. */
-    up: 0.666,
-    down: 0.666,
+    /* ⚠️ DOWN A TRUE 20% ON 2026-09-16 -- *"reduce the swoosh sfx by 20%"*.
+       0.666 x 0.8 = **0.533**, -1.94 dB, and the pair moves together because
+       they are one sound in two directions. Cumulatively 0.74 (the Still Life
+       match) -> 0.533 is -2.85 dB, so the ear has now overruled that match
+       twice in the same direction; the match itself is unchanged and still
+       spelled out above.
+
+       ⚠️ AND ANOTHER TRUE 20% THE SAME DAY -- *"reduce the swoosh by another
+       20%"*. 0.533 x 0.8 = **0.426**, another -1.94 dB. "Another" compounds,
+       the same reading the coin's second bump got an hour earlier: 0.666 ->
+       0.426 is **-3.9 dB**, and against the Still Life match (0.74) it is
+       -4.8 dB. ⚠️ At the master this is 0.426 x 0.567 = **0.242**, so the
+       swoosh is now the quietest thing in this table -- if it needs to come
+       down a third time, check that it is still audible over the plate rather
+       than multiplying again on trust. */
+    up: 0.426,
+    down: 0.426,
     /* --- The TIME ATTACK loops ---------------------------------------------
        ⚠️⚠️ THESE WERE 0.367 / 0.448 FOR ONE SESSION AND BOTH WERE 4.4 dB TOO
        QUIET, WHICH IS WHY THE COIN *"reproduced in a different way than it was
@@ -10983,7 +11056,36 @@ const CONFIG = {
        way down because this game rings fifty of them in four seconds where that
        game plays one; nothing about a held loop multiplies. */
     gun: 0.611,
-    coinHit: 0.747,
+    /* ⚠️ UP A DEDINHO ON 2026-09-16 -- *"increase the volume of the coin being
+       hit SFX by 1 dedinho"*. 0.747 x 1.1 = **0.822**, +0.83 dB.
+
+       ⚠️ A DEDINHO IS 24px EVERYWHERE ELSE IN THIS PROJECT AND THAT NUMBER IS
+       USELESS HERE: 24/720 of this gain is +3%, which is 0.3 dB and below what
+       an ear hears at all. The finger had to be re-measured in the unit that
+       was actually being asked about, and 10% is the step this game has twice
+       treated as a small one in audio (the swooshes' *"10% more subtle"*, the
+       first cut to the bus). A nudge, not a level change.
+
+       ⚠️ WHICH MAKES THIS THE THIRD ENTRY THAT IS ARITHMETIC **PLUS** A
+       DECISION, like `up`/`down` above. The Still Life match is 0.747 and it is
+       still spelled out in the note above -- anyone re-deriving the pinned set
+       from a moved bus must reapply this 1.1, or the coin quietly goes back to
+       being a dedinho quieter than it was asked to be.
+
+       ⚠️ AND UP ANOTHER 20% THE SAME DAY -- *"increase the coin sfx by another
+       20%"*. **"Another" is on top of the dedinho, not instead of it**: 0.822 x
+       1.2 = **0.986**, and the whole move from the match is 0.747 -> 0.986,
+       +2.4 dB. ⚠️ That is the opposite reading to `sfxVolume`'s restatements,
+       which each REPLACE the last because they were quoted against the
+       original -- the word that decides it is "another", and it is worth
+       reading twice before multiplying.
+
+       ⚠️ IT IS ALSO NEARLY AT 1.0 NOW, so a third increase is the one that
+       needs checking rather than assuming: at the master this is 0.986 x 0.567
+       = 0.559, which has headroom, but the clip is normalised to -1 dBFS and a
+       per-effect gain over ~1.7 would start asking the bus for more than the
+       file has. */
+    coinHit: 0.986,
   },
 
   /* --- Which effects are HELD, not fired ------------------------------------

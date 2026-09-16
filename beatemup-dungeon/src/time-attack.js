@@ -96,6 +96,14 @@ class TimeAttack {
        change and the clock arrives with the same beat every other second has. */
     this._clockShown = -1;
     this._clockPopT = 0;
+    /* THE OTHER TWO HUD NUMBERS, ON THE SAME RULE -- asked for 2026-09-16:
+       *"moscas number and RODADA number, they need the same punch that the
+       counter has, once the numbers change"*. Three numbers in one row, one
+       beat between them. Same `-1` for the same reason as the clock's. */
+    this._roundShown = -1;
+    this._roundPopT = 0;
+    this._coinsShown = -1;
+    this._coinsPopT = 0;
     /* ⚠️ THE LAST RAY THE RESOLVER ACTUALLY BUILT, kept only so the C overlay
        can draw THAT and not a second one derived the same way. A debug view that
        recomputes what it is inspecting can agree with itself while disagreeing
@@ -567,6 +575,18 @@ class TimeAttack {
     const shown = Math.ceil(this.clockMs / 1000);
     if (shown !== this._clockShown) { this._clockShown = shown; this._clockPopT = 0; }
     else this._clockPopT += dt;
+    /* RODADA AND MOSCAS, WATCHED THE SAME WAY AND FOR THE SAME REASON. Both
+       are already integers, so there is no rounding to agree about -- but the
+       rule that matters is the one above: the punch is fired by the VALUE
+       CHANGING, not derived from whatever drives it. `coinsGot` in particular
+       is reset by `_spawnRound`, jumped by a kill and read by the exit test;
+       "how long since it changed" is only ever this.
+       ⚠️ AND THEY TICK OUTSIDE `play` LIKE THE CLOCK'S, which is what lets the
+       round number punch while the card that announces it is on screen. */
+    if (this.round !== this._roundShown) { this._roundShown = this.round; this._roundPopT = 0; }
+    else this._roundPopT += dt;
+    if (this.coinsGot !== this._coinsShown) { this._coinsShown = this.coinsGot; this._coinsPopT = 0; }
+    else this._coinsPopT += dt;
 
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     for (const f of this.flies) f.update(dt, W, H, false);
@@ -1065,16 +1085,30 @@ class TimeAttack {
     return true;
   }
 
-  /** `RODADA 1/3` or `MOSCAS 4/8`, as one drawn run. Returns its width. */
-  _wCount(ctx, W, label, a, b, leftX, cy, measure) {
+  /**
+   * `RODADA 1/3` or `MOSCAS 4/8`, as one drawn run. Returns its width.
+   *
+   * `punch` is a `_punchAt()` result applied to `a` ALONE -- the number that
+   * changes. The label, the slash and the quota are the frame it changes
+   * inside and punching those would move the whole row.
+   *
+   * ⚠️ IT MUST NOT REACH `measure`, AND THAT IS THE WHOLE TRAP. The MOSCAS run
+   * is right-aligned: its width is measured first and the run is then drawn
+   * from `W - 28 - w`. Let a 1.2x pop into the measurement and the whole line
+   * -- label included -- would slide left on every kill and settle back over
+   * 220ms. The pop is a DRAW scale about the number's own centre, so the
+   * resting width is the true one and nothing beside it moves.
+   */
+  _wCount(ctx, W, label, a, b, leftX, cy, measure, punch) {
     const gap = (this._cfg().LETTER || {}).wordGapPx || 10;
     const lw = this._wWide(W, label);
     const aw = this._wNumW(W, a), sw = this._wWide(W, 'slash'), bw = this._wNumW(W, b);
     const total = lw + gap + aw + sw + bw + gap * 0.4;
     if (measure) return total;
+    const p = punch || { k: 1, x: 0, y: 0 };
     let x = leftX;
     this._wDraw(ctx, W, label, x + lw / 2, cy); x += lw + gap;
-    this._wNum(ctx, W, a, x + aw / 2, cy);      x += aw;
+    this._wNum(ctx, W, a, x + aw / 2 + p.x, cy + p.y, p.k); x += aw;
     this._wDraw(ctx, W, 'slash', x + sw / 2, cy); x += sw;
     this._wNum(ctx, W, b, x + bw / 2, cy);
     return total;
@@ -1108,7 +1142,15 @@ class TimeAttack {
       ctx.font = '900 40px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
       ctx.fillText((this.clockMs / 1000).toFixed(1), W / 2, 46);
     }
-    if (TW) this._wCount(ctx, TW, 'rodada', this.round + 1, c.ROUNDS.length, 28, 40);
+    /* ⚠️ `CLOCK_PUNCH`, NOT `PUNCH` -- *"the same punch that the counter has"*,
+       and the counter is the clock. It is the smaller, shorter curve, which is
+       also the right one for MOSCAS: that number moves on every kill, and the
+       big DESTRUA stamp at that rate would leave the HUD permanently shaking.
+       RODADA changes once a round and could carry the big one; it is on the
+       small one so that the three numbers in this row punch alike, which is
+       what was actually asked for. One word swaps it if it should be louder. */
+    if (TW) this._wCount(ctx, TW, 'rodada', this.round + 1, c.ROUNDS.length, 28, 40,
+                         false, this._punchAt(this._roundPopT, 'CLOCK_PUNCH'));
     else {
       ctx.font = 'bold 24px ' + (CONFIG.hudFont);
       ctx.textAlign = 'left';
@@ -1129,7 +1171,8 @@ class TimeAttack {
          (`100` is twice as wide as `7`). `measure` is the same code path that
          draws it, not a second estimate of it. */
       const w = this._wCount(ctx, TW, 'moscas', this.coinsGot, R.coins, 0, 40, true);
-      this._wCount(ctx, TW, 'moscas', this.coinsGot, R.coins, W - 28 - w, 40);
+      this._wCount(ctx, TW, 'moscas', this.coinsGot, R.coins, W - 28 - w, 40,
+                   false, this._punchAt(this._coinsPopT, 'CLOCK_PUNCH'));
     } else {
       ctx.textAlign = 'right';
       ctx.fillText((c.quotaLabel || '') + ' ' + this.coinsGot + '/' + R.coins, W - 28, 40);
