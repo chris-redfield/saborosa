@@ -846,6 +846,18 @@
          which is right: the pause card draws the frame the player stopped on
          and easing him upward under it would be motion on a still screen. */
       Elevador.tickRider(dt, player, stage.camX);
+      /* ⚠️ AND EVERYONE ELSE STANDING ON IT, WHICH IS NEW ON 2026-09-16 -- the
+         bookcase's first lift drops an enemy onto the slab mid-ride, and an
+         enemy the registry never saw is drawn `ELEVADOR.liftPx` (24px, a
+         dedinho) INTO the slab's top face while the player stands on it. That is
+         exactly the sinking the note on `liftPx` warns about, arriving from the
+         one direction nobody had needed yet.
+
+         ⚠️ THE SAME CALL, NOT A CROWD VERSION OF IT. `tickRider` asks a fighter
+         two questions -- where are you, and is a slab under you -- and neither
+         is a fact about being the player. A room with no slabs registers none,
+         so this is a loop over an empty list everywhere else in the game. */
+      for (const e of crowd.list) Elevador.tickRider(dt, e, stage.camX);
     }
 
     if (phase === 'timeattack') {

@@ -6875,7 +6875,38 @@ const CONFIG = {
          convincingly. 13.7s is a long time to stand on a platform with nothing
          to do — the answer to that is enemies riding up with you, not a faster
          lift. */
-      { kind: 'lift', sec: 13.67, film: [18.98, 32.65] },
+      { kind: 'lift', sec: 13.67, film: [18.98, 32.65],
+        /* ⚠️ A FIGHT ON THE WAY UP, AND THE NOTE ABOVE ASKED FOR IT BY NAME --
+           *"the answer to that is enemies riding up with you, not a faster
+           lift"*, written when this leg was measured. Asked for 2026-09-16:
+           *"at the first elevator, as soon as the elevator starts to go up,
+           spawn one worm enemy, that falls from the upper part of the screen
+           (out of screen) and fall on the elevator, and attacks you"*.
+
+           `riders` is the same shape as an `arena`'s `enemies` and is spawned by
+           the same `Stage._spawn`; what makes it a rider is WHEN (the first
+           frame the lift is actually rising -- see `Level3._riders`) and HOW
+           (`from: 'sky'`, the only entrance that needs no floor).
+
+           ⚠️ `sx` IS A SCREEN x AND THE SLAB IS THE MIDDLE OF THE FRAME. During
+           a ride the camera is pinned at the previous leg's end, and the
+           platform is drawn at `platScreenX` (640) with `widthPx * standHalfRel`
+           = +/-336 of standable lip -- so anything outside screen 304..976 is
+           off the elevator and would be clamped onto it. 880 lands him inside
+           the right-hand end, 240px from a player who has just been walked to
+           the middle: a step away rather than on top of him.
+
+           ⚠️ 400ms OF DELAY SO THE RIDE IS VISIBLY UNDER WAY FIRST. Spawned at
+           t=0 he would be falling before the lift had moved, and the ask is
+           "as soon as it starts to go up" -- which means after it starts, not
+           with it. He lands at ~1.2s of a 13.67s ride.
+
+           ⚠️ z 110 IS MID-BELT ON THIS ROOM'S 200-DEEP BAND, not the street's.
+           ⚠️ AND IF HE IS STILL ALIVE WHEN THE RIDE ENDS HE COMES ALONG -- see
+           `Level3._carry`. He is on a slab that is about to teleport 4000px. */
+        riders: [
+          { kind: 'verme', sx: 880, z: 110, from: 'sky', delayMs: 400 },
+        ] },
       { kind: 'walk', dir: -1, px: 5515, film: [32.68, 46.96],
         /* ⚠️ HE IS WALKING LEFT HERE, so the wave comes in from the LEFT: `sx`
            is still a screen x, and the low ones are the ground he is heading
@@ -7559,6 +7590,50 @@ const CONFIG = {
      the ground opens with nothing coming out of it, the body climbs, the hole
      closes. Only the first two are in the player's way -- `settleMs` runs while
      he is already fighting. */
+  /* ===== THE DROP =========================================================
+     AN ENEMY THAT ARRIVES FROM ABOVE THE FRAME, `from: 'sky'` on a wave entry.
+     Asked for 2026-09-16 for the bookcase's first lift: *"as soon as the
+     elevator starts to go up, spawn one worm enemy, that falls from the upper
+     part of the screen (out of screen) and fall on the elevator, and attacks
+     you"*. Read by Stage._spawn (where it is placed) and by Enemy's `enter`
+     (where it falls); the only wave using it today is `LEVEL3.legs[1].riders`.
+
+     ⚠️ IT EXISTS BECAUSE A LIFT HAS NO SIDES. Every other entrance in this game
+     needs floor the player cannot see -- the walk-in comes from off the edge of
+     the screen, the digger comes up through the ground. During a ride `bounds()`
+     closes to the slab, so an enemy placed beside the frame would be clamped
+     onto the platform on its first frame: materialising in front of the player,
+     which is the one thing an entrance exists to prevent. Above is free.
+
+     ⚠️ IT IS `jumpY` AND NOTHING ELSE. That is a DRAWING offset -- fighter.js
+     states the rule: it never touches x or z -- so a falling body is already
+     standing where it will land as far as the crowd, the z sort and the walls
+     are concerned, and is merely painted above the screen until it gets there.
+     Nothing else in the game had to learn that a fighter can be in the air.
+
+     ⚠️ `fromPx` IS MEASURED AGAINST THE BELT, NOT THE CANVAS, so it has to clear
+     the top of the frame on the deepest belt it is used on. A fighter's feet sit
+     at `Belt.topY + z - jumpY`, so he is off screen while `jumpY > topY + z`:
+     the bookcase's belt is topY 470 / depth 200, so the worst case is 670 and
+     760 clears it by 90px at any z. ⚠️ A ROOM WITH A LOWER BELT NEEDS MORE, and
+     the symptom of too little is a body hanging in the top of the frame through
+     its whole `delayMs`.
+
+     ⚠️ AND THE VISIBLE PART OF THE FALL IS SHORTER THAN `ms` -- most of it is
+     spent above the frame. At 760/800 he crosses into view at p 0.487, so what
+     the player actually sees is ~410ms and the last 580px, arriving at about
+     32px per frame. That is the number to tune, not the total. */
+  SKY_FALL: {
+    on: true,
+    fromPx: 760,
+    /* ⚠️ THE FALL ACCELERATES (`1 - p^2`) AND EVERY OTHER JUMP IN THIS GAME
+       DOES NOT. Those are `sin(PI * p)`, an arc that comes back down, which is
+       right for a leap and wrong for a drop: a fall starts at rest and arrives
+       fast, and that is the whole difference between landing on someone and
+       being lowered onto them. */
+    ms: 800,
+  },
+
   EMERGE: {
     on: true,
     /* THE GROUND OPENS BEFORE ANYTHING COMES OUT OF IT, and this is the beat

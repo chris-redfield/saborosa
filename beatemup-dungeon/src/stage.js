@@ -631,6 +631,19 @@ class Stage {
          before any of this existed. */
       const ground = e.from === 'ground'
                   && !!(CONFIG.EMERGE && CONFIG.EMERGE.on);
+      /* `from: 'sky'` DROPS IN FROM ABOVE THE FRAME, and it is placed exactly as
+         a digger is: ON its mark, with no side, no margin and no `entryX` to
+         steer at. What differs is only where it is painted while it arrives --
+         `jumpY`, which the enemy owns (see its constructor). Added 2026-09-16
+         for the bookcase's first lift, the one place in the game with no
+         off-screen side to walk on from.
+         ⚠️ GATED ON `SKY_FALL.on` HERE AS WELL AS IN THE ENEMY, for the reason
+         `ground` is: with the effect off, wave data still saying `sky` would
+         otherwise spawn a body standing on its mark with no entrance at all --
+         worse than either version. Off, it walks in from the side like anyone
+         else, and the room plays as it did before this existed. */
+      const sky = e.from === 'sky'
+               && !!(CONFIG.SKY_FALL && CONFIG.SKY_FALL.on !== false);
       /* ⚠️ THE MARGIN IS MEASURED OFF THE DRAWING, NOT PICKED. It used to be a
          flat 70px past the edge, and that quietly stopped working the moment
          the roaches were scaled up: a barata's sprite reaches 169px from its
@@ -649,18 +662,19 @@ class Stage {
                                : { left: 0, right: 0 };
       const pad = (CONFIG.spawnMarginPx != null ? CONFIG.spawnMarginPx : 70)
                 + Math.max(over.left, over.right);
-      const fromX = ground ? e.x
+      const fromX = (ground || sky) ? e.x
                   : behind ? this.camX - pad
                            : this.camX + CONFIG.GAME_W + pad;
       const en = new Enemy(e.kind, fromX, e.z, {
         delayMs: e.delayMs || 0,
         // The spot it walks IN to before it starts fighting. A digger has none:
         // it came up standing on it.
-        entryX: ground ? null : e.x,
+        entryX: (ground || sky) ? null : e.x,
         /* A digger's first-frame facing is thrown away -- it is faced at the
            player the moment it is out, and until then it is under the sand. */
         facing: behind ? 'right' : 'left',
         emerge: ground,
+        sky: sky,
         emergeIndex: idx,
         emergeSeed: waveSeed,
       });

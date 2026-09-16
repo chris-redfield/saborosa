@@ -134,6 +134,27 @@ class Enemy extends Fighter {
        announces the arrival a full second before the hole does. Cleared at the
        same moment the body is released. */
     this.noShadow = !!this.emerge;
+    /* ARRIVING FROM ABOVE -- `from: 'sky'`, read in Stage._spawn, and the third
+       entrance this game has. The walk-in comes from the side, the digger comes
+       up through the floor, and this one drops in on top of the fight. Asked
+       for 2026-09-16 for the bookcase's first lift: *"as soon as the elevator
+       starts to go up, spawn one worm enemy, that falls from the upper part of
+       the screen (out of screen) and fall on the elevator."*
+
+       ⚠️ IT IS THE ONLY ENTRANCE THAT NEEDS NO ROOM TO ARRIVE IN, which is the
+       whole reason it exists here. A lift is a slab a screen wide with walls
+       closed to it; there is no off-screen side to walk on from and no floor to
+       come up through. Above is the one direction that is free.
+
+       ⚠️ LIKE THE DIGGER, IT IS SPAWNED ON ITS MARK -- see `Stage._spawn`. The
+       stagger is spent hanging ABOVE the top of the screen rather than beside
+       it, which is why it costs nothing: at `fromPx` 800 his feet are at y
+       -210 on this room's belt and the whole body is off the frame. The moment
+       the drop starts he is already where he is going to land. */
+    const SKY = CONFIG.SKY_FALL || {};
+    this.sky = !!(o.sky && SKY.on !== false);
+    this.skyT = 0;
+    if (this.sky) this.jumpY = SKY.fromPx != null ? SKY.fromPx : 800;
     /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
        from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
        from the shared knobs. The two are the same shape — a list of attack
@@ -455,6 +476,48 @@ class Enemy extends Fighter {
          ⚠️ AND HE IS FACED ON RELEASE, NOT ON SPAWN. Which way he came up is
          decided by where the player is standing when he gets there, and that is
          a second and a half after the wave was authored. */
+      /* FALLING IN. Above the digger for the digger's own reason: it REPLACES
+         the walk-in rather than modifying it -- he is already standing over his
+         mark and there is nothing to walk to.
+
+         ⚠️ `jumpY` AND NOTHING ELSE, which is what makes this a dozen lines
+         rather than a mechanic. It is a DRAWING offset (fighter.js states that
+         as a rule: it never touches x or z), so a body at `jumpY` 800 is at its
+         landing spot in every way that matters to the game -- the crowd, the
+         z sort, the walls -- and merely painted above the screen. Nothing had
+         to learn that a fighter can be in the air.
+
+         ⚠️ IT ACCELERATES, `1 - p^2`, AND THE ARC EVERY OTHER JUMP IN THIS GAME
+         USES WOULD BE WRONG HERE. Those are `sin(PI * p)` -- a leap that comes
+         back down -- and this is a fall: it starts at rest and arrives fast,
+         which is what makes it read as dropping rather than as being lowered.
+
+         ⚠️ HE IS DRAWN IDLE ON THE WAY DOWN BECAUSE THE WORM HAS NO JUMP ROW
+         (see CHARACTERS.verme -- no knockdown row either, and `down` borrows a
+         death frame). The diggers play their JUMP row climbing out; if a drop
+         ever gets art of its own, this line is where it goes and nothing else
+         moves.
+
+         ⚠️ AND HE IS FACED ON LANDING, not on spawn -- the same rule the
+         digger's release follows, and for the same reason: which way he should
+         be looking is decided by where the player is standing when he arrives,
+         not when the wave was authored. */
+      if (this.sky) {
+        const SKY = CONFIG.SKY_FALL || {};
+        const from = SKY.fromPx != null ? SKY.fromPx : 800;
+        const dur = Math.max(1, SKY.ms || 700) / 1000;
+        this.skyT += dt;
+        const p = Math.min(1, this.skyT / dur);
+        this.jumpY = from * (1 - p * p);
+        this.state = 'idle';            // the drawing only; see above
+        if (p < 1) return;
+        this.jumpY = 0;
+        this.sky = false;
+        this.ai = this.rush ? 'rush' : 'approach';
+        this.aiT = 0;
+        this._face(player);
+        return;
+      }
       if (this.emerge) {
         if (!this.emerge.started) {
           this.emerge.start(this.x, this.z);

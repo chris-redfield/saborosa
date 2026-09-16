@@ -106,6 +106,11 @@ const Level3 = {
      `_arena`. */
   _fight: null,
   _fought: null,
+  /* THE LIFTS' PASSENGERS. Legs whose `riders` have been dropped, remembered by
+     index for the same reason `_fought` is -- a ride is entered once, but this
+     room is one long loop and a flag that is merely "spawned" would fire again
+     on a retry. See `_riders`. */
+  _rode: null,
 
   /** Is this the bookcase? The guard every hook is wrapped in. */
   owns(room) { return !!(room && room.level3 && CONFIG.LEVEL3 && CONFIG.LEVEL3.on !== false); },
@@ -120,6 +125,7 @@ const Level3 = {
     this.legT = 0;
     this._fight = null;
     this._fought = [];
+    this._rode = [];
     this.done = false;
     this._bands = null;
     this._camX = 0;
@@ -515,6 +521,13 @@ const Level3 = {
          see, and the ride WAITS for it (see the `_board` branch above and
          `tickBoarding`). Asked for in those terms: *"a animacao captura o player
          e ele caminha ate o meio, dai o elevador comeca a se mexer."* */
+      /* ⚠️ THE PASSENGERS ARE DROPPED HERE, WHICH IS **BELOW** THE BOARDING
+         BRANCH ON PURPOSE. `_board` returns above this, so the first frame that
+         reaches this line is the first frame the lift is actually RISING --
+         which is what *"as soon as the elevator starts to go up"* names. Called
+         before `t` is read so a rider's `delayMs` is measured from the same
+         zero the ride is. */
+      this._riders(stage, crowd, L);
       const t = Math.min(1, this.legT / L.sec);
       this.progress = L.film[0] + (L.film[1] - L.film[0]) * t;
       /* THE CAMERA HOLDS. A rise is vertical and this camera is horizontal --
@@ -523,7 +536,7 @@ const Level3 = {
       stage.camX = this._camX;
       stage.camTarget = this._camX;
       this._tickBoil(dt, true);
-      if (t >= 1) return this._nextLeg(stage, player);
+      if (t >= 1) return this._nextLeg(stage, player, crowd);
       return null;
     }
 
@@ -585,7 +598,7 @@ const Level3 = {
     const C2 = this.cfg() || {};
     const end = (C2.boardWalk !== false && b.gate != null) ? b.gate : b.to;
     const arrived = (L.dir < 0) ? (player.x <= end) : (player.x >= end);
-    if (arrived) return this._nextLeg(stage, player);
+    if (arrived) return this._nextLeg(stage, player, crowd);
     return null;
   },
 
@@ -651,7 +664,7 @@ const Level3 = {
     return true;
   },
 
-  _nextLeg(stage, player) {
+  _nextLeg(stage, player, crowd) {
     /* ⚠️ READ BEFORE THE INCREMENT, because it is the leg being LEFT that says
        whether the player is standing on a lift right now. He is free to walk
        about up there -- bounds() closes the WALLS, it does not freeze the input
@@ -683,7 +696,12 @@ const Level3 = {
       this._boardT = 0;
       return null;
     }
+    const wasX = player ? player.x : null;
     this._place(player, stage, rodeTo);
+    /* WHOEVER IS STILL ON THEIR FEET COMES ALONG -- see `_carry`. After
+       `_place`, so it can read the delta off the player rather than recomputing
+       a band's arithmetic a second time. */
+    this._carry(crowd, player, wasX);
     return null;
   },
 
@@ -899,6 +917,68 @@ const Level3 = {
     this._camDX = this._camX - was;
     stage.camX = this._camX;
     stage.camTarget = this._camX;
+  },
+
+  /**
+   * THE FIGHT ON THE WAY UP -- a lift leg's `riders` (2026-09-16).
+   *
+   * Asked for in exactly these terms: *"at the first elevator, as soon as the
+   * elevator starts to go up, spawn one worm enemy, that falls from the upper
+   * part of the screen (out of screen) and fall on the elevator, and attacks
+   * you"*. ⚠️ AND THE ROOM'S OWN CONFIG PREDICTED IT: the note on this leg has
+   * said since the day it was measured that *"13.7s is a long time to stand on
+   * a platform with nothing to do -- the answer to that is enemies riding up
+   * with you, not a faster lift"*, because a filmed plate cannot fast-forward.
+   *
+   * ⚠️ IT IS `Stage._spawn` AGAIN, NOT A THIRD SPAWNER. The same call the
+   * shelves' arenas make, carrying the stagger, the facing and the entrance
+   * kinds -- `from: 'sky'` is the one this ride needs, and it is a property of
+   * the WAVE rather than of this room, so anything else may drop in anywhere.
+   *
+   * ⚠️ A LIFT IS THE ONE PLACE A WALK-IN CANNOT WORK, which is why the entrance
+   * had to be built for it. `bounds()` closes to the slab during a ride, so
+   * there is no off-screen ground to walk on from: an enemy placed beside the
+   * frame would be clamped onto the platform on its first frame, which is the
+   * materialising-in-front-of-the-player problem the walk-in exists to prevent.
+   * Above the frame is the only free direction, and it costs no floor.
+   *
+   * ⚠️ REMEMBERED BY LEG INDEX, like a cleared shelf. Nothing can re-enter a
+   * ride today, and that is a property of `_nextLeg` rather than of this.
+   */
+  _riders(stage, crowd, L) {
+    if (!crowd || !L || !L.riders || !L.riders.length) return;
+    if (this._rode.indexOf(this.leg) >= 0) return;
+    this._rode.push(this.leg);
+    /* ⚠️ `_wave` RESOLVES `sx` AGAINST THE PINNED CAMERA, exactly as an arena's
+       does -- a rider is placed by where it lands ON THE SLAB, in screen px, and
+       the slab is the middle of the frame. A world x would be unusable here for
+       the same reason it is on a shelf (see `_wave`), and worse: the lift's own
+       world position is derived from a band the ride is in the middle of
+       leaving. */
+    stage._spawn(this._wave({ enemies: L.riders }), crowd);
+  },
+
+  /**
+   * ANYONE STILL ALIVE COMES WITH YOU. The player is teleported between bands
+   * at a leg change (`bandGapPx` 4000), and a rider who survived the ride would
+   * otherwise be left standing in a band nobody will ever visit again -- alive,
+   * in the crowd, walking toward a player four thousand px away and arriving on
+   * the next shelf a good while later, which is the shape of bug that ends up
+   * in STATE.md.
+   *
+   * ⚠️ IT SHIFTS BY THE PLAYER'S OWN DELTA, so everything keeps its SCREEN
+   * position across the swap -- the same thing `rodeTo` does for the player. He
+   * rode up with you and he is still standing where he was.
+   *
+   * ⚠️ CORPSES TOO, AND DELIBERATELY. They are in the same list, they are
+   * fading on their own clock, and a body that stayed behind while the fight it
+   * belonged to moved would be the same bug with a slower exit.
+   */
+  _carry(crowd, player, wasX) {
+    if (!crowd || !player || wasX == null) return;
+    const dx = player.x - wasX;
+    if (!dx) return;
+    for (const e of crowd.list) e.x += dx;
   },
 
   /**
