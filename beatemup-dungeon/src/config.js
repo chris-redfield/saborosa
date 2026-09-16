@@ -2754,6 +2754,17 @@ const CONFIG = {
     down:       { anim: 'knockdown' },
     death:      { anim: 'death' },
 
+    /* THE HEROES' SPECIAL -- THE WHOLE ROW AS ONE POSE, 2026-09-16. Both packs
+       got a row 14 of their own (see tools/build-beat-coconut-defs.py) and the
+       two are not the same length: LEBRON throws ten drawings of a punch
+       flurry, IPANEIMA nine of a spin. Nothing here says how many -- the pose
+       is the row, and `frameStep` spreads whatever is in it across the move --
+       so the two lengths need no per-pack override, which is the same bargain
+       `idle` and `walk` already make.
+       ⚠️ `sheets.has()` KEEPS EVERY OTHER PACK OFF IT, like `ball`: only the
+       two coconuts have a `special` animation. */
+    special:    { anim: 'special' },
+
     /* THE BARATA'S CHARGE -- ALL FIVE DRAWINGS AS ONE POSE, tell included.
        Frame 0 is him tucking in and frames 1-4 are the spin, and they are one
        pose rather than two because the ATTACK already separates them: the tell
@@ -3757,6 +3768,60 @@ const CONFIG = {
     pose: 'airPunch', startupMs: 80, activeMs: 420, recoverMs: 190, cancelMs: 0,
     damage: 8, reachX: 100 * BODY_SCALE, reachZ: 56 * BODY_SCALE, reachY: 120,
     knockback: 300, lift: 190 * BODY_SCALE, knockdown: true, sweep: true,
+  },
+
+  /* =========================================================================
+     THE SPECIAL  (2026-09-16)
+     =========================================================================
+     *"when the player presses the two buttons together: punch and lift, it
+     activates these special move"*. One per hero, off their own new sheet row.
+
+     ⚠️ THE TWO MOVES ARE DIFFERENT SHAPES AND THE DEFS SAY SO. The art decided
+     it, which is the same way HIPÓLITO's moveset was decided:
+
+       LEBRON    ten drawings of a punch flurry that ends in one big straight
+                 arm. It goes FORWARD -- a directional box, longer than any
+                 punch in the game.
+       IPANEIMA  nine drawings that end in a SPIN, fists out, a yellow ring all
+                 the way round him. `radial: true` -- the same flag ESPETO's
+                 death blast uses -- because a spin that only hit the way he
+                 happened to be facing would be a drawing telling one story and
+                 a hitbox telling another. He reaches less far for it.
+
+     Both `sweep`, so they hit EVERY target in the box rather than the nearest:
+     a flurry that stops at the first roach is not a special.
+
+     ⚠️ THE COOLDOWN IS THE COST, AND IT IS THE ONLY COST. No meter, no health
+     price, nothing on the HUD -- none of that was asked for, and a meter is a
+     screen element and a rule to teach rather than a move. 1.4s is long enough
+     that it cannot be mashed in place of the combo and short enough to use
+     twice in a fight. ⚠️ If a proper cost is ever wanted, it goes HERE and in
+     `Player._special()`; nothing else reads this block.
+
+     TIMINGS ARE MEASURED AGAINST THE ROWS, not chosen for feel first: the
+     phases exist so the hitbox lands on the drawings that show the hit. At ten
+     frames over 800ms LEBRON's flurry (slots 2..7) covers the active window,
+     and at nine over 780ms IPANEIMA's spin (slots 4..8) covers his.
+     `frameStep` spreads the row over startup+active+recover, so retiming any
+     phase moves the picture with it and the two cannot drift apart. */
+  SPECIAL: {
+    on: true,
+    cooldownMs: 1400,
+    /* ⚠️ KEYED BY PACK, AND THE KEY IS `CHARACTERS`' KEY -- `Player.kind` is
+       what looks it up. A pack with no entry here simply has no special, which
+       is what every enemy is. */
+    coconut: {
+      pose: 'special', startupMs: 170, activeMs: 400, recoverMs: 230, cancelMs: 0,
+      damage: 20, reachX: 140 * BODY_SCALE, reachZ: 54 * BODY_SCALE,
+      knockback: 340, lift: 150 * BODY_SCALE, knockdown: true, sweep: true,
+      lungePx: 34 * BODY_SCALE,
+    },
+    coconutStrong: {
+      pose: 'special', startupMs: 260, activeMs: 340, recoverMs: 180, cancelMs: 0,
+      damage: 18, reachX: 104 * BODY_SCALE, reachZ: 58 * BODY_SCALE,
+      knockback: 300, lift: 130 * BODY_SCALE, knockdown: true, sweep: true,
+      radial: true,
+    },
   },
 
   /* --- THE FINISHER SWEEPS THE BOX ----------------------------------------

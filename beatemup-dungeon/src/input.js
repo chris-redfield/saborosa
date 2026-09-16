@@ -40,6 +40,10 @@ class Input {
     this._muteQueued = false;
     this._swapQueued = false;
     this._pickupQueued = false;
+    /* HELD, NOT JUST PRESSED -- the special (punch + lift together) is the only
+       thing that asks. See takeSpecial(). */
+    this._pickupHeld = false;
+    this._padHeldPickup = false;
     this._roomJump = -1;       // dev: room index requested by a number key
     this._anyPress = false;
     /* THE TYPED-LETTER BUFFER, for the dev-mode unlock -- see `armCheat`. It is
@@ -124,7 +128,8 @@ class Input {
       } else if (e.code === 'KeyK' || e.code === 'KeyX') {
         e.preventDefault(); this._jumpQueued = true; this._anyPress = true;
       } else if (e.code === 'KeyL' || e.code === 'KeyE') {
-        e.preventDefault(); this._pickupQueued = true; this._anyPress = true;
+        e.preventDefault(); this._pickupQueued = true; this._pickupHeld = true;
+        this._anyPress = true;
       } else if (e.code === 'KeyC') { this.debug = true; }
       /* DEV: the number keys jump straight to a room -- to the BOSS ROOM, in
          practice, which is what 2 is.
@@ -174,6 +179,7 @@ class Input {
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this._kb[m] = false; return; }
       if (e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Space') this._attackHeld = false;
+      if (e.code === 'KeyL' || e.code === 'KeyE') this._pickupHeld = false;
       if (e.code === 'KeyC') this.debug = false;
     });
     /* ⚠️⚠️ THE WINDOW LOST FOCUS, SO EVERY HELD KEY IS NOW A LIE.
@@ -252,6 +258,8 @@ class Input {
     this._padPrev = {};
     this._attackHeld = false;
     this._padHeldLift = false;
+    this._pickupHeld = false;
+    this._padHeldPickup = false;
     this.firing = false;
     /* Hold-C. Same class of bug, and a debug overlay welded on because the
        window blurred is how a "the game is broken" report gets written. */
@@ -345,6 +353,7 @@ class Input {
        mid-hold leaves no button down, and the `else` branch below is reached
        with this already false. */
     let padLift = false;
+    let padPickup = false;
 
     /* ⚠️⚠️ THE PAD IS NOT READ WHILE THE WINDOW IS UNFOCUSED, and this is the
        CONTROLLER half of the stuck-key bug -- asked about directly, 2026-09-09:
@@ -397,6 +406,7 @@ class Input {
         }
         this._padPrev[i] = down;
         if (act === 'lift') padLift = padLift || down;
+        if (act === 'pickup') padPickup = padPickup || down;
         if (!down) continue;
         if (act === 'up' || act === 'down' || act === 'left' || act === 'right') {
           pad[act] = true;
@@ -406,6 +416,7 @@ class Input {
       this._padPrev = {};
     }
     this._padHeldLift = padLift;
+    this._padHeldPickup = padPickup;
 
     const kb = this._kb;
     this.left = kb.left || pad.left;
@@ -444,6 +455,37 @@ class Input {
   takeDownPress() { const a = this._downPress; this._downPress = false; return a; }
   takeJump() { const j = this._jumpQueued; this._jumpQueued = false; return j; }
   takePickup() { const p = this._pickupQueued; this._pickupQueued = false; return p; }
+  /**
+   * PUNCH AND LIFT TOGETHER -- the special. True once, and it EATS BOTH presses
+   * so neither a punch nor a stoop comes out beside it.
+   *
+   * ⚠️ IT IS "PRESSED WHILE THE OTHER IS DOWN", NOT "PRESSED WITHIN N ms", and
+   * that is the whole design. A time window would have to HOLD every punch back
+   * for the length of it to see whether a lift was coming -- 100ms of latency
+   * on the button this game is mostly made of, to serve one move. Asking
+   * whether the other button is already down costs nothing and delays nothing:
+   * a normal punch fires on its own frame exactly as before.
+   *
+   * ⚠️ BOTH QUEUED IN ONE FRAME COUNTS TOO, and it is not the same test. Two
+   * keys pressed in the same 16ms tick arrive as two keydowns with no poll
+   * between them, so neither is "held" when the other lands -- without this
+   * line a genuinely simultaneous press is the one input that would NOT work.
+   *
+   * ⚠️ AND IT MUST BE ASKED BEFORE `takeAttack()`, or the punch branch consumes
+   * the press first and the special can never see it. Player.update() calls it
+   * at the top for that reason.
+   */
+  takeSpecial() {
+    const punch  = this._attackQueued;
+    const lift   = this._pickupQueued;
+    const punchD = this._attackHeld || !!this._padHeldLift;
+    const liftD  = this._pickupHeld || !!this._padHeldPickup;
+    const both = (punch && (lift || liftD)) || (lift && (punch || punchD));
+    if (!both) return false;
+    this._attackQueued = false;
+    this._pickupQueued = false;
+    return true;
+  }
   /** Dev: the room a number key asked for, or -1. Consumed on read. */
   takeRoomJump() { const r = this._roomJump; this._roomJump = -1; return r; }
   takePause() { const p = this._pauseQueued; this._pauseQueued = false; return p; }
@@ -489,6 +531,7 @@ class Input {
        the gun still on, because no keyup ever arrives for a key released while
        the card was up. Same reason the queued edges are dropped here. */
     this._attackHeld = false; this._padHeldLift = false; this.firing = false;
+    this._pickupHeld = this._padHeldPickup = false;
     this._pauseQueued = this._anyPress = false;
     this._roomJump = -1;
     /* ⚠️ AND THE DIRECTION EDGES, WITH `_dirPrev` LEFT ALONE. Dropping the

@@ -105,6 +105,34 @@ ROWS = [
 # onward and every pose after it would be someone else's drawing.
 ROWS_STRONG = [(n, h, 6 if n == 'liftThrow' else c) for (n, h, c) in ROWS]
 
+# ---------------------------------------------------------------- specials --
+# THE SPECIAL ARRIVED AS ITS OWN MASTER, ONE ROW, ONE PER CHARACTER (2026-09-16)
+# -- *"add new special attacks for the coconut heroes"*, punch+lift together.
+# They are cut into the SAME atlas as the rest of the pack rather than loaded as
+# a second sheet, and that is the whole design decision here: `sheets.js` scales
+# a pack by ONE number read off its idle frame, so a special in its own pack
+# would be scaled by its own idle and the hero would change size the instant he
+# threw it. One atlas, one scale, one character.
+#
+# ⚠️ `rel` IS A MEASUREMENT, NOT A TASTE SETTING -- the same rule the `strong`
+# variant's `scale` note states. Measured by the LARGEST BODY-COLOURED BLOB (the
+# coconut ball itself) over each row, because the obvious rulers both lie here:
+# the frame bbox grows with whatever the arms are doing, and the full body mask
+# catches the tan motion-streak the artist drew behind LEBRON's punch.
+#
+#     LEBRON    ball h 98px on the combo row, 196px on the special  -> 0.5
+#     IPANEIMA  ball h 208px on both                                -> 1.0
+#
+# Both land on round numbers because the special masters are drawn on the 6974px
+# canvas: that is 2x LEBRON's own 3487px master and 1:1 with IPANEIMA's. A ratio
+# that came out at 0.503 would have meant the ruler was wrong, not the art.
+SPECIAL_LEBRON = dict(
+    src='assets-v2/beatemup-dungeon/coconut-lebron-sprites-especial-01.png',
+    rel=0.5, rows=[('special', 14, 10)])
+SPECIAL_IPANEIMA = dict(
+    src='assets-v2/beatemup-dungeon/coconut-strong-sprites-especial-fim.png',
+    rel=1.0, rows=[('special', 14, 9)])
+
 VARIANTS = {
     # ⚠️ SCALE IS NOT A TASTE SETTING, IT IS A MEASUREMENT. The strong master is
     # drawn 1.967x the size of the first one (median body height 299px against
@@ -118,7 +146,8 @@ VARIANTS = {
         base='coconut-beat', scale=0.8, rows=ROWS,
         # Quantised palette from the master: body tan, arms (240,216,48)
         # yellow, skirt white, neck red.
-        body=(192, 168, 144)),
+        body=(192, 168, 144),
+        extra=[SPECIAL_LEBRON]),
     'strong': dict(
         src='assets-v2/beatemup-dungeon/coconut-strong-sprites-fim.png',
         base='coconut-strong-beat', scale=0.8 / 1.9671, rows=ROWS_STRONG,
@@ -128,7 +157,8 @@ VARIANTS = {
         # pixels only, so pointing it at the old tan finds the wrong mask and
         # the character wobbles on every punch -- the exact failure the header
         # describes. Measured off the master, not guessed from the picture.
-        body=(156, 156, 111)),
+        body=(156, 156, 111),
+        extra=[SPECIAL_IPANEIMA]),
 }
 
 SRC = OUT_BASE = BASE = None
@@ -303,13 +333,6 @@ def main(which='coconut'):
     SRC, BASE, SCALE, BODY_RGB = v['src'], v['base'], v['scale'], v['body']
     rows = v['rows']
 
-    im = Image.open(SRC).convert('RGBA')
-    a = np.array(im)[:, :, 3] > ALPHA
-
-    bands = runs(a.any(axis=1), BAND_GAP)
-    if len(bands) != len(rows):
-        raise SystemExit(f'expected {len(rows)} rows, found {len(bands)}')
-
     tiles, anims = [], {}
     arrays = []                                 # np view of each packed tile
 
@@ -328,34 +351,69 @@ def main(which='coconut'):
         tiles.append(tile)
         return len(tiles) - 1
 
-    for (name, human, want), (y0, y1) in zip(rows, bands):
-        band = a[y0:y1 + 1]
-        cols = runs(band.any(axis=0), GAP)
-        if len(cols) > want:
-            raise SystemExit(
-                f'row {human} ({name}): expected {want} frames, found {len(cols)}'
-                ' -- too MANY, which is a miscounted row, not a weld')
-        welded = len(cols) < want
-        if welded:
-            cols = split_welds(cols, want, band.sum(axis=0))
-            print(f'  row {human} ({name}): split {want - len(runs(band.any(axis=0), GAP))}'
-                  f' welded frame(s) apart')
-        seq = []
-        for (x0, x1) in cols:
-            tile = im.crop((x0, y0, x1 + 1, y1 + 1))
-            # ⚠️ ONLY ON A ROW THAT WAS SPLIT. A seam is the only thing that can
-            # put a neighbour's ink in this frame, so a row cut on its own empty
-            # columns is left exactly as the artist drew it.
+    def cut_source(path, rows, rel):
+        """Cut one master's bands into `anims`, at `rel` of its drawn size.
+
+        ⚠️ `rel` IS APPLIED TO THE TILE, NOT TO THE ATLAS. Every frame in a pack
+        has to end up in ONE scale -- the game derives the pack's size from the
+        idle frame and draws every other frame by that same number -- so a
+        master drawn bigger than the pack's own is resized here, at cut time,
+        before it is interned or packed. The final SCALE then applies to the
+        whole atlas exactly as it always did.
+
+        ⚠️ AND THE ROW KEEPS ITS OWN PROPORTIONS. One factor for the whole
+        source: the frames the artist drew bigger inside the row (LEBRON's
+        finishing punch is 337px against a 196px stance) stay bigger by the
+        same ratio. Evening them out is the one thing this must not do.
+        """
+        im = Image.open(path).convert('RGBA')
+        a = np.array(im)[:, :, 3] > ALPHA
+        bands = runs(a.any(axis=1), BAND_GAP)
+        if len(bands) != len(rows):
+            raise SystemExit('%s: expected %d rows, found %d'
+                             % (path.split('/')[-1], len(rows), len(bands)))
+        for (name, human, want), (y0, y1) in zip(rows, bands):
+            band = a[y0:y1 + 1]
+            cols = runs(band.any(axis=0), GAP)
+            if len(cols) > want:
+                raise SystemExit(
+                    f'row {human} ({name}): expected {want} frames, found {len(cols)}'
+                    ' -- too MANY, which is a miscounted row, not a weld')
+            welded = len(cols) < want
             if welded:
-                tile = strip_seam(tile)
-            # Tighten to content: the band is as tall as its tallest pose, and a
-            # stripped seam leaves dead columns at the edge it was stripped from.
-            t = np.array(tile)[:, :, 3] > ALPHA
-            ys = np.nonzero(t.any(axis=1))[0]
-            xs = np.nonzero(t.any(axis=0))[0]
-            tile = tile.crop((int(xs[0]), int(ys[0]), int(xs[-1]) + 1, int(ys[-1]) + 1))
-            seq.append(intern(tile))
-        anims[name] = seq
+                cols = split_welds(cols, want, band.sum(axis=0))
+                print(f'  row {human} ({name}): split {want - len(runs(band.any(axis=0), GAP))}'
+                      f' welded frame(s) apart')
+            seq = []
+            for (x0, x1) in cols:
+                tile = im.crop((x0, y0, x1 + 1, y1 + 1))
+                # ⚠️ ONLY ON A ROW THAT WAS SPLIT. A seam is the only thing that
+                # can put a neighbour's ink in this frame, so a row cut on its
+                # own empty columns is left exactly as the artist drew it.
+                if welded:
+                    tile = strip_seam(tile)
+                # Tighten to content: the band is as tall as its tallest pose,
+                # and a stripped seam leaves dead columns at the edge it was
+                # stripped from.
+                t = np.array(tile)[:, :, 3] > ALPHA
+                ys = np.nonzero(t.any(axis=1))[0]
+                xs = np.nonzero(t.any(axis=0))[0]
+                tile = tile.crop((int(xs[0]), int(ys[0]),
+                                  int(xs[-1]) + 1, int(ys[-1]) + 1))
+                if rel != 1.0:
+                    tile = tile.resize((max(1, int(round(tile.width * rel))),
+                                        max(1, int(round(tile.height * rel)))),
+                                       Image.LANCZOS)
+                seq.append(intern(tile))
+            anims[name] = seq
+
+    cut_source(SRC, rows, 1.0)
+    # ⚠️ THE EXTRAS COME LAST, AND THAT ORDER IS LOAD-BEARING. `intern` hands out
+    # indices in cutting order, so cutting the pack's own thirteen rows first
+    # leaves every existing index exactly where it was -- the shipped atlas
+    # rebuilds unchanged and the new row is appended after it.
+    for ex in v.get('extra', []):
+        cut_source(ex['src'], ex['rows'], ex.get('rel', 1.0))
 
     # Pack into as square a grid as the frames allow. Rows are variable height,
     # so this is a shelf pack: simple, and with 60-odd tiles the waste is small.
@@ -400,7 +458,8 @@ def main(which='coconut'):
     slots = sum(len(v) for v in anims.values())
     print(f'{BASE}-game.png  {atlas.size[0]}x{atlas.size[1]}  '
           f'{len(tiles)} unique frames for {slots} slots')
-    for name, human, _ in rows:
+    all_rows = list(rows) + [r for ex in v.get('extra', []) for r in ex['rows']]
+    for name, human, _ in all_rows:
         print(f'  row {human:2d}  {name:11s} {len(anims[name]):2d} slots  '
               f'-> {sorted(set(anims[name]))}')
 

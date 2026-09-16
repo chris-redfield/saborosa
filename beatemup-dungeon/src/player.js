@@ -97,6 +97,9 @@ class Player extends Fighter {
        reason the combo strings are. Null with no def, and then a jump-punch
        falls back to the ground combo exactly as it did before. */
     this.airString = CONFIG.AIR_ATTACK ? [CONFIG.AIR_ATTACK] : null;
+    /* THE SPECIAL'S COOLDOWN, in seconds, counted down in update(). It is the
+       move's only cost -- see CONFIG.SPECIAL. */
+    this.specialT = 0;
 
     /* THE LAST DIRECTION ASKED FOR, kept so a jump does not lose its momentum
        the instant it throws a punch. There is no horizontal velocity in a jump
@@ -145,7 +148,35 @@ class Player extends Fighter {
     return this.comboStrings[this.comboVariant];
   }
 
+  /**
+   * PUNCH + LIFT: the hero's own move. One per pack, off row 14 of its sheet.
+   *
+   * Returns true if it came out, so the caller can tell the press apart from
+   * the cooldown eating it -- nothing reads that yet, and a move that silently
+   * does nothing is the thing to be able to see.
+   *
+   * ⚠️ IT GOES THROUGH `attack()` LIKE EVERY OTHER BLOW, with a one-entry
+   * string. That is what buys it the hitstop, the knockback, the hit spark,
+   * the debug box and the enemy's reaction for free -- a special with its own
+   * strike path would be a second copy of all of it, and the first thing to
+   * fall out of step. The def's `sweep`/`radial` do the rest.
+   *
+   * ⚠️ NOT IN THE AIR. `attack()` would happily start it and the row is drawn
+   * with both feet planted -- the flurry and the spin are ground moves. The
+   * air already has its own attack.
+   */
+  _special() {
+    const S = CONFIG.SPECIAL;
+    if (!S || S.on === false) return false;
+    const def = S[this.kind];
+    if (!def || this.specialT > 0 || this.jumping) return false;
+    if (!this.attack([def])) return false;       // busy, hurt, down -- canAct()
+    this.specialT = (S.cooldownMs || 0) / 1000;
+    return true;
+  }
+
   update(dt, input, bounds) {
+    if (this.specialT > 0) this.specialT = Math.max(0, this.specialT - dt);
     // The order matters: resolve movement BEFORE the state machine, so a punch
     // thrown this frame comes out from where the player actually is rather than
     // from where they were a frame ago. At 300px/sec that is 5px of reach.
@@ -174,12 +205,23 @@ class Player extends Fighter {
          combo, and dropping it because the machine was busy for 40ms is how a
          brawler comes to feel unresponsive. take*() is only called once the
          action can actually start. */
+      /* ⚠️ THE SPECIAL IS ASKED FIRST, AND IT HAS TO BE. It is punch AND lift,
+         so every branch below it can consume half of it -- `takeSpecial()`
+         eats both presses or neither, and asking it after `takeAttack()` would
+         mean the punch had already been spent and the move could never come
+         out. See Input.takeSpecial() for why it is not a time window.
+
+         ⚠️ IT REFUSES WITH A BARREL UP. Punch-while-carrying is the throw and
+         lift-while-carrying is the put-down; a special there would be a third
+         meaning for two buttons the player is already using for something
+         else, and it would have to decide what happens to the barrel. */
+      if (!this.carrying && input.takeSpecial()) this._special();
       /* ⚠️ WITH A BARREL UP, THE PUNCH BUTTON THROWS IT. One button, and which
          verb it is depends on what is in his hands -- the same arrangement the
          pickup button already has (stoop or hoist, chosen by the object). A
          separate throw button would be a fourth thing to teach for a move that
          can only ever mean one thing while you are holding something. */
-      if (this.carrying && input.takeAttack()) {
+      else if (this.carrying && input.takeAttack()) {
         this.throwHeld((CONFIG.PICKUP_MS && CONFIG.PICKUP_MS.throw) || 420);
         this.threw = false;
       }

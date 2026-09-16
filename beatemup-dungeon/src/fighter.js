@@ -1152,6 +1152,26 @@ class Fighter {
        so a 300ms interruption between two explosion frames is obvious where it
        used to be lost in the chaos. **A bug that only becomes visible when the
        thing around it gets better is still an old bug.** */
+    /* THE SPECIAL PLAYS ITS WHOLE ROW, WHICH NO OTHER ATTACK DOES, and it has
+       to: the branch below freezes an attack on three drawings -- wind-up,
+       strike, recovery -- because a punch IS three drawings, and the picture
+       can then never drift out of step with the window that can hit. A ten
+       frame flurry through that rule is a flurry showing three of its frames
+       and skipping the other seven.
+
+       Spread over `startup + active + recover` rather than off a frame clock,
+       so the rule the three-frame branch protects still holds: retime any phase
+       and the drawings move with it, and the hit still lands on the frames the
+       artist drew it on. The same reasoning `ball` states one branch up -- that
+       one runs off `animT` because a charge has no fixed length, and this one
+       does. */
+    if (this.atk && !this.atk.external && p === 'special') {
+      const d = this.atk.def;
+      const total = (d.startupMs + d.activeMs + d.recoverMs) / 1000;
+      const t = total > 0 ? Math.min(1, this.atk.t / total) : 1;
+      return Math.max(0, Math.min(n - 1, Math.floor(t * n)));
+    }
+
     if (this.atk && !this.atk.external) {
       const a = this.atk;
       return a.phase === 'startup' ? 0 : a.phase === 'active' ? Math.min(1, n - 1) : n - 1;
