@@ -4382,6 +4382,16 @@ const CONFIG = {
        the street -- so this is a flag the MODE reads and not a deleted call, or
        the whole game would go quiet. ⚠️ `playerDeath` still plays: being shot
        down is a different event and it happens once. */
+    /* ⚠️ WHAT THE SHOT-DOWN CARD SAYS, AND IT IS BORROWED FROM THE GAME OVER
+       PACK. *"Replace that by the lettering that we use at the game over screen:
+       PERDEU!"* The name is matched against `batidao-gameover-words`' own
+       frames BY NAME, so a re-cut of that sheet reaches this card too and a
+       reordered sheet cannot silently show a different word. Put any of its
+       other six here -- VIIISH... / OH NAO! / JA ERA! / DETONADO / CAIU PRA
+       FORA... / CAPO-TOU! -- and it is the whole change.
+       ⚠️ Drawn at the GAME OVER screen's scale, not this mode's: one scale per
+       PACK, and this frame belongs to that pack. */
+    lostWord: 'PERDEU!',
     hitVoice: false,
     /* --- INHERITED FROM STILL LIFE, VERBATIM -----------------------------
        ⚠️ DO NOT "TIDY" THESE. Each one is read by name in ta-plane.js,

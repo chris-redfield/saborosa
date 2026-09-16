@@ -4899,7 +4899,7 @@ inBeatMs: 1100              // PER PHRASE of the entry; total = x ENTRY_BEATS (3
 | `RODADA 1/3`, `MOSCAS 4/8` | label + number tile + `slash` + number tile |
 | the entry, 3 beats | `RODADA 01` → `DESTRUA 8 MOSCAS` → `VAI!` |
 | between rounds | `RODADA 02 OK` |
-| endings | `TEMPO ESGOTADO` · `DESAFIO COMPLETO` · **ABATIDO! is still type** |
+| endings | `TEMPO ESGOTADO` · `DESAFIO COMPLETO` · `PERDEU!` (borrowed from the game over pack, `lostWord`) |
 
 > ⚠️ **Small numbers are whole tiles, card numbers are assembled.** The sheet
 > carries 0–100 at HUD size and only 0–9 at card size — that asymmetry is the

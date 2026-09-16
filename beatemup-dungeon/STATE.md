@@ -10518,12 +10518,26 @@ DESTRUA is on screen, and the clock does not tick outside `play`, so holding
 there costs the player nothing. ⚠️ `TIME ATTACK` as a title is gone — there is no
 band for it and the user's sequence has no room for one.
 
-### ⚠️ ONE TYPED LINE LEFT: ABATIDO!
+### ABATIDO! -> PERDEU!, borrowed from the game over pack
 
-The card when the plane is shot down. There is no band for it, and sharing
-`TEMPO ESGOTADO` would tell the player the wrong thing about why they lost. It
-is flagged rather than faked and is one band away from being drawn like
-everything else. **That is the mode's last art gap.**
+The card when the plane is shot down had no band on this sheet and stayed as
+type for an afternoon. *"Replace that by the lettering that we use at the game
+over screen: PERDEU!"* — so it reads that screen's pack **in place**, the same
+file and the same `goWords` key, and a re-cut of that sheet reaches both at
+once. The mode has no typed lettering left; `ABATIDO!` survives one level down
+as the fallback if the pack fails to load.
+
+⚠️ **FOUND BY NAME, NOT BY INDEX.** `goWords`' frames are an array and PERDEU!
+happens to be the fourth — and an index is the copied-value bug this codebase
+keeps re-finding: add an eighth phrase or reorder the sheet and a positional
+read still returns a word, silently the wrong one. The cutter writes `name` on
+every frame; this reads it. `TIME_ATTACK.lostWord` is that name, so any of the
+other six is a one-word change.
+
+⚠️ **DRAWN AT THE GAME OVER SCREEN'S SCALE, NOT THIS MODE'S.** One scale per
+PACK, and this frame belongs to that pack: `GAME_OVER.title.wRel` over its widest
+frame. It lands 721px wide against TEMPO ESGOTADO's 666 — the same register,
+arrived at by honouring the rule rather than by matching a number.
 
 ### Standing notes
 

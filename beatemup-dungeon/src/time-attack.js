@@ -1025,6 +1025,46 @@ class TimeAttack {
     if (rw) this._wDraw(ctx, W, name + 'R', x + padR + rw / 2, cy);
   }
 
+  /**
+   * One word out of the GAME OVER pack, centred.
+   *
+   * ⚠️ IT IS THAT SCREEN'S PACK, READ IN PLACE, NOT A COPY CUT INTO THIS ONE.
+   * *"When the player gets shot down at the time attack stage, replace ABATIDO
+   * by the lettering that we use at the game over screen: PERDEU!"* -- so it is
+   * the same file, the same key (`goWords`), and a re-cut of that sheet reaches
+   * both screens at once. The same bargain the flies, the coins and the muzzle
+   * flash already make with Still Life's folder.
+   *
+   * ⚠️ FOUND BY NAME, NOT BY INDEX. `goWords`' frames are an ARRAY and PERDEU!
+   * happens to be the fourth -- and an index is exactly the copied-value bug
+   * this codebase keeps re-finding: the day somebody adds an eighth phrase or
+   * reorders the sheet, a positional read still returns a word and it is the
+   * wrong one, silently. The cutter writes `name` on every frame; this reads it.
+   *
+   * ⚠️ AND IT IS DRAWN AT THE GAME OVER SCREEN'S OWN SCALE, not this mode's.
+   * One scale per PACK is the standing rule, and the pack in question is that
+   * one: `GAME_OVER.title.wRel` over its widest frame. It lands at ~721px wide
+   * here against TEMPO ESGOTADO's 666 -- the same register, arrived at by
+   * honouring the rule rather than by matching a number.
+   */
+  _goWord(ctx, name, cx, cy) {
+    const img = this.assets.getDrawable('goWords');
+    const defs = this.assets.getJSON('goWords');
+    const frames = defs && defs.frames;
+    if (!img || !frames || !frames.length) return false;
+    let f = null, maxW = 1;
+    for (const q of frames) {
+      if (q.w > maxW) maxW = q.w;
+      if (q.name === name) f = q;
+    }
+    if (!f) return false;
+    const T = (CONFIG.GAME_OVER && CONFIG.GAME_OVER.title) || {};
+    const k = CONFIG.GAME_W * (T.wRel || 0.80) / maxW;
+    ctx.drawImage(img, f.x, f.y, f.w, f.h,
+                  cx - f.w * k / 2, cy - f.h * k / 2, f.w * k, f.h * k);
+    return true;
+  }
+
   /** `RODADA 1/3` or `MOSCAS 4/8`, as one drawn run. Returns its width. */
   _wCount(ctx, W, label, a, b, leftX, cy, measure) {
     const gap = (this._cfg().LETTER || {}).wordGapPx || 10;
@@ -1171,12 +1211,17 @@ class TimeAttack {
         } else if (this.state === 'card') {
           this._wHole(ctx, TW, 'roundOk', this.round + 1, W / 2, cy, 2);
         } else if (this.lost) {
-          /* ⚠️ THE ONE TYPED LINE LEFT IN THE MODE. There is no ABATIDO band in
-             the sheet, and sharing TEMPO ESGOTADO would tell the player the
-             wrong thing about why they lost. Flagged rather than faked; it is
-             one band away from being drawn like everything else. */
-          ctx.font = '900 64px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
-          ctx.fillText('ABATIDO!', W / 2, cy);
+          /* ⚠️ THE MODE'S LAST TYPED LINE IS GONE (2026-09-11). It said
+             `ABATIDO!` in Futura because this sheet has no band for it; it now
+             borrows PERDEU! from the GAME OVER pack, which is the same thing
+             said in the same hand -- *"replace that by the lettering that we use
+             at the game over screen."* ⚠️ The typed line survives one level down
+             as the fallback, so a pack that fails to load still says what
+             happened. */
+          if (!this._goWord(ctx, (c.lostWord || 'PERDEU!'), W / 2, cy)) {
+            ctx.font = '900 64px ' + (CONFIG.TITLE_FONT || CONFIG.hudFont);
+            ctx.fillText('ABATIDO!', W / 2, cy);
+          }
         } else if (this.coinsGot >= R.coins) {
           this._wDraw(ctx, TW, 'completo', W / 2, cy);
         } else {
