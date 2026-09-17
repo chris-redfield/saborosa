@@ -3060,11 +3060,30 @@ const CONFIG = {
      `on: false` keeps the swap and throws nothing. */
   GLASSES: {
     on: true,
-    flyMs: 700,
-    upPx: 80,       // the top of the arc, in px at the near edge of the belt
-    fallPx: 130,    // how far past it they drop by the end -- they leave frame
-    awayPx: 120,    // sideways, in the direction of the blow
-    spin: 3.4,      // radians over the whole flight
+    /* ⚠️ EVERY NUMBER BELOW WAS RETUNED AGAINST A PICTURE, AND THE FIRST SET
+       WAS WRONG IN A WAY ONLY A PICTURE SHOWS. At 120px of travel over 700ms the
+       glasses are thrown barely further than their own width -- rendered as a
+       strip of the flight at the real scale, all of it piles up over his head
+       and it reads as a pair of spectacles hovering, not as something knocked
+       off his face. The numbers were all "sensible" and the effect was not
+       there. 420px is about the reach of the knockback that caused it. */
+    /* ⚠️ 700 -> 583 ON 2026-09-17: *"increase the glasses flying away animation
+       speed by 20%"*. SPEED, so the duration is DIVIDED by 1.2 -- the arc is the
+       same shape and the same size, crossed a fifth quicker (420px sideways now
+       takes 583ms, ~720px/sec). ⚠️ Not the same arithmetic as the special idle's
+       "20% slower" the same day, which multiplied: a rate and a duration move in
+       opposite directions and the ask names one of them. */
+    flyMs: 583,
+    upPx: 130,      // the top of the arc, in px at the near edge of the belt
+    fallPx: 380,    // and how far past it they drop -- enough to leave the floor
+    awayPx: 420,    // sideways, in the direction of the blow: ~600px/sec
+    spin: 7.0,      // radians over the flight -- a bit over one tumble
+    /* WHEN THEY START GOING, as a fraction of the flight. ⚠️ IT IS LATE ON
+       PURPOSE and it moved with the arc: a fade that starts halfway through a
+       long throw takes the glasses out while they are still the fastest thing on
+       screen. They are gone by the time they would land, because there is no
+       drawing of them lying on a shelf. */
+    fadeFrom: 0.78,
   },
 
   IDLE_LONG: {

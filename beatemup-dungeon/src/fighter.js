@@ -409,7 +409,8 @@ class Fighter {
     /* ⚠️ THEY GO OUT BEFORE THEY LAND, on purpose: there is no drawing of them
        lying on a shelf and a pair that simply vanished on touchdown would read
        as a bug. The fade is the last third of the flight. */
-    ctx.globalAlpha = 1 - Math.max(0, (p - 0.66) / 0.34);
+    const f0 = (G.fadeFrom != null) ? G.fadeFrom : 0.78;
+    ctx.globalAlpha = 1 - Math.max(0, (p - f0) / Math.max(0.01, 1 - f0));
     sheets.draw(ctx, f.skin, this.facing, 'glasses', 0, gx, gy,
                 { scale: f.scale, rotate: f.dir * (G.spin || 3.4) * p });
     ctx.restore();
@@ -435,6 +436,25 @@ class Fighter {
    */
   die(dir, lift, thrown) {
     this.hp = 0;
+    /* ⚠️ THE GLASSES COME OFF ON A KILLING BLOW TOO, AND THEY DID NOT UNTIL
+       2026-09-17. `hurt()` drops them in its `knockdown` branch -- but the death
+       test sits ABOVE that branch and returns, so a worm killed outright kept
+       them and the FX never ran. Reported as *"the glasses are not flying away,
+       they just vanish when I hit them"*, and then diagnosed by the user
+       himself: he was in DEV mode at `punchDamage` 50, which kills a 45 HP worm
+       with every punch, so EVERY hit took the path that could not throw them.
+       *"Make it so that if they are killed in one hit, the glass also flies
+       away."*
+
+       ⚠️ IT IS HERE RATHER THAN BESIDE THE `hurt()` CALL because this is the one
+       place every death passes through -- the punched one, the thrown one and
+       CHARUTOBI blowing himself up. A skin-less fighter returns immediately, so
+       the whole cast is untouched by the line existing.
+
+       ⚠️ AND HE DIES AS THE PLAIN WORM, which is the point rather than a side
+       effect: the swap is what `stage 2` means, so the body on the floor is the
+       one without glasses however fast he got there. */
+    this._loseGlasses(dir);
     // Death is a knockdown that never gets up, so it runs the same arc and
     // there is one piece of code deciding how a body falls.
     this.state = 'down';
