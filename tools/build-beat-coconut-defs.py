@@ -133,6 +133,37 @@ SPECIAL_IPANEIMA = dict(
     src='assets-v2/beatemup-dungeon/coconut-strong-sprites-especial-fim.png',
     rel=1.0, rows=[('special', 14, 9)])
 
+# ------------------------------------------------------------- long idles --
+# THE SPECIAL IDLE, ONE ROW EACH, 2026-09-17 -- the drawing a hero does when the
+# player has left him alone. The game already has an idle (row 1, three frames of
+# breathing); this is the OTHER one, played after `CONFIG.IDLE_LONG.afterS`.
+#
+# ⚠️ THESE MASTERS CARRY **TWO** ROWS AND THE TOP ONE IS THE SPECIAL AGAIN --
+# *"in this new sheet, one line is the special, and the other is the special
+# idle, the row below is the special idle"*. The top row is SKIPPED here (a row
+# named `None`) rather than cut, so the shipped special keeps coming from its own
+# master and its three tuned slices are not re-cut underneath the timings that
+# were measured against them. Verified before deciding: LEBRON's top row is the
+# same ten drawings within 1-2px of width, and IPANEIMA's is byte-for-byte the
+# same band at the same y -- the new file is his special master with a row added.
+#
+# ⚠️ `rel` IS THE SPECIAL'S, AND IT WAS RE-MEASURED RATHER THAN ASSUMED. Same
+# 6974px canvas, and the ruler is the coconut ball on the FIRST frame of each row
+# -- the stance both rows open on:
+#
+#     LEBRON    ball h 196 on the special row, 196 on the idle row  -> 0.5
+#     IPANEIMA  ball h 211 on the special row, 211 on the idle row  -> 1.0
+#
+# ⚠️ THE MEDIAN OF THE ROW IS THE WRONG RULER HERE and says otherwise (IPANEIMA
+# 211 against 224). That is the ANIMATION: the ball squashes and stretches
+# through the gesture, which is the drawing doing its job. Compare like poses.
+IDLE_LEBRON = dict(
+    src='assets-v2/beatemup-dungeon/coconut-lebron-sprites-idle-fim-01.png',
+    rel=0.5, rows=[(None, 14, 10), ('idleLong', 15, 7)])
+IDLE_IPANEIMA = dict(
+    src='assets-v2/beatemup-dungeon/coconut-strong-sprites-idle-fim.png',
+    rel=1.0, rows=[(None, 14, 9), ('idleLong', 15, 7)])
+
 VARIANTS = {
     # ⚠️ SCALE IS NOT A TASTE SETTING, IT IS A MEASUREMENT. The strong master is
     # drawn 1.967x the size of the first one (median body height 299px against
@@ -147,7 +178,7 @@ VARIANTS = {
         # Quantised palette from the master: body tan, arms (240,216,48)
         # yellow, skirt white, neck red.
         body=(192, 168, 144),
-        extra=[SPECIAL_LEBRON]),
+        extra=[SPECIAL_LEBRON, IDLE_LEBRON]),
     'strong': dict(
         src='assets-v2/beatemup-dungeon/coconut-strong-sprites-fim.png',
         base='coconut-strong-beat', scale=0.8 / 1.9671, rows=ROWS_STRONG,
@@ -158,7 +189,7 @@ VARIANTS = {
         # the character wobbles on every punch -- the exact failure the header
         # describes. Measured off the master, not guessed from the picture.
         body=(156, 156, 111),
-        extra=[SPECIAL_IPANEIMA]),
+        extra=[SPECIAL_IPANEIMA, IDLE_IPANEIMA]),
 }
 
 SRC = OUT_BASE = BASE = None
@@ -373,6 +404,16 @@ def main(which='coconut'):
             raise SystemExit('%s: expected %d rows, found %d'
                              % (path.split('/')[-1], len(rows), len(bands)))
         for (name, human, want), (y0, y1) in zip(rows, bands):
+            # ⚠️ A ROW NAMED `None` IS COUNTED AND NOT CUT. The band check above
+            # is the thing that catches a re-exported master, so every band a
+            # file carries has to be declared -- but a master may carry a row
+            # this pack already has from somewhere else. The long-idle sheets do:
+            # their top row is the special, which is cut from its own master and
+            # must not be re-cut here (see IDLE_LEBRON). Skipping AFTER the count
+            # keeps both properties: the file is still fully described, and the
+            # atlas gains only the row that is new.
+            if name is None:
+                continue
             band = a[y0:y1 + 1]
             cols = runs(band.any(axis=0), GAP)
             if len(cols) > want:
@@ -460,6 +501,8 @@ def main(which='coconut'):
           f'{len(tiles)} unique frames for {slots} slots')
     all_rows = list(rows) + [r for ex in v.get('extra', []) for r in ex['rows']]
     for name, human, _ in all_rows:
+        if name is None:            # a declared-but-skipped row; see cut_source
+            continue
         print(f'  row {human:2d}  {name:11s} {len(anims[name]):2d} slots  '
               f'-> {sorted(set(anims[name]))}')
 

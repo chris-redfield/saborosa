@@ -207,7 +207,7 @@ class Player extends Fighter {
     if (!this.attack([this.specialSeq[this.specialI]])) this.specialSeq = null;
   }
 
-  update(dt, input, bounds) {
+  update(dt, input, bounds, sheets) {
     if (this.specialT > 0) this.specialT = Math.max(0, this.specialT - dt);
     // The order matters: resolve movement BEFORE the state machine, so a punch
     // thrown this frame comes out from where the player actually is rather than
@@ -456,6 +456,67 @@ class Player extends Fighter {
 
     super.update(dt, bounds);
     this._specialStep();
+    this._tickLongIdle(dt, sheets);
+  }
+
+  /**
+   * THE SPECIAL IDLE -- the drawing he does when the player has left him alone
+   * (2026-09-17). *"These ones are like SPECIAL idle, that run if the player
+   * doesn't move the character for like 7 seconds."* The row is `idleLong`, cut
+   * into each hero's own atlas by tools/build-beat-coconut-defs.py; the knobs
+   * are `CONFIG.IDLE_LONG` and the drawing is `Fighter.pose`/`frameStep`.
+   *
+   * ⚠️ "HAS NOT MOVED" IS READ OFF THE SETTLED STATE, NOT OFF THE INPUT, and
+   * that is what makes it total. `walk()` promotes `idle` to `walk` on the
+   * BUTTON rather than on the movement -- so a player leaning into a wall, who
+   * is not moving one pixel, still reads as walking and is correctly not
+   * bored. Everything else that matters (a punch, a jump, a hit, a barrel, the
+   * walk-on at the start of a room) already has a state or a flag of its own,
+   * and asking the input instead would be a second list of them to maintain.
+   *
+   * ⚠️ IT IS CALLED AFTER `super.update`, so the state it reads is this frame's
+   * -- a punch that ended this frame has already put him back in `idle` and the
+   * seven seconds start now rather than one frame late.
+   *
+   * ⚠️ AND THE LENGTH OF THE FLOURISH COMES FROM THE CUT, which is why this
+   * takes `sheets`. Writing the frame count in CONFIG would be the one number
+   * that has to be edited every time the row is re-drawn, and the cutter would
+   * not know it had gone stale.
+   */
+  _tickLongIdle(dt, sheets) {
+    const C = CONFIG.IDLE_LONG || {};
+    const has = !!(sheets && sheets.has(this.kind, 'idleLong'));
+    const still = C.on !== false && has && !this.dead && !this.atk
+               && !this.carrying && !this.jumping && this.jumpY <= 0
+               && this.state === 'idle';
+    if (!still) {
+      /* ⚠️ BOTH CLOCKS, AND THE FLAG. Anything he does cancels the flourish
+         outright rather than pausing it: it is a thing he does because nothing
+         is happening, so the moment something is, it is over. */
+      this.idleT = 0;
+      this.longIdle = false;
+      this.longIdleT = 0;
+      return;
+    }
+    if (this.longIdle) {
+      this.longIdleT += dt;
+      if (C.loop) return;
+      const n = Math.max(1, sheets.poseLength(this.kind, 'idleLong'));
+      if (this.longIdleT >= n * (Math.max(1, C.frameMs || 130) / 1000)) {
+        /* Back to breathing, and the wait starts again -- so he does it about
+           every `afterS` + the length of the row, for as long as he is left. */
+        this.longIdle = false;
+        this.longIdleT = 0;
+        this.idleT = 0;
+      }
+      return;
+    }
+    this.idleT += dt;
+    if (this.idleT >= (C.afterS != null ? C.afterS : 7)) {
+      this.longIdle = true;
+      this.longIdleT = 0;
+      this.idleT = 0;
+    }
   }
 
   /**

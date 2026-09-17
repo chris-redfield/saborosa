@@ -66,6 +66,17 @@ class Fighter {
     this.buried = false;
     this.state = 'idle';
     this.stateT = 0;
+    /* THE SPECIAL IDLE'S TWO CLOCKS (2026-09-17). `idleT` is how long he has
+       been left alone; `longIdleT` is how far into the flourish he is once it
+       starts. They are separate because they answer different questions and
+       only one of them is ever running -- see `Player._tickLongIdle`, which is
+       the only thing that writes them, and `pose`/`frameStep`, which read.
+       ⚠️ ON FIGHTER RATHER THAN ON PLAYER because `pose()` and `frameStep()`
+       live here and a pose has to be answerable for anyone; nothing stops an
+       enemy pack being given an `idleLong` row later. */
+    this.idleT = 0;
+    this.longIdle = false;
+    this.longIdleT = 0;
 
     this.maxHp = o.hp || 100;
     this.hp = this.maxHp;
@@ -1047,6 +1058,17 @@ class Fighter {
        POSE has to say so instead, or he slides on holding his idle frame. */
     if (this.state === 'enter') return 'walk';
     if (this.state === 'walk') return 'walk';
+    /* THE SPECIAL IDLE, AND IT IS THE LAST THING ASKED. Standing still is what
+       everything above has already ruled out, so by here he is doing nothing at
+       all -- which is the only state this may replace. Asked for 2026-09-17:
+       *"these ones are like SPECIAL idle, that run if the player doesn't move
+       the character for like 7 seconds"*; the breathing `idle` below is
+       untouched and is still what he does for the first seven of them.
+
+       ⚠️ `sheets.has()` KEEPS EVERY OTHER PACK OFF IT, the same guard `ball`
+       and `special` use: only the two coconuts were drawn a second idle, and a
+       pack without the row falls through to its ordinary one. */
+    if (this.longIdle && sheets && sheets.has(this.kind, 'idleLong')) return 'idleLong';
     return 'idle';
   }
 
@@ -1303,6 +1325,26 @@ class Fighter {
     if (phaseMs) {
       const t = Math.min(1, this.stateT / (phaseMs / 1000));
       return Math.min(n - 1, Math.floor(t * n));
+    }
+
+    /* THE SPECIAL IDLE RUNS ON ITS OWN CLOCK, NOT ON `animT`, AND THAT IS THE
+       WHOLE REASON IT HAS ONE. `animT` free-runs from the moment the fighter was
+       built, so an idle that read it would begin on whatever frame the wrap
+       happened to be on -- a flourish that starts from its stance has to start
+       at drawing 0 or it pops into the middle of a gesture. `longIdleT` is zero
+       on the frame it starts.
+
+       ⚠️ AND IT PLAYS ONCE BY DEFAULT, held on the last drawing until
+       `_tickLongIdle` takes it away -- both rows are drawn as a there-and-back
+       (measured: the cutter's dedupe gives the last slot the same tile as the
+       second), so the return to the ordinary idle lands a step from the stance
+       rather than mid-gesture. `IDLE_LONG.loop` runs it continuously instead;
+       that is a taste fork and not a bug fix. */
+    if (p === 'idleLong') {
+      const C = CONFIG.IDLE_LONG || {};
+      const per = Math.max(1, C.frameMs || 130) / 1000;
+      const k = Math.floor(this.longIdleT / per);
+      return C.loop ? (k % n) : Math.min(n - 1, k);
     }
 
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS[p]) || 110;

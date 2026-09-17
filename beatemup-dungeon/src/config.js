@@ -56,9 +56,9 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    /* ⚠️ CURRENTLY **ON**, WHICH IS NOT THE SHIPPING STATE. Off is what ships,
-       and `package.sh` refuses to build while this is true -- so a forgotten
-       `true` costs a failed build rather than a shipped cheat.
+    /* ⚠️ CURRENTLY **OFF**, WHICH IS THE SHIPPING STATE. `package.sh` refuses to
+       build while this is true -- so a forgotten `true` costs a failed build
+       rather than a shipped cheat.
 
        ⚠️ THIS LINE IS THE ONE THING IN THE BLOCK THAT DESCRIBES A VALUE RATHER
        THAN A RULE, so read the value below and not this sentence. It said "OFF"
@@ -69,10 +69,20 @@ const CONFIG = {
        on again on 2026-08-23 to walk the level end to end after the jam pass,
        and off again to package it, on again on 2026-08-24 to test the food
        pickup and the air attack, and OFF AGAIN THE SAME DAY for the jam
-       submission build. Everything below is dead while it is false,
-       and so is the number-key ROOM JUMP, which is refused in input.js as well
-       as here (see the note there). */
-    on: true,
+       submission build. It then stayed ON through the whole of the stage-3
+       build-out and went **off on 2026-09-16**, on request, as the default in
+       the code. Everything below is dead while it is false, and so is the
+       number-key ROOM JUMP, which is refused in input.js as well as here (see
+       the note there).
+
+       ⚠️ OFF HERE IS NOT THE SAME AS GONE. **Pause and type SABOROSA** turns it
+       back on at run time, which is how a dev session starts now -- see the
+       unlock in pause.js. ⚠️ AND THE TOGGLE DOES NOT REACH EVERYTHING: the two
+       values below that are read ONCE at the start of a run -- `startRoom` and
+       `lives` -- are already spent by the time anyone can type. Unlocking
+       mid-run gives the room jumps, the damage and the readout; it does not
+       give a fresh run in the bookcase with one life. For that, this line. */
+    on: false,
     /* vs the real string's 4 / 5 / 6 / 4 / 9.
 
        ⚠️ THIS IS THE ONE THING THAT MAKES A DEV SESSION UNABLE TO JUDGE THE
@@ -2828,6 +2838,13 @@ const CONFIG = {
     down:       { anim: 'knockdown' },
     death:      { anim: 'death' },
 
+    /* THE SECOND IDLE -- the whole row, no slices. See CONFIG.IDLE_LONG for
+       when it plays. ⚠️ IT HAS TO BE DECLARED HERE OR IT SILENTLY BECOMES THE
+       ORDINARY IDLE: `sheets.draw()` resolves a pose through this map and an
+       unknown name falls back to `idle` without erroring, which would look
+       exactly like the seven-second timer not working. */
+    idleLong:   { anim: 'idleLong' },
+
     /* THE HEROES' SPECIAL -- THE ROW SLICED INTO ITS THREE HITS, 2026-09-16. Both packs
        got a row 14 of their own (see tools/build-beat-coconut-defs.py) and the
        two are not the same length: LEBRON throws ten drawings of a punch
@@ -2922,6 +2939,57 @@ const CONFIG = {
      the phases it would show a single frozen drawing the whole way across.
      So the ball spins on a clock, like the walk does. */
   POSE_MS: { idle: 200, walk: 124, hurt: 100, down: 110, death: 130, ball: 55 },
+
+  /* ===== THE SPECIAL IDLE =================================================
+     THE SECOND IDLE -- what a hero does when the player puts the pad down.
+     Asked for 2026-09-17: *"add the idle spritesheet for our heroes... these
+     ones are like SPECIAL idle, that run if the player doesn't move the
+     character for like 7 seconds"*.
+
+     ⚠️ IT DOES NOT REPLACE `idle`, IT INTERRUPTS IT. Row 1 is still the
+     breathing, still three frames, still what he does for the first seven
+     seconds and what he goes back to afterwards. This is row 15 -- seven
+     drawings, cut into each hero's own atlas from
+     `coconut-*-sprites-idle-*.png`, whose OTHER row is the special attack and
+     is deliberately skipped by the cutter (see IDLE_LEBRON there).
+
+     ⚠️ ONLY THE TWO COCONUTS HAVE THE ROW and `Fighter.pose` asks
+     `sheets.has()` before using it, so every enemy in the game is untouched by
+     this block existing. The clock ticks for the PLAYER only -- it is written
+     in `Player._tickLongIdle`, which is also where "has not moved" is defined
+     (the settled state, not the input; a player leaning on a wall is walking).
+
+     ⚠️ NOTHING HERE SAYS HOW MANY DRAWINGS THE ROW HAS. The length comes from
+     the cut, which is why the tick is handed `sheets`: a re-drawn row of nine
+     plays nine and this block does not go stale. */
+  IDLE_LONG: {
+    on: true,
+    /* HOW LONG HE HAS TO BE LEFT ALONE, in seconds. The ask said "like 7
+       seconds", which is a feel number -- the thing to judge is whether it
+       fires while you are reading the screen and whether it ever fires twice
+       before you have noticed it once. Any state at all resets it. */
+    afterS: 7,
+    /* The row's own rate. ⚠️ 130 -> 156 ON 2026-09-17, *"make these special
+       frames stay slightly more on screen, they are too fast. make them 20%
+       slower"* -- 20% SLOWER IS x1.2 ON THE DURATION, not 0.8: each drawing is
+       held a fifth longer, which is what "stay more on screen" asks for. 7
+       drawings x 156 = 1092ms of flourish, so left alone he does it about every
+       8.1s.
+
+       ⚠️ IT IS A FIXED RATE for the same reason the special attack's `frameMs`
+       is: there are no windows here for the drawings to be spread across, and a
+       stretch would be a different animation. Nothing else reads this number --
+       the trigger (`afterS`) and the flourish's length are separate, so slowing
+       the drawings does not change how long he has to be left alone first. */
+    frameMs: 156,
+    /* ⚠️ A TASTE FORK, NOT A BUG FIX, AND IT IS OFF. False plays the flourish
+       ONCE and hands him back to the breathing idle; true runs it continuously
+       for as long as he is left alone, which means the ordinary idle is never
+       seen again while standing. Both look right because the row is drawn as a
+       there-and-back -- the cutter's dedupe gives its last slot the same tile
+       as its second -- so it returns to where it started either way. */
+    loop: false,
+  },
 
   /* How long the LANDING frame of a jump is held after the arc has finished,
      in ms. Purely cosmetic and deliberately outside the jump itself: the six

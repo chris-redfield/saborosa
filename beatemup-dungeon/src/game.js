@@ -1212,7 +1212,11 @@
        the fighter itself, so doing both would advance him twice in one frame --
        and leaving the ordinary update running with live input would let a held
        direction fight the script to a standstill. See Level3.tickBoarding. */
-    if (!Level3.tickBoarding(dt, player, stage.room())) player.update(dt, input, bounds);
+    /* ⚠️ `sheets` IS PASSED FOR THE SPECIAL IDLE, which needs to know how long
+       that row is -- see Player._tickLongIdle. Nothing else in `update` reads
+       it, and a Player built without one (a test, the ending screen) simply
+       never gets bored. */
+    if (!Level3.tickBoarding(dt, player, stage.room())) player.update(dt, input, bounds, sheets);
     crowd.update(dt, player, bounds, sheets);
     if (stage.boss) stage.boss.update(dt, player, bounds);
 
