@@ -501,6 +501,126 @@ SHEETS = {
         ],
     },
 
+    # ---------------------------------------------------------- THE WORM v1 --
+    # THE SAME WORM, IN GLASSES -- the library enemy's FIRST stage, four of them,
+    # 2026-09-17: *"the worm enemy has 2 stages... there are 4 worm enemies and
+    # they are basically the same, the only difference are the glasses. And all
+    # these enemies, after they take like one strong hit that pushes them back,
+    # they lose the glasses, and become the regular worm without glasses"*.
+    #
+    # ⚠️ THESE ARE SKINS, NOT KINDS. Every stat, reach, combo and wave entry in
+    # the game still says `verme`; what a glasses worm has is a different PACK to
+    # draw from (see CONFIG.CHARACTERS.verme.stage1 and `Fighter.art()`). That is
+    # the whole reason they are cut at the SAME `scale` as the plain worm from
+    # masters of the same size: the two packs have to be interchangeable
+    # mid-fight, and a skin that came out a different size would pop.
+    #
+    # ⚠️ AND THE HURT ROW HAS THREE DRAWINGS, NOT TWO. The third is the GLASSES
+    # THEMSELVES, lying where they fell -- the artist drew the thing coming off.
+    # It is cut as part of the row and sliced back out in the pose map (`hurt`
+    # is 0..2 and `glasses` is 2..3), because a band is the unit here and a
+    # loose object inside one belongs to it.
+    'vermeOculos1': {
+        'src': 'assets-v2/beatemup-dungeon/verme-sprites-oculos-01-fim.png',
+        'base': 'verme-oculos-1-beat',
+        'native': 'right',
+        # ⚠️ ONLY THIS ONE OF THE FOUR NEEDS IT: its hurt drawings reach up into
+        # the egg row's space, so the two rows arrive as one band. See `splitAt`
+        # in main() for why a single number between the two rows' midpoints is
+        # the whole fix and why it cannot clip a drawing.
+        'splitAt': [3116],
+        'scale': 0.49561,
+        'baseWhite': False,
+        # ⚠️ LOWERED FOR THE GLASSES, which are the smallest thing this cutter
+        # has ever been asked to call a frame: a pair of empty spectacle rims is
+        # 12159px of ink on the 01 sheet against a worm's 36914, and the shared
+        # 15000 threw them away -- reported as *"expected 51 bodies, found 50"*,
+        # which is this check doing its job. The next body down is a ONE-PIXEL
+        # speck, so the floor sits in a gap four orders wide and decides nothing.
+        'bodyArea': 8000,
+        'rows': [
+            ('idle',     1,  3),
+            ('walk',     2,  6),
+            ('combo',    3, 10),
+            ('comboLow', 4, 10),
+            ('egg',      5, 11),
+            ('hurt',     6,  3),   # two flinches AND the fallen glasses
+            ('death',    7,  8),
+        ],
+    },
+
+    'vermeOculos2': {
+        'src': 'assets-v2/beatemup-dungeon/verme-sprites-oculos-02-fim.png',
+        'base': 'verme-oculos-2-beat',
+        'native': 'right',
+        'scale': 0.49561,
+        'baseWhite': False,
+        # ⚠️ LOWERED FOR THE GLASSES, which are the smallest thing this cutter
+        # has ever been asked to call a frame: a pair of empty spectacle rims is
+        # 12159px of ink on the 01 sheet against a worm's 36914, and the shared
+        # 15000 threw them away -- reported as *"expected 51 bodies, found 50"*,
+        # which is this check doing its job. The next body down is a ONE-PIXEL
+        # speck, so the floor sits in a gap four orders wide and decides nothing.
+        'bodyArea': 8000,
+        'rows': [
+            ('idle',     1,  3),
+            ('walk',     2,  6),
+            ('combo',    3, 10),
+            ('comboLow', 4, 10),
+            ('egg',      5, 11),
+            ('hurt',     6,  3),   # two flinches AND the fallen glasses
+            ('death',    7,  8),
+        ],
+    },
+
+    'vermeOculos3': {
+        'src': 'assets-v2/beatemup-dungeon/verme-sprites-oculos-03-fim.png',
+        'base': 'verme-oculos-3-beat',
+        'native': 'right',
+        'scale': 0.49561,
+        'baseWhite': False,
+        # ⚠️ LOWERED FOR THE GLASSES, which are the smallest thing this cutter
+        # has ever been asked to call a frame: a pair of empty spectacle rims is
+        # 12159px of ink on the 01 sheet against a worm's 36914, and the shared
+        # 15000 threw them away -- reported as *"expected 51 bodies, found 50"*,
+        # which is this check doing its job. The next body down is a ONE-PIXEL
+        # speck, so the floor sits in a gap four orders wide and decides nothing.
+        'bodyArea': 8000,
+        'rows': [
+            ('idle',     1,  3),
+            ('walk',     2,  6),
+            ('combo',    3, 10),
+            ('comboLow', 4, 10),
+            ('egg',      5, 11),
+            ('hurt',     6,  3),   # two flinches AND the fallen glasses
+            ('death',    7,  8),
+        ],
+    },
+
+    'vermeOculos4': {
+        'src': 'assets-v2/beatemup-dungeon/verme-sprites-oculos-04-fim.png',
+        'base': 'verme-oculos-4-beat',
+        'native': 'right',
+        'scale': 0.49561,
+        'baseWhite': False,
+        # ⚠️ LOWERED FOR THE GLASSES, which are the smallest thing this cutter
+        # has ever been asked to call a frame: a pair of empty spectacle rims is
+        # 12159px of ink on the 01 sheet against a worm's 36914, and the shared
+        # 15000 threw them away -- reported as *"expected 51 bodies, found 50"*,
+        # which is this check doing its job. The next body down is a ONE-PIXEL
+        # speck, so the floor sits in a gap four orders wide and decides nothing.
+        'bodyArea': 8000,
+        'rows': [
+            ('idle',     1,  3),
+            ('walk',     2,  6),
+            ('combo',    3, 10),
+            ('comboLow', 4, 10),
+            ('egg',      5, 11),
+            ('hurt',     6,  3),   # two flinches AND the fallen glasses
+            ('death',    7,  8),
+        ],
+    },
+
     # THE HORSE BOSS, and the first thing through this cutter that is not a
     # cigarette. Five rows, 55 frames, named by the illustrator in one line.
     #
@@ -738,6 +858,27 @@ def main():
 
     body_px = np.isin(labels, list(bodies))
     bands = runs(body_px.any(axis=1), BAND_GAP)
+    # ⚠️ TWO ROWS THAT TOUCH ARE ONE BAND, AND A SHEET MAY SAY WHERE TO CUT.
+    # Rows are found by empty rows of BODY between them, which is true of every
+    # master here but one: on `verme-sprites-oculos-01-fim.png` the artist drew
+    # the hurt row's worms tall enough to reach up into the egg row's space, so
+    # the two arrive as a single band and the row count fails with
+    # "expected 7 rows, found 6" -- the check working, not the sheet being wrong.
+    #
+    # ⚠️ IT DECIDES ASSIGNMENT, NOT THE CROP, which is what makes one number
+    # enough. A body belongs to the band containing its vertical MIDPOINT (see
+    # below) and every tile is cut from the body's own bbox, so this line never
+    # passes through a drawing: it only has to fall between the two rows'
+    # midpoints. Measured on that sheet, the egg row's eleven sit at 2818..2916
+    # and the hurt row's three at 3316..3387, so anything in 2917..3315 is the
+    # same cut and 3116 is the middle of it.
+    for y in spec.get('splitAt', []):
+        for i, (y0, y1) in enumerate(bands):
+            if y0 < y <= y1:
+                bands[i:i + 1] = [[y0, y - 1], [y, y1]]
+                break
+        else:
+            raise SystemExit(f'splitAt {y} is inside no band: {bands}')
     if len(bands) != len(rows):
         raise SystemExit(f'expected {len(rows)} rows, found {len(bands)}')
 

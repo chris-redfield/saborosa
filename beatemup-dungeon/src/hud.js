@@ -246,7 +246,13 @@ class Hud {
     if (!CONFIG.enemyBars) return;
     if (e.dead || e.showBarT <= 0) return;
     const fade = Math.min(1, e.showBarT / 0.4);
-    const size = sheets.size(e.kind, e.pose(sheets), e.frameStep(sheets));
+    /* ⚠️ `art()`, NOT `kind` -- THE THREE ARGUMENTS HAVE TO COME FROM ONE PACK.
+       `pose()` and `frameStep()` already answer for the pack the fighter is
+       DRAWN from (a library worm in glasses is a skin over `verme`), so asking
+       the KIND for the size of that pose and that frame is asking two packs one
+       question. It happens to be a few px either way today; it is the exact
+       shape of bug `Fighter.art()`'s note exists to prevent. */
+    const size = sheets.size(e.art(), e.pose(sheets), e.frameStep(sheets));
     const x = e.groundX(camX);
     const y = e.groundY() - size.h * e.depthScale() - CONFIG.enemyBarLift;
     const w = CONFIG.enemyBarW, h = CONFIG.enemyBarH;

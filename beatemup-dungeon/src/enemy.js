@@ -53,6 +53,24 @@
  * the constructor: an enemy who never swings can never release a token, so
  * handing him one would stall the crowd.
  */
+/* THE SKIN BAGS -- one shuffled deck per kind, dealt without replacement and
+   re-shuffled when it runs out. See the `stage1` note in the constructor for why
+   this is a bag and not a roll. Module state on purpose: a deck that lived on
+   the enemy would be a deck of one. */
+const SKIN_BAGS = {};
+
+function dealSkin(kind, list) {
+  let bag = SKIN_BAGS[kind];
+  if (!bag || !bag.length) {
+    bag = SKIN_BAGS[kind] = list.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = bag[i]; bag[i] = bag[j]; bag[j] = t;
+    }
+  }
+  return bag.pop();
+}
+
 class Enemy extends Fighter {
   constructor(kind, x, z, opts) {
     const o = opts || {};
@@ -155,6 +173,22 @@ class Enemy extends Fighter {
     this.sky = !!(o.sky && SKY.on !== false);
     this.skyT = 0;
     if (this.sky) this.jumpY = SKY.fromPx != null ? SKY.fromPx : 800;
+    /* STAGE ONE, FOR A KIND THAT HAS ONE -- the library worm's glasses
+       (2026-09-17). `CHARACTERS[kind].stage1` lists the SKINS he may spawn
+       wearing; one strong hit knocks them off and he finishes the fight in his
+       own pack (see `Fighter._loseGlasses`).
+
+       ⚠️ NOTHING ELSE IN THE GAME KNOWS. The wave data says `verme`, the stats
+       say `verme`, and this is the only line that decides he starts in glasses
+       -- so the four are a LOOK, not four enemies to balance.
+
+       ⚠️ DEALT FROM A BAG RATHER THAN ROLLED, the same way the GO prompt and the
+       pause words deal theirs: an arena spawns three worms at once, and three
+       independent rolls of four show a repeat about half the time -- which reads
+       as two of them being the same enemy rather than as a crowd. */
+    const st1 = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[kind]
+                 && CONFIG.CHARACTERS[kind].stage1) || null;
+    if (st1 && st1.length) this.skin = dealSkin(kind, st1);
     /* WHAT THIS ONE THROWS. A kind with punch art of its own gets its STRING
        from CONFIG.ENEMY_COMBOS; everyone else keeps the single swing built
        from the shared knobs. The two are the same shape — a list of attack

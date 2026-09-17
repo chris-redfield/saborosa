@@ -77,6 +77,15 @@ class Fighter {
     this.idleT = 0;
     this.longIdle = false;
     this.longIdleT = 0;
+    /* WHICH PACK DRAWS HIM, WHEN IT IS NOT HIS OWN. Null means "my kind's", and
+       everything in the game that is not a picture still reads `kind`: the
+       stats, the combos, the reaches, the waves, the name on the bar. A skin is
+       ART AND NOTHING ELSE. See `art()`; the library's worms are the only users
+       (they wear glasses until they are knocked down). */
+    this.skin = null;
+    /* The glasses in mid-air, after they have been knocked off. See
+       `_loseGlasses`; null for everyone, almost always. */
+    this.glassesFly = null;
 
     this.maxHp = o.hp || 100;
     this.hp = this.maxHp;
@@ -308,6 +317,13 @@ class Fighter {
     }
 
     if (knockdown) {
+      /* ⚠️ THE GLASSES COME OFF ON THE BLOW THAT PUTS HIM DOWN, and this branch
+         IS the definition of that blow. Asked for 2026-09-17: *"after they take
+         like one strong hit that pushes them back, they lose the glasses"*. A
+         knockdown is the game's own word for a hit that pushes you back -- the
+         uppercut, the air attack, the heroes' finisher, the roach's charge --
+         so nothing new had to decide what "strong" means. See `_loseGlasses`. */
+      this._loseGlasses(dir);
       this.state = 'down';
       this.downPhase = 'land';
       this.stateT = 0;
@@ -322,6 +338,81 @@ class Fighter {
       this.hurtVariant++;
     }
     return true;
+  }
+
+  /**
+   * THE GLASSES COME OFF -- the library worm's two stages (2026-09-17).
+   *
+   * *"All these enemies, after they take like one strong hit that pushes them
+   * back, they lose the glasses, and become the regular worm without glasses."*
+   *
+   * ⚠️ IT IS A SKIN SWAP AND NOTHING ELSE. His HP, his combo, his reach, his
+   * name and the wave entry that spawned him all still say `verme` and none of
+   * them move: what changes is which pack `art()` returns, from one of the four
+   * glasses packs to the plain worm. That is the whole of "stage 2", and it is
+   * why this is four lines rather than a second enemy.
+   *
+   * ⚠️ PERMANENT, AND THERE IS NO WAY BACK. He is the plain worm for the rest of
+   * his life, including through his death row -- which is correct, and is also
+   * why the swap happens HERE rather than at the end of the knockdown: the
+   * drawings of him falling over are already the ones without glasses.
+   *
+   * ⚠️ AND THE GLASSES THEMSELVES ARE A DRAWING THE ARTIST PROVIDED. Every
+   * glasses sheet carries a third frame in its hurt row -- the empty spectacles
+   * -- so they are thrown off rather than deleted. That FX is the ONLY reason
+   * the old skin is remembered: `glassesFly.skin` is the pack they are drawn
+   * from, because each of the four worms wears a different pair.
+   */
+  _loseGlasses(dir) {
+    if (!this.skin) return;
+    const G = CONFIG.GLASSES || {};
+    const from = this.skin;
+    this.skin = null;
+    if (G.on === false) return;
+    /* ⚠️ THE SPOT IS COPIED, NOT READ LIVE. He is about to be knocked down --
+       his z barely moves but his x slides a long way under the knockback, and
+       glasses that followed him would look welded to a face they have just left.
+       They belong to where the head WAS. */
+    this.glassesFly = {
+      skin: from,
+      t: 0,
+      dir: dir >= 0 ? 1 : -1,
+      x: this.x,
+      z: this.z,
+      scale: this.depthScale(),
+      /* How high his head was, off the pack he was still wearing. Measured
+         rather than guessed at a fraction of `fighterSizePx`: the packs are
+         `drawScale`d and a fraction would drift the moment one of them is. */
+      head: 0,
+    };
+  }
+
+  /**
+   * The glasses in the air. Called from `draw`, which is also where the head
+   * height comes from -- `sheets` is not available when the blow lands.
+   *
+   * ⚠️ AN ARC, NOT A DROP. Sine up over the first stretch and an accelerating
+   * fall after it, which is the same shape the barrel's hoist and the sky-fall
+   * entrance use: something knocked off a face is thrown, and a drop reads as
+   * the glasses simply being deleted a bit more slowly.
+   */
+  _drawGlasses(ctx, sheets, camX) {
+    const f = this.glassesFly;
+    if (!f || !sheets || !sheets.has(f.skin, 'glasses')) return;
+    const G = CONFIG.GLASSES || {};
+    if (!f.head) f.head = sheets.topPx(f.skin, 'hurt') * f.scale;
+    const p = Math.min(1, f.t / (Math.max(1, G.flyMs || 700) / 1000));
+    const gx = f.x - camX + f.dir * (G.awayPx || 120) * p * f.scale;
+    const rise = Math.sin(Math.PI * Math.min(1, p * 1.3)) * (G.upPx || 80);
+    const gy = Belt.topY + f.z - f.head - (rise - (G.fallPx || 130) * p * p) * f.scale;
+    ctx.save();
+    /* ⚠️ THEY GO OUT BEFORE THEY LAND, on purpose: there is no drawing of them
+       lying on a shelf and a pair that simply vanished on touchdown would read
+       as a bug. The fade is the last third of the flight. */
+    ctx.globalAlpha = 1 - Math.max(0, (p - 0.66) / 0.34);
+    sheets.draw(ctx, f.skin, this.facing, 'glasses', 0, gx, gy,
+                { scale: f.scale, rotate: f.dir * (G.spin || 3.4) * p });
+    ctx.restore();
   }
 
   /**
@@ -388,6 +479,26 @@ class Fighter {
    * every enemy's time-to-kill has to be re-tuned twice.
    */
   feel() { return (CONFIG.CHARACTERS && CONFIG.CHARACTERS[this.kind]) || {}; }
+
+  /**
+   * WHICH PACK TO DRAW HIM FROM -- his skin if he has one, else his kind.
+   *
+   * ⚠️ EVERY ART QUESTION GOES THROUGH THIS AND NOTHING ELSE DOES. `sheets` is
+   * keyed by pack name, so asking one question with `kind` and the next with
+   * `skin` is how a fighter ends up drawn from two packs at once: `pose()` would
+   * pick a row this pack has, `frameStep()` would count the frames of a row the
+   * OTHER pack has, and `rect()` clamps rather than erroring -- a valid,
+   * wrong drawing, silently. The rule is: if the answer is a picture, ask
+   * `art()`; if it is a number about the fighter, ask `kind`.
+   *
+   * ⚠️ AND A SKIN MUST BE THE SAME SIZE AS THE KIND IT REPLACES. The pack's
+   * scale comes from its own idle body (`sheets.build`), so a skin cut from a
+   * bigger master would change his size mid-fight. The worms' four glasses packs
+   * are cut from same-size masters at the same cutter scale and all measure
+   * `bodyH` 199.7 -- identical to the plain worm, which is what makes the swap
+   * invisible except for the glasses.
+   */
+  art() { return this.skin || this.kind; }
 
   walk(dt, ix, iz, bounds, speedScale) {
     const sc = speedScale || 1;
@@ -469,6 +580,14 @@ class Fighter {
 
     if (this.landHoldT > 0) this.landHoldT -= dt;
     if (this.dead) this.deathT += dt;
+    /* The glasses in the air -- cleared by their own clock, so they finish the
+       flight whatever the body they came off is doing by then (including being
+       dead: a worm knocked down and killed before he lands still throws them). */
+    if (this.glassesFly) {
+      this.glassesFly.t += dt;
+      const ms = Math.max(1, (CONFIG.GLASSES && CONFIG.GLASSES.flyMs) || 700);
+      if (this.glassesFly.t >= ms / 1000) this.glassesFly = null;
+    }
     if (this.comboWindow > 0) this.comboWindow -= dt;
     if (this.hurtT > 0) this.hurtT -= dt;
 
@@ -704,7 +823,7 @@ class Fighter {
    * 0 for a pack with no death row, so the grid-pack fighters are unaffected.
    */
   deathWatch(sheets) {
-    if (!this.dead || !sheets.has(this.kind, 'death')) return 0;
+    if (!this.dead || !sheets.has(this.art(), 'death')) return 0;
     return this.deathAnimS(sheets) + (CONFIG.deathHoldMs || 0) / 1000;
   }
 
@@ -718,8 +837,8 @@ class Fighter {
    * wants only the picture (see corpseGone).
    */
   deathAnimS(sheets) {
-    if (!sheets || !sheets.has(this.kind, 'death')) return 0;
-    const n = sheets.poseLength(this.kind, 'death');
+    if (!sheets || !sheets.has(this.art(), 'death')) return 0;
+    const n = sheets.poseLength(this.art(), 'death');
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.death) || 110;
     const B = (CONFIG.DEATH_BURST || {})[this.kind];
     if (!B || B.from >= n) return n * (ms / 1000);
@@ -804,8 +923,8 @@ class Fighter {
     /* Falls back to the death row if the named pose is missing, so a pack
        without the borrowed row trembles on its own frames rather than drawing
        nothing at all. */
-    const pose = (S.pose && sheets.has(this.kind, S.pose)) ? S.pose : 'death';
-    const n = Math.max(1, sheets.poseLength(this.kind, pose));
+    const pose = (S.pose && sheets.has(this.art(), S.pose)) ? S.pose : 'death';
+    const n = Math.max(1, sheets.poseLength(this.art(), pose));
     const lo = Math.max(0, Math.min(n - 1, S.from || 0));
     const hi = Math.max(lo, Math.min(n - 1, S.to != null ? S.to : lo));
     const k = Math.floor((this.deathT - preS) / Math.max(0.001, (S.ms || 80) / 1000));
@@ -988,7 +1107,7 @@ class Fighter {
        fighter plays the death row rather than holding the knockdown pose and
        fading. The grid packs have neither, so they fall through to `down` and
        keep the old behaviour. */
-    if (this.dead && sheets && sheets.has(this.kind, 'death')) {
+    if (this.dead && sheets && sheets.has(this.art(), 'death')) {
       // The pre-burst tremble may borrow another row -- see _shudderNow.
       const sh = this._shudderNow(sheets);
       return sh ? sh.pose : 'death';
@@ -1011,7 +1130,7 @@ class Fighter {
     if (this.state === 'down') {
       const phase = this.downPhase === 'lie' ? 'downLie'
                   : this.downPhase === 'rise' ? 'downRise' : 'downLand';
-      if (sheets && sheets.has(this.kind, phase)) return phase;
+      if (sheets && sheets.has(this.art(), phase)) return phase;
       return 'down';
     }
     if (this.state === 'hurt') return 'hurt';
@@ -1049,9 +1168,9 @@ class Fighter {
        `jumping` -- there is no arc and no `jumpT`; the hop is `Emerge`'s rise
        -- so the test below would never see him, and the `enter`/`walk` branches
        further down would claim him first. */
-    if (this.buried && sheets && sheets.has(this.kind, 'jump')) return 'jump';
+    if (this.buried && sheets && sheets.has(this.art(), 'jump')) return 'jump';
     if ((this.jumping || (this.landHoldT > 0 && this.state !== 'walk'))
-        && sheets && sheets.has(this.kind, 'jump')) return 'jump';
+        && sheets && sheets.has(this.art(), 'jump')) return 'jump';
     /* WALKING ON AT THE START OF A RUN. `walk()` will not promote `enter` to
        `walk` -- it only ever promotes `idle` -- which is what keeps the state
        meaning "not in the player's hands yet" for canAct/vulnerable. So the
@@ -1068,7 +1187,7 @@ class Fighter {
        ⚠️ `sheets.has()` KEEPS EVERY OTHER PACK OFF IT, the same guard `ball`
        and `special` use: only the two coconuts were drawn a second idle, and a
        pack without the row falls through to its ordinary one. */
-    if (this.longIdle && sheets && sheets.has(this.kind, 'idleLong')) return 'idleLong';
+    if (this.longIdle && sheets && sheets.has(this.art(), 'idleLong')) return 'idleLong';
     return 'idle';
   }
 
@@ -1097,7 +1216,7 @@ class Fighter {
     const sh = this._shudderNow(sheets);
     if (sh) return sh.step;
     const p = this.pose(sheets);
-    const n = sheets.poseLength(this.kind, p);
+    const n = sheets.poseLength(this.art(), p);
     if (n <= 1) return 0;
 
     /* AN AIR ATTACK BELONGS TO THE ARC, NOT TO THE ATTACK PHASES, and it is
@@ -1402,7 +1521,10 @@ class Fighter {
        skipping that too would leave the last frame of the burst lying there for
        the rest of the level. The two used to be described as one thing ("the
        same arithmetic"); they are one CLOCK, and now only one of them draws. */
-    const pack = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[this.kind]) || {};
+    /* ⚠️ THE DRAWN PACK, NOT THE KIND -- everything read off it here (the
+       corpse fade, its quantiser, `groundNudgePx`) is a property of the
+       PICTURE. See `art()`. */
+    const pack = (CONFIG.CHARACTERS && CONFIG.CHARACTERS[this.art()]) || {};
     if (this.dead && this.downPhase === 'lie' && pack.corpseFade !== false) {
       // Fade out where it fell, rather than vanishing. The two numbers are in
       // CONFIG because `corpseGone()` has to agree with this exactly.
@@ -1446,7 +1568,7 @@ class Fighter {
        coconut's sheet has real falling and dying rows, and spinning a sprite
        that is already drawn lying down tips it face into the floor. */
     let rotate = 0;
-    if (this.state === 'down' && !sheets.has(this.kind, 'down')) {
+    if (this.state === 'down' && !sheets.has(this.art(), 'down')) {
       const dir = this.vx >= 0 ? 1 : -1;
       const p = this.downPhase === 'land'
         ? Math.min(1, this.stateT / (CONFIG.downLandMs / 1000))
@@ -1512,7 +1634,7 @@ class Fighter {
     const hopPx = (CONFIG.EMERGE && CONFIG.EMERGE.hopPx != null)
       ? CONFIG.EMERGE.hopPx : 26;
     const sinkPx = (sunk > 0
-        ? (sheets.topPx(this.kind, pose) * this.depthScale() + 8) * sunk
+        ? (sheets.topPx(this.art(), pose) * this.depthScale() + 8) * sunk
         : 0)
       - hop * hopPx * this.depthScale();
 
@@ -1565,12 +1687,17 @@ class Fighter {
       /* `pack` is the one resolved at the top of this method for the corpse
          fade -- one lookup per draw, not two. */
       const nudge = (pack.groundNudgePx || 0) * this.depthScale();
-      sheets.draw(ctx, this.kind, this.facing, pose, this.frameStep(sheets),
+      sheets.draw(ctx, this.art(), this.facing, pose, this.frameStep(sheets),
                   gx, gy + sinkPx + nudge, { alpha, rotate, flash: this.flash * 0.55,
                             scale: this.depthScale(),
                             tint: t && t.tint, tintAlpha: t && t.tintAlpha });
       if (sinkPx > 0) ctx.restore();
     }
+
+    /* THE GLASSES, OVER THE BODY THEY CAME OFF. Outside the block above so they
+       still fly when the body is gone (`DEATH_BURST` can take it), and after it
+       so they are never painted under him. */
+    if (this.glassesFly) this._drawGlasses(ctx, sheets, camX);
 
     /* THE REAL EXPLOSION, OVER THE BODY IT IS DESTROYING. Last, so it is never
        painted under the sprite; and outside the `alpha` above, because a blast

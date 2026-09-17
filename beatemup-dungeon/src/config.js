@@ -2359,6 +2359,25 @@ const CONFIG = {
                   shadow at 0 / 6 / 10 / 14: at 10 the ellipse tucks under the
                   yellow stumps. */
                groundNudgePx: 10,
+               /* ⚠️ HIS FIRST STAGE: FOUR WORMS IN GLASSES (2026-09-17). *"The
+                  worm enemy has 2 stages... there are 4 worm enemies and they
+                  are basically the same, the only difference are the glasses.
+                  And all these enemies, after they take like one strong hit
+                  that pushes them back, they lose the glasses, and become the
+                  regular worm without glasses."*
+
+                  These are SKINS, not kinds. Every number in the game -- his
+                  45 HP, his 7 damage, `ENEMY_COMBOS.verme`, every wave entry
+                  that says `kind: 'verme'` -- is untouched and shared by all
+                  five looks. `Enemy` deals one of these at spawn and
+                  `Fighter._loseGlasses` drops back to this entry on the first
+                  knockdown, for good. See `Fighter.art()`.
+
+                  ⚠️ THE ORDER IS THE DEAL'S, NOT A RANKING. They are dealt
+                  without replacement, so a three-worm arena shows three
+                  different pairs of glasses. */
+               stage1: ['vermeOculos1', 'vermeOculos2',
+                        'vermeOculos3', 'vermeOculos4'],
                /* NO GROUND SHADOW, ASKED FOR 2026-09-16: *"remove the shadow of
                   the worms on the library stage"*. Read by `drawShadow` in
                   game.js off the KIND, which is how a mook can refuse one at all
@@ -2384,6 +2403,68 @@ const CONFIG = {
                  down: { anim: 'death', from: 1, to: 2 },
                  /* CUT, NAMED, UNWIRED -- see the note above. */
                  egg:  { anim: 'egg' },
+               } },
+
+    /* ===== THE WORM IN GLASSES -- four skins of the one above ==============
+       Cut by tools/build-beat-enemy-defs.py from `verme-sprites-oculos-0N-fim`,
+       which are the plain worm's seven rows drawn again with a pair of glasses
+       on. They exist ONLY to be drawn: nothing spawns one, nothing balances one,
+       and `enemyHealth`/`enemyDamage`/`ENEMY_COMBOS` have no entry for any of
+       them -- an enemy wearing one is a `verme` in every respect that is not a
+       picture. See CHARACTERS.verme.stage1 and `Fighter.art()`.
+
+       ⚠️ EVERY ART FIELD HERE MUST MATCH THE PLAIN WORM'S, because the swap
+       happens mid-fight and anything that differs is a POP at the moment he is
+       knocked down. `drawScale` 1.46 and `groundNudgePx` 10 are his, and the
+       cut is his too -- same master size, same cutter `scale` 0.49561, and all
+       four measure `bodyH` 199.7 exactly as he does, which is what makes the
+       two packs interchangeable. ⚠️ Re-cut all five together if any of them
+       moves.
+
+       ⚠️ `hurt` IS SLICED AND THAT IS NOT COSMETIC. These rows carry THREE
+       drawings: two flinches and the fallen GLASSES, which the artist drew as
+       part of the row. Left unsliced, `Fighter.frameStep` cycles
+       `hurtVariant % n` over all three and one flinch in three draws a pair of
+       spectacles instead of a worm. `glasses` is the third on its own, which is
+       what `_loseGlasses` throws into the air.
+
+       ⚠️ AND THEY COST VRAM: ~10MB of texture each, 42MB for the four, against a
+       game whose performance history is a 256-512MB card thrashing (see
+       PERFORMANCE.md). They are the first art in this game that is purely a
+       variant. If that ever bites, the cheapest cut is the `egg` row -- eleven
+       of the biggest frames in the sheet, for a mechanic that is still unwired
+       on the plain worm too. */
+    vermeOculos1: { sheet: 'v2:beatemup-dungeon/verme-oculos-1-beat', pack: 'ragged',
+               name: 'VERME', drawScale: 1.46, groundNudgePx: 10, shadow: false,
+               poses: {
+                 down:    { anim: 'death', from: 1, to: 2 },
+                 egg:     { anim: 'egg' },
+                 hurt:    { anim: 'hurt', from: 0, to: 2 },
+                 glasses: { anim: 'hurt', from: 2, to: 3 },
+               } },
+    vermeOculos2: { sheet: 'v2:beatemup-dungeon/verme-oculos-2-beat', pack: 'ragged',
+               name: 'VERME', drawScale: 1.46, groundNudgePx: 10, shadow: false,
+               poses: {
+                 down:    { anim: 'death', from: 1, to: 2 },
+                 egg:     { anim: 'egg' },
+                 hurt:    { anim: 'hurt', from: 0, to: 2 },
+                 glasses: { anim: 'hurt', from: 2, to: 3 },
+               } },
+    vermeOculos3: { sheet: 'v2:beatemup-dungeon/verme-oculos-3-beat', pack: 'ragged',
+               name: 'VERME', drawScale: 1.46, groundNudgePx: 10, shadow: false,
+               poses: {
+                 down:    { anim: 'death', from: 1, to: 2 },
+                 egg:     { anim: 'egg' },
+                 hurt:    { anim: 'hurt', from: 0, to: 2 },
+                 glasses: { anim: 'hurt', from: 2, to: 3 },
+               } },
+    vermeOculos4: { sheet: 'v2:beatemup-dungeon/verme-oculos-4-beat', pack: 'ragged',
+               name: 'VERME', drawScale: 1.46, groundNudgePx: 10, shadow: false,
+               poses: {
+                 down:    { anim: 'death', from: 1, to: 2 },
+                 egg:     { anim: 'egg' },
+                 hurt:    { anim: 'hurt', from: 0, to: 2 },
+                 glasses: { anim: 'hurt', from: 2, to: 3 },
                } },
 
     /* THE HORSE. THE FINAL BOSS, and the only entry here that is not a mook --
@@ -2962,6 +3043,30 @@ const CONFIG = {
      ⚠️ NOTHING HERE SAYS HOW MANY DRAWINGS THE ROW HAS. The length comes from
      the cut, which is why the tick is handed `sheets`: a re-drawn row of nine
      plays nine and this block does not go stale. */
+  /* ===== THE GLASSES COMING OFF ===========================================
+     The library worm's two stages, 2026-09-17. The SWAP is the feature -- one
+     strong hit and he is the plain worm for good (`Fighter._loseGlasses`) --
+     and this block is only the flight of the glasses afterwards.
+
+     ⚠️ THE DRAWING IS THE ARTIST'S. Each glasses sheet carries the empty
+     spectacles as a third frame of its hurt row, which is the whole reason they
+     are thrown rather than deleted: a pair that vanished on the hit would be the
+     cheaper thing to build and would look like the swap failing.
+
+     ⚠️ WHICH PAIR FLIES IS THE SKIN HE WAS WEARING, not a shared prop -- the
+     four worms wear four different pairs, and that is the only thing the FX
+     remembers about a skin it has already dropped.
+
+     `on: false` keeps the swap and throws nothing. */
+  GLASSES: {
+    on: true,
+    flyMs: 700,
+    upPx: 80,       // the top of the arc, in px at the near edge of the belt
+    fallPx: 130,    // how far past it they drop by the end -- they leave frame
+    awayPx: 120,    // sideways, in the direction of the blow
+    spin: 3.4,      // radians over the whole flight
+  },
+
   IDLE_LONG: {
     on: true,
     /* HOW LONG HE HAS TO BE LEFT ALONE, in seconds. The ask said "like 7
