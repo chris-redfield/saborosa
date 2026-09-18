@@ -6632,6 +6632,81 @@ timer out      -> the mode ends, he walks on to HORÁCIO
 | `plateRate` | **2** (2026-09-09) — how fast the background plays, as a multiple of normal. **Judged, not derived**: 1.2 was too subtle, **4 was refused on sight**, 2 is where it landed. A playback rate, not a re-encode; the wrap-crossfade scales with it, so the loop survives at any rate. ⚠️ It **is** a decode cost. If the mode drops frames, re-encode the plate faster and play it at 1.0 rather than shaving this number |
 | `planeEntry` / `planeEntryFromX` / `planeEntryMs` / `planeEntryHoldMs` | the fly-in from off the left edge: `true`, **−0.55** screen widths left of `startX`, over 1035 ms, then a 150 ms beat before the controls answer. Still Life's numbers. A **draw-only** offset — see below |
 
+### The barrels (2026-09-18)
+
+*"the barrels will be objects that the player must avoid, they come from the
+right to the left, they break up if they hit you, the player takes a hit if he
+collides with the barrels. make some barrels slighly darker (15%), these darker
+ones will be unbreakable from the machine gun, the others will be breakable."*
+
+`src/ta-barrel.js` — the mode's **first native entity**, drawn out of the main
+game's own `barril` pack. Nothing was cut, loaded or packaged for it: the pack is
+already in `CHARACTERS`, already built at boot and already in the manifest.
+
+| knob | what it does |
+|---|---|
+| `barrels` | `false` empties the stream. Read in `_barrelMax()`, the one place that decides whether another may exist, so the hold-C readout says `barrels 0/0` rather than going quiet |
+| `barrelHardChance` | **0.35** — how many are the dark, unbreakable kind. Rolled **per barrel**, so three in a row is a stream and not a rota. At 0 the dark kind never appears |
+| `barrelHardFilter` | **`brightness(0.85)`** — the 15%, and the only tell the player gets |
+| `barrelFirstMs` / `barrelEveryMs` / `barrelEveryVarMs` | **2200** / **1700** ± **700**. The first gap is longer on purpose: a round that opens with a barrel already crossing gives no beat to read the field in |
+| `barrelMax` | **3** in the air at once. ⚠️ **`ROUNDS[n].barrels` overrides it** — the same shape `flies` and `clocks` have, so ramping it across the three rounds is a number and not a mechanism. Deliberately not set on the rounds yet |
+| `barrelSpeed` / `barrelSpeedVar` | **260** ± **70** px/s leftward. For scale: a fly crosses at `flySpeed` 200 and a clock drifts at `coinSpeed` 120 — the barrel is the fastest thing in the field, because it is the one that is meant to *arrive* |
+| `barrelScale` | **0.75**. ⚠️ **Measured against the plane's ink, not picked** — see below |
+| `barrelHitWRel` / `barrelHitHRel` | **0.85** each. Much less generous than the plane's own 0.35 × 0.5, and deliberately: those cut the plane to its fuselage because a wing tip is not a hull; a barrel is nearly a solid rectangle |
+| `barrelBoilMs` / `barrelBreakMs` | **110** per frame of the 4-frame wobble; **260** for the whole 3-frame smash, played **once** |
+| `barrelDamage` | **1** of `planeHealth` 4 — the same as a fly touch |
+
+> ⚠️ **`barrelScale` 0.75 is a measurement.** 1 is the barrel at the size it is
+> on the street: **157 × 115** drawn. The plane's *visible ink* is only
+> **84 × 83** inside its 203 px frame, so a street barrel is nearly twice the
+> player. 0.75 gives **117 × 86** — still clearly the bigger object, without the
+> player being the small one on his own screen. **One scale for the pack**, never
+> per frame. ⚠️ **Confirmed by eye on 2026-09-18** against 1.00 / 0.65 /
+> 0.55 rendered over the plate — a judged number, not a default awaiting
+> judgement.
+
+> ⚠️ **The dark barrels do not BLOCK the beam, they are just not destroyed by
+> it.** That is the literal reading of the ask and it is a real design choice, so
+> the other one is worth naming: a dark barrel that stopped the beam would be
+> *cover* — flies could hide behind it. That is a bigger mechanic than "you
+> cannot break this", and the ray has no notion of a nearest hit (it tests every
+> box and stops at none). The change would be in `_shoot()`, not in `TaBarrel`.
+
+> ⚠️ **A barrel has no health and takes no damage.** One frame of the beam breaks
+> it. A `barrelHealth` would put i-frames on an obstacle — which is what turned
+> one clock into 35 seconds of payout — and unlike a clock a barrel pays nothing,
+> so there is nothing to rate-limit.
+
+> ⚠️ **One hit per frame, but every barrel that touched him breaks.** The flies'
+> block uses a labelled break because once a touch has landed there is nothing
+> left to find; here there is, because a second barrel still has to be *seen* to
+> burst. And the smash is **not** gated on `hurt()` returning true: it is false
+> through the i-frames, and a barrel that passed through the hull unbroken
+> because the player was briefly invulnerable would look like a missing
+> collision. The i-frames forgive the damage; they do not make him intangible.
+
+> ⚠️ **It is the one thing in this mode that is NOT on the torus.** `TaFly` and
+> `TaCoin` wrap modulo `worldW` and draw ±`worldW` ghost copies — which is why
+> nothing else here has an off-screen cull, and why one can never fire. A barrel
+> crosses once and is gone, so it takes no `worldW`, never wraps, and owns the
+> cull. **Do not hand it one to make it consistent with its neighbours**: it
+> would come back round and hit the player from behind, for ever.
+
+> ⚠️ **The smash is drawn at the barrel's own `gy`, and the anchor is frozen at
+> birth.** Every frame of this pack is bottom-anchored (`ay` == the frame height)
+> because in the main game a barrel breaks on the *floor*. One `gy` for both
+> poses lines their bottoms up and the splinters spread up and out of where the
+> barrel was. Re-centre the smash on the barrel's middle and it jumps half a
+> barrel upward on the frame it bursts.
+
+> **Verified in the real page, not reasoned about:** 20 s of the real
+> `TimeAttack.update()` at the host's own dt with the trigger held — 7 barrels,
+> 3 dark, no exceptions, `render()` clean, and every barrel that ended up on the
+> player's line was either shot (breakable) or hit him (dark), which is the whole
+> mechanic in one number. Then, parked on the beam: the breakable one dies, the
+> dark one survives, and one off the beam survives — so the old "the beam hits
+> everything on screen" bug has not come back.
+
 ### Pause, the plate's speed, and the fly-in (2026-09-09)
 
 ### The plane was hopping at 23 fps against a smooth background

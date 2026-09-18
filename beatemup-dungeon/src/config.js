@@ -5009,6 +5009,73 @@ const CONFIG = {
        to give. Halve this for a gentler eight-touch run without changing what
        the HUD reads, since the pips draw `hp()`. */
     flyTouchDamage: 1,
+    /* --- THE BARRELS (2026-09-18) ---------------------------------
+       *"the barrels will be objects that the player must avoid, they come from
+       the right to the left, they break up if they hit you, the player takes a
+       hit if he collides with the barrels. make some barrels slighly darker
+       (15%), these darker ones will be unbreakable from the machine gun, the
+       others will be breakable."*
+
+       The mode's first NATIVE entity -- `src/ta-barrel.js`, drawn out of the
+       main game's own `barril` pack, so nothing was cut, loaded or packaged for
+       it. ⚠️ It is also the one thing here that is NOT on Still Life's
+       wrap-around world; read its header before changing how it moves.
+
+       ⚠️ NONE OF THESE HAVE BEEN JUDGED IN PLAY. The cadence, the speed and
+       the mix of dark to light are the whole feel of the obstacle and they are
+       four guesses -- the same standing caveat `ROUNDS` carries. */
+    barrels: true,            // the feature switch; false empties the stream
+    /* THE DARK ONES: unbreakable by the gun, and 15% darker is their ONLY tell.
+       ⚠️ THE 15% LIVES IN THE FILTER STRING, not in a number that something
+       else turns into one. It is `sheets.draw`'s tint pass -- a second, fully
+       opaque blit of the same sprite through this filter -- so an unsupported
+       `filter` leaves the barrel at full brightness rather than blank. */
+    barrelHardFilter: 'brightness(0.85)',
+    /* HOW MANY OF THEM ARE DARK. ⚠️ ROLLED PER BARREL, so a run can hand out
+       three dark ones in a row; that is a stream and not a rota. At 0 every
+       barrel breaks and the dark kind never appears -- which is the honest way
+       to switch the unbreakable half off without touching code. */
+    barrelHardChance: 0.35,
+    /* THE STREAM. `barrelFirstMs` is the gap before the FIRST one of a round,
+       longer than the rest on purpose: a round that opens with a barrel already
+       crossing gives the player no beat to read the field in. */
+    barrelFirstMs: 2200,
+    barrelEveryMs: 1700,
+    barrelEveryVarMs: 700,
+    /* ⚠️ HOW MANY IN THE AIR AT ONCE, AND `ROUNDS[n].barrels` OVERRIDES IT --
+       the same shape `flies` and `clocks` have, so ramping the obstacle across
+       the three rounds is a per-round number and not a new mechanism. Left off
+       the rounds for now: a difficulty curve for something nobody has played is
+       a guess stacked on a guess. */
+    barrelMax: 3,
+    /* px/SECOND, leftward. The sign is in ta-barrel.js so nothing can spawn one
+       drifting the wrong way. For scale: a fly crosses at `flySpeed` 200 and a
+       clock drifts at `coinSpeed` 120, so a barrel is the fastest thing in the
+       field -- it is the one that is meant to arrive. */
+    barrelSpeed: 260,
+    barrelSpeedVar: 70,
+    /* ⚠️ MEASURED AGAINST THE PLANE'S INK, NOT PICKED. 1 is the barrel at the
+       size it is on the street -- 157x115 drawn -- and the plane's own visible
+       ink is only 84x83 inside its 203px frame, so a street barrel is nearly
+       TWICE the player. 0.75 puts it at 117x86: still clearly the bigger object
+       and clearly a thing to fly around, without the player being the small
+       one on his own screen. ⚠️ ONE SCALE FOR THE PACK, never per frame.
+       ⚠️ CONFIRMED BY EYE 2026-09-18, not just measured -- 0.75 was chosen over
+       1.00 / 0.65 / 0.55 with all four rendered over the plate. So this is a
+       judged number now and not a default waiting to be judged. */
+    barrelScale: 0.75,
+    /* THE HITBOX, as fractions of the DRAWN barrel. ⚠️ Much less generous to
+       the player than the plane's own 0.35 x 0.5, and deliberately: those cut
+       the plane's box down to its fuselage because a wing tip is not a hull. A
+       barrel is very nearly a solid rectangle and this only forgives the
+       drawing's margin. Lower both to make the obstacle kinder. */
+    barrelHitWRel: 0.85,
+    barrelHitHRel: 0.85,
+    barrelBoilMs: 110,        // per frame of the 4-frame wobble
+    barrelBreakMs: 260,       // the whole 3-frame smash, played ONCE
+    barrelSpawnPadPx: 30,     // clear of the right edge, ON TOP of its half-width
+    barrelCullPx: 40,         // and how far past the left edge before it is dropped
+    barrelDamage: 1,          // ⚠️ one of `planeHealth` 4, same as a fly touch
     /* --- THE PLANE -- position, entry, feel ------------------------*/
     planeScale: 0.30720000000000003,
     planeOffsetY: 0,

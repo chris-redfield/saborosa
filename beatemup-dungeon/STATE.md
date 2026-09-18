@@ -30,6 +30,105 @@ wherever the search order happened to reach.
 
 ---
 
+## Barrels cross the TIME ATTACK (2026-09-18)
+
+*"the barrels will be objects that the player must avoid, they come from the
+right to the left, they break up if they hit you, the player takes a hit if he
+collides with the barrels. make some barrels slighly darker (15%), these darker
+ones will be unbreakable from the machine gun, the others will be breakable."*
+Knobs in README (*The barrels*). What that cannot say:
+
+**IT IS THE MODE'S FIRST NATIVE ENTITY, AND THAT IS THE INTERESTING PART.**
+Everything else in TIME ATTACK was ported from Still Life -- the plane, the fly,
+the coin -- and every bug that port produced was a **contract that is not in a
+signature**: what a `dt` MEANS (ms vs seconds), what a `worldW` MEANS (a torus),
+what a box's fields are CALLED. Writing a fourth entity meant deciding, for the
+first time, which of those contracts to join and which to refuse.
+
+⚠️ **IT JOINS THE `dt` CONTRACT AND REFUSES THE TORUS, AND THAT IS NOT A
+COMPROMISE.** It speaks MILLISECONDS inward like its neighbours, because the
+mode converts once at the boundary and a second convention below that line is
+the 1000x bug waiting to happen again. But it takes no `worldW` and never wraps:
+Still Life's world is a wrap-around screen, and a barrel is a one-way trip. **A
+wrapping barrel would come round and hit the player from behind, for ever** --
+and the mode's standing note that "an off-the-left-edge cull can never fire"
+stops being true for exactly one class, which is now the reason that note is
+worth having.
+
+⚠️ **AND IT IS THE FIRST THING HERE DRAWN THROUGH `sheets`.** The other three
+carry their own rect tables in `CONFIG.TIME_ATTACK` because they came from
+another game; the barrel is the main game's OWN `barril` pack, already in
+CHARACTERS, already built at boot, already in the manifest. Nothing was cut,
+loaded or packaged. The cost is one more constructor argument
+(`new TimeAttack(assets, input, sound, sheets)`) and it is optional -- no sheets
+gives a minigame with no barrels rather than a crash.
+
+**THE 15% IS `sheets.draw`'s TINT PASS USED AS A DARKEN.** That pass exists for
+the bomb's panic red and its recipe opens with `brightness(0)` because hue and
+saturate are no-ops on black ink. Here it is a plain `brightness(0.85)` over a
+fully opaque redraw of the same sprite **through the same closure**, so the dark
+barrel is the barrel, 15% down, and not a shape sitting on top of it.
+⚠️ The alternative -- a filter on the BASE blit -- was rejected: that is a new
+option on the one function every character in the game goes through, for one
+caller. ⚠️ What it costs is the anti-aliased edge composited twice; invisible on
+a pack drawn with a heavy black line, and worth knowing before reusing the
+trick on softer art.
+
+⚠️ **TWO BEHAVIOURS THAT LOOK LIKE OVERSIGHTS AND ARE DECISIONS.** A dark barrel
+does **not block** the beam -- it simply is not destroyed by it, which is the
+literal ask; blocking it would be *cover*, a bigger mechanic, and the ray has no
+notion of a nearest hit. And the smash is **not gated on `hurt()` returning
+true** -- that is false through the i-frames, and a barrel passing through the
+hull intact because the player was briefly invulnerable reads as a missing
+collision. **The i-frames forgive the damage; they do not make him intangible.**
+
+⚠️ **ONE HIT PER FRAME, BUT EVERY BARREL THAT TOUCHED HIM BREAKS**, which is
+where it departs from the flies' block right above it. That one uses a labelled
+break because once a touch has landed there is nothing left to find. Here there
+is: a second barrel still has to be SEEN to burst.
+
+### ⚠️ THE SIZE WAS MEASURED, AND AT `barrelScale` 1 IT WAS WRONG
+
+A street barrel draws **157x115**. The plane's *visible ink* is **84x83** inside
+its 203px frame -- a third of every plane master is empty margin, which is the
+same fact that once put the beam 104px in front of the propeller. So the barrel
+at its own size is nearly **twice the player**. 0.75 gives 117x86. ⚠️ **The
+number came from measuring the alpha bbox of both, not from looking at it** --
+and it is still a look call, so it is the first thing to move.
+
+### ⚠️ A PAGE SCREENSHOT RACES THE GAME'S OWN rAF LOOP
+
+The first capture of this came back showing **upright barrels on the street's
+egg-carton plate**, which looked exactly like the pose lookup falling back to
+`idle`. It was not: the game loop had simply repainted the canvas between my
+`ta.render()` and `Page.captureScreenshot`, and what I photographed was the
+LIVE GAME behind the probe. `canvas.toDataURL()` in the same evaluate as the
+render is the fix. **A sixth way the instrument lies** ([[preview_before_playing]]):
+not omitted state this time, but a second writer to the thing being inspected.
+
+### How it was checked
+
+Real Chrome, the real page, the real classes, CDP driving `TimeAttack.update()`
+at the host's own dt -- and the throwaway copy finally lived in the **scratchpad**
+with `assets/` and `assets-v2/` symlinked beside it, so **nothing was created in
+the repo**. That is the fix offered on 2026-09-16 and not taken then.
+
+* 20s with the trigger held: 7 barrels, 3 dark, 0 exceptions, `render()` clean,
+  `maxOnScreen` 3 = `barrelMax`, and the leftmost x reached -97.5 against a cull
+  line computed at -98.5.
+* Every barrel that ended on the player's line was dealt with correctly: the
+  breakable ones shot (the beam is a horizontal line at the muzzle, so the ones
+  it kills are exactly the ones that were going to hit him), the dark ones landed.
+  **Three hits, 4 HP down to 1, on a plane that never moved** -- worth knowing
+  before judging `barrelHardChance`.
+* Parked on the beam: breakable dies, dark survives, one off the beam survives.
+  The "beam hits everything on screen" bug has not come back.
+* ⚠️ **`plane.controlLocked` IS A GETTER** over `locked || falling || cine`, so
+  the first probe's assignment to it was silently ignored and the whole test
+  proved nothing (no ray was ever built). Set `locked`.
+
+---
+
 ## HORÁCIO sheds chunks when you hit him (2026-09-18)
 
 Three masters arrived, `batidao-boss-espeto-hit-FX-01..03`, and the ask was

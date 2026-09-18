@@ -51,7 +51,13 @@
   /* TIME ATTACK -- the minigame between the desert and HORÁCIO. It owns the
      whole canvas while it runs, so it is a PHASE and not something drawn over
      the level; see src/time-attack.js. */
-  const timeAttack = new TimeAttack(assets, input, sound);
+  /* ⚠️ `sheets` IS THE FOURTH ARGUMENT AND IT IS FOR THE BARRELS ALONE.
+     The mode's other three entities carry their own rect tables in
+     CONFIG.TIME_ATTACK because they were ported from Still Life; the barrel is
+     this game's own `barril` pack and is drawn through `sheets.draw` like every
+     barrel on the street. Declared after `sheets` for the reason the comment on
+     that line gives -- `const` is not hoisted. */
+  const timeAttack = new TimeAttack(assets, input, sound, sheets);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
   const cont = new Continue(assets);

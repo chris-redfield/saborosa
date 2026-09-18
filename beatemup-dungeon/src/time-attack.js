@@ -52,9 +52,14 @@ class TimeAttack {
      the same clock by it -- see `_entryBeatMs`. */
   static ENTRY_BEATS = 3;
 
-  constructor(assets, input, sound) {
+  constructor(assets, input, sound, sheets) {
     this.assets = assets;
     this.input = input;
+    /* ⚠️ THE BARRELS ARE THE MAIN GAME'S OWN PROP PACK, so this mode needs
+       the game's `Sheets` where its other three entities need only `assets`.
+       Optional: a caller with no sheets gets a minigame with no barrels rather
+       than a crash, which is the same bargain `sound` makes above. */
+    this.sheets = sheets || null;
     /* ⚠️ THE MODE OWNS ITS OWN SOUND rather than game.js driving it from
        outside, which is where Still Life puts the same two calls. The reason is
        leave(): the mode ends ITSELF when the clock runs out, and game.js
@@ -66,6 +71,7 @@ class TimeAttack {
     this.plane = null;      // built on the first enter(); see _cfg()
     this.flies = [];
     this.coins = [];
+    this.barrels = [];
     this.video = null;
     this.reset();
   }
@@ -89,7 +95,14 @@ class TimeAttack {
     this.roundsCleared = 0;
     this.flies.length = 0;
     this.coins.length = 0;
+    this.barrels.length = 0;
     this.respawnT = 0;
+    /* ⚠️ COUNTS DOWN LIKE `respawnT`, AND IT IS A SEPARATE CLOCK ON PURPOSE.
+       `respawnT` is one shared timer that tops up the flies and then the
+       clocks, so a full field of flies already delays the next clock; putting
+       barrels on it would make the obstacle stream depend on how well the
+       player was shooting. They arrive on their own beat. */
+    this.barrelT = 0;
     this.lastCard = '';
     /* The clock's punch: the second last drawn, and how long it has been up.
        ⚠️ `-1` rather than 0 so the very first frame of a round counts as a
@@ -203,6 +216,7 @@ class TimeAttack {
     if (this.sound) this.sound.stopLoops();
     this.flies.length = 0;
     this.coins.length = 0;
+    this.barrels.length = 0;
     this.state = 'done';
   }
 
@@ -387,6 +401,16 @@ class TimeAttack {
        idempotent by itself. */
     this.flies.length = 0;
     this.coins.length = 0;
+    /* ⚠️ CLEARED AND NOT PRE-FILLED, WHICH IS THE OPPOSITE OF THE FLIES AND
+       THE CLOCKS. Those are a FIELD -- the round opens with its whole field in
+       it. Barrels are a STREAM: the first one is due `barrelFirstMs` after the
+       round starts, so the round does not open with one already in the player's
+       face. Clearing matters for the same reason it does above -- a barrel left
+       over from the previous round would be mid-screen when this one begins,
+       and the player would take a hit for a round they had not started. */
+    this.barrels.length = 0;
+    this.barrelT = c.barrelFirstMs != null ? c.barrelFirstMs
+                 : (c.barrelEveryMs != null ? c.barrelEveryMs : 1700);
     for (let n = 0; n < (R.flies || 0); n++) this._spawnFly();
     for (let n = 0; n < (R.clocks || 0); n++) this._spawnClock();
   }
@@ -433,6 +457,62 @@ class TimeAttack {
        an asset swap and no code. */
     const p = this._freeSpot(c);
     this.coins.push(new TaCoin(this.assets, c, p.x, p.y, '01'));
+  }
+
+  /**
+   * ONE BARREL, OFF THE RIGHT EDGE.
+   *
+   * ⚠️ SPAWNED **OUTSIDE** THE SCREEN, WHICH IS THE ONE PLACE IN THIS MODE
+   * THAT IS ALLOWED TO. `_spawnX()` deliberately puts flies INSIDE the field
+   * (0.58..0.98 of the canvas) because `TaFly` wraps modulo `worldW` and a fly
+   * born past the right edge reappears pinned to the left -- that is what "the
+   * flies are all stuck in the left" was. `TaBarrel` is not on the torus (see
+   * its header), so "just off the right" means exactly that, and it is the only
+   * honest place for a thing that has to travel the whole width.
+   *
+   * ⚠️ AND IT CLEARS THE EDGE BY ITS OWN HALF-WIDTH, not by a flat margin.
+   * A barrel is ~157px wide at `barrelScale` 1; spawning at `GAME_W + 40` would
+   * pop half of one into existence on screen.
+   */
+  _spawnBarrel() {
+    if (!this.sheets) return;
+    const c = this._cfg();
+    const b = new TaBarrel(this.sheets, c, 0, this._fieldY(),
+                           Math.random() < (c.barrelHardChance != null
+                                            ? c.barrelHardChance : 0.35));
+    b.x = CONFIG.GAME_W + b.drawnW() / 2
+        + (c.barrelSpawnPadPx != null ? c.barrelSpawnPadPx : 30);
+    this.barrels.push(b);
+  }
+
+  /** How long until the next barrel is due, in ms. */
+  _barrelGap() {
+    const c = this._cfg();
+    const every = c.barrelEveryMs != null ? c.barrelEveryMs : 1700;
+    const varr = c.barrelEveryVarMs != null ? c.barrelEveryVarMs : 700;
+    return Math.max(120, every + (Math.random() * 2 - 1) * varr);
+  }
+
+  /**
+   * How many barrels may be in the air at once.
+   *
+   * ⚠️ THE ROUND GETS THE LAST WORD, so the stream can be made to ramp
+   * across the three rounds by putting `barrels` in `ROUNDS[n]` -- the same
+   * shape `flies` and `clocks` already have. Unset, every round runs the mode's
+   * own `barrelMax`, which is what ships: the obstacle is new and a difficulty
+   * curve for it is a tuning pass, not an assumption to bake in now.
+   */
+  _barrelMax() {
+    const c = this._cfg(), R = this.round0();
+    /* ⚠️ THE FEATURE SWITCH IS READ **HERE**, AT THE ONE PLACE THAT DECIDES
+       WHETHER ANOTHER BARREL MAY EXIST, rather than guarding `_spawnBarrel`.
+       Two reasons. It cannot become a knob that does nothing -- every path to a
+       new barrel goes through this number. And the hold-C readout prints
+       `barrels 0/0`, which says WHY there are none; a spawner that silently
+       returned would look identical to a mistuned cadence. */
+    if (c.barrels === false) return 0;
+    if (R && R.barrels != null) return R.barrels;
+    return c.barrelMax != null ? c.barrelMax : 3;
   }
 
   /**
@@ -591,6 +671,12 @@ class TimeAttack {
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
     for (const f of this.flies) f.update(dt, W, H, false);
     for (const cn of this.coins) cn.update(dt, this._coinW());
+    /* ⚠️ TICKED OUTSIDE `live`, LIKE THE PLANE AND UNLIKE THE CLOCK. A barrel
+       frozen mid-screen through a round card would read as the game hanging --
+       and, worse, it would still be there when `play` resumed, sitting wherever
+       the freeze caught it. `_populate` clears the list before a round, so what
+       keeps moving here is only the tail of the round that just ended. */
+    for (const b of this.barrels) b.update(dt);
     if (live) this._shoot(); else { this.ray = null; this.coinBeam = false; }
 
     /* THE TWO HELD SOUNDS, handed a boolean each and left to sort themselves
@@ -669,6 +755,57 @@ class TimeAttack {
       }
     }
 
+    /* ⚠️⚠️ THE BARRELS HURT, AND THEY BREAK ON HIM WHEN THEY DO (2026-09-18).
+       *"they break up if they hit you, the player takes a hit if he collides
+       with the barrels."* Two effects, one collision, and they are deliberately
+       not gated on each other -- see below.
+
+       ⚠️ THE SAME TWO GATES THE FLIES CARRY, and for the same reasons: `live`
+       so nothing damages the player during a beat they cannot shoot back in
+       (this game has round cards, Still Life's swarm block does not), and
+       `controlLocked` for the fly-in and for a plane already on its way down.
+
+       ⚠️ ONE HIT PER FRAME, BUT EVERY BARREL THAT TOUCHED HIM BREAKS. The
+       flies' block uses a labelled break because there is nothing left to find
+       once a touch has landed; here there is -- a second barrel in the same
+       frame still has to be SEEN to burst, or it sails on through him intact.
+       So the loop runs to the end and only the DAMAGE is taken once. A frame in
+       which two barrels overlap the plane is one hit and two smashes.
+
+       ⚠️ AND THE SMASH IS NOT GATED ON `hurt()` RETURNING TRUE. It returns
+       false through the i-frames, and a barrel that passed through the hull
+       unbroken because the player was briefly invulnerable would look like a
+       missing collision. The i-frames forgive the DAMAGE; they do not make him
+       intangible. */
+    if (live && this.plane && !this.plane.controlLocked) {
+      const pb = this.plane.hitBox(W, H);
+      if (pb) {
+        let took = false;
+        for (const b of this.barrels) {
+          if (!b.isWhole()) continue;
+          for (const bx of b.boxes()) {
+            if (!TimeAttack._boxesOverlap(pb, bx)) continue;
+            b.smash();
+            if (!took) {
+              took = true;
+              if (this.plane.hurt(c.barrelDamage == null ? 1 : c.barrelDamage)
+                  && this.sound) {
+                /* THE SAME TWO VOICES AND THE SAME RULE AS THE FLY TOUCH: the
+                   death REPLACES the hit rather than layering, and the hit
+                   grunt is off in this mode only (`hitVoice: false`). Read the
+                   fly block above for why both of those are what they are --
+                   this is deliberately not a second policy. */
+                const dead = this.plane.isDead();
+                if (dead) this.sound.play('playerDeath');
+                else if (c.hitVoice !== false) this.sound.play('playerHit');
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+
     /* SHOT DOWN. ⚠️ A SEPARATE STATE, NOT STRAIGHT TO `out`, because the plane
        has to be SEEN to fall: `hurt()` starts the tumble on the fatal hit and
        `ta-plane.js` flies it out of frame on real time. `down` stops the clock
@@ -721,12 +858,30 @@ class TimeAttack {
       if (f.isDead() || f.isLanded()) this.flies.splice(i, 1);
     }
     for (let i = this.coins.length - 1; i >= 0; i--) if (this.coins[i].isDead()) this.coins.splice(i, 1);
+    /* ⚠️ AND THIS ONE **CAN** FIRE, WHICH IS WHY IT IS A SEPARATE LOOP. The
+       note above explains that there is no "left the screen" cull in this mode
+       because on a torus nothing ever leaves -- `TaBarrel` is the exception
+       that makes the rule worth stating. `isGone()` is both endings at once: it
+       crossed, or it finished bursting. */
+    for (let i = this.barrels.length - 1; i >= 0; i--) {
+      if (this.barrels[i].isGone()) this.barrels.splice(i, 1);
+    }
     if (live) {
       const R = this.round0();
       this.respawnT -= dt;
       if (this.respawnT <= 0) {
         if (this.flies.length < (R.flies || 0)) { this._spawnFly(); this.respawnT = c.respawnMs || 450; }
         else if (this.coins.length < (R.clocks || 0)) { this._spawnClock(); this.respawnT = c.respawnMs || 450; }
+      }
+      /* THE STREAM. ⚠️ THE CLOCK RUNS WHETHER OR NOT THE FIELD HAS ROOM, and
+         a full field costs the player that barrel rather than banking it. The
+         other way -- holding the timer until a slot frees -- would fire the
+         moment one left the screen and deliver every skipped barrel in a burst,
+         which is the shape of an ambush and not of a stream. */
+      this.barrelT -= dt;
+      if (this.barrelT <= 0) {
+        if (this.sheets && this.barrels.length < this._barrelMax()) this._spawnBarrel();
+        this.barrelT = this._barrelGap();
       }
     }
   }
@@ -773,6 +928,33 @@ class TimeAttack {
            elapsed clock is honest enough -- what matters is that it rises. */
         f.hit(dmg, performance.now());
         if (f.isDead() || !f.isAlive()) this._flyDown();
+        break;
+      }
+    }
+    /* ⚠️ THE BREAKABLE BARRELS, AND THE DARK ONES ARE **NOT** A `continue`
+       WITH A DIFFERENT NAME. `isBreakable()` is false for a dark barrel, so the
+       beam simply finds nothing there -- it does not stop, it does not spark,
+       it PASSES THROUGH and goes on to whatever is behind it.
+
+       ⚠️ THAT IS THE LITERAL READING OF THE ASK (*"unbreakable from the
+       machine gun"*) AND IT IS A REAL DESIGN CHOICE, so it is worth naming the
+       other one: a dark barrel that BLOCKED the beam would be cover -- flies
+       could hide behind it and the player would have to fly around it to shoot
+       past. That is a different and bigger mechanic than "you cannot break
+       this", it was not asked for, and the ray here has no notion of a nearest
+       hit (it tests every box and stops at none). If it is ever wanted, the
+       change is in this method and not in `TaBarrel`.
+
+       ⚠️ AND A BARREL TAKES NO DAMAGE AND HAS NO HEALTH: one frame of the
+       beam breaks it. A `barrelHealth` would put i-frames on an obstacle,
+       which is the thing that turned one clock into 35 seconds of payout --
+       and unlike a clock, a barrel pays nothing, so there is nothing to
+       rate-limit. It is destroyed or it is not. */
+    for (const b of this.barrels) {
+      if (!b.isBreakable()) continue;
+      for (const bx of b.boxes()) {
+        if (!TimeAttack._rayHitsBox(ray, th, bx)) continue;
+        b.smash();
         break;
       }
     }
@@ -868,6 +1050,13 @@ class TimeAttack {
     for (const cn of this.coins) cn.render(ctx, 0, 0, this._coinW());
     for (const f of this.flies) f.render(ctx, 0, 0, W);
     for (const cn of this.coins) cn.renderBurst(ctx, 0, 0, this._coinW());
+    /* ⚠️ UNDER THE PLANE AND OVER EVERYTHING ELSE. A barrel is the biggest
+       thing in this mode after the plane, and the plane is the one drawing the
+       player has to be able to read at all times -- so an obstacle passes
+       BEHIND it. It goes over the flies and the clocks for the opposite reason:
+       it is the near object, and a fly showing through a solid barrel says the
+       barrel is a decal. */
+    for (const b of this.barrels) b.render(ctx);
     if (this.plane) this.plane.render(ctx, W, H, 0);
     if (this.input && this.input.debug) this._drawDebug(ctx, W, H);
     this._drawHud(ctx, W, H);
@@ -1334,6 +1523,16 @@ class TimeAttack {
       ctx.strokeStyle = cn.isShootable() ? '#FAFA24' : 'rgba(250,250,36,0.25)';
       for (const bx of cn.boxes(0, 0, this._coinW())) ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
     }
+    /* ⚠️ THE TWO KINDS ARE DRAWN IN DIFFERENT COLOURS, because "is this one
+       breakable" is the single thing about a barrel that cannot be checked any
+       other way at a glance -- the tell on screen is 15% of brightness. Orange
+       breaks, grey does not, and a barrel already bursting is dim like every
+       other non-hittable thing in this overlay. */
+    for (const b of this.barrels) {
+      ctx.strokeStyle = !b.isWhole() ? 'rgba(255,255,255,0.22)'
+                      : b.isBreakable() ? '#ff9f43' : '#9aa3ad';
+      for (const bx of b.boxes()) ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
+    }
     if (this.plane && this.plane.hitBox) {
       const pb = this.plane.hitBox(W, H);
       if (pb) { ctx.strokeStyle = '#8ef58e'; ctx.strokeRect(pb.x, pb.y, pb.w, pb.h); }
@@ -1361,6 +1560,9 @@ class TimeAttack {
     ctx.fillText('state ' + this.state + '  round ' + (this.round + 1) + '/' + c.ROUNDS.length
       + '  quota ' + this.coinsGot + '/' + R.coins + '  clock ' + (this.clockMs / 1000).toFixed(2)
       + '  flies ' + this.flies.length + '/' + R.flies + '  clocks ' + this.coins.length + '/' + R.clocks
+      + '  barrels ' + this.barrels.length + '/' + this._barrelMax()
+      + ' (' + this.barrels.filter(b => b.hard).length + ' hard, next '
+      + (this.barrelT / 1000).toFixed(1) + 's)'
       + '  score ' + this.score + '  firing ' + (this.ray ? 'yes' : 'no'), 12, H - 22);
     ctx.restore();
   }
