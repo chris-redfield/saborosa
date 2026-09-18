@@ -322,6 +322,20 @@ class Sheets {
   }
 
   /**
+   * Convert a distance MEASURED ON THE ATLAS into drawn px for this pack.
+   *
+   * The defs' `ay`, `bh` and every rect are in atlas px, and `pack.scale` is what
+   * turns those into what is on screen (`fighterSizePx / refH`, times the pack's
+   * `drawScale`). Anything hand-measured off a sprite is in that same space, so
+   * it has to come through here rather than being written in screen px -- a
+   * screen-px constant silently drifts the moment a pack's `drawScale` moves.
+   */
+  scalePx(kind, px) {
+    const pack = this.packs[kind];
+    return pack ? px * pack.scale : px;
+  }
+
+  /**
    * How far the tallest frame of a pose reaches ABOVE the ground point, drawn px.
    *
    * ⚠️ THIS IS THE FRAME'S REACH, NOT `size()`'s BODY HEIGHT, and the difference

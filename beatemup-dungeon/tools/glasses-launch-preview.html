@@ -1,0 +1,99 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>glasses launch height</title>
+<!--
+  WHERE THE GLASSES START THEIR FLIGHT, drawn through the game's OWN Sheets.
+  The old height (`topPx(skin,'hurt')`, the tallest flinch's full reach) and the
+  new one (`scalePx(skin, GLASSES.atPx)`, measured on the art) are both marked
+  over the worm at his real drawn scale, with the spectacles placed at each.
+
+  Nothing is re-implemented: this builds the real packs with the real config and
+  calls the same two methods fighter.js calls.
+-->
+<style>
+  body { margin:0; background:#15151a; color:#ddd; font:13px/1.35 monospace; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; padding:8px; }
+  canvas { background:#23232b; }
+  figcaption { opacity:.8; padding:4px 0; }
+</style>
+<div class="row" id="out"></div>
+<script src="../src/config.js"></script>
+<script src="../src/sheets.js"></script>
+<script>
+const SKINS = CONFIG.CHARACTERS.verme.stage1;
+
+function srcOf(kind, ext) {
+  const def = CONFIG.CHARACTERS[kind];
+  const base = def.sheet.replace(/^v2:/, '../../assets-v2/');
+  return base + ext;
+}
+
+const store = { imgs: {}, jsons: {},
+  getDrawable(k) { return this.imgs[k] || null; },
+  getJSON(k) { return this.jsons[k] || null; } };
+
+function loadAll() {
+  const jobs = [];
+  for (const k of SKINS) {
+    jobs.push(new Promise(res => {
+      const im = new Image();
+      im.onload = () => { store.imgs[k] = im; res(); };
+      im.onerror = () => { console.warn('MISSING img', k); res(); };
+      im.src = srcOf(k, '-game.png');
+    }));
+    jobs.push(fetch(srcOf(k, '-sprites.json')).then(r => r.json())
+      .then(j => { store.jsons[k] = j; })
+      .catch(() => console.warn('MISSING json', k)));
+  }
+  return Promise.all(jobs);
+}
+
+loadAll().then(() => {
+  const sheets = new Sheets(store);
+  const G = CONFIG.GLASSES;
+  const out = document.getElementById('out');
+
+  for (const skin of SKINS) {
+    const pack = sheets.build(skin);
+    const fig = document.createElement('figure');
+    fig.style.margin = '0';
+    const cv = document.createElement('canvas');
+    cv.width = 340; cv.height = 430;
+    const ctx = cv.getContext('2d');
+    const cap = document.createElement('figcaption');
+    fig.append(cv, cap); out.append(fig);
+    if (!pack) { cap.textContent = skin + ' — PACK FAILED TO BUILD'; continue; }
+
+    // A ground point to hang everything off, as the belt would.
+    const gx = 170, gy = 360;
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(cv.width, gy); ctx.stroke();
+
+    // The worm, flinching, exactly as the game draws him.
+    sheets.draw(ctx, skin, 1, 'hurt', 0, gx, gy, {});
+
+    const oldH = sheets.topPx(skin, 'hurt');
+    const newH = sheets.scalePx(skin, G.atPx);
+
+    // OLD launch height
+    ctx.strokeStyle = '#f66'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, gy - oldH); ctx.lineTo(cv.width, gy - oldH); ctx.stroke();
+    // NEW launch height
+    ctx.strokeStyle = '#6f6';
+    ctx.beginPath(); ctx.moveTo(0, gy - newH); ctx.lineTo(cv.width, gy - newH); ctx.stroke();
+
+    // the spectacles, at each start point, so the difference is a picture
+    ctx.globalAlpha = 0.45;
+    sheets.draw(ctx, skin, 1, 'glasses', 0, gx + 120, gy - oldH, {});
+    ctx.globalAlpha = 1;
+    sheets.draw(ctx, skin, 1, 'glasses', 0, gx + 120, gy - newH, {});
+
+    ctx.fillStyle = '#f66'; ctx.font = '13px monospace';
+    ctx.fillText('OLD topPx = ' + oldH.toFixed(0), 6, gy - oldH - 6);
+    ctx.fillStyle = '#6f6';
+    ctx.fillText('NEW atPx  = ' + newH.toFixed(0), 6, gy - newH - 6);
+    cap.textContent = skin + '  packScale=' + pack.scale.toFixed(3);
+  }
+  document.title = 'ready';
+});
+</script>

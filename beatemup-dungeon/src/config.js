@@ -550,6 +550,7 @@ const CONFIG = {
     awayPx: 420,    // sideways, in the direction of the blow: ~600px/sec
     spin: 7.0,      // radians over the flight -- a bit over one tumble
     fadeFrom: 0.78,  // ⚠N0186
+    atPx: 146,  // ⚠N0820
   },
 
   IDLE_LONG: {
@@ -1396,7 +1397,8 @@ const CONFIG = {
         ] } },
       { kind: 'lift', sec: 8.21, film: [46.99, 55.20] },
       { kind: 'walk', dir: +1, px: 3390, film: [55.23, 73.97],
-        arena: { atRel: 0.88, enemies: [
+        arena: { atRel: 0.88, boss: { who: 'mrstop' },  // ⚠N0812
+          enemies: [
           { kind: 'verme',   sx: 980,  z: 150 },
           { kind: 'verme',   sx: 1120, z: 60,  delayMs: 700 },
           { kind: 'verme',   sx: 300,  z: 110, delayMs: 2000, from: 'behind' },
@@ -1655,6 +1657,104 @@ const CONFIG = {
     sizePx: 170,
     sizeJitter: 0.3,
     fadeMs: 560,  // ~N0601
+  },
+
+  CLOCK_BOSS: {  // ~N0795 ⚠N0796
+    sheet:  'v2:flying-dungeon/enemy-sheets/saborosa-boss-time.png',
+    golpe:  'v2:flying-dungeon/enemy-sheets/saborosa-boss-time-golpe.png',  // ~N0797
+    FIRE: [
+      'v2:flying-dungeon/enemy-sheets/saborosa-boss-time-fire-01.png',
+      'v2:flying-dungeon/enemy-sheets/saborosa-boss-time-fire-02.png',
+      'v2:flying-dungeon/enemy-sheets/saborosa-boss-time-fire-03.png',
+      'v2:flying-dungeon/enemy-sheets/saborosa-boss-time-fire-04.png',
+    ],
+    name: 'MISTER STOP',  // ~N0798
+    RECTS: [  // ⚠N0799
+      [ 177, 79, 120, 219],   // profile, looking LEFT
+      [ 326, 79, 171, 219],
+      [ 530, 79, 228, 223],
+      [ 784, 79, 269, 223],   // full front
+      [1078, 79, 228, 223],
+      [1334, 79, 171, 219],
+      [1530, 79, 120, 219],   // profile, looking RIGHT
+    ],
+    refH: 223,              // tallest frame -- what sizePx is measured against
+    sizePx: 300,  // ~N0800
+    health: 120,  // ~N0801
+    hurtMs: 150,            // i-frames. Never optional -- see the Mosca's note.
+    hitWRel: 0.62,
+    hitZ: 46,
+    knockback: 40,          // barely shoved: he outweighs a fighter
+
+    turnMs: 420,  // ⚠N0802
+    stalkSpeed: 150,  // ⚠N0803
+    faceSpanX: 520,         // px of separation that puts him in full profile
+    bobFreq: 1.9,           // rad/sec -- slower and heavier than the Mosca's
+    bobAmp: 10,
+
+    hoverY: 170,  // ⚠N0804
+    castY: 26,  // ⚠N0805
+    riseRate: 7.0,  // ⚠N0813
+    enterFromY: 640,  // ~N0806
+    enterSpeed: 430,
+    enterMargin: 260,
+
+    CAST_MODES: ['ground', 'air', 'corner', 'salvo'],  // ⚠N0814 ⚠N0821
+    airCastY: 155,  // ⚠N0815
+    cornerInsetPx: 130,  // ~N0816
+    cornerReachFrac: 0.85,  // ⚠N0819
+    settleSpeed: 640,  // ⚠N0817
+    settleZSpeed: 300,
+    settleMaxMs: 2000,  // ⚠N0818
+    settleReachPx: 26,      // how close counts as "in position"
+
+    castEveryMs: 4200,  // ~N0807
+    castSaltMs: 1200,
+    telegraphMs: 900,  // ⚠N0808
+    holdMs: 420,            // each wave's time on screen -- and its hitbox's
+    betweenMs: 260,         // gap between the cross and the X
+    frameMs: 70,            // the crackle: ms per fire frame
+    armPx: 720,  // ⚠N0809
+    WAVES: [  // ~N0810
+      [0, 90, 180, 270],         // upright cross
+      [45, 135, 225, 315],       // the same four, swung 45 degrees
+    ],
+    hitPx: 56,  // ⚠N0811
+    damage: 10,
+    touchKnockback: 240,
+
+    SHOT: {  // ~N0822
+      on: true,
+      sheet: 'v2:flying-dungeon/saborosa-orb.webp',
+      cell: 216,              // the sheet is 5 square cells in a strip
+      frames: 5,
+      sizePx: 76,             // drawn cell size at the near edge of the belt
+      holdMs: 100,            // ms per frame of the pulse
+      speed: 360,             // px/sec, constant -- homing steers, never speeds up
+      damage: 8,
+      knockback: 210,
+      hitPx: 30,  // ⚠N0823
+      hitZ: 34,
+      lifeMs: 3000,  // ~N0824
+
+      everyMs: 1700,  // ⚠N0825
+      saltMs: 700,
+
+      salvoCount: 5,  // ~N0826
+      starPoints: 5,  // ⚠N0829
+      starStep: 2,  // ⚠N0830
+      starRadiusRel: 0.30,  // ⚠N0831
+      starCentreRel: 0.62,  // ⚠N0832
+      salvoGapMs: 240,
+      homing: 1.5,  // ⚠N0827
+      homingMs: 1400,  // ⚠N0828
+    },
+
+    deathBoom: {
+      on: true, count: 6, startMs: 0, everyMs: 165,
+      spreadXRel: 0.45, spreadYRel: 0.6,
+      sizePx: 180, sizeJitter: 0.3, fadeMs: 560,
+    },
   },
 
   HORSE_BOSS: {  // ⚠N0602

@@ -372,6 +372,20 @@ function assetManifest() {
   CONFIG.MOSCA_SHEETS.forEach((src, i) =>
     out.push({ key: 'mosca' + i, src: src, how: 'image' }));
 
+  /* MISTER STOP, also read in place out of the flying dungeon's folder: the
+     turn sheet, the same turn with his fists up, and the four fire sheets the
+     bolts cycle through. Keyed rather than indexed for the first two because
+     they are two different POSES of one character, not two frames of one. */
+  if (CONFIG.CLOCK_BOSS) {
+    out.push({ key: 'mrstop',      src: CONFIG.CLOCK_BOSS.sheet, how: 'image' });
+    out.push({ key: 'mrstopGolpe', src: CONFIG.CLOCK_BOSS.golpe, how: 'image' });
+    CONFIG.CLOCK_BOSS.FIRE.forEach((src, i) =>
+      out.push({ key: 'mrstopFire' + i, src: src, how: 'image' }));
+    // ...and his shots, which are Still Life's orb, also read in place.
+    const SH = CONFIG.CLOCK_BOSS.SHOT;
+    if (SH && SH.sheet) out.push({ key: 'mrstopShot', src: SH.sheet, how: 'image' });
+  }
+
   /* Backdrop sources, whatever kind they are. A `film` source contributes one
      entry per FRAME, which is the case this loop exists for: when the footage
      lands it will be hundreds of files, and nobody is going to maintain that by

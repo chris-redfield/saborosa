@@ -12560,3 +12560,328 @@ same clock is a two-line change if it reads wrong.
 Hold C: draw the boxes. Same key as the other two games, deliberately —
 it is the same gesture in all three.
 
+
+## MISTER STOP — the clock boss
+
+`N0795` · `CONFIG.CLOCK_BOSS`
+
+Ported from STILL LIFE on 2026-09-18 on request: *"pegar o boss relógio e
+adicionar na fase da biblioteca, na última arena, no final... faça ele flutuar,
+como ele já flutua no still life"*. The behaviour lives in `src/clock-boss.js`,
+whose header carries the reasoning; this block is only the knobs.
+
+### ⚠ N0796 — `CONFIG.CLOCK_BOSS`
+
+⚠️ **THE ART IS READ IN PLACE OUT OF THE FLYING DUNGEON'S FOLDER, NOT COPIED.**
+Same deal the Mosca gets. `assets-v2/flying-dungeon/enemy-sheets/` is shared, so
+a copy here would be a second truth to keep in step, and the only thing this
+game adds is the rect table and the numbers below.
+
+### N0797 — `CONFIG.CLOCK_BOSS.golpe`
+
+The SAME 7 poses with his fists up, so it swaps in against `RECTS` with no
+second rect table to keep in step. Drawn from the tell until the recovery ends.
+
+### N0798 — `CONFIG.CLOCK_BOSS.name`
+
+The nameplate under his bar. README assigned him "Cumbia Corazon" long before he
+existed — which is already `musicLevel3`, the library's own bed, so **he
+declares no `musicKey` at all** and the room's song simply runs through his
+fight. See the class header.
+
+### ⚠ N0799 — `CONFIG.CLOCK_BOSS.RECTS`
+
+Hand-placed at irregular pitch and differing sizes, measured off the sheet's
+alpha in Still Life and inherited verbatim. ⚠️ **EVERY FRAME SHARES TOP y=79**,
+which is why the draw hangs them from a common top rather than centring them:
+the 4px the front-facing frames gain is the stance widening at the FEET, and
+centring it would make him bob as he turns.
+
+### N0800 — `CONFIG.CLOCK_BOSS.sizePx`
+
+Drawn height in the fixed 1280x720 canvas. Fighters are 152, so at 300 he is
+about twice the thing fighting him — the Mosca is 304 and the horse 319.
+
+### N0801 — `CONFIG.CLOCK_BOSS.health`
+
+120, against the Mosca's 110 and the horse's 150. A first-pass number: he is the
+last boss in the game, but he is also fought with a fresh life bar at the end of
+a long shelf climb. **Never judged in play.**
+
+### ⚠ N0802 — `CONFIG.CLOCK_BOSS.turnMs`
+
+⚠️ **THIS KNOB IS ALSO HIS ACCELERATION, AND THAT IS NOT A SIDE EFFECT.**
+Velocity is `stalkSpeed × (facing×2−1)`, so how fast he turns IS how fast he
+gets up to speed. Lower it and he snaps to full pelt; raise it and he wallows
+through front-on. There is no separate acceleration number to reach for.
+
+### ⚠ N0803 — `CONFIG.CLOCK_BOSS.stalkSpeed`
+
+His speed at FULL PROFILE only. Face-on he is stationary, whatever this says —
+see N0802. So this is the ceiling, not the pace, and the pace is decided by how
+far off-centre the player stands (`faceSpanX`).
+
+### ⚠ N0804 — `CONFIG.CLOCK_BOSS.hoverY`
+
+⚠️ **THIS IS WHAT MAKES HIM UNPUNCHABLE BETWEEN CASTS, AND IT IS THE FIGHT.**
+Combat rejects a hit when `|e.jumpY − player.jumpY| > box.reachY`, so at 170 a
+standing punch cannot reach him and a jump can. Drop this and the whole design
+collapses into standing under him and mashing.
+
+### ⚠ N0805 — `CONFIG.CLOCK_BOSS.castY`
+
+...and this is the window. He comes down to 26 to throw the lightning, which is
+the only moment he is easy to hit and also the only moment he is dangerous.
+⚠️ The two numbers are a PAIR: closing the gap between them removes the fight's
+rhythm, and widening it makes him unreachable for longer than the player will
+wait.
+
+### N0806 — `CONFIG.CLOCK_BOSS.enterFromY`
+
+He floats DOWN into the room rather than walking on. 640 puts him off the top of
+the frame at the start, so the arena's wave has cleared before he is visible.
+
+### N0807 — `CONFIG.CLOCK_BOSS.castEveryMs`
+
+Time hovering between casts, plus up to `castSaltMs` of salt so the rhythm is
+not metronomic. The cast itself is deterministic — cross, gap, X — because
+learning the pattern IS the fight in this genre.
+
+### ⚠ N0808 — `CONFIG.CLOCK_BOSS.telegraphMs`
+
+Fists up and dropping: the only warning the player gets. ⚠️ **IT MUST BE LONGER
+THAN THE DESCENT** (`riseRate`, N0813) or the first wave fires while he is still
+in the air, and the cross then goes off above everyone's head. That is not
+hypothetical — it is what the first build did.
+
+### ⚠ N0809 — `CONFIG.CLOCK_BOSS.armPx`
+
+Arm length in CANVAS px, like `sizePx` — the strike is scaled against the frame
+the player sees, not against the world. At 720 an arm reaches more than half the
+screen, so the cross is a room-wide attack that is dodged by standing in the
+GAPS between its arms rather than by outrunning it.
+
+### N0810 — `CONFIG.CLOCK_BOSS.WAVES`
+
+Two rows, fired in order: the upright cross, then the same four arms swung 45°.
+Adding a row adds a wave; the phase machine reads the length.
+
+### ⚠ N0811 — `CONFIG.CLOCK_BOSS.hitPx`
+
+⚠️ **THE HITBOX IS MUCH NARROWER THAN THE ART, ON PURPOSE.** The drawn bolt is a
+wide band of jagged branches and forks; being killed by a wisp at the edge of
+one would be indefensible. This is the trunk. Still Life's own number, kept.
+
+⚠️ **AND THE TEST IS SEGMENT-TO-SEGMENT, NOT POINT-TO-LINE.** The player is a
+BODY, feet to head. Measured against the ground point instead, the cross's two
+horizontal arms — which run at his chest height — missed by ~180px and the first
+of his two waves could not hit anyone standing up. It looked entirely correct on
+screen. Measured coverage after the fix: cross 312/700 sampled stances, X
+227/700. See `_boltHitsPlayer`.
+
+### ⚠ N0812 — `CONFIG.LEVEL3.legs[4].arena.boss`
+
+⚠️ **HE IS THE SECOND HALF OF THE LAST SHELF'S ARENA, NOT A SIXTH LEG.** The
+wave clears, the camera stays pinned, and he floats down into the same locked
+frame; the leg does not resume until `finished()`. Level 3 has no segments, so
+`level3.js` hands him to `stage.boss` through `Stage.makeBoss` — the same bargain
+its waves make with `Stage._spawn`, and for the same reason: one construction
+site.
+
+⚠️ Level 3 is the LAST room (it returns 'clear', not 'room'), so this is the
+final fight in the game before the ending.
+
+### ⚠ N0813 — `CONFIG.CLOCK_BOSS.riseRate`
+
+How fast he eases between `hoverY` and `castY`, 1/sec. ⚠️ **IT STARTED AT 3.2 AND
+THE DESCENT DID NOT FINISH IN TIME** — he was still at y≈109 when the first wave
+fired, so the cross went off in mid-air and the punish window never opened. 7.0
+completes the drop inside `telegraphMs`. Move one and check the other.
+
+### ⚠ N0814 — `CONFIG.CLOCK_BOSS.CAST_MODES`
+
+The three casts, **rotated in order and never rolled** — a boss whose next move
+is a coin flip cannot be learned, and learning the pattern is the fight. Only the
+delay between casts is salted. Added 2026-09-18 on request.
+
+    ground  he drops to the floor where he stands and throws it point blank.
+    air     he stays UP, over the player, out of reach — the one that cannot be
+            punished, only dodged.
+    corner  he backs across the arena, MATCHES THE PLAYER'S DEPTH, and throws
+            the horizontal arm down the whole belt.
+
+Reorder the array to reorder the fight; drop an entry to remove that cast. The
+phase machine reads the length.
+
+### ⚠ N0815 — `CONFIG.CLOCK_BOSS.airCastY`
+
+The one cast thrown from the hover height rather than the floor. ⚠️ It is set
+just under `hoverY` (170) on purpose: high enough that a standing punch still
+cannot reach him, so **this cast has no punish window at all.** That is what
+makes it different from the other two rather than a slower version of them.
+
+### N0816 — `CONFIG.CLOCK_BOSS.cornerInsetPx`
+
+How far inside the arena's edge he will park. Only a CLAMP — the mark itself is
+derived from the arm's reach, see N0819.
+
+### ⚠ N0817 — `CONFIG.CLOCK_BOSS.settleSpeed`
+
+He is moved DIRECTLY at this speed while taking up position, **not through
+`facing`**. The turn is a stalk; a corner run steered by the thing that points
+him at the player would curve back into them. He keeps looking at the player the
+whole way, which is why backing off reads as squaring up rather than fleeing.
+
+### ⚠ N0818 — `CONFIG.CLOCK_BOSS.settleMaxMs`
+
+⚠️ **NOT PADDING.** `settle` is the only thing between the hover and the cast, so
+every way of never arriving — a speed knob at zero, an arena narrower than the
+inset, a depth he cannot match — would hang him in a fight nobody can end, with
+nothing visibly wrong. On the timeout he throws it from wherever he got to.
+
+### ⚠ N0819 — `CONFIG.CLOCK_BOSS.cornerReachFrac`
+
+⚠️ **THE CORNER CAST AIMS AT THE ARM'S REACH, NOT AT THE CORNER, AND THE FIRST
+VERSION MISSED BECAUSE IT DID THE OBVIOUS THING.** Parked on the literal edge of
+a 1280-wide arena, the player sat 836px away from a bolt that stops at ~670: he
+lined up on their depth perfectly, threw it, and nothing happened. It looked
+magnificent and could not connect.
+
+So the mark is `player.x ± armPx × depthScale × this`, then clamped into the
+arena. Both numbers that decide the reach are inside the one it is derived from,
+so moving `armPx` or `sizePx` cannot break it again.
+
+⚠️ **AND THE AIM IS `z`, NOT `y`.** Two bodies on a belt share a screen row when
+they share a DEPTH, so matching the player's z is what puts the horizontal arm
+through them. At `castY` his chest lands ~13px above a matched-depth player's
+head, inside `hitPx` — no second height knob is needed and adding one would be
+tuning around a number that is already right.
+
+**MEASURED COVERAGE** (`tools/mrstop-preview.html`, 1080 sampled stances across
+the belt, wave 1): ground **77%**, air **34%**, corner **78%**. ⚠️ Those two
+77/78s are HIGH for a telegraphed attack and have never been played — the belt is
+only 190px deep while a body is 152 tall, so one screen-height line crosses most
+depths. If it plays as unfair, `hitPx` (N0811) is the knob, not the arm length.
+
+### ⚠ N0820 — `CONFIG.GLASSES.atPx`
+
+**Where the glasses ARE on the worm's face**, in ATLAS px above his body floor —
+so `Fighter._drawGlasses` can launch them from the face instead of from the top
+of his head.
+
+⚠️ **IT REPLACED `topPx(skin, 'hurt')`, WHICH WAS MEASURING THE WRONG THING.**
+That returns the MAX REACH OF THE WHOLE POSE — the tallest flinch drawing, 249
+atlas px on pack 1 — so the pair launched from *above* his head and fell back
+down through his face. Reported 2026-09-18: *"its starting very high, its not
+starting close to where the glasses actually are at these enemies"*.
+
+**HOW 146 WAS MEASURED, so it can be redone if the art is recut:** the empty
+spectacles in each hurt row are the SAME drawing the artist put on the face, so
+the loose tile was template-matched against the flinch frame. All four packs
+agreed within 4px — 144 / 146 / 148, and one bad match on pack 1 that the
+picture rejected — so ONE number serves all four rather than four knobs.
+`tools/glasses-launch-preview.html` draws the old and new heights over the real
+worm through the real `Sheets`.
+
+⚠️ **IT IS IN ATLAS px AND GOES THROUGH `sheets.scalePx()`**, like `topPx` does.
+A screen-px constant here would drift the moment a pack's `drawScale` moved —
+and these packs carry `drawScale: 1.46`.
+
+### ⚠ N0821 — `CONFIG.CLOCK_BOSS.CAST_MODES` (the salvo)
+
+A fourth cast, added 2026-09-18: he flies to a corner and fires five balls in
+sequence instead of throwing lightning. ⚠️ **IT REPLACES THE LIGHTNING FOR THAT
+TURN, it is not a garnish on top of it** — `_tell` branches to `salvo` or to
+`wave1`, never both, so the rotation stays four distinct things to learn.
+
+It shares `corner`'s positioning but is thrown from `airCastY`, not the floor:
+the corner LIGHTNING comes from the ground of that corner and this comes from
+above it, which is what keeps the two casts from reading as one move.
+
+### N0822 — `CONFIG.CLOCK_BOSS.SHOT`
+
+His projectile is **Still Life's orb**, read in place like the rest of him — a
+5-cell 216px strip that pulses. Two things fire it:
+
+* the **loose shot**, on its own clock, in the HOVER only;
+* the **salvo**, five of them `salvoGapMs` apart from a corner.
+
+### ⚠ N0823 — `CONFIG.CLOCK_BOSS.SHOT.hitPx`
+
+Belt space, like everything else that hits in this game — `x` within this, `z`
+within `hitZ`, and the ball's height inside the player's body span. ⚠️ Note this
+is **not** how the lightning is tested (that one is screen-space and radial,
+N0811): a ball is an object in the room and a bolt is a line on the frame, and
+pretending they are the same shape is how one of them ends up wrong.
+
+### N0824 — `CONFIG.CLOCK_BOSS.SHOT.lifeMs`
+
+How long a ball lives before it gives up. It also bounds the attack: nothing he
+fires can still be chasing you on his next cast.
+
+### ⚠ N0825 — `CONFIG.CLOCK_BOSS.SHOT.everyMs`
+
+The loose shot's cadence. ⚠️ **IT TICKS IN THE HOVER AND NOWHERE ELSE**, by
+choice: ticking it through a cast would land a ball on the player in the same
+frame they are threading the cross's four arms — damage they were given no way
+to read. Confining it here also gives the hover a job, since it used to be the
+rest beat and standing off now costs something.
+
+### N0826 — `CONFIG.CLOCK_BOSS.SHOT.salvoCount`
+
+Five, fired `salvoGapMs` apart. ⚠️ **THE SPREAD IS NOT AUTHORED — IT IS THE
+SEQUENCE.** Each ball aims fresh at where the player IS when it leaves, so a
+player who keeps moving opens the fan himself and a player who stands still takes
+all five in the same place. Verified in `tools/mrstop-preview.html`, which traces
+every ball's path for a still player and a walking one.
+
+### ⚠ N0827 — `CONFIG.CLOCK_BOSS.SHOT.homing`
+
+How hard a ball steers toward the player, as a blend rate per second — **not**
+radians. ⚠️ `speed` is held CONSTANT and re-normalised after every steer, so
+homing can only turn a ball and never make it faster. A shot that accelerated at
+you could not be outrun, and outrunning it is the answer this attack asks for.
+
+### ⚠ N0828 — `CONFIG.CLOCK_BOSS.SHOT.homingMs`
+
+⚠️ **THE HOMING EXPIRES, AND THAT IS WHAT MAKES THE ATTACK FINITE.** A ball that
+steered for its whole life would eventually corner anybody; after this it commits
+to a heading and can be walked away from. The early steer is what stops standing
+still from working. Raise it and the salvo becomes inescapable — there is no
+block button in this game.
+
+### ⚠ N0829 — `CONFIG.CLOCK_BOSS.SHOT.starPoints`
+
+The salvo's balls are born on the points of a five-pointed star laid over his
+clock face, not all out of his middle. Asked for 2026-09-18: *"as if there was a
+5 pointed star in the clock, and each projectile comes from there"*.
+
+### ⚠ N0830 — `CONFIG.CLOCK_BOSS.SHOT.starStep`
+
+⚠️ **2 IS WHAT MAKES IT A PENTAGRAM RATHER THAN A PENTAGON.** Taking every SECOND
+vertex is the star polygon {5/2} — the figure you draw without lifting the pen.
+Because the balls leave in sequence, the spawn point jumps across the face and
+**the volley traces the star**. Step 1 uses the same five points and merely walks
+round them, which is a ring and reads as nothing.
+
+⚠️ **AND THE AIM FALLS OUT OF IT FOR FREE:** `_fire` takes its heading from the
+spawn point to the player, so five origins are already five slightly different
+headings — extra spread at no cost, and it widens the closer he is.
+
+### ⚠ N0831 — `CONFIG.CLOCK_BOSS.SHOT.starRadiusRel`
+
+× `sizePx`, so the star is measured against his drawn height and cannot drift if
+he is resized. 0.30 → ~90px, which fits inside the dial.
+
+⚠️ **THE STAR FORESHORTENS WITH THE DIAL**, and that is not decoration: his turn
+sheet is 269px wide face-on and 120px in profile, and the salvo is thrown from a
+corner — exactly when he is most side-on. Without the squash the two side points
+spawn off the edge of his body, which is the original complaint (balls not coming
+out of him) wearing a different hat. The ratio is read from `RECTS`, so it cannot
+disagree with the art.
+
+### ⚠ N0832 — `CONFIG.CLOCK_BOSS.SHOT.starCentreRel`
+
+× `sizePx` above his feet. ⚠️ **NOT 0.5** — he is a clock with LEGS, and a star
+centred on his height hangs half of itself around his shins. 0.62 puts it on the
+face.

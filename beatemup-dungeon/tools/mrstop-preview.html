@@ -1,0 +1,258 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MISTER STOP — preview</title>
+<!--
+  Drives ClockBoss from the GAME'S OWN code and config: the real config.js, the
+  real belt.js, the real boom.js and the real clock-boss.js, with the real art.
+  Nothing about him is re-typed here, so what this draws is what the fight
+  draws. The only thing standing in is a `player` (a position for him to look
+  at) and the `assets` store, which here is a map of loaded Images.
+
+  Each cell steps his ACTUAL state machine to a phase and then calls his own
+  draw(). The bolts are therefore drawn by _drawBolts/_drawBolt, which is the
+  part most likely to be wrong -- see the note about the sprite's right edge.
+-->
+<style>
+  body { margin:0; background:#15151a; color:#ddd; font:13px/1.4 monospace; }
+  .row { display:flex; flex-wrap:wrap; }
+  figure { margin:0; padding:6px; }
+  figcaption { text-align:center; opacity:.75; padding-top:4px; }
+  canvas { background:#23232b; display:block; }
+</style>
+<div class="row" id="out"></div>
+
+<script src="../src/config.js"></script>
+<script src="../src/belt.js"></script>
+<script src="../src/boom.js"></script>
+<script src="../src/clock-boss.js"></script>
+<script>
+const C = CONFIG.CLOCK_BOSS;
+
+// The asset store, with exactly the one method ClockBoss.draw() asks for.
+const assets = {
+  map: {},
+  getDrawable(k) { return this.map[k] || null; },
+};
+
+const SRC = {
+  mrstop: C.sheet,
+  mrstopGolpe: C.golpe,
+};
+C.FIRE.forEach((s, i) => SRC['mrstopFire' + i] = s);
+
+// config paths are 'v2:<rel>'; the real assets.js resolves those against
+// ASSET_V2_BASE, and this preview lives one folder deeper than src/.
+function resolve(p) {
+  return p.startsWith('v2:') ? '../../assets-v2/' + p.slice(3) : p;
+}
+
+function load() {
+  return Promise.all(Object.entries(SRC).map(([k, p]) => new Promise(res => {
+    const im = new Image();
+    im.onload = () => { assets.map[k] = im; res(); };
+    im.onerror = () => { console.warn('MISSING', p); res(); };
+    im.src = resolve(p);
+  })));
+}
+
+/* Step him to a phase using his OWN update(), never by poking fields -- a
+   preview that sets `phase` by hand renders a state the game cannot reach.
+   `dxFromPlayer` places the stand-in player so the turn is exercised too. */
+function stepTo(boss, player, phase, maxS = 12) {
+  const dt = 1 / 60;
+  for (let i = 0; i < maxS * 60; i++) {
+    boss.update(dt, player, { minX: -4000, maxX: 4000 });
+    if (boss.phase === phase) return true;
+  }
+  return false;
+}
+
+function cell(label, build) {
+  // THE GAME'S OWN FRAME. A shorter canvas puts the belt (topY 520) off the
+  // bottom and every height in the picture becomes a fiction.
+  const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
+  const fig = document.createElement('figure');
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  cv.style.width = '620px'; cv.style.height = (720 * 620 / 1280) + 'px';
+  const ctx = cv.getContext('2d');
+  const cap = document.createElement('figcaption');
+  cap.textContent = label;
+  fig.append(cv, cap); document.getElementById('out').append(fig);
+
+  // The belt, drawn so his float height and the ground line can be judged.
+  const camX = 0;
+  ctx.strokeStyle = 'rgba(255,255,255,0.20)';
+  ctx.beginPath(); ctx.moveTo(0, Belt.topY - 260); ctx.lineTo(W, Belt.topY - 260); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.moveTo(0, Belt.topY + Belt.depth * 0.5); ctx.lineTo(W, Belt.topY + Belt.depth * 0.5); ctx.stroke();
+
+  build(ctx, camX, W, H);
+  return ctx;
+}
+
+function drawPlayerMark(ctx, player, camX) {
+  // A coconut-sized marker, so his scale is judged against a fighter and not
+  // against an empty frame. 152px is the fighter height the config quotes.
+  const gx = player.x - camX, gy = Belt.topY + player.z - (player.jumpY || 0);
+  ctx.save();
+  ctx.strokeStyle = '#6fd'; ctx.lineWidth = 2;
+  ctx.strokeRect(gx - 26.6, gy - 152, 53.2, 152);
+  ctx.fillStyle = '#6fd'; ctx.font = '11px monospace';
+  ctx.fillText('fighter 152px', gx - 34, gy + 14);
+  ctx.restore();
+}
+
+load().then(() => {
+  Belt.topY = CONFIG.beltTopY;
+  Belt.depth = CONFIG.beltDepth;
+
+  const BOUNDS = { minX: 0, maxX: CONFIG.GAME_W };
+
+  /* Step him to a phase with a CHOSEN cast mode. `castIx` is the rotation
+     selector, not a phase, so setting it picks which cast comes next without
+     faking a state the game cannot reach -- everything after it still runs
+     through his own update(). */
+  function atCast(modeIx, phase, player) {
+    const boss = new ClockBoss(640, Belt.depth * 0.5, 0);
+    boss.castIx = modeIx;
+    const dt = 1 / 60;
+    for (let i = 0; i < 20 * 60; i++) {
+      boss.update(dt, player, BOUNDS);
+      boss.castIx = modeIx;          // hold the mode across the rotation bump
+      if (boss.phase === phase) return boss;
+    }
+    return boss;
+  }
+
+  const MODES = CONFIG.CLOCK_BOSS.CAST_MODES;
+
+  // Each cast, at the moment its first wave is out, with the player fixed.
+  MODES.forEach((m, i) => {
+    cell('cast "' + m + '" — wave1', (ctx, camX, W) => {
+      const player = { x: 300, z: Belt.depth * 0.62, jumpY: 0 };
+      const boss = atCast(i, 'wave1', player);
+      drawPlayerMark(ctx, player, camX);
+      boss.draw(ctx, assets, camX);
+      ctx.fillStyle = '#9c9'; ctx.font = '15px monospace';
+      ctx.fillText(`${m}  phase=${boss.phase}  x=${boss.x.toFixed(0)} z=${boss.z.toFixed(0)}`
+        + `  y=${boss.jumpY.toFixed(0)}  playerZ=${player.z.toFixed(0)}`, 8, 22);
+      ctx.fillStyle = boss._boltHitsPlayer(player) ? '#6f6' : '#f66';
+      ctx.fillText('hits this player: ' + boss._boltHitsPlayer(player), 8, 44);
+    });
+  });
+
+  /* WHERE EACH CAST ACTUALLY REACHES. A grid of player stances, each asked the
+     REAL `_boltHitsPlayer`. Printing the answer for EVERY position is how a
+     hitbox that misses by 180px shows up; checking the one spot you had in mind
+     is how it survives. */
+  MODES.forEach((m, i) => {
+    cell('coverage: "' + m + '" wave1 (green = hit)', (ctx, camX, W) => {
+      const player = { x: 300, z: Belt.depth * 0.62, jumpY: 0 };
+      const boss = atCast(i, 'wave1', player);
+      boss.draw(ctx, assets, camX);
+      const probe = { x: 0, z: 0, jumpY: 0 };
+      let hits = 0, total = 0;
+      for (let x = 30; x < W; x += 14) {
+        for (let zi = 0; zi <= 5; zi++) {
+          const z = Belt.depth * (zi / 5);
+          for (const jy of [0, 90]) {
+            probe.x = x; probe.z = z; probe.jumpY = jy;
+            const hit = boss._boltHitsPlayer(probe);
+            total++; if (hit) hits++;
+            ctx.fillStyle = hit ? 'rgba(90,240,120,0.95)' : 'rgba(255,255,255,0.12)';
+            ctx.fillRect(x - 2, Belt.topY + z - jy - 2, 4, 4);
+          }
+        }
+      }
+      ctx.fillStyle = '#fff'; ctx.font = '15px monospace';
+      ctx.fillText(`${m}: ${hits}/${total} stances hit  (${(100*hits/total).toFixed(0)}%)`, 8, 22);
+    });
+  });
+
+  /* THE SALVO, TRACED. Two runs of the same cast: a player who stands still and
+     a player who keeps walking. Each ball's path is drawn, so the claim that
+     "the sequence makes the fan" is a picture rather than an assertion. */
+  [['standing still', 0], ['walking at 190px/s', 190]].forEach(([label, pspeed]) => {
+    cell('salvo vs a player ' + label, (ctx, camX, W) => {
+      const salvoIx = MODES.indexOf('salvo');
+      const player = { x: 300, z: Belt.depth * 0.62, jumpY: 0,
+                       bodyHeight: () => 152 };
+      const boss = atCast(salvoIx, 'salvo', player);
+      const trails = new Map();
+      let fired = 0;
+      const dt = 1 / 60;
+      for (let i = 0; i < 4 * 60; i++) {
+        player.x += pspeed * dt;
+        if (player.x > W - 60 || player.x < 60) pspeed = -pspeed;
+        boss.update(dt, player, BOUNDS);
+        boss.castIx = salvoIx;
+        fired = Math.max(fired, boss._fired || 0);
+        boss.shots.forEach((sh) => {
+          if (!trails.has(sh)) { trails.set(sh, []); sh._bornIn = boss.phase; }
+          trails.get(sh).push([sh.x - camX, Belt.topY + sh.z - sh.y]);
+        });
+        if (boss.phase === 'recover' && !boss.shots.length) break;
+      }
+      boss.draw(ctx, assets, camX);
+      let n = 0;
+      for (const pts of trails.values()) {
+        ctx.strokeStyle = ['#6cf', '#fc6', '#6f9', '#f9c', '#cf6'][n % 5];
+        ctx.lineWidth = 3; ctx.beginPath();
+        pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+        ctx.stroke(); n++;
+      }
+      drawPlayerMark(ctx, player, camX);
+      ctx.fillStyle = '#fff'; ctx.font = '15px monospace';
+      let inSalvo = 0, loose = 0;
+      for (const sh of trails.keys()) (sh._bornIn === 'salvo' ? inSalvo++ : loose++);
+      ctx.fillText(`salvo balls: ${inSalvo} (want ${CONFIG.CLOCK_BOSS.SHOT.salvoCount})`
+                   + `   loose hover shots: ${loose}   player ${label}`, 8, 22);
+    });
+  });
+
+  /* THE PENTAGRAM. The five spawn points as `_starSpawn` actually returns them,
+     numbered in FIRING order and joined in that order -- so if the step is right
+     the line is the star you draw without lifting the pen, and if it is wrong
+     you get a pentagon and can see it immediately. */
+  cell('salvo spawn points: the pentagram', (ctx, camX, W) => {
+    const salvoIx = MODES.indexOf('salvo');
+    const player = { x: 300, z: Belt.depth * 0.62, jumpY: 0, bodyHeight: () => 152 };
+    const boss = atCast(salvoIx, 'salvo', player);
+    boss.shots.length = 0;
+    boss.draw(ctx, assets, camX);
+    const S = CONFIG.CLOCK_BOSS.SHOT;
+    const pts = [];
+    for (let i = 0; i < S.salvoCount; i++) {
+      const p = boss._starSpawn(i);
+      pts.push([p.x - camX, Belt.topY + p.z - p.y]);
+    }
+    ctx.strokeStyle = '#6cf'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.closePath(); ctx.stroke();
+    pts.forEach((p, i) => {
+      ctx.fillStyle = '#fc3';
+      ctx.beginPath(); ctx.arc(p[0], p[1], 9, 0, 7); ctx.fill();
+      ctx.fillStyle = '#000'; ctx.font = 'bold 14px monospace';
+      ctx.fillText(String(i + 1), p[0] - 4, p[1] + 5);
+    });
+    ctx.fillStyle = '#fff'; ctx.font = '15px monospace';
+    ctx.fillText(`starStep=${S.starStep}  points=${S.starPoints}`
+      + `  radius=${(S.starRadiusRel * CONFIG.CLOCK_BOSS.sizePx).toFixed(0)}px`
+      + `  (numbers = firing order)`, 8, 22);
+  });
+
+  // The turn, all 7 poses, which is the character's whole personality.
+  cell('the turn: facing 0 -> 1 (pose 0..6)', (ctx, camX, W) => {
+    for (let i = 0; i < 7; i++) {
+      const b = new ClockBoss(110 + i * 176, Belt.depth * 0.5, camX);
+      b.phase = 'hover';
+      b.facing = i / 6;
+      b.jumpY = 120;
+      b.draw(ctx, assets, camX);
+    }
+  });
+  document.title = 'ready';
+});
+</script>

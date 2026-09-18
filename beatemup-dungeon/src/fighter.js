@@ -400,7 +400,24 @@ class Fighter {
     const f = this.glassesFly;
     if (!f || !sheets || !sheets.has(f.skin, 'glasses')) return;
     const G = CONFIG.GLASSES || {};
-    if (!f.head) f.head = sheets.topPx(f.skin, 'hurt') * f.scale;
+    /* ⚠️ WHERE THE GLASSES WERE, NOT HOW TALL HE IS. This used to be
+       `topPx(skin, 'hurt')`, which is the MAX REACH OF THE WHOLE POSE -- the
+       tallest flinch drawing, 249 atlas px -- so the pair launched from above
+       the top of his head and fell back down through his face. Reported
+       2026-09-18: *"its starting very high, its not starting close to where the
+       glasses actually are"*.
+
+       `atPx` is measured ON THE ART instead: the spectacles in the hurt row are
+       the same drawing the artist put on the face, so matching one against the
+       other locates them exactly. All four packs agreed within 4px (144 / 146 /
+       148). It is in ATLAS px and comes through `scalePx`, like every other
+       measurement here, so a pack's `drawScale` cannot drift it. */
+    if (!f.head) {
+      const G2 = CONFIG.GLASSES || {};
+      f.head = (G2.atPx != null)
+        ? sheets.scalePx(f.skin, G2.atPx) * f.scale
+        : sheets.topPx(f.skin, 'hurt') * f.scale;
+    }
     const p = Math.min(1, f.t / (Math.max(1, G.flyMs || 700) / 1000));
     const gx = f.x - camX + f.dir * (G.awayPx || 120) * p * f.scale;
     const rise = Math.sin(Math.PI * Math.min(1, p * 1.3)) * (G.upPx || 80);

@@ -125,6 +125,11 @@ const Level3 = {
     this.legT = 0;
     this._fight = null;
     this._fought = [];
+    /* Legs whose BOSS has been seen off, kept apart from `_fought` because the
+       two end at different moments: the wave clears, and only then does the
+       boss arrive. One list would make the shelf un-refightable the instant the
+       mooks died and hand the boss an already-finished arena. */
+    this._bossed = [];
     this._rode = [];
     this.done = false;
     this._bands = null;
@@ -789,6 +794,32 @@ const Level3 = {
       stage.camTarget = this._camX;
       this._camDX = 0;
       if (!crowd.cleared || !crowd.cleared()) return true;
+
+      /* ⚠️ THE BOSS IS THE SECOND HALF OF THE SAME LOCK. MISTER STOP is
+         declared ON the arena (`arena.boss`) and arrives once its wave is
+         clear, so the camera stays pinned, the walls stay up and the leg does
+         not resume until he is finished. Returning false here instead -- ending
+         the arena and letting him fight in a moving shot -- would let the
+         player simply walk away from the last boss in the game.
+
+         ⚠️ `finished()` AND NOT `dead`: the blasts have to play out. Clearing
+         him on the killing blow cuts his own explosion off mid-frame, which is
+         the bug shape that once hung a corpse in mid-air through an outro.
+
+         He is built by `Stage.makeBoss`, NOT by a `new` here -- the same deal
+         `_wave` makes with `Stage._spawn`. A second construction site is a
+         second place for the spawn point to drift. */
+      const B = L && L.arena && L.arena.boss;
+      if (B && this._bossed.indexOf(this.leg) < 0) {
+        if (!stage.boss) {
+          stage.boss = stage.makeBoss(B.who, B);
+          return true;
+        }
+        if (!stage.boss.finished()) return true;
+        stage.boss = null;
+        this._bossed.push(this.leg);
+      }
+
       this._fought.push(this._fight.leg);
       this._fight = null;
       if (stage.banner <= 0) stage.goSeq++;

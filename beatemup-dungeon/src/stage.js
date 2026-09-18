@@ -330,26 +330,7 @@ class Stage {
            written before the horse existed means the Mosca, and a default that
            changes the meaning of existing data is not a default. The two share
            no code -- only the interface combat.js and the overlay talk to. */
-        const bx = this.camX + CONFIG.GAME_W * 0.5;
-        const bz = Belt.depth * 0.5;
-        /* AND ON WHAT TERMS. `fleeAt` is the fraction of health the Mosca
-           breaks off at, and it is read off the SEGMENT because the same boss
-           is fought twice in the street on different terms -- see ROOMS. The
-           stage carries nothing between the two: the first encounter ends when
-           it flies away, the second is a fresh one at full health, and neither
-           this file nor the boss remembers the other happened. */
-        /* ⚠️ HORACIO IS PLACED ON THE FLOOR HE COMES OUT OF, not at mid-belt
-           like the other two. He ARRIVES by digging up through the ground
-           (`Emerge`), so where he is put IS where the hole is -- and a hole at
-           `Belt.depth * 0.5` with the player standing at the near edge would
-           open behind him. `spawnZRel` puts it forward, in the walking half of
-           the belt. */
-        const HC = CONFIG.HORACIO_BOSS;
-        this.boss = (s.who === 'horacio')
-          ? new HoracioBoss(bx, Belt.depth * ((HC && HC.spawnZRel) || 0.62), this.camX)
-          : (s.who === 'horse')
-            ? new HorseBoss(bx, bz, this.camX)
-            : new FlyBoss(bx, bz, this.camX, { fleeAt: s.fleeAt });
+        this.boss = this.makeBoss(s.who, { fleeAt: s.fleeAt });
       }
       /* ⚠️ THE BOSS MAY ASK FOR A WAVE, and this is where one gets made. HORACIO's
          summon (beat 8) raises a request rather than spawning: he is
@@ -504,6 +485,37 @@ class Stage {
       return r || 'advance';
     }
     return null;
+  }
+
+  /**
+   * Build a boss by name. ONE construction site, called from two places: the
+   * `boss` SEGMENT below, and level 3, which has no segments and hands MISTER
+   * STOP in at the end of its last shelf fight. A second `new` somewhere else
+   * is a second place for the spawn point and the who-chain to drift apart.
+   */
+  makeBoss(who, opts) {
+      const bx = this.camX + CONFIG.GAME_W * 0.5;
+      const bz = Belt.depth * 0.5;
+      /* AND ON WHAT TERMS. `fleeAt` is the fraction of health the Mosca
+         breaks off at, and it is read off the SEGMENT because the same boss
+         is fought twice in the street on different terms -- see ROOMS. The
+         stage carries nothing between the two: the first encounter ends when
+         it flies away, the second is a fresh one at full health, and neither
+         this file nor the boss remembers the other happened. */
+      /* ⚠️ HORACIO IS PLACED ON THE FLOOR HE COMES OUT OF, not at mid-belt
+         like the other two. He ARRIVES by digging up through the ground
+         (`Emerge`), so where he is put IS where the hole is -- and a hole at
+         `Belt.depth * 0.5` with the player standing at the near edge would
+         open behind him. `spawnZRel` puts it forward, in the walking half of
+         the belt. */
+      const HC = CONFIG.HORACIO_BOSS;
+      return (who === 'horacio')
+        ? new HoracioBoss(bx, Belt.depth * ((HC && HC.spawnZRel) || 0.62), this.camX)
+        : (who === 'horse')
+          ? new HorseBoss(bx, bz, this.camX)
+          : (who === 'mrstop')
+            ? new ClockBoss(bx, bz, this.camX)
+            : new FlyBoss(bx, bz, this.camX, { fleeAt: opts && opts.fleeAt });
   }
 
   /**
