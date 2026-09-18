@@ -30,6 +30,76 @@ wherever the search order happened to reach.
 
 ---
 
+## HORÁCIO sheds chunks when you hit him (2026-09-18)
+
+Three masters arrived, `batidao-boss-espeto-hit-FX-01..03`, and the ask was
+plain: *"every hit I give to the boss, I want to see this animation."* It is a
+cloud of body-coloured debris, and the numbers and the traps are in README
+(*The burst of chunks*). What that cannot say:
+
+**The pack got its first frames of animation and its first thing with no
+level.** Everything else in HORÁCIO's 29 masters is (level × state × facing)
+and every one is a SINGLE drawing — the file's own header says so twice. The
+burst is (frame × facing): the file number is *time*, and one set of three
+serves all four levels and all ten states. So it could not go into `index` at
+all, which is what decided the separate atlas and the separate `fx` block in the
+defs, not a size calculation. The size worked out anyway: the alternative was
+multiplying identical debris by four into the level atlases.
+
+⚠️ **The anchor is the whole of the registration, and it is per level.** The
+renderer puts ink at `(col − bodyCentre) × scale`. His body centres MOVE as the
+spikes grow — facing 1 is at master col 2799 at level 1 and 2706 as the grandao
+— so `ax` had to become an array, one per level, or the cloud would sit up to
+29 screen px off the body it is coming out of, worst in the body he stabs in.
+**A shared ground line is not the same as a shared centre**, and this pack has
+the first and not the second.
+
+⚠️ **It is drawn inside the ground clip, and that is the opposite call from the
+explosions.** 2026-09-03 moved his death blasts and his arrival dust OUT of
+`draw()` into `drawFX`, because a blast painted under the cigarette floor is a
+bug. The burst goes back in: chunks off his body are part of him, so they want
+the clip that cuts him at the floor line and the plane that paints him between
+the bands of it. A burst that escaped it would spray debris out of solid ground
+while he is buried — and he is part-buried at the PEEK, which is where most of
+the punches in this fight land. **The rule is not "effects go in `drawFX`"; it
+is "things that are the FLOOR's business leave his plane, things that are HIS
+business stay in it."**
+
+⚠️ **And it is handed the body's sink in PIXELS, not as the fraction.** `sunk` is
+a fraction *of the tile*, and the burst's tile is not the body's; resolving it
+against its own height would have slid the cloud off him by tens of pixels, and
+only while he was part-buried.
+
+⚠️ **`hurtMs` is 260, not 300.** A typed `frameMs: 100` would have run the
+chunks 40ms past the grimace and the blink. It is `null` by default — `hurtMs`
+divided by the pack's own frame count — the same bargain `hitPoseMs` above it
+makes, and it stays true the next time the game-wide blink moves. **Reading a
+number out of the file beat assuming the one the comment implied.**
+
+**It plays on every hit, which is wider than the recoil pose.** The ball has no
+hurt drawing at any level (a tucked ball has no face), so the peek — the fight's
+one reliable opening — had only the blink until now. The burst is debris, not an
+expression, so it plays over the ball and over the naked body alike; on the
+naked body the red chunks read as the last of his shell coming off, which was
+not designed and is worth keeping.
+
+⚠️ **The next ask is already named and deliberately left as one line:** *"we
+might switch that later, to happen only when he loses his armour (50% and
+25%)"*. That is a condition on the single line in `hurt()` that sets `hitFxT`,
+sitting next to the `hurtAt` / `nakedAt` thresholds it would test. Nothing
+downstream has any opinion about why the burst is playing, and that is on
+purpose.
+
+**Checked before it was reported:** the re-cut came out scale 0.31949, ground
+row 1874, `sizeByLevel` unchanged, and **all four level atlases byte-identical
+to the committed ones** — the trap the recoils sprang in 2026-09-03, checked
+rather than assumed. `build-manifest.js --check` resolves `horacio4`. And it was
+RENDERED from the shipped cut before being called done: three levels × the three
+frames, all eight facings, and the ball at `peekSunk` and `roamSunk` to see the
+clip do its work.
+
+---
+
 ## Where this got to on 2026-08-18
 
 A long session. Everything below is the detail; this is the map of what moved,

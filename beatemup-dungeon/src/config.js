@@ -6457,7 +6457,13 @@ const CONFIG = {
        punches pass through the grandao or connect with air around the joaninha.
        Re-run tools/build-beat-horacio-defs.py with a different TARGET_H and
        these four move with it. */
-    sheetLevels: 4,       // one atlas per level -- see manifest.js
+    /* HOW MANY ATLAS FILES THE PACK IS IN (`horacio-L<n>-game.png`).
+       ⚠️ ATLASES, NOT LEVELS, AND THE NAME WAS CHANGED WHEN THAT STOPPED
+       BEING THE SAME NUMBER. There are four levels and five files: sheet 4 is
+       the HIT BURST, which has no level at all (see `HIT_FX` below). It shares
+       the numbering because the manifest loads these by count and a second
+       load path for one texture buys nothing. */
+    sheetAtlases: 5,      // see manifest.js
     /* ⚠️ THESE FOUR ARE THE CUTTER'S PRINTOUT AND MOVE WITH ITS `TARGET_H`,
        which has now changed twice on request: 230 -> 460 -> 322. The hurtbox
        reads them, so they cannot be left behind when the art is re-cut. */
@@ -6499,6 +6505,30 @@ const CONFIG = {
        different clocks. Put a number here to shorten the grimace without
        touching the game-wide blink every other fighter shares. */
     hitPoseMs: null,
+    /* THE BURST OF CHUNKS THAT COMES OFF HIM ON EVERY PUNCH -- three drawings
+       per facing, `batidao-boss-espeto-hit-FX-01..03`, cut into their own
+       atlas and drawn OVER the body at his own anchor.
+
+       ⚠️ EVERY HIT, INCLUDING THE ONES WITH NO RECOIL POSE. Asked for
+       2026-09-18: *"every hit I give to the boss, I want to see this
+       animation"*. That is wider than the recoil, which the ball has no
+       drawing for -- the burst is debris rather than an expression, so it
+       plays over the tucked ball and over the naked body alike, and it is the
+       only hit feedback the ball has ever had beyond the blink.
+
+       ⚠️ AND THE ASK ALREADY NAMES WHERE IT IS GOING: *"we might switch
+       that later, to happen only when he loses his armour (50% and 25%)"*.
+       That is a condition on where `hitFxT` is STARTED (one test in `hurt`),
+       not on anything below -- keep it that way and the switch is one line.
+
+       ⚠️ `frameMs: null` MEANS "SPREAD THEM ACROSS THE BLINK" -- `hurtMs`
+       (260) divided by the three drawings, so the chunks, the grimace and the
+       flicker begin and end together instead of on two clocks. The same
+       bargain `hitPoseMs` above makes, and for the same reason: `hurtMs` does
+       not read like 260 and a typed 100 would leave debris in the air over a
+       body that had finished being hit. A number here is that number in ms.
+       `on: false` takes the burst out. */
+    HIT_FX: { on: true, frameMs: null },
     /* BEAT 8: the wall of charutobis. ⚠️ THE SIGNAL POSE IS A STAND-IN -- there
        is no pointing drawing yet -- so he holds the armoured front pose for the
        gesture. `signalState`/`signalFacing` are where the real one goes. */

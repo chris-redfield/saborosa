@@ -6534,6 +6534,68 @@ python3 tools/build-beat-horacio-defs.py
 > column count is now *searched* rather than `sqrt(n)`: at level 3 a 6-column
 > shelf packs 20 px over the cap and fits comfortably at 7.
 
+### The burst of chunks (2026-09-18)
+
+*"every hit I give to the boss, I want to see this animation"* — three new
+masters, `batidao-boss-espeto-hit-FX-01..03`, a cloud of body-coloured debris
+that flies off him on every punch that lands.
+
+| knob | what it does |
+|---|---|
+| `HORACIO_BOSS.HIT_FX.on` | `false` takes the burst out; the recoil pose and the blink are untouched |
+| `HORACIO_BOSS.HIT_FX.frameMs` | how long one drawing is held. **`null` = `hurtMs` ÷ the pack's frame count** |
+| `HORACIO_BOSS.sheetAtlases` | **5**, and it counts FILES not levels — the fifth is the burst |
+
+> ⚠️ **`frameMs: null` is the default and it is not laziness.** `hurtMs` is
+> **260**, not the 300 it reads like, so a typed 100 would leave debris in the
+> air for 40 ms over a body that had finished being hit. Derived, the chunks,
+> the grimace (`hitPoseMs`) and the blink begin and end together, and stay that
+> way the next time the game-wide blink moves.
+
+> ⚠️ **It plays on EVERY hit, including the ones with no recoil drawing.**
+> The ball has no hurt pose at any level — a tucked ball has no face — so the
+> peek, which is the fight's one reliable opening, had only the blink until now.
+> Debris is not an expression, so it plays over the ball and over the naked body
+> alike.
+
+> ⚠️ **The next ask is already named, and it is one line.** *"we might switch
+> that later, to happen only when he loses his armour (50% and 25%)"* — that is
+> a condition on the single line in `hurt()` that sets `hitFxT`, next to the
+> thresholds `hurtAt` and `nakedAt` it would test. Nothing downstream of it has
+> any opinion about why the burst is playing.
+
+#### The pack's first frames of animation, and its first thing with no level
+
+The file number is **time**: three drawings, eight facings in a row, on the same
+13443×2371 canvas as every other master. It is also the first thing in the pack
+that is neither a level nor a state — one set serves all four levels and all ten
+states — so it is cut into its **own atlas** (`horacio-L4-game.png`, 1.1 MB,
+1943×1841) and stored under `fx` in the defs rather than in `index`.
+
+> ⚠️ **Its anchor is an ARRAY, one entry per level, and that is the whole
+> registration.** The renderer puts ink at `(col − bodyCentre) × scale`, so
+> reproducing the master-canvas composite means measuring `ax` off the body
+> centre **of the level on screen** — and those centres move as the spikes grow
+> (facing 1 sits at master col 2799 at level 1 and 2706 as the grandao). One
+> shared reference would put the cloud up to **29 screen px** off the body it is
+> coming out of, worst at the grandao, which is the body he stabs in.
+
+> ⚠️ **It is drawn INSIDE the body's ground clip, not in `drawFX` where the
+> explosions live.** That split is about the floor: a blast under the cigarettes
+> is a bug, so it leaves his plane. Chunks off his body are the opposite — a
+> burst that escaped the clip would spray debris out of solid ground while he is
+> buried in it. It is handed the body's sink **in pixels**, because `sunk` is a
+> fraction *of the tile* and the burst's tile is not the body's.
+
+> ⚠️ **Last, over the fuse's red as well as the body.** `ctx.filter` and
+> `ctx.globalAlpha` are reset immediately before the blit: both are set a few
+> lines above for the death tint and the hit blink, and debris the tint had been
+> painted over would read as being *inside* him.
+
+> ⚠️ **Re-cutting proved nothing else moved:** scale still 0.31949, ground row
+> still 1874, `sizeByLevel` unchanged, and all four level atlases came out
+> **byte-identical to the committed ones**. Five atlases, 17.3 MB.
+
 ---
 
 ## TIME ATTACK — the minigame between the desert and HIPÓLITO

@@ -343,7 +343,9 @@ function assetManifest() {
      what moves that, and it prints every size on every run. */
   if (CONFIG.HORACIO_BOSS && CONFIG.HORACIO_BOSS.sheet) {
     const h = CONFIG.HORACIO_BOSS.sheet;
-    const n = CONFIG.HORACIO_BOSS.sheetLevels || 4;
+    /* ⚠️ A COUNT OF FILES, NOT OF LEVELS -- the last one is the hit burst,
+       which has no level. See `sheetAtlases` in config.js. */
+    const n = CONFIG.HORACIO_BOSS.sheetAtlases || 4;
     for (let i = 0; i < n; i++) {
       out.push({ key: 'horacio' + i, src: h + '-L' + i + '-game.png', how: 'image' });
     }

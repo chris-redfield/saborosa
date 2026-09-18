@@ -57,6 +57,29 @@ without. Two things about them are not like the other two packs:
     drawn ahead of a tier that does not exist yet; a missing one falls back to
     the ordinary body rather than to a blank.
 
+THEN THREE MORE (2026-09-18), `batidao-boss-espeto-hit-FX-<n>`: THE BURST --
+a cloud of body-coloured chunks that flies off him on every punch. Same
+13443x2371 canvas, same eight facings in a row, and it is the FIRST thing in
+this pack that is a FRAME OF ANIMATION: the file number is time, not a level
+and not a state. Three drawings, the cloud growing 983 -> 1165 master px wide
+across them.
+
+    ⚠️ IT HAS NO LEVEL AND NO STATE, and that is the whole reason it is cut
+    apart from everything above. A body is (level x state x facing); the burst
+    is (frame x facing) and one set serves all four levels and all ten states,
+    the ball included. So it gets its OWN atlas -- sheet index len(LEVELS) --
+    rather than being multiplied by four into the level atlases, which would
+    have cost ~13M pixels of identical debris.
+
+    ⚠️ BUT ITS ANCHOR IS STILL PER LEVEL, AND THAT IS NOT A CONTRADICTION.
+    The renderer puts ink at `(col - bodyCentre) * scale`, so reproducing the
+    master-canvas composite means `ax` has to be measured off THE BODY CENTRE
+    OF THE LEVEL ON SCREEN. Those centres move as the spikes grow -- facing 1
+    sits at master col 2799 at level 1 and 2706 as the grandao -- so a single
+    reference would slide the cloud up to 29 screen px off the body it is
+    supposed to be coming out of. Hence `fx.frames[i].ax` is an ARRAY, one
+    entry per level, and `ay` is the pack's one shared ground row as usual.
+
 ⚠️ THE SUMMON POSE IS WIDER THAN THE BODY IT REPLACES -- about 70 master px
 further left and 90 further right, because the raised arm leaves the silhouette
 -- so it widens facing 0's cell in every level. That is safe for exactly the
@@ -126,6 +149,13 @@ Output (assets-v2/beatemup-dungeon/):
                         HIT BALL OR A SUMMONING BALL; LEVEL 3 HAS NO SUMMON AT
                         ALL; and 7/8/9 exist at FACING 0 ONLY. Those hold null,
                         so a lookup must fall back rather than index blindly.
+                         `fx` is the hit burst and is SEPARATE from `frames`
+                         and `index` on purpose -- it is indexed by
+                         (animation frame, facing) rather than by
+                         (level, state, facing), and nothing that reads a body
+                         should have to know it exists:
+                         fx: { sheet, count, frameMs, index[frame][facing],
+                               frames[{x,y,w,h,ay,ax:[per level]}] }
 """
 import json
 import os
@@ -138,6 +168,17 @@ HIT = ('assets-v2/beatemup-dungeon/boss_horacio/damage-sprites/'
        'batidao-boss-espeto-hit-%s-F%d.png')
 SPECIAL = ('assets-v2/beatemup-dungeon/boss_horacio/'
            'batidao-boss-espeto-especial-%s-F%d.png')
+# THE HIT BURST. ⚠️ IN THE PARENT FOLDER, not boss_horacio/ -- it is where it
+# was delivered and moving it would only make this line lie about where it is.
+FX = 'assets-v2/beatemup-dungeon/batidao-boss-espeto-hit-FX-%02d.png'
+FX_FRAMES = 3
+# ⚠️ HOW FAR THE CLOUD'S CENTRE MAY SIT FROM THE BODY IT DECORATES, in master
+# px. It is drawn freehand around him rather than concentric with him (up to
+# ~57 px off at level 0 facing 3), so this is loose on purpose -- it is here to
+# catch a master delivered on a different canvas or with its facings in another
+# order, which would otherwise pass every other check in this file and put the
+# front burst on his back.
+FX_TOL = 160
 OUT = 'assets-v2/beatemup-dungeon/horacio'
 # (sheet number, how many BODIES it has, how many HIT bodies it has).
 # Order IS the level order.
@@ -351,6 +392,44 @@ def main():
                     f'{SPECIAL_FACING} of this level stands on {feet} -- it '
                     f'would float or sink')
 
+    # ---- the hit burst: (frame x facing), no level, no state ----------------
+    # ⚠️ ITS OWN RECT PER (FRAME, FACING) AND THAT IS NOT THE SUMMON'S BARGAIN
+    # REPEATED. The summon needed its own rect to stay OUT of a body cell it
+    # would have grown; the burst was never in one, because it is not a body --
+    # nothing switches between the burst and an armoured pose, so there is no
+    # cell for the two to share and no jump for a shared rect to prevent. Each
+    # frame is cropped to its own ink and placed by the anchors below.
+    fxsheets, frects = {}, {}
+    for fr in range(FX_FRAMES):
+        path = FX % (fr + 1)
+        if not os.path.exists(path):
+            raise SystemExit(f'missing {path}')
+        im = Image.open(path).convert('RGBA')
+        m = np.array(im)[:, :, 3] > ALPHA
+        r = facings_of(m)
+        if len(r) != FACINGS:
+            raise SystemExit(f'hit-FX-{fr + 1:02d}: found {len(r)} facings, '
+                             f'expected {FACINGS}')
+        fxsheets[fr] = im
+        for fa in range(FACINGS):
+            cx0, cx1 = r[fa]
+            rr = rows_of(m[:, cx0:cx1 + 1])
+            if rr is None:
+                raise SystemExit(f'hit-FX-{fr + 1:02d} facing {fa}: no ink')
+            frects[(fr, fa)] = (cx0, rr[0], cx1, rr[1])
+            # ⚠️ AGAINST THE BODY IT WILL BE DRAWN OVER. The burst carries no
+            # level and no state in its filename, so nothing else in this file
+            # would notice a master whose eight facings ran the other way --
+            # the cut would succeed, the atlas would look right, and in game
+            # every punch would spray chunks off the wrong side of him.
+            bx0, bx1 = body[(1, fa)][0], body[(1, fa)][1]
+            off = (cx0 + cx1) / 2.0 - (bx0 + bx1) / 2.0
+            if abs(off) > FX_TOL:
+                raise SystemExit(
+                    f'hit-FX-{fr + 1:02d} facing {fa}: burst centre is {off:.0f} '
+                    f'master px off the level-1 body\'s -- wrong canvas, or the '
+                    f'facings are not in the pack\'s order')
+
     # ---- one scale, off level 1 (index 1), facing 0 -------------------------
     # ⚠️ OFF THE **BODY**, NOT THE CELL, AND THAT IS NOT A REFACTOR. It read the
     # cell until the recoils were added, and they reach 7 master rows higher
@@ -451,14 +530,74 @@ def main():
         sheets_out.append(os.path.basename(name))
         print(f'  {os.path.basename(name)}-game.png  {W}x{H}  {len(ids)} frames, '
               f'{os.path.getsize(name + "-game.png") / 1024:.0f} KB')
+    # ---- ONE MORE ATLAS, AND IT IS NOT A LEVEL -----------------------------
+    # ⚠️ IT IS STILL `horacio-L<n>-game.png` AND THE MANIFEST STILL COUNTS
+    # THEM, so the number is a SHEET index and `sheetAtlases` in config.js is
+    # the count of files, not of levels. Naming it anything else would mean a
+    # second load path in manifest.js for one texture.
+    fx_frames = []
+    fx_index = [[None] * FACINGS for _ in range(FX_FRAMES)]
+    fx_tiles = []
+    for fr in range(FX_FRAMES):
+        for fa in range(FACINGS):
+            sx0, sy0, sx1, sy1 = frects[(fr, fa)]
+            w, h = sx1 - sx0 + 1, sy1 - sy0 + 1
+            t = fxsheets[fr].crop((sx0, sy0, sx1 + 1, sy1 + 1)).resize(
+                (max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+            fx_index[fr][fa] = len(fx_tiles)
+            fx_tiles.append({
+                'img': t,
+                # ⚠️ ONE ANCHOR PER LEVEL, off that level's OWN body centre --
+                # see the header. `ay` is the pack's shared ground row, exactly
+                # as every body's is, which is what keeps the cloud's feet on
+                # his: some frames reach 13 px BELOW it and are meant to.
+                'ax': [round(((body[(li, fa)][0] + body[(li, fa)][1]) / 2.0 - sx0)
+                             * scale, 1) for li in range(len(LEVELS))],
+                'ay': round((ground - sy0) * scale, 1),
+            })
+
+    def fxshelf(cols_n):
+        x = y = rowh = W = 0
+        place = {}
+        for n, t in enumerate(fx_tiles):
+            if n % cols_n == 0 and n:
+                y += rowh + PAD
+                x, rowh = 0, 0
+            place[n] = (x, y)
+            rowh = max(rowh, t['img'].height)
+            x += t['img'].width + PAD
+            W = max(W, x)
+        return W, y + rowh + PAD, place
+
+    W, H, place = min((fxshelf(c) for c in range(1, len(fx_tiles) + 1)),
+                      key=lambda r: (max(r[0], r[1]), r[0] * r[1]))
+    if W > MAX_DIM or H > MAX_DIM:
+        raise SystemExit(f'hit-FX atlas is {W}x{H}, over MAX_DIM {MAX_DIM}')
+    FX_SHEET = len(LEVELS)
+    atlas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    for n, t in enumerate(fx_tiles):
+        x, y = place[n]
+        atlas.paste(t['img'], (x, y))
+        fx_frames.append({'x': x, 'y': y, 'w': t['img'].width,
+                          'h': t['img'].height, 'ax': t['ax'], 'ay': t['ay']})
+    name = f'{OUT}-L{FX_SHEET}'
+    atlas.save(name + '-game.png')
+    sheets_out.append(os.path.basename(name))
+    print(f'  {os.path.basename(name)}-game.png  {W}x{H}  {len(fx_tiles)} hit-FX '
+          f'frames, {os.path.getsize(name + "-game.png") / 1024:.0f} KB')
+
     with open(OUT + '-sprites.json', 'w') as fh:
         json.dump({'scale': round(scale, 5), 'ground': ground,
                    'levels': len(LEVELS), 'states': STATE_NAMES,
                    'facings': FACINGS, 'sheets': sheets_out,
-                   'frames': frames, 'index': index}, fh)
+                   'frames': frames, 'index': index,
+                   'fx': {'sheet': FX_SHEET, 'count': FX_FRAMES,
+                          'index': fx_index, 'frames': fx_frames}}, fh)
 
-    total = sum(os.path.getsize(f'{OUT}-L{i}-game.png') for i in range(len(LEVELS)))
-    print(f'{len(frames)} frames over {len(sheets_out)} atlases, '
+    total = sum(os.path.getsize(f'{OUT}-L{i}-game.png')
+                for i in range(len(sheets_out)))
+    print(f'{len(frames)} frames + {len(fx_frames)} hit-FX over '
+          f'{len(sheets_out)} atlases, '
           f'{total / 1024 / 1024:.1f} MB total')
     print(f'  scale {scale:.5f}   ground row {ground}   TARGET_H {TARGET_H}')
     # ⚠️ `bodyPx` IS WHAT `CONFIG.HORACIO_BOSS.sizeByLevel` TAKES, NOT the tile

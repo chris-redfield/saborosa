@@ -83,6 +83,15 @@ class HoracioBoss {
     this.hp = C.health;
     this.maxHp = C.health;
     this.hurtT = 0;
+    /* THE HIT BURST'S CLOCK: seconds since the punch, or null when no burst is
+       running. ⚠️ ITS OWN, AND NOT `hurtT` READ BACKWARDS. The recoil POSE
+       rides on `hurtT` (see `_recoiling`) because the pose and the blink are
+       deliberately the same 300ms window; the burst is three drawings at
+       `HIT_FX.frameMs` and that product is a free number. Folding it into
+       `hurtT` would silently CLIP the last frame the moment anyone raised
+       `frameMs` past `hurtMs / 3`, which presents as "the animation looks like
+       two frames", not as a bug. It counts UP for the same reason. */
+    this.hitFxT = null;
     this.dead = false;
     this.dieT = 0;
     /* ⚠️ NO GROUND SHADOW, ON REQUEST 2026-09-02 ("remove the shadow of this
@@ -246,6 +255,61 @@ class HoracioBoss {
     if (hit == null) return st;
     const lv = d.index[this.bodyLevel()];
     return (lv && lv[hit] && lv[hit][this.facing] != null) ? hit : st;
+  }
+
+  /**
+   * HOW LONG ONE DRAWING OF THE BURST IS HELD.
+   *
+   * ⚠️ `frameMs: null` MEANS "SPREAD THEM ACROSS THE BLINK", which is the
+   * default and the same bargain `hitPoseMs` makes two methods down. `hurtMs`
+   * is 260, not the 300 it reads like -- a typed 100 would run the chunks 40ms
+   * past the grimace and the flicker, so the burst would still be in the air
+   * over a body that had finished being hit. Deriving it means the three say
+   * the same thing over the same window, and that it stays true the next time
+   * the game-wide blink is retuned.
+   *
+   * ⚠️ AND IT DIVIDES BY THE PACK'S OWN COUNT, not by 3. A fourth drawing
+   * dropped into the folder lengthens the cutter's `FX_FRAMES` and nothing
+   * here, which is the only reason this takes `n` instead of reading it.
+   */
+  _hitFxFrameMs(n) {
+    const FX = CONFIG.HORACIO_BOSS.HIT_FX || {};
+    if (FX.frameMs != null) return FX.frameMs;
+    return (CONFIG.hurtMs || 300) / Math.max(1, n || 1);
+  }
+
+  /** HOW LONG THE WHOLE BURST LASTS: every drawing the pack has, in turn. */
+  _hitFxSpanS() {
+    const d = this._defs;
+    const n = (d && d.fx && d.fx.count) || 0;
+    return n * this._hitFxFrameMs(n) / 1000;
+  }
+
+  /**
+   * WHICH CHUNK OF DEBRIS IS ON SCREEN -- the burst's frame, or null.
+   *
+   * ⚠️ IT IS INDEXED BY (ANIMATION FRAME, FACING) AND BY NOTHING ELSE. One
+   * set of three serves all four levels and all ten states, which is why it
+   * lives under `d.fx` instead of in `d.index` -- there is no level axis and no
+   * state axis to put it on, and squeezing it into a table shaped like a body
+   * would have meant a null at 39 of every 40 slots.
+   *
+   * ⚠️ AND ITS ANCHOR IS AN ARRAY, ONE PER LEVEL. The cutter measures `ax`
+   * off the body centre of each level in turn, because those centres move as
+   * the spikes grow (facing 1 sits at master col 2799 at level 1 and 2706 as
+   * the grandao). Reading one number for every level would put the cloud up to
+   * 29px off the body it is supposed to be coming out of, worst at the grandao
+   * -- which is the body he STABS in. `bodyLevel()` and not `this.level`, the
+   * same resolver the drawing and the hurtbox read, or the debris tracks a
+   * level he is no longer being drawn at.
+   */
+  _hitFxFrame(d) {
+    if (this.hitFxT == null || !d || !d.fx || !d.fx.frames) return null;
+    const i = Math.floor(this.hitFxT * 1000 / this._hitFxFrameMs(d.fx.count));
+    if (i < 0 || i >= d.fx.count) return null;
+    const row = d.fx.index[i];
+    const id = row ? row[this.facing] : null;
+    return (id == null) ? null : d.fx.frames[id];
   }
 
   /**
@@ -509,6 +573,19 @@ class HoracioBoss {
     if (!this.vulnerable()) return;
     this.hp = Math.max(0, this.hp - dmg);
     this.hurtT = (CONFIG.hurtMs || 300) / 1000;
+    /* THE BURST, RESTARTED FROM 0 ON EVERY BLOW that gets past `vulnerable()`.
+       Asked for 2026-09-18: *"every hit I give to the boss, I want to see this
+       animation"* -- so there is no state test here and none anywhere else.
+
+       ⚠️ THIS LINE IS THE WHOLE OF "WHEN", AND THE NEXT ASK IS ALREADY
+       NAMED: *"we might switch that later, to happen only when he loses his
+       armour (50% and 25%)"*. That is a condition on starting it -- the tier
+       boundaries are `hurtAt` and `nakedAt`, and `_bodyState` already knows
+       which side of them he is on. Nothing downstream of here has any opinion
+       about why it is playing, and keeping it that way is what makes that
+       change one line instead of a pass through the renderer. */
+    const FX = CONFIG.HORACIO_BOSS.HIT_FX;
+    if (FX && FX.on !== false) this.hitFxT = 0;
     if (this.hp <= 0 && !this.dead) {
       this.dead = true;
       this.dieT = 0;
@@ -630,6 +707,22 @@ class HoracioBoss {
     this._player = player || this._player;
     this._bobT += dt;
     if (this.hurtT > 0) this.hurtT -= dt;
+    /* ⚠️ ABOVE THE `dead` RETURN, DELIBERATELY, AND FOR THE REASON THE RECOIL
+       IS: the killing blow is a hit like any other and the chunks it knocks off
+       him are the last thing that says so. The blink is the one feedback
+       suppressed while `dead`, because the fuse's red flash is already a
+       flicker over the same body -- debris is not. */
+    if (this.hitFxT != null) {
+      this.hitFxT += dt;
+      /* ⚠️ A SPAN OF 0 MEANS "THE PACK HAS NOT LOADED YET", NOT "IT IS
+         OVER". `_hitFxSpanS` counts the frames out of the defs, and `_defs` is
+         filled by the first `draw()` -- so an expiry written as a bare `>=`
+         would cancel a burst that has not had a frame on screen. Nothing is
+         drawn in the meantime either way; this only decides whether the clock
+         survives to the frame where there is something to draw. */
+      const span = this._hitFxSpanS();
+      if (span > 0 && this.hitFxT >= span) this.hitFxT = null;
+    }
 
     if (this.dead) { this.dieT += dt; return; }
 
@@ -1277,7 +1370,7 @@ class HoracioBoss {
        Same correction `Emerge.draw` needed the day it gained the dust: **an
        effect that outlives the thing it happens to has to re-read every early
        return above it.** */
-    if (f && img) this._drawBody(ctx, f, img, dsc, gx, gy);
+    if (f && img) this._drawBody(ctx, assets, d, f, img, dsc, gx, gy);
 
     /* THE HOLE, and only the hole. It is a mark on the FLOOR and belongs under
        everything, in his own plane -- which is where this method is drawn from
@@ -1404,7 +1497,7 @@ class HoracioBoss {
    * cannot skip the death blasts -- it has no other reason to exist and nothing
    * else calls it.
    */
-  _drawBody(ctx, f, img, dsc, gx, gy) {
+  _drawBody(ctx, assets, d, f, img, dsc, gx, gy) {
     const C = CONFIG.HORACIO_BOSS;
     const B = C.DEATH_BOOM;
 
@@ -1494,10 +1587,63 @@ class HoracioBoss {
       ctx.globalAlpha = alpha * ft.tintAlpha;
       ctx.drawImage(img, f.x, f.y, f.w, f.h, dx, dy, dw, dh);
     }
+    /* THE BURST OF CHUNKS, LAST AND OVER EVERYTHING HE IS -- the body, and on
+       the frame that killed him the fuse's red as well. Debris that the tint
+       had been painted over would read as being INSIDE him.
+
+       ⚠️ INSIDE THIS METHOD'S `save()` ON PURPOSE, AND NOT IN `drawFX` WHERE
+       THE EXPLOSIONS LIVE. The split that moved those is about the FLOOR: a
+       blast under the cigarettes is a bug, so it leaves his plane and the
+       ground clip. Chunks off his body are the opposite -- they are part of
+       him, so they want the clip that cuts him at the floor line and the plane
+       that paints him between the bands of it. A burst that survived the clip
+       would spray debris out of solid ground while he is buried in it.
+
+       ⚠️ AND IT IS HANDED THE BODY'S OWN SINK IN PIXELS, NOT THE FRACTION.
+       `sunk` is a fraction OF THE TILE, and the burst's tile is not the body's
+       -- resolving it against its own height would slide the cloud off him by
+       tens of pixels, and only while he is part-buried, which is exactly the
+       state the fight's one opening happens in. */
+    this._drawHitFX(ctx, assets, d, dsc, gx, gy, sunk * h);
+
     /* ⚠️ AND `restore()` IS WHAT CLEARS `filter`. It is canvas state like the
        clip and the alpha, so leaving it set would tint the next thing anybody
        draws this frame. */
     ctx.restore();
+  }
+
+  /**
+   * The burst itself. Its own method only so that the rect arithmetic sits next
+   * to the note about the anchor -- `_drawBody` is its one caller.
+   */
+  _drawHitFX(ctx, assets, d, dsc, gx, gy, sinkPx) {
+    const fx = this._hitFxFrame(d);
+    if (!fx) return;
+    /* ⚠️ ITS OWN TEXTURE, `horacio<sheet>` -- the fifth file, which is not a
+       level. A pack cut before 2026-09-18 has no `d.fx` and `_hitFxFrame` has
+       already returned null; a pack that has it but whose atlas has not loaded
+       costs the burst and nothing else. */
+    const img = assets && assets.getDrawable('horacio' + (d.fx.sheet || 0));
+    if (!img) return;
+    const ax = Array.isArray(fx.ax) ? (fx.ax[this.bodyLevel()] != null
+                                       ? fx.ax[this.bodyLevel()] : fx.ax[0])
+                                    : fx.ax;
+    /* ⚠️ BOTH OF THESE ARE RESET BEFORE THE BLIT. `filter` may be carrying
+       the fuse's red and `globalAlpha` the hit blink, both set a few lines up
+       and both cleared only by the `restore()` after this call. The chunks are
+       neither tinted nor blinking: the blink is the body saying it was hit and
+       a flickering debris cloud would be the same message twice, out of step
+       with itself. */
+    ctx.filter = 'none';
+    ctx.globalAlpha = 1;
+    /* THE SAME ROUNDING AS THE BODY ABOVE, which is the point rather than a
+       copy: the two are drawn from one ground point on one frame, and a burst
+       that rounded its position differently would crawl a pixel around him as
+       the camera moved. */
+    ctx.drawImage(img, fx.x, fx.y, fx.w, fx.h,
+                  Math.round(gx - ax * dsc),
+                  Math.round(gy - fx.ay * dsc + sinkPx),
+                  Math.round(fx.w * dsc), Math.round(fx.h * dsc));
   }
 }
 
