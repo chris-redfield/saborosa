@@ -56,9 +56,11 @@ const CONFIG = {
      never do is ship silently -- a build where every punch does 50 would look
      like a balance disaster rather than a forgotten flag. */
   DEV: {
-    /* ⚠️ CURRENTLY **OFF**, WHICH IS THE SHIPPING STATE. `package.sh` refuses to
-       build while this is true -- so a forgotten `true` costs a failed build
-       rather than a shipped cheat.
+    /* ⚠⚠ CURRENTLY **ON**, ON REQUEST 2026-09-18. This is a DEV DEFAULT and
+       NOT a shipping state: `package.sh` refuses to build while it is true, so
+       the next build will FAIL until it is set back to false. That refusal is
+       the feature -- a forgotten `true` costs a failed build rather than a
+       shipped cheat -- and it is the one thing to remember about this line.
 
        ⚠️ THIS LINE IS THE ONE THING IN THE BLOCK THAT DESCRIBES A VALUE RATHER
        THAN A RULE, so read the value below and not this sentence. It said "OFF"
@@ -70,8 +72,11 @@ const CONFIG = {
        and off again to package it, on again on 2026-08-24 to test the food
        pickup and the air attack, and OFF AGAIN THE SAME DAY for the jam
        submission build. It then stayed ON through the whole of the stage-3
-       build-out and went **off on 2026-09-16**, on request, as the default in
-       the code. Everything below is dead while it is false, and so is the
+       build-out, went **off on 2026-09-16** on request as the default in the
+       code, and **back ON on 2026-09-18**, also on request, while the TIME
+       ATTACK's barrels are being tuned -- key 3 is the fastest way into that
+       mode and `JUMPS` is dead without this. Everything below is dead while it
+       is false, and so is the
        number-key ROOM JUMP, which is refused in input.js as well as here (see
        the note there).
 
@@ -81,8 +86,22 @@ const CONFIG = {
        values below that are read ONCE at the start of a run -- `startRoom` and
        `lives` -- are already spent by the time anyone can type. Unlocking
        mid-run gives the room jumps, the damage and the readout; it does not
-       give a fresh run in the bookcase with one life. For that, this line. */
-    on: false,
+       give a fresh run in the bookcase with one life. For that, this line.
+
+       ⚠⚠ WHAT TURNING IT ON COSTS, so it is not rediscovered: `punchDamage` 50
+       means **the fight cannot be judged** (the horse dies in three combos,
+       every mook in one) AND it hides whole code paths -- a 45HP worm dies to
+       every punch, so every hit takes the DEATH branch and anything on the
+       non-lethal branch simply never runs. That has already cost one session.
+       `lives` 1 and `startRoom` are read ONCE at boot, so they shape the run
+       from its first frame.
+
+       ⚠️ IT DOES **NOT** REACH THE TIME ATTACK'S GUN. That mode's damage is
+       `TIME_ATTACK.rayDamage` (1), not `DEV.punchDamage`, so barrel health and
+       the fly/clock timings read the same with DEV on or off. The minigame is
+       the one place in this game where a dev session is judging the real
+       numbers. */
+    on: true,
     /* vs the real string's 4 / 5 / 6 / 4 / 9.
 
        ⚠️ THIS IS THE ONE THING THAT MAKES A DEV SESSION UNABLE TO JUDGE THE
@@ -5051,9 +5070,93 @@ const CONFIG = {
     /* px/SECOND, leftward. The sign is in ta-barrel.js so nothing can spawn one
        drifting the wrong way. For scale: a fly crosses at `flySpeed` 200 and a
        clock drifts at `coinSpeed` 120, so a barrel is the fastest thing in the
-       field -- it is the one that is meant to arrive. */
-    barrelSpeed: 260,
-    barrelSpeedVar: 70,
+       field -- it is the one that is meant to arrive.
+
+       ⚠️ +20% ON REQUEST 2026-09-18: *"make the barrels 20% faster when they
+       come from the right to the left (this movement)"*. 260 -> 312, and read
+       it the way every percentage on this project is read -- **a percentage of
+       the CURRENT value**, not a walk back to an earlier one. The next one
+       applies to 312.
+
+       ⚠️ IT WENT 260 -> 312 AS A x1.2, and the variance went 70 -> 84 with it
+       so the stream's shape did not change inside a change to its speed. That
+       variance is now ZERO -- see below -- so only `barrelSpeed` is live, and
+       the next percentage applies to 312. */
+    barrelSpeed: 312,
+    /* ⚠⚠ ZERO SINCE 2026-09-18: EVERY BARREL TRAVELS AT EXACTLY `barrelSpeed`.
+       *"make all the barrels have the same speed, I see the dark barrels are
+       faster (movement from right to left), make the clearer one have the same
+       speed."*
+
+       ⚠️ THE SYMPTOM WAS REAL AND THE CAUSE NAMED FOR IT WAS NOT, and that is
+       worth keeping because the fix is the same either way and the belief is
+       not. **`hard` has never been read anywhere near `vx`** -- it appears in
+       exactly three places in ta-barrel.js (the constructor's assignment,
+       `isBreakable()` and the tint in `render()`), and the speed roll is
+       independent of it. What was really on screen was this knob: +/-84 on 312
+       is a **+/-27% spread**, so two barrels could cross at 228 and 396 and the
+       difference is large enough to see. With half of them tinted, a spread
+       with no cause to attach itself to gets attached to the visible
+       difference. **Check the cause even when you are going to do the fix
+       anyway** -- otherwise "the dark ones are faster" becomes a fact about
+       this game that nobody ever removed.
+
+       ⚠️ 0, NOT DELETED, and the read site is `!= null` so a zero really is
+       zero rather than falling through to a default. Put a number back and the
+       spread returns with no other edit. */
+    barrelSpeedVar: 0,
+    /* THE TUMBLE (2026-09-18): *"make the some (50%) barrels also spin on its
+       own axis, like the earth, no, better analogy: like a knife when it's
+       thrown."*
+
+       ⚠️ THE SECOND ANALOGY IS THE SPEC. The earth turns on a fixed axis in a
+       fixed place; a thrown knife turns END OVER END while it travels, and the
+       turn belongs to the flight. So the DIRECTION is derived from the barrel's
+       own `vx` in ta-barrel.js and is not a knob here: it rolls the way it is
+       going, and reversing the travel would turn the tumble with it. Only the
+       PERIOD and the mix are numbers.
+
+       ⚠️ ROLLED PER BARREL AND KEPT FOR LIFE, so a spinner never stutters into
+       or out of turning. At 0 none of them tumble; at 1 all of them do. */
+    barrelSpinChance: 0.5,
+    /* MS FOR ONE WHOLE TURN, +/- the variance. ⚠️ A PERIOD, NOT A RATE, because
+       "one turn every 0.89s" is a thing you can picture and radians per
+       millisecond is not -- the conversion is one line in the constructor. At
+       `barrelSpeed` 312 a barrel crosses the 1280px screen in ~4.1s, so this is
+       about four and a half turns on the way past.
+
+       ⚠⚠ **30% SLOWER ON REQUEST 2026-09-18, AND THAT IS x1/0.7 AND NOT x1.3.**
+       *"the current spin, its too fast, make it spin 30% slower"* -- "slower"
+       is about the RATE the player sees, and this knob is its RECIPROCAL. A
+       period multiplied by 1.3 gives 806ms, which is a spin 23% slower, not 30.
+       Dividing by 0.7 gives 886 and a rate of exactly 0.700 of the old one
+       (2*PI/886 over 2*PI/620). **Whenever a percentage lands on a knob that is
+       the inverse of the thing being described, convert on the THING and then
+       invert** -- and check the answer by taking the ratio of the rates, which
+       is what was done here.
+
+       ⚠️ AND THE VARIANCE FOLLOWS BY THE SAME DIVISION, for the reason
+       `barrelSpeedVar` did: it is an ABSOLUTE spread on the period, so dividing
+       it by 0.7 too is what keeps every barrel's rate scaled by the same 0.7.
+       Left alone, the slowest and fastest spinners would have been pulled
+       together by a change that was only about the average.
+
+       ⚠️ **IT HAS NOW BEEN CUT THREE TIMES IN ONE DAY, AND EVERY ONE WAS
+       "THAN NOW", SO THEY COMPOUND**: *"30% slower"*, then *"even slower, 30%
+       slower than now"*, then *"even slower, 10% slower than what it is now"*.
+       620 -> 886 -> 1266 -> 1407ms (and 160 -> 229 -> 327 -> 363), each step a
+       division by the fraction rather than a multiplication. Cumulative rate
+       **0.44 of where it started**: about 2.9 turns on the way across the
+       screen, down from 6.6. **None of the three is a re-reading of an earlier
+       one** -- read the next the same way, against 1407.
+
+       ⚠️ THE SPIN SPREAD IS KEPT while the SPEED spread went to zero, because
+       only the speed was asked about. Barrels tumbling at slightly different
+       rates has not been complained about, and zeroing it here would be reading
+       a second instruction into the first. Set `barrelSpinVarMs: 0` if the
+       tumble should be as uniform as the travel now is. */
+    barrelSpinMs: 1407,
+    barrelSpinVarMs: 363,
     /* ⚠️ MEASURED AGAINST THE PLANE'S INK, NOT PICKED. 1 is the barrel at the
        size it is on the street -- 157x115 drawn -- and the plane's own visible
        ink is only 84x83 inside its 203px frame, so a street barrel is nearly
@@ -5069,10 +5172,61 @@ const CONFIG = {
        the plane's box down to its fuselage because a wing tip is not a hull. A
        barrel is very nearly a solid rectangle and this only forgives the
        drawing's margin. Lower both to make the obstacle kinder. */
+    /* ⚠️ AND THE BOX TURNS WITH A SPINNER, so these are the extents of the
+       UNTURNED barrel and `boxes()` derives the rest. A fixed box under a
+       turning drawing would let the player fly clean under an upright barrel
+       and be hit by air beside it -- visible unfairness, not rounding. */
     barrelHitWRel: 0.85,
     barrelHitHRel: 0.85,
     barrelBoilMs: 110,        // per frame of the 4-frame wobble
     barrelBreakMs: 260,       // the whole 3-frame smash, played ONCE
+    /* ⚠⚠ THREE HITS FROM THE GUN, AND `barrelHurtMs` IS WHAT MAKES THAT TRUE.
+       *"I want them to explode only with 2 hits. Don't forget that they need to
+       have some [invulnerability] after the first hit, like the flyes,
+       otherwise a single scan of the machine gun will be able to destroy
+       them."* The beam is a hitscan line re-tested EVERY FRAME while fire is
+       held, so health with no rate limit is three hits in 50ms -- three by the
+       arithmetic and one on screen. Every shootable thing in this mode has the
+       same pair: `flyHealth` 2 / `flyHurtMs` 180, `coinHealth` 7 /
+       `coinHurtMs` 160.
+
+       ⚠️ 2 -> 3 ON REQUEST 2026-09-18: *"the barrels are still breaking too
+       fast, let them have 3 hp instead of 2"*. **Time to kill under a held beam
+       is `(health - 1) x barrelHurtMs`, not `health x`** -- the first hit lands
+       on the frame the beam arrives. So 2 was 184ms and 3 is ~368ms. If that is
+       still too fast, `barrelHurtMs` is the other half of the product and the
+       one that does not change how many hits it takes.
+
+       ⚠️ 180 IS THE FLY'S NUMBER, taken because the ask named the flies. Raise
+       it to make a held beam slower at clearing a lane; it does not change how
+       many hits a barrel takes, only how long they take to land.
+
+       ⚠⚠ AND THE DARK ONES RUN THE SAME WINDOW WITH NO HEALTH AT ALL. Since
+       *"add the puffs to the unbreakable barrels, they just don't break"* they
+       take hits, spark, and never lose a point. `barrelHurtMs` is doing a
+       SECOND job for them: without it a held beam re-pins the puff every frame
+       and it never advances past its first drawing. **The rate limit is on the
+       feedback there, not on the damage.**
+
+       ⚠️ THIS IS THE GUN'S PROBLEM ONLY. Hitting the PLAYER destroys a barrel
+       outright whatever its health and whether or not it is dark -- health is
+       what the beam has to get through, not a property of the object. */
+    barrelHealth: 3,
+    barrelHurtMs: 180,
+    /* THE IMPACT PUFF, asked for by name: *"when they take a hit, add the same
+       effect that the coin has right now (the small black explosion)"*.
+       ⚠️ THERE IS NO `barrelHitFxFrames`/`Ms` AND THAT IS DELIBERATE -- the
+       barrel plays `coinHitFxFrames` / `coinHitFxMs`, the very same puff the
+       coin plays, which is itself the fly's burst frames. Three objects, ONE
+       effect, one place to retune it. The ask was for the same effect, so a
+       near-copy that could drift from it would be the wrong answer even though
+       it would look identical today.
+       ⚠️ AND THE SIZE IS THE COIN'S BY DEFAULT: null falls through to
+       `coinHitFxSize`, in the same units (a multiple of `coinSizePx`), so out of
+       the box it is the same puff at the same size. Scaling it to the barrel
+       would make it a bigger, different effect that merely shared an atlas --
+       and the ask called it the SMALL black explosion. */
+    barrelHitFxSize: null,
     barrelSpawnPadPx: 30,     // clear of the right edge, ON TOP of its half-width
     barrelCullPx: 40,         // and how far past the left edge before it is dropped
     barrelDamage: 1,          // ⚠️ one of `planeHealth` 4, same as a fly touch

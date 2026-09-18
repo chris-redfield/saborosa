@@ -931,30 +931,51 @@ class TimeAttack {
         break;
       }
     }
-    /* ⚠️ THE BREAKABLE BARRELS, AND THE DARK ONES ARE **NOT** A `continue`
-       WITH A DIFFERENT NAME. `isBreakable()` is false for a dark barrel, so the
-       beam simply finds nothing there -- it does not stop, it does not spark,
-       it PASSES THROUGH and goes on to whatever is behind it.
+    /* ⚠⚠ EVERY WHOLE BARREL, DARK ONES INCLUDED, AND THAT CHANGED ON
+       2026-09-18: *"add the puffs to the unbreakable barrels, they just don't
+       break."* This used to `continue` on `isBreakable()`, so the beam found
+       nothing at all where a dark barrel was. Now it finds it, sparks on it,
+       and cannot hurt it -- **the hardness moved from "is this thing here" to
+       "does this hit take health", which is one line inside `TaBarrel.hit()`.**
+       A beam that visibly does nothing to a dark barrel is the point of a dark
+       barrel; a beam that visibly ignores one reads as a missing collision.
 
-       ⚠️ THAT IS THE LITERAL READING OF THE ASK (*"unbreakable from the
-       machine gun"*) AND IT IS A REAL DESIGN CHOICE, so it is worth naming the
-       other one: a dark barrel that BLOCKED the beam would be cover -- flies
-       could hide behind it and the player would have to fly around it to shoot
-       past. That is a different and bigger mechanic than "you cannot break
-       this", it was not asked for, and the ray here has no notion of a nearest
-       hit (it tests every box and stops at none). If it is ever wanted, the
-       change is in this method and not in `TaBarrel`.
+       ⚠️ IT STILL DOES NOT **BLOCK**. The dark barrel sparks and the beam
+       carries on to whatever is behind it. That is still the literal reading of
+       *"unbreakable from the machine gun"*, and the other one is still worth
+       naming: a barrel that STOPPED the beam would be cover -- flies could hide
+       behind it and the player would have to fly around it to shoot past. That
+       is a bigger mechanic, it was not asked for, and the ray has no notion of
+       a nearest hit (it tests every box and stops at none). If it is ever
+       wanted, the change is in this method and not in `TaBarrel`.
 
-       ⚠️ AND A BARREL TAKES NO DAMAGE AND HAS NO HEALTH: one frame of the
-       beam breaks it. A `barrelHealth` would put i-frames on an obstacle,
-       which is the thing that turned one clock into 35 seconds of payout --
-       and unlike a clock, a barrel pays nothing, so there is nothing to
-       rate-limit. It is destroyed or it is not. */
+       ⚠⚠ A BARREL HAS `barrelHealth` AND I-FRAMES, SINCE 2026-09-18, AND
+       THE NOTE THAT USED TO BE HERE SAID THE OPPOSITE. It argued that a barrel
+       should die to one frame of beam because i-frames on an obstacle were
+       what turned one clock into 35 seconds of payout, and a barrel pays
+       nothing so there is nothing to rate-limit. **That conflated two jobs.**
+       The clock's bug was paying out PER DAMAGE TICK -- the i-frames were fine,
+       the PAYOUT was reading them as a policy. Rate-limiting DAMAGE is all they
+       were ever for, and a beam re-tested every frame makes them the only way
+       a health total can mean anything: without them, 3 health is three hits in
+       50ms.
+       *"they need to have some [invulnerability] after the first hit, like the
+       flyes, otherwise a single scan of the machine gun will be able to destroy
+       them."*
+
+       ⚠️ SO `hit()` AND NOT `smash()`, and the return value is ignored HERE on
+       purpose -- unlike the clock below, nothing is paid for a barrel, so there
+       is no transition to detect and no reason to care whether this particular
+       frame landed. The rate limit lives inside `hit()`, which is where the
+       coin and the fly keep theirs.
+       ⚠️ `break` AFTER THE FIRST BOX THAT CROSSES, not after the first that
+       DAMAGES: a barrel has one box, and a second crossing box in the same
+       frame would be the same barrel being asked twice. */
     for (const b of this.barrels) {
-      if (!b.isBreakable()) continue;
+      if (!b.isWhole()) continue;
       for (const bx of b.boxes()) {
         if (!TimeAttack._rayHitsBox(ray, th, bx)) continue;
-        b.smash();
+        b.hit(c.rayDamage || 1);
         break;
       }
     }
@@ -1057,6 +1078,11 @@ class TimeAttack {
        it is the near object, and a fly showing through a solid barrel says the
        barrel is a decal. */
     for (const b of this.barrels) b.render(ctx);
+    /* THE IMPACT PUFFS, IN THEIR OWN PASS AFTER EVERY BARREL IS DOWN -- the
+       same split the coins have between `render` and `renderBurst`, and for the
+       same reason: drawn at the tail of each barrel's own blit, one barrel's
+       puff can be painted under the next barrel that happens to overlap it. */
+    for (const b of this.barrels) b.renderBurst(ctx);
     if (this.plane) this.plane.render(ctx, W, H, 0);
     if (this.input && this.input.debug) this._drawDebug(ctx, W, H);
     this._drawHud(ctx, W, H);
@@ -1529,9 +1555,29 @@ class TimeAttack {
        breaks, grey does not, and a barrel already bursting is dim like every
        other non-hittable thing in this overlay. */
     for (const b of this.barrels) {
+      /* ⚠️ A BARREL INSIDE ITS I-FRAMES IS DRAWN DIM, like every other
+         non-hittable thing in this overlay -- otherwise "my shots are not
+         landing" during the 180ms after a hit has no visible cause at all.
+         ⚠️ BUT IT KEEPS ITS HUE. Dimming to one shared colour would hide the
+         breakable/dark distinction during exactly the window when the player
+         is shooting at it -- and since both kinds now spark, that is the one
+         moment the overlay is being asked to tell them apart. Two facts, two
+         channels: HUE says which kind, ALPHA says whether it can be hit. */
       ctx.strokeStyle = !b.isWhole() ? 'rgba(255,255,255,0.22)'
-                      : b.isBreakable() ? '#ff9f43' : '#9aa3ad';
+                      : b.isBreakable() ? (b.isHurt() ? 'rgba(255,159,67,0.3)' : '#ff9f43')
+                      : (b.isHurt() ? 'rgba(154,163,173,0.3)' : '#9aa3ad');
       for (const bx of b.boxes()) ctx.strokeRect(bx.x, bx.y, bx.w, bx.h);
+      /* THE HEALTH LEFT, because 2 and 1 look identical on screen by design.
+         ⚠️ THE FONT IS SET HERE and not borrowed from the readout below, which
+         is set AFTER this loop -- this would otherwise draw in whatever the
+         canvas default happened to be. */
+      if (b.isWhole() && !b.hard) {
+        ctx.font = '12px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = '#ff9f43';
+        ctx.fillText(String(b.hp), b.boxes()[0].x + 2, b.boxes()[0].y - 12);
+      }
     }
     if (this.plane && this.plane.hitBox) {
       const pb = this.plane.hitBox(W, H);
@@ -1561,7 +1607,8 @@ class TimeAttack {
       + '  quota ' + this.coinsGot + '/' + R.coins + '  clock ' + (this.clockMs / 1000).toFixed(2)
       + '  flies ' + this.flies.length + '/' + R.flies + '  clocks ' + this.coins.length + '/' + R.clocks
       + '  barrels ' + this.barrels.length + '/' + this._barrelMax()
-      + ' (' + this.barrels.filter(b => b.hard).length + ' hard, next '
+      + ' (' + this.barrels.filter(b => b.hard).length + ' hard, '
+      + this.barrels.filter(b => b.spin).length + ' spinning, next '
       + (this.barrelT / 1000).toFixed(1) + 's)'
       + '  score ' + this.score + '  firing ' + (this.ray ? 'yes' : 'no'), 12, H - 22);
     ctx.restore();

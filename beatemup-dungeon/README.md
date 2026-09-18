@@ -3271,7 +3271,7 @@ video backwards.
 > would have left a continue quietly more generous than the run it continued.
 
 ```js
-DEV: { on: true, punchDamage: 50 },   // top of config.js
+DEV: { on: true, punchDamage: 50 },   // top of config.js — ON since 2026-09-18
 ```
 
 > ⚠️ **OFF is the shipping state** — read the value in `config.js`, not this
@@ -6650,10 +6650,14 @@ already in `CHARACTERS`, already built at boot and already in the manifest.
 | `barrelHardFilter` | **`brightness(0.85)`** — the 15%, and the only tell the player gets |
 | `barrelFirstMs` / `barrelEveryMs` / `barrelEveryVarMs` | **2200** / **1700** ± **700**. The first gap is longer on purpose: a round that opens with a barrel already crossing gives no beat to read the field in |
 | `barrelMax` | **3** in the air at once. ⚠️ **`ROUNDS[n].barrels` overrides it** — the same shape `flies` and `clocks` have, so ramping it across the three rounds is a number and not a mechanism. Deliberately not set on the rounds yet |
-| `barrelSpeed` / `barrelSpeedVar` | **260** ± **70** px/s leftward. For scale: a fly crosses at `flySpeed` 200 and a clock drifts at `coinSpeed` 120 — the barrel is the fastest thing in the field, because it is the one that is meant to *arrive* |
+| `barrelSpeed` / `barrelSpeedVar` | **312** px/s leftward, **± 0 — every barrel travels at exactly the same speed** (2026-09-18; the spread was ±84 and is now off). For scale: a fly crosses at `flySpeed` 200 and a clock drifts at `coinSpeed` 120 — the barrel is by far the fastest thing in the field, because it is the one that is meant to *arrive*. At 312 it crosses the 1280px screen in ~4.1 s |
 | `barrelScale` | **0.75**. ⚠️ **Measured against the plane's ink, not picked** — see below |
-| `barrelHitWRel` / `barrelHitHRel` | **0.85** each. Much less generous than the plane's own 0.35 × 0.5, and deliberately: those cut the plane to its fuselage because a wing tip is not a hull; a barrel is nearly a solid rectangle |
+| `barrelHitWRel` / `barrelHitHRel` | **0.85** each, of the **unturned** barrel — `boxes()` derives the rest. Much less generous than the plane's own 0.35 × 0.5, and deliberately: those cut the plane to its fuselage because a wing tip is not a hull; a barrel is nearly a solid rectangle |
+| `barrelSpinChance` | **0.5** — half of them tumble. Rolled per barrel and kept for life, so a spinner never stutters into or out of turning |
+| `barrelSpinMs` / `barrelSpinVarMs` | **1407** ± **363** ms for one whole turn — about 2.9 turns on the way across. **Three cuts on 2026-09-18**: 620 → 886 → 1266 → 1407 (30%, 30%, 10%), so the rate is now **0.44** of where it started. ⚠️ **A period, not a rate**: "one turn every 0.89 s" is a thing you can picture and radians-per-ms is not — which also means a percentage lands on it **inverted**, see below. The **direction is not a knob**, it is derived from `vx` |
 | `barrelBoilMs` / `barrelBreakMs` | **110** per frame of the 4-frame wobble; **260** for the whole 3-frame smash, played **once** |
+| `barrelHealth` / `barrelHurtMs` | **3** hits from the gun (was 2), **180 ms** immune after a connected one. 180 is the *fly's* number, taken because the ask named the flies. ⚠️ **Time to kill under a held beam is `(health − 1) × barrelHurtMs`, not `health ×`** — the first hit lands on the frame the beam arrives. Measured: 367 ms at 3 health, 184 at 2. Raising `barrelHurtMs` is the other half of that product and does **not** change how many hits it takes |
+| `barrelHitFxSize` | **null** → falls through to `coinHitFxSize`. The hit puff is the coin's, at the coin's size. ⚠️ **There is no `barrelHitFxFrames`/`Ms`** — see below |
 | `barrelDamage` | **1** of `planeHealth` 4 — the same as a fly touch |
 
 > ⚠️ **`barrelScale` 0.75 is a measurement.** 1 is the barrel at the size it is
@@ -6672,10 +6676,32 @@ already in `CHARACTERS`, already built at boot and already in the manifest.
 > cannot break this", and the ray has no notion of a nearest hit (it tests every
 > box and stops at none). The change would be in `_shoot()`, not in `TaBarrel`.
 
-> ⚠️ **A barrel has no health and takes no damage.** One frame of the beam breaks
-> it. A `barrelHealth` would put i-frames on an obstacle — which is what turned
-> one clock into 35 seconds of payout — and unlike a clock a barrel pays nothing,
-> so there is nothing to rate-limit.
+> ⚠⚠ **A barrel takes THREE hits from the gun, and the i-frames are what make
+> that true.** *"I want them to explode only with 2 hits. Don't forget that they
+> need to have some [invulnerability] after the first hit, like the flyes,
+> otherwise a single scan of the machine gun will be able to destroy them."* The
+> beam is a hitscan line re-tested **every frame** while fire is held, so health
+> with no rate limit is two hits in 33 ms — two by the arithmetic and one on
+> screen. Measured: a held beam kills a barrel at **367 ms** (hits at 0, 184 and
+> 367), not 33.
+
+> ⚠️ **Three health has a consequence worth watching:** a breakable barrel now
+> needs 367 ms on your line to die, which at 312 px/s is **115 px of travel**, so
+> some get past a beam that used to clear them. In a 25 s run with the trigger
+> held the plane took 3 hits with only 2 dark barrels on screen — one of them was
+> a breakable one that survived long enough to arrive.
+
+> ⚠️ **This reverses a note that stood here for one day, and the note was
+> wrong.** It argued a barrel should have no health because i-frames on an
+> obstacle were what turned one clock into 35 seconds of payout, and a barrel
+> pays nothing so there is nothing to rate-limit. **That conflated two jobs.**
+> The clock's bug was paying out *per damage tick* — the i-frames were fine, the
+> *payout* was reading them as a policy. Rate-limiting **damage** is the only
+> thing they were ever for.
+
+> ⚠️ **Health is the GUN's problem only.** Hitting the player destroys a barrel
+> outright whatever its health and whether or not it is dark — `smash()` and
+> `hit()` are different verbs.
 
 > ⚠️ **One hit per frame, but every barrel that touched him breaks.** The flies'
 > block uses a labelled break because once a touch has landed there is nothing
@@ -6691,6 +6717,146 @@ already in `CHARACTERS`, already built at boot and already in the manifest.
 > crosses once and is gone, so it takes no `worldW`, never wraps, and owns the
 > cull. **Do not hand it one to make it consistent with its neighbours**: it
 > would come back round and hit the player from behind, for ever.
+
+#### Two hits, and the coin's puff (2026-09-18)
+
+*"when they take a hit, add the same effect that the coin has right now (the
+small black explosion)."*
+
+> ⚠⚠ **It reaches into the FLY sheet, which looks wrong and is the point.**
+> `FLY_RECTS[1..4]` are the fly's burst frames; `TaCoin._blitHitFx` plays those
+> verbatim, and its own comment says why — it is meant to be *the very same
+> effect*, sharing the art and the rate rather than owning a near-copy that could
+> drift. The ask was for the same effect the coin has, so the barrel shares them
+> in turn. **Three objects, one puff, one place to retune it** — which is why
+> there is no `barrelHitFxFrames`/`barrelHitFxMs`.
+
+> ⚠️ **And it draws at the coin's size, not the barrel's.** `barrelHitFxSize` is
+> in the same units as `coinHitFxSize` (a multiple of `coinSizePx`) and falls
+> back to it. Scaling it up to the barrel would make it a bigger, *different*
+> effect that merely shared an atlas — and the ask called it the **small** black
+> explosion.
+
+> ⚠️ **Pinned where the shot connected, not carried on the barrel.** `TaCoin`'s
+> reasoning, and it matters more here: a barrel crosses at 312 px/s, so a puff
+> dragged along with it would travel 87 px during its own 280 ms and read as part
+> of the barrel rather than as the moment of impact.
+
+> ⚠️ **Its own render pass**, after every barrel is down — the same split the
+> coins have between `render` and `renderBurst`. Drawn at the tail of each
+> barrel's own blit, one barrel's puff can be painted under the next barrel.
+
+> ⚠️ **The puff (280 ms) outlives the immune window (180 ms)**, so the feedback
+> covers the whole of it and is still up when the barrel becomes shootable again.
+> Under a *held* beam the second hit lands at 184 ms and the smash supersedes the
+> puff, which is `TaCoin._explode`'s rule: two impact effects on one object, one
+> of them reporting a hit that has just been overtaken, is noise.
+
+> ⚠⚠ **The dark barrels take hits too — they just never break** (a later pass
+> the same day: *"add the puffs to the unbreakable barrels, they just don't
+> break"*). The beam loop is gated on `isWhole()`, not `isBreakable()`, and the
+> hardness moved **inside** `TaBarrel.hit()`, around the health alone. Getting
+> that boundary wrong in either direction is the whole of that method: gate the
+> puff on breakable and a dark barrel is inert under fire; gate the damage on
+> whole and a dark barrel breaks. Measured: 3 s of held beam on a dark barrel
+> leaves it at hp 3, whole, sparking the entire time.
+
+> ⚠️ **A dark barrel needs the i-frames as much as a breakable one**, though
+> nothing about it can change. Without them a held beam re-pins `hitFx` at t = 0
+> every frame and the puff never advances past its first drawing — a spark frozen
+> mid-burst for as long as the trigger is down. **The rate limit is on the
+> feedback there, not on the damage.**
+
+> ⚠️ **What that looks like under sustained fire:** the window (180 ms) is
+> shorter than the puff (280 ms), so a held beam re-triggers before the previous
+> spark finishes — the puff cycles frames 0–2 of 4 and never reaches its largest.
+> On screen it is a continuous pulsing spark, which is the right read for a gun
+> hosing something it cannot break. If each spark should instead play out in
+> full, that is `barrelHurtMs` → 280 and nothing else.
+
+#### Half of them tumble (2026-09-18)
+
+*"make the some (50%) barrels also spin on its own axis, like the earth, no,
+better analogy: like a knife when it's thrown."*
+
+> ⚠️ **The second analogy is the spec, and it is not the same as the first.**
+> The earth turns on a fixed axis in a fixed place; a thrown knife turns **end
+> over end while it travels**, and the turn belongs to the flight. So the spin is
+> about the barrel's own **centre**, its **direction is derived from `vx`** rather
+> than typed — it rolls the way it is going, and reversing the travel would turn
+> the tumble with it — and it runs off the same clock as the boil. Only the
+> period and the mix are numbers.
+
+> ⚠️ **`pivotY` is drawn px ABOVE the ground point**, which is `sheets.js`'s
+> convention and the one thing here that is easy to get wrong: without it every
+> rotation in this game happens about the *ground point*, and the barrel would
+> swing round its own base like a felled tree instead of turning end over end.
+> `_gy - y` is half the drawn height by construction — the same arithmetic
+> `prop.js` does for the hoist, reached from the other end.
+
+> ⚠⚠ **The hitbox turns with the drawing, and leaving it still would have been a
+> visible unfairness rather than a rounding error.** A barrel is 117×86 on its
+> side and 86×117 on its end; a fixed box would let the player fly clean under an
+> upright barrel and be hit by air 36% of a barrel out to its left. `boxes()`
+> returns the axis-aligned extent of the turned rectangle, recomputed every frame
+> off the same `angle()` the blit uses — **the thing that decides must be the
+> thing that draws.**
+
+> ⚠️ **And that fit was measured, not assumed — the first version of this note
+> said the opposite.** Box vs the real frame's rotated alpha bbox, at
+> `barrelScale` 0.75: **0°** 99×73 vs 117×86 (0.85), **30°** 123×113 vs 125×114
+> (0.98), **45°** 122×122 vs 122×122 (**1.00**), **60°** 113×123 vs 113×124,
+> **90°** 73×99 vs 86×117 (0.85). It is **never bigger than the barrel's own
+> silhouette** — the 0.85 inset takes back more than the rectangle's corners add,
+> and the two cancel almost exactly at the diagonals. So a spinner is *tightest*
+> mid-turn (the box is the ink) and as forgiving as a still barrel end-on.
+
+> ⚠️ **A spinner's reach is its DIAGONAL** (146 px against 117), and both screen
+> edges use that one number. Over a turn it presents every angle, so measuring
+> the un-turned width would pop a corner into view at the right edge and clip one
+> off at the left — on half the barrels, at some angles only, which is the shape
+> of a bug nobody can reproduce.
+
+> ⚠⚠ **All barrels travel at the same speed — and the cause named for the
+> symptom was not the cause.** *"I see the dark barrels are faster ... make the
+> clearer one have the same speed."* The symptom was real; `hard` has **never**
+> been read anywhere near `vx` — it appears in exactly three places in
+> `ta-barrel.js` (the constructor's assignment, `isBreakable()` and the tint in
+> `render()`), and the speed roll was independent of it. What was on screen was
+> `barrelSpeedVar`: ±84 on 312 is a **±27% spread**, so two barrels could cross
+> at 228 and 396. **With half of them tinted, a spread with no cause to attach
+> itself to gets attached to the visible difference.** Measured after the fix:
+> 3000 barrels, **one distinct speed**, 312 for dark and light alike.
+> ⚠️ `barrelSpeedVar` is **0, not deleted**, and the read site is `!= null` so a
+> zero really is zero rather than falling through to a default.
+
+> ⚠⚠ **"30% slower" is ÷0.7 on this knob, not ×1.3.** *"the current spin, its
+> too fast, make it spin 30% slower"* — "slower" describes the **rate** the
+> player sees, and `barrelSpinMs` is its **reciprocal**. ×1.3 gives 806 ms, which
+> is a spin only **23%** slower; ÷0.7 gives **886** and a rate of exactly 0.700 of
+> the old one. **When a percentage lands on a knob that is the inverse of the
+> thing being described, convert on the thing and then invert** — and check by
+> taking the ratio of the rates, which is what was done: 0.6998 at the mean,
+> 0.6996 at the slowest spinner and 0.7002 at the fastest. ⚠️ **A second 30% then
+> landed on it the same day** — *"make it spin even slower, 30% slower than
+> now"*. "Than **now**", so it compounds: 886 → 1266, rate 0.6998 again. ⚠️ **And
+> a third, 10%, minutes later** — 1266 → 1407, rate 0.8998, **0.44 cumulative**.
+> Every one was "than now"; none was a re-reading of an earlier one, so read the
+> next the same way, against 1407. The spin spread was kept (327) while the *speed* spread
+> went to zero, because only the speed was asked about — `barrelSpinVarMs: 0`
+> if the tumble should be as uniform as the travel now is.
+
+> ⚠️ **The variance followed by the same division** (160 → 229), for the reason
+> `barrelSpeedVar` did: it is an absolute spread on the *period*, so dividing it
+> too is what keeps **every** barrel's rate scaled by the same 0.7. Left at 160,
+> the slowest and fastest spinners would have been pulled together by a change
+> that was only meant to be about the average. Range 657–1115 ms, the old
+> 460–780 ÷ 0.7.
+
+> ⚠️ **The smash freezes the angle on the event.** `_brokeAt` is captured in
+> `smash()`, so the debris holds whatever angle the barrel was at. A cloud that
+> went on spinning would be a spinning cloud; one that snapped back to level
+> would pop on the frame it burst.
 
 > ⚠️ **The smash is drawn at the barrel's own `gy`, and the anchor is frozen at
 > birth.** Every frame of this pack is bottom-anchored (`ay` == the frame height)

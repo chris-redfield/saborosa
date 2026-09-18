@@ -96,14 +96,231 @@ at its own size is nearly **twice the player**. 0.75 gives 117x86. ⚠️ **The
 number came from measuring the alpha bbox of both, not from looking at it** --
 and it is still a look call, so it is the first thing to move.
 
+### Half of them tumble, and they fly 20% faster (the same day)
+
+*"make the some (50%) barrels also spin on its own axis, like the earth, no,
+better analogy: like a knife when it's thrown"* and *"make the barrels 20%
+faster when they come from the right to the left (this movement)"*.
+
+⚠️ **THE SECOND ANALOGY IS THE SPEC, AND THE FIRST ONE IS THE ONE THAT WOULD
+HAVE BEEN BUILT.** "Spins on its own axis, like the earth" is a rotation with no
+relationship to anything -- pick a rate, apply it. The correction names a
+THROWN KNIFE, which turns end over end *because it was thrown*: the turn belongs
+to the flight. So the direction is **derived from `vx`** and is not a knob -- the
+barrel rolls the way it is going, and reversing the travel would turn the tumble
+with it. Verified over 2000 constructions: every one has `sign(spinRate) ===
+sign(vx)`. **The user corrected their own analogy mid-sentence; the corrected one
+was the one with a consequence in it.**
+
+⚠️ **`pivotY` IS DRAWN PX ABOVE THE GROUND POINT** -- sheets.js's convention,
+and without it every rotation in this game is about the ground point, so a
+barrel would swing round its own base like a felled tree. `_gy - y` is half the
+drawn height by construction, which is the same arithmetic prop.js does for the
+hoist, arrived at from the other end.
+
+⚠⚠ **THE HITBOX HAD TO TURN WITH THE DRAWING, AND THAT IS NOT A REFINEMENT.**
+A barrel is 117x86 on its side and 86x117 on its end. A box that stayed put
+would let the player fly clean *under* an upright barrel and be hit by air 36% of
+a barrel out to its left -- visible unfairness, not rounding. `boxes()` returns
+the rotated rectangle's axis-aligned extent, recomputed every frame off the same
+`angle()` the blit uses. **The thing that decides must be the thing that draws**
+-- the rule this project already has for debug overlays, and just as true of a
+hitbox.
+
+⚠️ **AND I WROTE THE FIT DOWN WRONG BEFORE MEASURING IT.** The comment first
+said the box was "~6% generous at 45 degrees" because a rectangle's corners
+stick out past a rounded barrel. Rotating the real frame and reading its alpha
+bbox says the opposite:
+
+    deg      true ink      this box     box / ink
+      0     117 x  86     99 x  73     0.85  0.85
+     30     125 x 114    123 x 113     0.98  0.99
+     45     122 x 122    122 x 122     1.00  1.00
+     60     113 x 124    113 x 123     1.00  0.99
+     90      86 x 117     73 x  99     0.85  0.85
+
+**It is never bigger than the silhouette** -- the 0.85 inset takes back more than
+the corners add, and the two cancel almost exactly at the diagonals. So a spinner
+is TIGHTEST mid-turn and as forgiving as a still barrel end-on. **A plausible
+argument about geometry is not a measurement**, and this one took one rotate and
+one bbox to settle.
+
+⚠️ **A SPINNER'S REACH IS ITS DIAGONAL** (146px against 117) and both screen
+edges use that one number, because over a turn it presents every angle.
+Measuring the un-turned width would pop a corner into view at the right edge and
+clip one off at the left -- on half the barrels, at some angles only, which is
+the shape of a bug nobody can reproduce.
+
+### ⚠⚠ TWO HITS -- AND THE NOTE I HAD WRITTEN AGAINST IT WAS WRONG
+
+*"the barrels take 1 hit and already explode, I want them to explode only with 2
+hits. Don't forget that they need to have some [invulnerability] after the first
+hit, like the flyes, otherwise a single scan of the machine gun will be able to
+destroy them."* Plus *"when they take a hit, add the same effect that the coin
+has right now (the small black explosion)."*
+
+**I had written a note in this file, that morning, arguing a barrel should NOT
+have health**: i-frames on an obstacle were what turned one clock into 35 seconds
+of payout, and a barrel pays nothing, so there is nothing to rate-limit.
+**That conflated two jobs.** The clock's bug was paying out PER DAMAGE TICK --
+the i-frames were fine; the PAYOUT was reading them as a policy. **Rate-limiting
+DAMAGE is the only thing they were ever for**, and it is exactly what a two-hit
+barrel needs: the beam is a hitscan line re-tested every frame, so 2 health with
+no limit is two hits in 33ms -- two by the arithmetic and one on screen. The user
+named the mechanism ("like the flyes") before I had re-derived it.
+
+⚠️ **THE NOTE IS GONE RATHER THAN QUALIFIED**, in README and here. A wrong
+argument left standing beside the code that contradicts it is worse than no
+argument -- somebody reads the note, not the config.
+
+**Measured:** a held beam now kills a barrel at **184ms** instead of 33 -- one
+hit at 0, eleven rejections, the second landing the frame after the 180ms window
+closes. 120 frames of beam on a DARK barrel leaves it at hp 2, whole, no puff.
+
+⚠️ **HEALTH IS THE GUN'S PROBLEM ONLY.** `smash()` and `hit()` stayed different
+verbs: hitting the plane destroys a barrel outright whatever its health and
+whether or not it is dark. Health is what the BEAM has to get through.
+
+### ⚠⚠ THEN THE DARK ONES GOT THE PUFF TOO, AND THE BOUNDARY MOVED
+
+*"add the puffs to the unbreakable barrels, they just don't break."* The beam
+loop used to `continue` on `isBreakable()`, so it found NOTHING where a dark
+barrel was. Now it is gated on `isWhole()` and **the hardness moved from "is
+this thing here" into `TaBarrel.hit()`, around the HEALTH alone**.
+
+⚠️ **GETTING THAT BOUNDARY WRONG IN EITHER DIRECTION IS THE WHOLE OF THAT
+METHOD**: gate the puff on breakable and a dark barrel is inert under fire; gate
+the damage on whole and a dark barrel breaks. Everything else about being shot --
+the window, the puff, the `true` -- is now identical for both kinds, because from
+the player's side both kinds ARE being shot.
+
+⚠️ **A DARK BARREL NEEDS THE I-FRAMES AS MUCH AS A BREAKABLE ONE**, even though
+nothing about it can change. Without them a held beam re-pins `hitFx` at t=0
+every frame and the puff never advances past its first drawing -- a spark frozen
+mid-burst for as long as the trigger is down. **The rate limit is doing a second
+job there: it limits the FEEDBACK, not the damage**, which is why it sits above
+the hardness test rather than inside it.
+
+⚠️ **AND UNDER SUSTAINED FIRE THE PUFF NEVER COMPLETES.** 180ms window against
+a 280ms puff, so a held beam re-triggers early: frames 0-2 of 4, looping, never
+the largest. Measured (3s of beam: one continuous puff, `hitFx.t` never past
+167ms). **That is a continuous pulsing spark and it reads right for a gun hosing
+something it cannot break** -- but it is an artifact of two numbers, not a
+decision, so it is written down: `barrelHurtMs` -> 280 makes each spark play out.
+
+### 2 -> 3 HP, and the arithmetic that is easy to get wrong
+
+*"the barrels are still breaking too fast, let them have 3 hp instead of 2."*
+⚠️ **TIME TO KILL UNDER A HELD BEAM IS `(health - 1) x barrelHurtMs`, NOT
+`health x`** -- the first hit lands on the frame the beam arrives, with no window
+in front of it. Measured: hits at 0, 184 and 367ms. So 2 health was 184ms and 3
+is 367, not 360 and 540.
+
+⚠️ **AND IT HAS A CONSEQUENCE ON THE OTHER SIDE OF THE FIGHT.** A breakable
+barrel now needs 367ms on the player's line to die -- 115px of travel at 312px/s
+-- so some get past a beam that used to clear them. In a 25s run with the trigger
+held the plane took 3 hits while only 2 DARK barrels ever spawned: one of those
+hits was a breakable barrel that survived long enough to arrive. **Raising an
+obstacle's health is a difficulty change to the whole mode, not to the obstacle.**
+
+### The puff is the coin's, and that is three objects sharing one effect
+
+⚠️ **IT REACHES INTO THE FLY SHEET, WHICH LOOKS WRONG AND IS THE POINT.**
+`FLY_RECTS[1..4]` are the fly's burst frames; `TaCoin._blitHitFx` already plays
+those verbatim, and its own comment says why -- it is meant to be *the very same
+effect*, sharing art and rate rather than owning a near-copy that could drift.
+The ask was for the same effect the coin has, so the barrel shares them in turn.
+**Three objects, one puff, one place to retune it** -- hence no
+`barrelHitFxFrames`/`Ms` at all, and `barrelHitFxSize: null` falling through to
+`coinHitFxSize`. ⚠️ **Scaling it to the barrel would have made it a bigger,
+different effect that merely shared an atlas**, and the ask called it the SMALL
+black explosion.
+
+⚠️ **PINNED WHERE THE SHOT CONNECTED, NOT CARRIED ON THE BARREL** -- TaCoin's
+reasoning, and it matters more here: at 312px/s a puff dragged along would travel
+87px during its own 280ms and read as part of the barrel instead of as the moment
+of impact. And it gets **its own render pass** after every barrel is down, like
+`renderBurst`, or one barrel's puff is painted under the next barrel.
+
+### ⚠⚠ "THE DARK BARRELS ARE FASTER" -- A REAL SYMPTOM WITH THE WRONG CAUSE
+
+*"make all the barrels have the same speed, I see the dark barrels are faster
+(movement from right to left), make the clearer one have the same speed."*
+
+**The symptom was real. The cause was not, and checking it mattered even though
+the fix is the same either way.** `hard` has never been read anywhere near `vx`
+-- it appears in exactly three places in ta-barrel.js: the constructor's
+assignment, `isBreakable()`, and the tint in `render()`. The speed roll is
+independent of it. What was actually on screen was `barrelSpeedVar`: +/-84 on
+312 is a **+/-27% spread**, so two barrels could cross at 228 and 396, which is
+easily enough to see.
+
+⚠️ **AND THE TWO KINDS ARE WHAT MADE IT A THEORY.** A spread with no cause to
+attach itself to gets attached to the most visible difference on screen -- and
+half the barrels are tinted. Had I only done what was asked, "the dark ones are
+faster" would have become a fact about this game that nobody ever removed. Same
+shape as the zoomed video that was never zoomed and the eight flies that were a
+HUD label: **when someone reports a symptom and names a cause, check the cause.**
+
+`barrelSpeedVar: 0` -- **zero, not deleted**, and the read site is `!= null` so a
+zero really is zero. Measured after: 3000 barrels, **one distinct speed**, 312
+for dark and light alike.
+
+### ⚠⚠ AND THEN "30% SLOWER" LANDED ON A KNOB THAT IS AN INVERSE
+
+*"the current spin, its too fast, make it spin 30% slower"*. 620 -> **886**, and
+the thing worth writing down is that **this is ÷0.7, not ×1.3**. "Slower"
+describes the RATE the player sees; `barrelSpinMs` is a PERIOD, its reciprocal.
+×1.3 would give 806ms -- a spin **23%** slower, not 30. Checked by taking the
+ratio of the rates rather than trusting the arithmetic: **0.6998** at the mean,
+0.6996 at the slowest spinner, 0.7002 at the fastest.
+
+**When a percentage lands on a knob that is the INVERSE of the thing being
+described, convert on the thing and then invert** -- and verify by the ratio of
+the quantity the user named, not of the number you edited. The period is still
+the right shape for the knob ("one turn every 0.89s" is picturable; radians per
+millisecond is not), so the fix is at the point of change, not in the units.
+
+⚠️ **AND THE VARIANCE FOLLOWED BY THE SAME DIVISION** (160 -> 229), exactly as
+`barrelSpeedVar` did an hour earlier and for the same reason: an absolute spread
+on the period, so dividing it too is what keeps EVERY barrel's rate scaled by
+0.7. Left at 160, the slowest and fastest spinners would have been pulled
+together by a change that was only about the average. **Second time in one
+session that a "just change one number" ask had a second number inside it.**
+
+⚠️ **AND IT HAPPENED THREE TIMES: 620 -> 886 -> 1266 -> 1407 IN ONE DAY**
+(30%, 30%, 10%; variance 160 -> 229 -> 327 -> 363), cumulative rate **0.44**,
+2.9 turns across the screen. Every one was "than NOW" and none was a re-reading
+of an earlier one. The detail below is the second of the three.
+
+⚠️ **886 -> 1266 THE SAME DAY** (*"make it spin even
+slower, 30% slower than now"*). **"Than NOW" means it compounds** -- it is not a
+re-reading of the first 30%, so the base is 886 and not 620. Twice divided by
+0.7, the rate is **0.49 of where it started**: 3.2 turns across the screen,
+down from 6.6. `barrelSpinVarMs` 229 -> 327 with it.
+
+⚠️ **THE SPIN SPREAD WAS KEPT WHILE THE SPEED SPREAD WENT TO ZERO IN THE SAME
+MESSAGE**, and that is deliberate: only the speed was asked about. Zeroing the
+tumble's variance too would be reading a second instruction into the first. It
+is one knob away if the tumble should match.
+
+**THE SPEED: 260 -> 312, AND THE VARIANCE WENT WITH IT (70 -> 84).** Read the
+percentage against the CURRENT value, as every percentage on this project is
+read. ⚠️ **`barrelSpeedVar` IS AN ABSOLUTE SPREAD**, so leaving it at 70 would
+have quietly made the stream 17% more uniform at the moment it got faster -- a
+change to the FEEL of the stream hidden inside a change to its speed. Measured
+over 2000: 228..396, mean 314, which is the old 190..330 scaled by 1.2.
+
 ### ⚠️ A PAGE SCREENSHOT RACES THE GAME'S OWN rAF LOOP
 
 The first capture of this came back showing **upright barrels on the street's
 egg-carton plate**, which looked exactly like the pose lookup falling back to
 `idle`. It was not: the game loop had simply repainted the canvas between my
 `ta.render()` and `Page.captureScreenshot`, and what I photographed was the
-LIVE GAME behind the probe. `canvas.toDataURL()` in the same evaluate as the
-render is the fix. **A sixth way the instrument lies** ([[preview_before_playing]]):
+LIVE GAME behind the probe. ⚠️ **AND IT BIT AGAIN ON THE SPIN PASS**, because
+the first fix was not tight enough: `toDataURL` in a SEPARATE `Runtime.evaluate`
+from the render is still a CDP round trip, and the loop repaints inside it. The
+render and the capture have to be **one expression**. **A sixth way the instrument lies** ([[preview_before_playing]]):
 not omitted state this time, but a second writer to the thing being inspected.
 
 ### How it was checked
