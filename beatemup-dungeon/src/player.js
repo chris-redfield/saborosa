@@ -485,7 +485,12 @@ class Player extends Fighter {
    */
   _tickLongIdle(dt, sheets) {
     const C = CONFIG.IDLE_LONG || {};
-    const has = !!(sheets && sheets.has(this.kind, 'idleLong'));
+    /* `art()`, not `kind`: the length and the existence of this row are facts
+       about the PICTURE, and `frameStep` asks the same way. A hero in a skin
+       whose row is a different length would otherwise have the drawer and this
+       end-test disagreeing -- the exact split idleLongOrder() exists to close.
+       No hero has a skin today; this is the rule, not a fix. */
+    const has = !!(sheets && sheets.has(this.art(), 'idleLong'));
     const still = C.on !== false && has && !this.dead && !this.atk
                && !this.carrying && !this.jumping && this.jumpY <= 0
                && this.state === 'idle';
@@ -501,7 +506,11 @@ class Player extends Fighter {
     if (this.longIdle) {
       this.longIdleT += dt;
       if (C.loop) return;
-      const n = Math.max(1, sheets.poseLength(this.kind, 'idleLong'));
+      /* ⚠️ THE PLAY LENGTH, NOT THE CUT LENGTH. The flourish ping-pongs and
+         holds, so 7 cut drawings are 10 slots on screen -- ending here at the
+         cut count would take him away mid-descent. Same function the drawer
+         uses; see idleLongOrder() in fighter.js. */
+      const n = idleLongOrder(sheets.poseLength(this.art(), 'idleLong')).length;
       if (this.longIdleT >= n * (Math.max(1, C.frameMs || 130) / 1000)) {
         /* Back to breathing, and the wait starts again -- so he does it about
            every `afterS` + the length of the row, for as long as he is left. */

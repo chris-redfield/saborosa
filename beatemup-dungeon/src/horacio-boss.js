@@ -274,8 +274,60 @@ class HoracioBoss {
    */
   _hitFxFrameMs(n) {
     const FX = CONFIG.HORACIO_BOSS.HIT_FX || {};
-    if (FX.frameMs != null) return FX.frameMs;
-    return (CONFIG.hurtMs || 300) / Math.max(1, n || 1);
+    const base = (FX.frameMs != null)
+      ? FX.frameMs
+      : (CONFIG.hurtMs || 300) / Math.max(1, n || 1);
+    /* ⚠️ `speed` IS A RATE, SO IT DIVIDES. *"Make the animation 10% faster"*
+       (2026-09-21) is 1.1 here and a burst that lasts 1/1.1 of what it did --
+       NOT frameMs x 1.1, which would slow it down by the same 10%. A rate and a
+       duration move in opposite directions and the ask names one of them; see
+       the glasses' "increase the speed by 20%" against the long idle's "make
+       them 20% slower" on the same day, which went opposite ways.
+
+       ⚠️ AND IT IS A SEPARATE KNOB RATHER THAN A SMALLER `hurtMs`, because
+       `hurtMs` is the hit flash for the WHOLE CAST. The burst was tied to it so
+       the debris and the flash end together; `speed` unties them by exactly as
+       much as it is asked to and leaves every other fighter alone. */
+    return base / Math.max(0.01, FX.speed || 1);
+  }
+
+  /**
+   * DOES THIS BLOW SHOW THE ARMOUR COMING OFF?
+   *
+   * Asked for 2026-09-21: *"only play the FX when the boss has slightly more
+   * than 50% health, also when he is about to get to 25%... so the armor flakes
+   * must only come when he is about to change phases"*. It replaces *"every hit
+   * I give to the boss"*, which this file's `hurt()` had already flagged as the
+   * next ask.
+   *
+   * A BAND ABOVE EACH TIER BOUNDARY, not a test of which side he is on. The
+   * boundaries are the ones the BODY already uses -- `hurtAt` (0.5) and
+   * `nakedAt` (0.25) -- so the debris cannot drift away from the moment the
+   * shell actually changes, however those are retuned.
+   *
+   * ⚠️ THE BLOW THAT CROSSES COUNTS TOO, and it has to be tested separately. At
+   * 192 HP a band of 0.12 is 23 HP and a finisher is 12, so a hit from 0.55 can
+   * land at 0.49 -- past the boundary, never inside the window. Without the
+   * crossing test the one blow that actually breaks the armour is the one blow
+   * with no debris on it, which is precisely backwards.
+   *
+   * ⚠️ BELOW `nakedAt` NOTHING FLAKES, and that is the point rather than an
+   * edge case: the shell is off, so there is nothing left to come away.
+   *
+   * `bandRel: null` restores "every hit" without touching code.
+   */
+  _armourFlaking(before, after) {
+    const C = CONFIG.HORACIO_BOSS;
+    const FX = C.HIT_FX || {};
+    if (FX.bandRel == null) return true;
+    const band = FX.bandRel;
+    const tiers = [C.hurtAt != null ? C.hurtAt : 0.5];
+    if (C.nakedAt != null) tiers.push(C.nakedAt);
+    for (const t of tiers) {
+      if (after > t && after <= t + band) return true;   // about to change
+      if (before > t && after <= t) return true;         // the blow that changes it
+    }
+    return false;
   }
 
   /** HOW LONG THE WHOLE BURST LASTS: every drawing the pack has, in turn. */
@@ -571,6 +623,9 @@ class HoracioBoss {
 
   hurt(dmg) {
     if (!this.vulnerable()) return;
+    // Kept so `_armourFlaking` can see the blow as a MOVE between two fractions
+    // and not just as a landing place -- see its note about the crossing hit.
+    const hpBefore = this.hp;
     this.hp = Math.max(0, this.hp - dmg);
     this.hurtT = (CONFIG.hurtMs || 300) / 1000;
     /* THE BURST, RESTARTED FROM 0 ON EVERY BLOW that gets past `vulnerable()`.
@@ -585,7 +640,9 @@ class HoracioBoss {
        about why it is playing, and keeping it that way is what makes that
        change one line instead of a pass through the renderer. */
     const FX = CONFIG.HORACIO_BOSS.HIT_FX;
-    if (FX && FX.on !== false) this.hitFxT = 0;
+    const fr = this.maxHp ? hpBefore / this.maxHp : 1;
+    const to = this.maxHp ? this.hp / this.maxHp : 1;
+    if (FX && FX.on !== false && this._armourFlaking(fr, to)) this.hitFxT = 0;
     if (this.hp <= 0 && !this.dead) {
       this.dead = true;
       this.dieT = 0;

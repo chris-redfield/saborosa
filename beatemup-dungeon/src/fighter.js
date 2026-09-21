@@ -35,6 +35,60 @@
  * the cost of throwing it at the wrong moment, and a game where the swing
  * completes regardless is a game where trading is always correct.
  */
+/**
+ * THE ORDER THE LONG IDLE IS PLAYED IN — an AUTHORED sequence, 1-based, read
+ * off `CONFIG.IDLE_LONG.ORDER`.
+ *
+ * The row is cut as: 1 stance · 2 up · 3 up more · 4 flex wide · 5 FLEX ·
+ * 6 coming down · 7 (a dupe of 2). Played straight through it ended a step
+ * short of the stance and snapped.
+ *
+ *     [1, 2, 3, 4, 5, 5, 5, 4, 3, 2, 1]
+ *
+ * Out to the flex, HELD for THREE slots so the peak is plainly the longest pose
+ * and not the shortest, then back down the way it came to slot 1 — which IS the
+ * stance, so the hand-back to breathing is seamless. The hold went 1 -> 2 -> 3
+ * slots over three passes; it is the only part of this anybody has adjusted.
+ *
+ * ⚠️ DRAWINGS 6 AND 7 ARE NOT USED, AND THAT WAS TRIED AND REJECTED. Slot 6 is
+ * the artist's own descent pose; `[...5, 5, 6, 3, 2, 1]` was built on request
+ * 2026-09-21 and taken straight back out — *"we didn't like the result"*. The
+ * reversal reads better than the drawn descent here. Do not re-propose it; if
+ * it is ever wanted again it is one number in this table.
+ *
+ * ⚠️ IT IS A TABLE RATHER THAN A RULE BECAUSE IT IS A TASTE CALL. The first
+ * version generated this shape from `holdAt`/`holdFor`; the very next revision
+ * broke the rule, and the one after that undid the revision. **Three orders in
+ * an hour is what a frame sequence actually is** — a generator you have to
+ * argue with is worse than the ten numbers it replaces, even when the numbers
+ * end up back where the generator had them.
+ *
+ * ⚠️ ENTRIES ARE CLAMPED TO WHAT WAS ACTUALLY CUT, so a re-drawn shorter row
+ * degrades to its last drawing instead of asking the atlas for a tile that is
+ * not there. ⚠️ But the table does NOT track a re-draw: a row cut with more
+ * drawings simply will not show them until this list says so. That is the cost
+ * of authoring the order, and it is why slot 7 (the dupe) is unused today.
+ *
+ * ⚠️⚠️ AND BOTH SITES MUST ASK THIS SAME FUNCTION. `Fighter.frameStep` picks the
+ * drawing and `Player._tickLongIdle` decides when the gesture is over, off the
+ * play LENGTH — 10 slots, not the 7 that were cut. Two independent ideas of how
+ * long it runs is a flourish that either snaps off mid-descent or hangs on its
+ * last drawing waiting for a clock that already finished.
+ */
+function idleLongOrder(n) {
+  const C = CONFIG.IDLE_LONG || {};
+  const len = Math.max(1, n | 0);
+  const raw = C.ORDER;
+  // No table: play the cut straight through, which is what it did before there
+  // was one — a visible, obvious default rather than a single frozen frame.
+  if (!raw || !raw.length) {
+    const out = [];
+    for (let i = 0; i < len; i++) out.push(i);
+    return out;
+  }
+  return raw.map(s => Math.max(0, Math.min(len - 1, ((s | 0) - 1))));
+}
+
 class Fighter {
   constructor(kind, x, z, opts) {
     const o = opts || {};
@@ -1500,7 +1554,10 @@ class Fighter {
       const C = CONFIG.IDLE_LONG || {};
       const per = Math.max(1, C.frameMs || 130) / 1000;
       const k = Math.floor(this.longIdleT / per);
-      return C.loop ? (k % n) : Math.min(n - 1, k);
+      // The PLAY order, not the cut order -- see idleLongOrder().
+      const order = idleLongOrder(n);
+      return C.loop ? order[k % order.length]
+                    : order[Math.min(order.length - 1, k)];
     }
 
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS[p]) || 110;

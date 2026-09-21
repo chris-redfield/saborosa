@@ -558,6 +558,7 @@ const CONFIG = {
     afterS: 7,  // ~N0187
     frameMs: 156,  // ⚠N0188
     loop: false,  // ⚠N0189
+    ORDER: [1, 2, 3, 4, 5, 5, 5, 4, 3, 2, 1],  // ⚠N0833
   },
 
   jumpLandHoldMs: 150,  // ~N0190
@@ -1276,7 +1277,9 @@ const CONFIG = {
     nakedAt: 0.25,  // ⚠N0431
     nakedLevel: 0,  // ⚠N0432
     hitPoseMs: null,  // ⚠N0433
-    HIT_FX: { on: true, frameMs: null },  // ⚠N0434
+    HIT_FX: { on: true, frameMs: null,  // ⚠N0434
+              bandRel: 0.12,  // ⚠N0835
+              speed: 1.1 },  // ⚠N0836
     SUMMON: {  // ⚠N0435
       kind: 'charutobi',
       count: 5,  // ~N0436

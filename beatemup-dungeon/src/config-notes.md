@@ -12885,3 +12885,91 @@ disagree with the art.
 × `sizePx` above his feet. ⚠️ **NOT 0.5** — he is a clock with LEGS, and a star
 centred on his height hangs half of itself around his shins. 0.62 puts it on the
 face.
+
+### ⚠ N0833 — `CONFIG.IDLE_LONG.ORDER`
+
+**The order the heroes' flourish is played in**, 1-based over the cut row.
+The row is cut as: 1 stance · 2 up · 3 up more · 4 flex wide · 5 FLEX ·
+6 coming down · 7 (a dupe of 2). Played straight through it ended a step short
+of the stance and snapped.
+
+    [1, 2, 3, 4, 5, 5, 5, 4, 3, 2, 1]
+
+Out to the flex, **held for three slots** so the peak is plainly the longest
+pose and not the shortest, then back the way it came to slot 1 — which IS the
+stance, so the hand-back to breathing is seamless. **11 slots / 1716ms.**
+
+The hold has gone 1 → 2 → 3 slots over three passes and is the only part of the
+sequence anyone has adjusted — which is the argument for the table: every one of
+those was one number here.
+
+⚠️ **DRAWINGS 6 AND 7 ARE UNUSED, AND 6 WAS TRIED AND REJECTED.** Slot 6 is the
+artist's own descent pose; `[...5, 5, 6, 3, 2, 1]` was built on request the same
+day and taken straight back out — *"we didn't like the result"*. The reversal
+reads better than the drawn descent here. **Do not re-propose it**; if it is ever
+wanted again it is one number in this table.
+
+⚠️ **WITHOUT THE DOUBLED 5 A PING-PONG MAKES THE PEAK THE SHORTEST POSE**, not
+the longest: every other drawing is seen twice, going up and coming down, and
+the turnaround only once.
+
+⚠️ **IT IS A TABLE RATHER THAN A RULE BECAUSE IT IS A TASTE CALL.** The first
+version generated this shape from `holdAt` / `holdFor`; the next revision broke
+the rule, and the one after that undid the revision. **Three orders in an hour
+is what a frame sequence actually is** — a generator you have to argue with is
+worse than the ten numbers it replaces, even when the numbers end up back where
+the generator had them. Those two knobs were **deleted**, not left switched off.
+
+⚠️ Entries are clamped to what was actually cut, so a shorter re-drawn row
+degrades to its last drawing rather than asking the atlas for a tile that is not
+there. ⚠️ **But the table does NOT track a re-draw**: extra drawings will not
+appear until this list says so. That is the cost of authoring the order.
+
+⚠⚠ **THE LENGTH LIVES IN ONE FUNCTION AND TWO CALLERS MUST ASK IT.**
+`idleLongOrder()` in fighter.js: `Fighter.frameStep` picks the drawing and
+`Player._tickLongIdle` decides when the gesture is over. 7 cut drawings are
+**11 slots / 1716ms** (was 1092ms). A second idea of the length anywhere is a
+flourish that snaps off mid-descent or hangs on its last drawing.
+
+### ⚠ N0835 — `CONFIG.HORACIO_BOSS.HIT_FX.bandRel`
+
+**The armour only flakes when it is about to break.** Asked for 2026-09-21:
+*"only play the FX when the boss has slightly more than 50% health, also when he
+is about to get to 25%... so the armor flakes must only come when he is about to
+change phases"* — replacing *"every hit I give to the boss"* from three days
+earlier, which `hurt()` had already flagged as the next ask.
+
+A BAND ABOVE each tier boundary, and the boundaries are the ones the BODY
+already uses (`hurtAt` 0.5, `nakedAt` 0.25), so the debris cannot drift away from
+the moment the shell actually changes however those are retuned.
+
+**Measured against a real string** (192 HP, blows of 5 / 6 / 12): 26 blows to
+kill, **8 of them flake, in two clusters** — 61→49% and 34→22%. Four blows of
+warning before each change, and nothing above 62% or below 22%.
+
+⚠️ **THE BLOW THAT CROSSES IS TESTED SEPARATELY, AND IT HAS TO BE.** 0.12 of 192
+is 23 HP and a finisher is 12, so a hit from 0.55 can land at 0.49 — past the
+boundary, never inside the window. Without that second test the one blow that
+actually breaks the armour is the only blow with no debris on it.
+
+⚠️ **BELOW `nakedAt` NOTHING FLAKES**, which is the point and not an edge case:
+the shell is off, so there is nothing left to come away.
+
+`bandRel: null` restores "every hit" without touching code.
+
+### ⚠ N0836 — `CONFIG.HORACIO_BOSS.HIT_FX.speed`
+
+⚠️ **A RATE, SO IT DIVIDES THE DURATION.** *"Make the animation 10% faster"* is
+`1.1` and a burst that lasts 1/1.1 of what it did — **not** `frameMs × 1.1`,
+which would slow it by the same 10%. A rate and a duration move in opposite
+directions and the ask names one of them; the long idle's *"make them 20%
+slower"* multiplied on the same project that the glasses' *"increase the speed by
+20%"* divided.
+
+⚠️ **IT IS A SEPARATE KNOB RATHER THAN A SMALLER `hurtMs`**, because `hurtMs` is
+the hit flash for the WHOLE CAST.
+
+⚠️ **AND IT BREAKS A COUPLING THAT WAS DELIBERATE.** The burst was derived from
+`hurtMs / frames` precisely so the debris and the flash ended together — 260ms
+each. At 1.1 the burst is **236ms** and now finishes 24ms before the flash does.
+That is the cost of the ask, not an oversight; `speed: 1` puts them back in step.
