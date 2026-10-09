@@ -263,6 +263,13 @@ const LiftRide = {
        here, so every rider's remembered value is the same `false`. If a
        character ever carries `noShadow` of its own into a lift, this becomes a
        per-rider field and the restore in `_release` has to read it off him. */
+    /* ⚠️ "I HAVE REACHED MY MARK" IS CLEARED AT THE START OF EVERY RIDE, not
+       only at the end of one. It is left set on a ride that is ABANDONED -- a
+       DEV room jump, a death, a restart -- and a stale `true` would make the
+       next ride's first step think everybody had already walked to their marks,
+       so the walk-to-the-lift would be skipped entirely and the party would
+       board from wherever they happened to be standing. */
+    player.liftThere = false;
     this._wasNoShadow = !!player.noShadow;
     player.facing = (this.mode === 'exit') ? 'left' : 'right';
     player.state = 'idle';

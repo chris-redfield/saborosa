@@ -700,7 +700,17 @@ const Level3 = {
        its end (see `update`), and standing on the slab through that is the
        settle -- he and the lift are one object in world space by then, so only
        the background moves. `update` owns the flag; this owns the walk. */
-    if (this._boardWalked) { player.scriptIdle(dt); return true; }
+    /* ⚠️ HIS OWN FLAG AS WELL AS THE ROOM'S, AND LEAVING IT OUT WAS A BUG YOU
+       COULD WATCH. `_boardWalked` is the ROOM's -- true only once EVERYBODY is
+       aboard -- so with two heroes the first one to reach his mark fell through
+       to the walk below and was driven at it again on every frame: `dir` flips
+       either side of a mark he is already standing on, so he walked on the spot
+       for as long as his partner took to arrive. Reported as *"the player that
+       gets to the lift first, while he waits for the second player, he keeps
+       walking"*.
+       THE TWO FLAGS ANSWER DIFFERENT QUESTIONS and both are needed here: his
+       says "I am done walking", the room's says "the lift may leave". */
+    if (this._boardWalked || player.boardWalked) { player.scriptIdle(dt); return true; }
     /* HIS OWN MARK. With two heroes the second boards a stride behind the
        first, on the side he is walking FROM -- the same spread every door and
        the boss room's lift use. One slab, two riders, neither inside the other.
@@ -723,7 +733,12 @@ const Level3 = {
          arrival would start the climb with the other still walking, and since
          this hook owns the frame he takes no input to catch up with. */
       this._boardWalked = Party.inPlay().every(p => p.boardWalked);
-      if (this._boardWalked) Party.forEach(p => { p.boardWalked = false; });
+      /* ⚠️ THE PER-HERO FLAGS ARE **NOT** CLEARED HERE. They used to be, the
+         moment the room's flag went true -- which undid the very answer that
+         had just been computed, so a hero who was standing on the slab read as
+         still walking to it. They are cleared where a lift leg BEGINS
+         (`_nextLeg`), which is the one moment that means "nobody is aboard
+         yet". */
     }
     return true;
   },
