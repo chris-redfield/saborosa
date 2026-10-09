@@ -859,7 +859,7 @@ sheet needs its own pack rather than a fudge factor.
 | `nameLEBRON` … `nameMISTERSTOP` | under a fighter's health bar |
 | `optTitle` `optVolume` `optMusic` | the OPÇÕES screen |
 | `credTitle` `credNames` | the SABOROSA credits |
-| `credMusic` `credSamuraio` | MÚSICA POR / SAMURAIO, rolled up after them |
+| `credMusic` `credSamuraio` | MÚSICA POR / SAMURAIO, rolled up after them. ⚠️ `credSamuraio` is drawn **twice**, here at full scale and on the MÚSICA screen at 0.62 |
 | `songArrocha` … `songSucuri` | the five soundtrack titles on the MÚSICA screen |
 
 ```js
@@ -868,13 +868,16 @@ LETTERS: {
   menuMul: 0.90,       // the menu, trimmed under that scale
   lifeMul: 0.80,       // …and the lives
   selectedMul: 1.10,   // …and the highlighted item, 10% up on its NEIGHBOURS
-  menuItemMul: { menuMusic: 0.73 },
+  menuItemMul: { menuMusic: 0.69 },
                        // ⚠️ ONE FRAME, TWO ROLES. MÚSICA is the menu item AND
                        // the heading of the screen it opens, and the artist
                        // drew it at HEADING size — so as a menu item it needs
-                       // bringing down to its neighbours. DERIVED from cap
-                       // heights (COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0),
-                       // scoped to the menu draw so the heading is untouched.
+                       // bringing down to its neighbours. Scoped to the menu
+                       // draw, so the heading is untouched.
+                       // ⚠️ STARTED at 0.73, derived from cap heights
+                       // (COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0); settled at
+                       // 0.69 by eye, −10% then +5%. The measurement was the
+                       // place to START — don't "restore" it to 0.73.
                        // ⚠️ SABOROSA is 54.0 and is NOT in that average — the
                        // artist drew the three at three sizes and that is
                        // their drawing, not an error to even out.
@@ -904,13 +907,21 @@ OPTIONS: { bars: 8, volume: 8, music: 8 }   // meters, in bars
 > chances to change the shape while trying to change the position. Same discipline
 > as `GRADE.strength`. It reaches the **typed fallback** too, so a failed download
 > cannot also undo the layout, and it deliberately does **not** reach OPÇÕES, the
-> credits or the fruit select. At 24 the lowest item ends at y 618 of 720.
+> credits or the fruit select.
+
+> ⚠️ **It reaches the MENU as well as the title and subtitle**, which is why the
+> 2026-10-09 ask to move *only* the four menu items up a dedinho went to
+> `menuYRel` (0.68 -> **0.646667**, i.e. −24px at H 720) and not here. Measured
+> off the pack afterwards, the four item centres are **410.4 / 489.6 / 568.8 /
+> 648.0** and MÚSICA's bottom edge is at **y 673 of 720** — 47px of margin,
+> against 23px before the nudge.
 
 > ⚠️ **Watch the contrast as it goes down.** `menuYRel` sits where it does partly
 > because *the wall is brown there and the type is yellow* — past the wall/ground
-> seam the menu is yellow on pale sand. At 24 px OPÇÕES and SABOROSA are already
-> on the sand; that is a look call, but it is the thing that breaks first if this
-> number grows.
+> seam the menu is yellow on pale sand; that is a look call, but it is the thing
+> that breaks first if this number grows. ⚠️ **The 2026-10-09 nudge moved the
+> block the good way** — 24px back up the wall — so SABOROSA and MÚSICA sit
+> higher against the brown than the three items did before MÚSICA existed.
 
 > ⚠️ **The meters are the row drawn short.** Each option row was lettered with
 > eight bars and the cutter recorded where each ends, so a level of *n* is one
@@ -4462,6 +4473,61 @@ if the art is recut. (Still Life makes exactly this split, for exactly this
 reason.) The manifest gates the load on **either** consumer, so turning the game
 over panel off does not take the front door's backdrop with it.
 
+## THE END — the card after the tally  (2026-10-09)
+
+One more beat before the front door:
+
+```
+ending photograph -> tally -> [press] -> THE END -> [press] -> logo -> title
+```
+
+⚠️ **It is a beat spliced into a dismissal, not a screen with a background of
+its own.** `endingShown` already keeps `render()` drawing the ending photograph
+through the CLEAR phase, so the card lands on the same picture the tally did —
+*"keep the current screen background"*, for free.
+
+**Which card:** `THE_END.GOOD` (TIME SABOROSA 2026, beers up) when **both** time
+attacks ended **COMPLETO**; `THE_END.LESSER` (FIM on a clapperboard) otherwise.
+
+| knob | what it does |
+|---|---|
+| `on` | `false` puts the old single-press dismissal back exactly — `TheEnd.enabled()` is asked in front of the branch, not inside it |
+| `GOOD` / `LESSER` | the two cards. ⚠️ **Cut files, not the masters** — see below |
+| `hRel` / `yRel` | **0.897** of canvas height, centred (0.78 +15%, 2026-10-09) — 935x646 for the good card, leaving a 37px band of photograph top and bottom. ⚠️ Close to the limit: another 15% pushes it off the frame. ⚠️ Sized off **height**: the cards are 1.447:1 and 1.416:1 against a 1.78:1 frame, so height runs out first, and matching their *widths* would make one visibly taller than the other |
+| `liftMs` / `liftRel` / `liftFadeRel` | the tally leaving: 0.62 of the canvas upward over 560 ms, faded out over the first 65% of that so the letters are gone before they reach the top |
+| `fadeDelayMs` / `fadeMs` | the card arriving, 240 ms in over 420 ms |
+| `pressDelayMs` | 700 ms before it answers a press — the same beat every other end screen buys itself |
+
+⚠⚠ **The tally's `alpha` takes its black veil with it, and that is why the ask
+works at all.** `hud.drawResults` fades `rgba(0,0,0,0.78)` by the same value as
+its text, so the letters going out *uncovers* the photograph for the card to sit
+on. Nothing had to be arranged for the background to come back.
+
+⚠️ **The lift is a `ctx.translate`, not a new argument to `drawResults`** — that
+function positions eleven rows, two columns and a prompt off `CONFIG.RESULTS`,
+and threading an offset through all of it to move the whole thing is eleven
+chances to move one row by mistake. ⚠️ And the board is drawn at its **finished**
+time while it leaves: a tally still counting up as it slides off is a number the
+player is being shown and denied at once.
+
+⚠⚠ **The art is pre-cut, and the reason is perf.** The masters are 7016x5096 —
+a **143 MB texture each** — and the cards are drawn about 1040x562.
+`tools/build-the-end-cards.py` crops each page to its card and writes a 1600px
+version (1.28 MB from 5.5 MB). ⚠️ `how: 'big'` would have been the lazy answer
+and is not free: it caps at `bigTextureCap` 3200, still ~30 MB apiece.
+⚠️ **The crop is not tidiness either** — both pages are drawn on a transparent
+sheet with the card somewhere in the middle, and the margins differ (001 starts
+109px from the left, 002 starts 292), so uncropped the game would centre the
+*page* and the two endings would sit in different places on screen.
+
+⚠⚠ **The verdict lives in `stats`, not in the minigame.** `TimeAttack.reset()`
+clears `lost` and `roundsCleared` on every entry, so the first playing's result
+is gone by the time the second finishes. `stats.noteTimeAttack()` records it on
+the path where the mode **ended** — not in the DEV-jump branch, which also calls
+`leave()` and would let a number key decide the ending. `completo()` is the mode's
+own test, the same one that picks ABATIDO! / TEMPO! / COMPLETO, so the ending
+cannot disagree with the word the player was shown.
+
 ## The title screen
 
 ### The menu, the credits roll and MÚSICA  (2026-10-09)
@@ -4496,8 +4562,9 @@ play from the title screen.
 | `on` | `false` takes the item **off the menu**, not just out of the screen |
 | `TRACKS` | asset key → drawn name, **in the artist's sheet order**, not the order you hear them. ⚠️ A table because it cannot be derived: `SUCURI` names `Sucuri - Samuraio.mp3`, `COCO NHA NHA` names the key `musicTitle` |
 | `rowYRel` / `rowGapRel` / `rowMul` | the list: from 0.40, 0.105 apart, at 0.80 of the pack scale |
+| `samuraioYRel` / `samuraioMul` | the **SAMURAIO** by-line under the heading, 0.285 at 0.62. ⚠️ It is the credits roll's own `credSamuraio` frame, and it needs the `mul` because the artist drew it at **heading size** — cap 60.9 against the MÚSICA heading's 60.2, so at pack scale it is a second heading, not a by-line |
 | `selectedMul` | 1.10, the menu's own bump — this is the **cursor** |
-| `restAlpha` | 0.55 — everything that is **not playing**. Full alpha is the now-playing cue |
+| `restAlpha` | **1** — every row solid, *"like all the other meny parts"*. ⚠️ This removes the now-playing cue: the alpha WAS it, and the cursor's size bump is the only mark left. A cue brought back needs a mark that is not transparency, since transparency is what was refused |
 | `stopFadeSec` | 0.5 on LEFT. Longer than a track *change*'s 0.35, because stopping is deliberate and should roll off rather than cut |
 
 **Controls:** up/down moves the cursor, **attack (or right) plays** the
@@ -4526,23 +4593,38 @@ the screen is flushed** — `_tickMenu` consumes `takeAnyPress` but not
 on arrival. A new taker on a screen means re-asking what the previous screen left
 queued.
 
-⚠️ **Two cues, and they must be two.** The cursor is a size bump; playing is full
-alpha. The row you point at and the row you hear are the same row only until you
-move. ⚠️ **And "playing" is asked of `Sound` (`_wantedKey()`), never remembered
-here** — COCO NHA NHA *is* the title theme, so it is already playing when the
-list opens, and a local flag would have had the screen claim silence.
+⚠️ **The rows are solid and there is no now-playing cue** (2026-10-09). There
+used to be: the cursor was a size bump and the playing row was full alpha against
+a dimmed list. The dimming was refused — *"don't make the options transparent,
+leave them solid, like all the other meny parts"* — and the cue went with it.
+Kept here because the reasoning still holds if one is ever wanted back: it must
+be two different marks, since the row you point at and the row you hear are the
+same row only until you move. ⚠️ And "playing" was asked of `Sound`
+(`_wantedKey()`), never remembered on the screen — COCO NHA NHA *is* the title
+theme, so it is already playing when the list opens, and a local flag would have
+had the screen claim silence. **Don't replace that read with a flag if the cue
+comes back.**
 
 ⚠️ **It adds no audio to the build.** All five tracks are ones the game already
-loads. ⚠️ **It is the only detour that changes the world on its way through** —
-it can leave any song playing, or none — which is why `Title._toMenu()` now asks
-for `musicTitle` on every return (a no-op for the other two detours).
+loads.
 
-⚠️ **Two of the seven tracks are not on the sheet and so are not listed:**
-`musicEnding` (*Pode Me Chamar*, the ZERAMENTO song) and `musicBoss`
-(`song-enmakun2011.mp3`, HIPÓLITO's — the only music file outside `soundtrack/`,
-and not obviously one of the artist's titles). `Title._songs()` **drops** a track
-the pack cannot letter rather than typesetting it, so a `TRACKS` line can be
-added *before* its art lands and stay invisible until it does.
+⚠⚠ **The choice persists, and that is the feature.** Whatever the jukebox leaves
+playing becomes the menu's song in place of COCO NHA NHA — *"it only changes if
+the player enters the game, or if he changes it again in the jukebox."* So
+`Title._toMenu()` **restores nothing**; it did for half a day, and that threw the
+player's choice away on the way out of the screen that made it. The default comes
+back one level up instead: `game.js`'s `titleMusic()` runs whenever the title
+*phase* is entered, including after a finished run, so a choice lives for one
+visit to the title screen. ⚠️ Stopping the music (left) therefore leaves the menu
+silent — same rule, not an edge case.
+
+⚠️ **The list is five songs and that is finished.** Two of the seven tracks have
+no drawn name — `musicEnding` (*Pode Me Chamar*, the ZERAMENTO song) and
+`musicBoss` (`song-enmakun2011.mp3`, HIPÓLITO's) — and they were **dropped on
+2026-10-09**, not parked: *"forget about these songs, we won't add them."* Don't
+re-propose them. `Title._songs()` still filters out a track the pack cannot
+letter, because that is what makes the list's length a fact about the **pack**
+rather than a number to keep in step by hand.
 
 ### The fruit select
 
@@ -6727,7 +6809,7 @@ backdrop and the rounds (plus two barrel numbers on stage 2).
 | `on` | `false` removes it entirely |
 | `ROOMS[n].timeAttackOnExit` | which minigame a room plays **as it hands over**, as a **stage number**: `1` on the street, `2` on the desert. ⚠️ **1-based, not an index** — `0` is falsy and every test reads `if (room.timeAttackOnExit)`, so a 0th stage would silently never open. `true` still means stage 1 |
 | `STAGES` | **one block per playing**, holding only what differs: `PLATE`, `plateKey`, `ROUNDS`, and on stage 2 `barrelEveryMs`/`barrelMax`. Laid over the base block by `TimeAttack.stageCfg(n)`. ⚠️ **The merge is one level deep** — a stage that tried to override one key inside `LETTER` would replace the whole of `LETTER` and draw no words |
-| `STAGES[n].ROUNDS` | `{coins, timeMs, flies, clocks}` per round — **the only untuned numbers in the block, now in both stages**. Stage 1 is 8/14/22 coins, stage 2 picks up at 14/22/30. The clock stays 30 s in all six |
+| `STAGES[n].ROUNDS` | `{coins, timeMs, flies, clocks}` per round — **the only untuned numbers in the block, now in both stages**. Stage 1 is 8/14/22 coins, stage 2 picks up at 14/20/26 (**eased from 14/22/30 on 2026-10-09** after the first real play — *"too hard, i was never able to complete it"*; round 1 left alone because it is stage 1’s round 2). The clock stays 30 s in all six |
 | `STAGES[n].PLATE` / `plateKey` | the backdrop and the asset key it loads under. Stage 1 is the broken concrete (41.5 s loop), stage 2 the rubbish bags (**18.0 s**, and at its own `plateRate` of 1 that is ~18 s on screen against stage 1's ~21 s — it was ~9 s while the rate was shared). ⚠️ `plateKey` is read by **both** manifest.js and time-attack.js — one field, two readers, so the key cannot be changed in one place only |
 | `coinsPerFly` | what a fly is worth. At 1 the quota *is* a fly count |
 | `clockAddMs` | what shooting a clock buys |

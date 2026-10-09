@@ -62,8 +62,9 @@
  * ⚠️ `options`, `credits` AND `music` RETURN TO `name`, THEY DO NOT END
  * ANYTHING. The menu is the screen's resting state and everything else on it is
  * a detour. ⚠️ `music` IS THE ONLY ONE THAT CHANGES THE WORLD ON ITS WAY THROUGH
- * -- it can leave a different song playing, or none -- which is why `_toMenu`
- * puts the title's theme back.
+ * -- and it is MEANT to: the song it leaves playing is the menu's song from then
+ * on, in place of the title theme, until the player enters the game or chooses
+ * again. `_toMenu` deliberately does not restore anything; see the note there.
  *
  * ⚠️ WITH `SELECT.on` FALSE THE MIDDLE THREE ARE SKIPPED and `name` hands
  * straight to `walk`. That is the old screen to the frame, and it is the
@@ -504,23 +505,28 @@ class Title {
   }
 
   _toMenu() {
-    /* ⚠️ THE TITLE'S OWN SONG COMES BACK, AND THIS IS THE ONLY PLACE IT CAN.
-       The MÚSICA screen is the one detour that changes what is playing -- it
-       can start any of the five tracks, or stop the music outright -- and the
-       menu it returns to is not a room, so nothing downstream calls
-       `roomMusic()` to put things right.
+    /* ⚠️⚠️ THE JUKEBOX'S CHOICE SURVIVES THIS, AND THAT IS THE POINT. Asked
+       2026-10-09: *"the song that the player selects on the jukebox, keeps
+       playing in the menu, in the place of the default coco nha nha. It only
+       changes if the player enters the game, or if he changes it again in the
+       jukebox."* So there is deliberately NO `playMusic` here.
 
-       ⚠️ UNCONDITIONAL, AND SAFE FOR THE OTHER TWO CALLERS. `playMusic` is a
-       no-op when the SAME key is already playing, so returning from OPÇÕES or
-       the credits -- which never touch the music -- costs nothing and reads
-       the same as it always did. It also correctly RESTARTS after the jukebox
-       stopped the music, where `wanted` is false and there is nothing to be a
-       no-op about.
+       ⚠️ THIS LINE EXISTED AND WAS REMOVED, so do not add it back as an
+       oversight. It restored `musicTitle` on every return, which is right if
+       the menu owns its own song and wrong now that the player can choose one:
+       the restore would have thrown their choice away on the way out of the
+       very screen that made it.
 
-       ⚠️ GUARDED ON `TITLE_TRACK` the same way game.js's `titleMusic()` is: with
-       no title theme configured this screen is silent and must stay silent
-       rather than falling back to the fight's bed. */
-    if (this.sound && CONFIG.TITLE_TRACK) this.sound.playMusic('musicTitle');
+       ⚠️ AND THE DEFAULT STILL COMES BACK ON ITS OWN, one level up.
+       `game.js`'s `titleMusic()` runs whenever the TITLE PHASE is entered --
+       including on the return from a finished run -- so the choice lives for
+       this visit to the title screen and no longer. Nothing here has to
+       arrange that, and arranging it here is what would break the ask.
+
+       ⚠️ STOPPING THE MUSIC (left, on the jukebox) THEREFORE LEAVES THE MENU
+       SILENT. That is the same rule, not an edge case: stopping is a choice the
+       player made on that screen, and un-making it here would be the restore
+       under another name. */
     this.stage = 'name';
     this.stageT = 0;
     this.menuT = 0;              // answerable at once: nothing re-animates
@@ -1343,13 +1349,15 @@ class Title {
        drew it at HEADING size, to match OPÇÕES-as-a-heading. As a menu item it
        therefore arrives a third too big, which is what the user saw.
 
-       ⚠️ DERIVED FROM CAP HEIGHTS, NOT JUDGED BY EYE. Median per-column ink
-       extent in the packed atlas: COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0, so
-       64.75/89.0 = 0.73. ⚠️ SABOROSA IS 54.0 AND IS DELIBERATELY NOT IN THAT
-       AVERAGE -- the artist drew the three menu items at three sizes, and
-       SABOROSA being the small one is THEIR drawing, not an error to correct.
-       Matching the pair that agree is what "the same size as the other menu
-       items" means here.
+       ⚠️ IT STARTED DERIVED FROM CAP HEIGHTS. Median per-column ink extent in
+       the packed atlas: COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0, so 64.75/89.0
+       = 0.73. ⚠️ SABOROSA IS 54.0 AND WAS DELIBERATELY NOT IN THAT AVERAGE --
+       the artist drew the three menu items at three sizes, and SABOROSA being
+       the small one is THEIR drawing, not an error to correct.
+
+       ⚠️⚠️ AND IT IS 0.69 NOW, BY THEIR EYE, IN TWO PASSES ON THE RUNNING
+       SCREEN (-10%, then +5%). The measurement was the right place to start and
+       is not the answer; see the config note before "correcting" it back.
 
        ⚠️ AND IT IS SCOPED TO THE MENU. The same frame still draws at the pack's
        own scale as the MÚSICA screen's heading, where heading size is right. A
@@ -1476,6 +1484,23 @@ class Title {
     const a = fade > 0 ? Math.min(1, this.stageT / fade) : 1;
     L.draw(ctx, 'menuMusic', W / 2, H * (J.titleYRel != null ? J.titleYRel : 0.17),
            { alpha: a });
+    /* WHO MADE THE MUSIC, under the heading. Asked for 2026-10-09: *"somewhere
+       inside the music menu, we also want to add the letters SAMURAIO"*.
+       ⚠️ IT IS THE CREDITS ROLL'S OWN FRAME, not a second cutting of the same
+       word -- the artist drew SAMURAIO once and both screens read it.
+       ⚠️ AND IT NEEDS `samuraioMul` BECAUSE THE WORD IS HEADING-SIZED. Measured
+       in the packed atlas, its cap height is 60.9 against the MÚSICA heading's
+       60.2 -- the artist drew the two at the same letter size, so at the pack's
+       own scale this would be a SECOND HEADING rather than a by-line under the
+       first. 0.62 makes it plainly secondary; see the config note.
+       ⚠️ DRAWN ONLY IF THE PACK HAS IT, the same bargain every other use of this
+       pack strikes -- an older `batidao-letters` simply has no by-line rather
+       than a hole where one was assumed. */
+    if (L.has('credSamuraio')) {
+      L.draw(ctx, 'credSamuraio', W / 2,
+             H * (J.samuraioYRel != null ? J.samuraioYRel : 0.285),
+             { alpha: a, mul: (J.samuraioMul != null ? J.samuraioMul : 0.62) });
+    }
 
     const songs = this._songs();
     const gap = H * (J.rowGapRel != null ? J.rowGapRel : 0.105);

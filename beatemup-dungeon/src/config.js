@@ -849,12 +849,12 @@ const CONFIG = {
         plateKey: 'taPlate2',
         ROUNDS: [  // ⚠N0845
           { coins: 14, timeMs: 30000, flies: 5, clocks: 2 },
-          { coins: 22, timeMs: 30000, flies: 6, clocks: 2 },
-          { coins: 30, timeMs: 30000, flies: 7, clocks: 3 },
+          { coins: 20, timeMs: 30000, flies: 6, clocks: 2 },
+          { coins: 26, timeMs: 30000, flies: 7, clocks: 3 },
         ],
         plateRate: 1,  // ⚠N0847
-        barrelEveryMs: 1300,  // ⚠N0846
-        barrelMax: 4,
+        barrelEveryMs: 1600,  // ⚠N0846
+        barrelMax: 3,
       },
     },
     coinsPerFly: 1,  // ⚠N0293
@@ -1985,13 +1985,13 @@ const CONFIG = {
     titleYRel: 0.17,  // ⚠N0663 ⚠N0664
     subtitleYRel: 0.35,
     titleNudgePx: 24,  // ⚠N0665
-    menuYRel: 0.68,      // the middle of the FIRST three items  ⚠N0666 ⚠N0848
+    menuYRel: 0.646667,  // the middle of the FIRST three items  ⚠N0666 ⚠N0848
     menuMul: 0.90,  // ⚠N0667
     itemPop: 0.10,  // ⚠N0668 ⚠N0669
     itemPopMs: 260,
     menuHoldMs: 300,  // ⚠N0670
     menuGapRel: 0.11,    // between item centres, as a fraction of canvas height
-    menuItemMul: { menuMusic: 0.657 },  // ⚠N0861 ⚠N0862
+    menuItemMul: { menuMusic: 0.69 },  // ⚠N0861 ⚠N0862
     selectedMul: 1.10,  // ⚠N0671
     menuFadeMs: 320,     // the items coming up once the name has landed
     chooseYRel: 0.11,  // ~N0672
@@ -2014,6 +2014,20 @@ const CONFIG = {
     credSamuraioYRel: 0.50,
   },
 
+  THE_END: {  // ⚠N0866 ⚠N0867
+    on: true,
+    GOOD:   'v2:beatemup-dungeon/batidao-the-end-1.png',  // ⚠N0868
+    LESSER: 'v2:beatemup-dungeon/batidao-the-end-2.png',
+    hRel: 0.897,  // ⚠N0869
+    yRel: 0.5,
+    liftMs: 560,  // ⚠N0870
+    liftRel: 0.62,
+    liftFadeRel: 0.65,
+    fadeDelayMs: 240,
+    fadeMs: 420,
+    pressDelayMs: 700,  // ~N0871
+  },
+
   JUKEBOX: {  // ⚠N0852 ⚠N0853
     on: true,
     TRACKS: [  // ⚠N0854 ⚠N0855
@@ -2024,11 +2038,13 @@ const CONFIG = {
       { key: 'musicDesert',     letter: 'songSucuri' },
     ],
     titleYRel: 0.17,  // ~N0856
+    samuraioYRel: 0.285,  // ⚠N0864 ⚠N0865
+    samuraioMul: 0.62,
     rowYRel: 0.40,
     rowGapRel: 0.105,
     rowMul: 0.80,  // ~N0857
     selectedMul: 1.10,  // ~N0858
-    restAlpha: 0.55,  // ⚠N0859
+    restAlpha: 1,  // ⚠N0859
     stopFadeSec: 0.5,  // ⚠N0860
   },
 

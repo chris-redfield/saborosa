@@ -11524,10 +11524,17 @@ both. If they ever want to differ, that is a new key and a call in the menu
 branch, not a change here.
 
 ⚠️⚠️ **"THE MENU NEVER STOPS THE TITLE'S MUSIC" STOPPED BEING TRUE ON
-2026-10-09.** The MUSICA screen (`N0852`) can start any of five tracks or
-stop the music outright, so `Title._toMenu()` now asks for `musicTitle` on
-every return to the menu. For OPCOES and the credits that call is a no-op
-exactly as described above; for the jukebox it is what puts this track back.
+2026-10-09.** The MUSICA screen (`N0852`) can start any of five tracks or stop
+the music outright, **and what it leaves playing is then the menu's song** --
+*"it only changes if the player enters the game, or if he changes it again in
+the jukebox."* So this track is the menu's DEFAULT, not the menu's music.
+
+⚠️ **`Title._toMenu()` RESTORES NOTHING, DELIBERATELY.** It briefly did, for
+half a day, and that threw the player's choice away on the way out of the
+screen that made it. ⚠️ The default comes back one level up instead:
+`game.js`'s `titleMusic()` runs whenever the TITLE PHASE is entered, including
+on the return from a finished run -- so a jukebox choice lives for one visit
+to the title screen and no longer.
 
 ⚠️ AND THIS TRACK IS NOW ALSO A ROW IN THAT LIST (`songCoco`), which is why
 the screen's "now playing" cue is read from `Sound` rather than remembered
@@ -13170,7 +13177,7 @@ advance; a thing to look at with the swarm in the air.
 last asks for 30.
 
     stage 1    8 / 14 / 22 coins     4 / 5 / 6 flies    1 / 2 / 2 clocks
-    stage 2   14 / 22 / 30 coins     5 / 6 / 7 flies    2 / 2 / 3 clocks
+    stage 2   14 / 20 / 26 coins     5 / 6 / 7 flies    2 / 2 / 3 clocks
 
 ⚠️ **THE CLOCK IS STILL 30s A ROUND IN BOTH** — the quota rises and the time does
 not, which is the whole difficulty curve (`N0292`), and more time for more coins
@@ -13181,17 +13188,46 @@ own self-contained bonus stage the way a Sonic special stage is. Nothing in the
 code counts across the two, and nothing should start to — the entry card, the HUD
 and the score are all per-playing.
 
-⚠️⚠️ **GUESSES, ALL SIX NUMBERS.** They are one step up a curve whose first half
-has been played and whose second half has not, and the flies are not the only
-thing in the air now — see `N0846`.
+⚠️⚠️ **EASED ON 2026-10-09 AFTER THE FIRST REAL PLAY**: *"second time attack is
+too hard, i was never able to complete it, lol, lets make it slighly easier."*
+Was 14 / 22 / 30. **Round 1 was left alone on purpose** — it is stage 1's second
+round, which is the continuity the ramp was chosen for; the cut is in the back
+half, where the failure happened.
+
+A quota is a required kill RATE, because `coinsPerFly` is 1 and a coin is a fly:
+
+    stage 1        0.27 / 0.47 / 0.73 per second
+    stage 2 was    0.47 / 0.73 / 1.00      <- final round +36% on stage 1's worst
+    stage 2 now    0.47 / 0.67 / 0.87      <- +18%
+
+⚠️⚠️ **AND THE QUOTA WAS PROBABLY NEVER THE REAL LIMIT.** A fly needs two hits
+with `flyHurtMs` 180 between them, so 26 kills is **4.7s of beam contact in a
+30s round -- 16% of it**, and the field refills at 2.2 flies/sec, so neither
+spawning nor shooting is binding. What is binding is AIM, and what costs aim is
+the barrel stream (`N0846`). That is why this round eased BOTH, and why the
+numbers above are not the whole fix.
 
 ### ⚠ N0846 — `CONFIG.TIME_ATTACK.STAGES[2].barrelEveryMs` / `barrelMax`
 
-⚠️ **THE ONLY OTHER THING STAGE 2 MAKES HARDER**: barrels every **1300ms** ± 700
-against 1700 ± 700, and **4** on screen at once against 3. Everything else about
-them — the speed, the spin, the scale, the health, the dark-barrel chance — is
-shared, because those were judged by eye in 2026-09-18 and are a look as much as
-a difficulty.
+⚠️ **THE ONLY OTHER THING STAGE 2 MAKES HARDER**: barrels every **1600ms** ± 700
+against 1700 ± 700, and **3** on screen — which is now the base count.
+Everything else about them — the speed, the spin, the scale, the health, the
+dark-barrel chance — is shared, because those were judged by eye in 2026-09-18
+and are a look as much as a difficulty.
+
+⚠️⚠️ **EASED FROM 1300 / 4 ON 2026-10-09, AND THIS IS THE HALF OF THAT ASK
+THAT PROBABLY MATTERED.** The quota needs only 16% of a round on target
+(`N0845`), so the thing that made stage 2 uncompletable was the obstacle stream:
+a barrel every 1.3s with four on screen, **35% of them unbreakable** by the gun
+(`barrelHardChance`), against a plane that dies in four hits. Dodging is time not
+aiming, and being shot down is ABATIDO — which is not COMPLETO, so it fails the
+good ending outright.
+
+⚠️ **THE NEXT LEVER, IF IT IS STILL TOO HARD, IS `barrelHardChance`** — a
+per-stage override below 0.35 — because the unbreakable ones are the only
+barrels that CANNOT be answered with the gun. ⚠️ Ask WHICH WAY the run fails
+first: shot down (ABATIDO) points at the barrels, clock run out (TEMPO!) points
+at the quota. Easing both again without knowing is how a minigame ends up trivial.
 
 ⚠️⚠️ **AND THE 09-18 CADENCE WAS NEVER PLAYED EITHER.** `barrelEveryMs`,
 `barrelMax` and `barrelHardChance` were written down that day as STILL GUESSES —
@@ -13245,10 +13281,21 @@ three did not move by a pixel and the composition that was already signed off
 was untouched. Re-centring on the list (`i - (n-1)/2`) is the obvious-looking
 change and it would have shifted all three up half a gap to make room.
 
-⚠️ **A FIFTH ITEM IS WHERE THAT STOPS BEING FREE.** At 0.68 with `menuGapRel`
-0.11 the fourth item's centre is already at 0.90 of the canvas; the next one
-would be off the bottom. Whoever adds it has to decide the layout rather than
-inherit this.
+⚠️ **A FIFTH ITEM IS WHERE THAT STOPS BEING FREE.** At `menuGapRel` 0.11 the
+fourth item's centre sits two gaps below this; the next one would be at 0.98 and
+off the bottom. Whoever adds it has to decide the layout rather than inherit it.
+
+⚠️ **0.68 -> 0.646667 ON 2026-10-09**: *"bring the whole options (comecar,
+opcoes, saborosa, musica) up by 1 dedinho"*. One dedinho of POSITION is **24px**
+(the unit `titleNudgePx` is literally set to), and 24/720 = 0.033333.
+
+⚠⚠ **AND IT HAD TO BE THIS KNOB AND NOT `_nudge()`.** `Title._nudge()` returns
+`titleNudgePx` and is taken by the TITLE and the SUBTITLE as well as the menu —
+so nudging there would have moved the whole screen to move four words. The ask
+named the four items; `menuYRel` is the only offset that is theirs alone.
+
+⚠️ It also buys MÚSICA 24px more bottom margin, which it needed: as the fourth
+item it was the one sitting closest to the frame edge.
 
 ### ⚠ N0849 — `CONFIG.LETTERS.credHoldMs` / `credRollMs`
 
@@ -13303,10 +13350,18 @@ already loads — `MUSIC_TRACK`, `TITLE_TRACK` and `MUSIC_TRACKS` — so this
 screen is a list and five `playMusic` calls. That is the whole reason it was
 cheap.
 
-⚠️ **AND IT IS THE ONLY DETOUR THAT CHANGES THE WORLD ON ITS WAY THROUGH.**
-OPÇÕES and the credits leave the music exactly as they found it; this one can
-leave any of five songs playing, or none. `Title._toMenu()` therefore puts
-`musicTitle` back, and that call is why it exists.
+⚠️⚠️ **AND IT IS THE ONLY DETOUR THAT CHANGES THE WORLD ON ITS WAY THROUGH --
+WHICH IS THE FEATURE.** OPÇÕES and the credits leave the music exactly as they
+found it; this one leaves whatever the player chose, and **that becomes the
+menu's song**: *"the song that the player selects on the jukebox, keeps playing
+in the menu, in the place of the default coco nha nha."*
+
+⚠️ **SO `Title._toMenu()` RESTORES NOTHING.** It did for half a day, on the
+reasoning that the menu is not a room and nothing downstream would put things
+right -- true, and beside the point: nothing NEEDS putting right. The two
+things that end a choice are entering the game (the first room's
+`roomMusic()`) and choosing again. ⚠️ Stopping the music therefore leaves the
+menu silent, by the same rule.
 
 ### ⚠ N0853 — `CONFIG.JUKEBOX` — *the controls, and two wrong turns*
 
@@ -13389,7 +13444,12 @@ track with no drawing is DROPPED rather than typeset or drawn blank:
     one of the artist's titles — so whether it is even his is an open
     question, never mind its lettering.
 
-Both were raised with the user on 2026-10-09 to pass to the artist.
+⚠️⚠️ **DROPPED THE SAME DAY, NOT PARKED.** Both were raised with the user to
+pass to the artist and the answer was *"forget about these songs, we won't add
+them"*. **Do not re-propose them**, and do not read the filter in
+`Title._songs()` as waiting for art — the list is five songs and that is the
+finished design. The filter stays because it is what makes the list's length a
+fact about the PACK rather than a number to keep in step by hand.
 
 ⚠️ **SO ADDING A SONG IS: draw it, run `tools/build-letter-pack.py`, add one
 line here.** No code. And the line can sit here BEFORE the art lands — the
@@ -13416,23 +13476,35 @@ the frame.
 
 ### ⚠ N0859 — `CONFIG.JUKEBOX.restAlpha`
 
---- THE TWO CUES, AND WHY THEY ARE TWO -------------------------------
-⚠️⚠️ **THE CURSOR IS A SIZE BUMP; PLAYING IS FULL ALPHA AGAINST THIS.** They
-have to be different cues because **a row can be both, and more importantly
-can be neither.** The row you are pointing at and the row you are hearing
-start out as the same row and stop being it the moment you move the cursor —
-so one highlight serving both would make the screen lie about one of them.
-⚠️ **AND THE CURSOR MOVING NO LONGER PLAYS** (`N0853`), which makes the two
-cues further apart, not closer: the row you point at is only the row you hear
-once you have pressed for it.
+**1 — EVERY ROW SOLID.** *"don't make the options transparent, leave them solid,
+like all the other meny parts"*, 2026-10-09. The rows read like the main menu's
+items and the OPÇÕES screen's, which is the point: this is a menu on the same
+photograph and it should not have a look of its own.
 
-⚠️ **AND "PLAYING" IS ASKED OF `Sound`, NOT REMEMBERED BY THE SCREEN.**
-`sound._wantedKey()` is what that object actually has playing. A flag kept on
+⚠️⚠️ **SO THE SCREEN NO LONGER SHOWS WHICH SONG IS PLAYING.** That is the cost
+of the ask and it is deliberate, not an oversight — the alpha WAS the
+now-playing cue, and the cursor's size bump (`selectedMul`) is the only mark
+left. **If a now-playing cue is ever wanted back it needs a mark that is not
+transparency**, because transparency is the thing that was refused: a drawn
+pointer or a second colour would both be art the artist has not made, which is
+why the alpha was chosen in the first place.
+
+⚠️ **THE KNOB IS LIVE, NOT DEAD.** It is still read and still multiplies the
+screen's fade-in; `0.55` is one edit away if the dimming is ever wanted back.
+
+--- WHY IT WAS EVER TWO CUES, KEPT BECAUSE THE REASONING STILL HOLDS ----
+The cursor is a SIZE bump and playing was FULL ALPHA, and they had to be two
+different marks because **a row can be both, and can be neither**. The row you
+point at and the row you hear are the same row only until you move the cursor,
+so one highlight serving both would make the screen lie about one of them.
+
+⚠️ **AND "PLAYING" WAS ASKED OF `Sound`, NEVER REMEMBERED BY THE SCREEN.**
+`sound._wantedKey()` is what that object actually has playing; a flag kept on
 the title screen would be a second copy of the same fact, and the two part
-company immediately: COCO NHA NHA is ALSO the title theme, so it is already
-playing when the screen opens, before the player has pressed anything. A
-local flag would have opened this screen claiming silence. Verified in a
-shot: cursor on CUMBIA CORAZON, COCO NHA NHA lit.
+company immediately — COCO NHA NHA is ALSO the title theme, so it is already
+playing when the screen opens, before the player has pressed anything. A local
+flag would have had the screen claim silence. That read is now unused by the
+draw; **do not replace it with a flag if the cue comes back.**
 
 ### ⚠ N0860 — `CONFIG.JUKEBOX.stopFadeSec`
 
@@ -13455,7 +13527,7 @@ size as the other menu items?"*
 own scale as the MÚSICA screen's heading, where heading size is correct. A
 correction inside `Letters.draw` would have shrunk both.
 
-### ⚠ N0862 — `CONFIG.LETTERS.menuItemMul.menuMusic` — *where 0.73 comes from*
+### ⚠ N0862 — `CONFIG.LETTERS.menuItemMul.menuMusic` — *0.69, and how it got there*
 
 ⚠️ **DERIVED FROM CAP HEIGHTS, NOT JUDGED BY EYE.** Median per-column ink
 extent in the packed atlas — the median, because most columns of an all-caps
@@ -13466,7 +13538,15 @@ cedilla run longer:
     OPÇÕES     64.5      optTitle    72.0   (what MÚSICA was drawn to match)
     SABOROSA   54.0      credTitle   70.0
 
-64.75 / 89.0 = **0.73**.
+64.75 / 89.0 = **0.73** — which is where this number STARTED, not where it is.
+
+⚠️⚠️ **IT IS 0.69 NOW, AND THE DERIVATION IS HISTORY RATHER THAN THE SPEC.**
+Same day, in two passes on the running screen: *"reduce the MUSICA letters by
+10%... I want to check something"* (0.73 -> 0.657), then *"can you increase it by
+only 5%"* (0.657 -> **0.69**). So the cap-height match was the right PLACE TO
+START and their eye settled it 5% under. **Do not "restore" this to 0.73 on the
+strength of the arithmetic above** — the arithmetic answers "what would match
+COMEÇAR exactly", which turned out not to be the question.
 
 ⚠️⚠️ **SABOROSA IS 54.0 AND IS DELIBERATELY NOT IN THAT AVERAGE.** The artist
 drew the three menu items at THREE sizes; SABOROSA being the small one is
@@ -13475,3 +13555,174 @@ never to rescale art against itself to even it out. "The same size as the
 other menu items" therefore means the pair that agree. Averaging all three
 would give 0.687 and would quietly take a decision about SABOROSA that nobody
 asked for.
+
+### ⚠ N0864 — `CONFIG.JUKEBOX.samuraioYRel`
+
+**WHO MADE THE MUSIC, UNDER THE HEADING.** *"somewhere inside the music menu, we
+also want to add the letters SAMURAIO"*, 2026-10-09.
+
+⚠️ **IT IS THE CREDITS ROLL'S OWN FRAME** (`credSamuraio`), not a second cutting
+of the same word. The artist drew SAMURAIO once and both screens read it, so it
+cannot drift between them.
+
+⚠️ **0.285 GROUPS IT WITH THE HEADING, NOT WITH THE LIST**, and the gaps are the
+whole argument: MÚSICA's bottom edge is at y 162.6 and the first song's top at
+264.5, so there are 102px of clear space between them. At 0.285 the by-line sits
+~8px under the heading and ~32px above the list — four times closer to the thing
+it belongs to. Centring it in the gap would have made it read as the list's
+first row.
+
+⚠️ **DRAWN ONLY IF THE PACK HAS IT** (`L.has('credSamuraio')`), the same bargain
+every other use of this pack strikes: an older `batidao-letters` gets no by-line
+rather than a hole where one was assumed.
+
+### ⚠ N0865 — `CONFIG.JUKEBOX.samuraioMul`
+
+⚠️⚠️ **0.62, BECAUSE THE WORD IS HEADING-SIZED AND THIS IS NOT A HEADING.**
+Measured in the packed atlas — median per-column ink extent, the same ruler the
+menu correction uses:
+
+    menuMusic (the MÚSICA heading)   cap 60.2
+    credSamuraio at pack scale       cap 60.9
+
+**The artist drew the two at the same letter size.** SAMURAIO only *looks* bigger
+because it is a longer word (365px drawn against 262), so at the pack's own scale
+it lands under MÚSICA as a SECOND HEADING rather than a by-line under the first —
+and at 98px tall it would fill the 102px gap edge to edge.
+
+⚠️ **THIS IS THE SECOND PLACE ON THIS SCREEN WHERE ONE FRAME SERVES TWO ROLES**,
+and both are scoped to the use rather than to the frame (see `N0861` for
+`menuMusic`). `credSamuraio` still draws at full pack scale in the credits roll,
+where heading weight is exactly right.
+
+⚠️ **NOT A RESCALING OF THE ART AGAINST ITSELF.** The standing rule is never to
+even sprites up; this is the opposite — the pack's one scale is intact and a
+single USE asks for less of it, which is what `mul` has always been for.
+
+## THE END — the card after the tally  (2026-10-09)
+
+### ⚠ N0866 — `CONFIG.THE_END`
+
+--- ONE MORE BEAT BEFORE THE FRONT DOOR ------------------------------
+*"after the screen where the points are summed, when the player presses any
+button, now instead of going back to the starting screen, he should be
+presented to one of these screens... and then if the player presses a button
+again, he goes back to the starting screen, the one with the saborosa logo and
+the moving worms."*
+
+    ending photograph -> tally -> [press] -> THE END -> [press] -> logo -> title
+
+⚠️ **IT IS A BEAT SPLICED INTO A DISMISSAL, NOT A SCREEN WITH A BACKGROUND OF
+ITS OWN.** `endingShown` already keeps `render()` drawing the ending photograph
+through the CLEAR phase, and this phase changes nothing about that — the card
+lands on the same picture the tally did. That is *"keep the current screen
+background"*, and it costs no code.
+
+⚠️ **THE WIN ONLY.** A death still goes straight to the title: the cards say
+TIME SABOROSA and FIM, which are things to say about a run that was completed,
+not about one that ran out of lives.
+
+⚠️ **`on: false` PUTS THE OLD SINGLE-PRESS DISMISSAL BACK EXACTLY**, because
+`TheEnd.enabled()` is asked in front of the branch rather than inside it.
+
+### ⚠ N0867 — `CONFIG.THE_END` — *which card, and where the verdict lives*
+
+**001 IS THE GOOD ENDING AND IT IS GATED ON BOTH TIME ATTACKS.** Decided
+2026-10-09: a time attack counts as beaten when it ends **COMPLETO** — every
+round's quota met and the plane not shot down.
+
+⚠️ **THAT IS THE MODE'S OWN VERDICT, NOT A RE-DERIVATION.**
+`TimeAttack.completo()` is the same test, in the same order, that picks which of
+the three words the last card shows (`lost` first, because a plane shot down on
+the very shot that met the quota is still a plane that was shot down). So the
+ending a player is given cannot disagree with the word they were shown.
+
+⚠️⚠️ **AND THE RESULT HAS TO LIVE IN `stats`, NOT IN THE MINIGAME.**
+`TimeAttack.reset()` clears `lost` and `roundsCleared` on every entry, so by the
+time the second playing is over the first one's result is gone. `stats` is the
+run's record and `toTitle` resets it, which is exactly the lifetime wanted.
+⚠️ It is recorded ONLY on the path where the mode ENDED — the DEV-jump branch
+also calls `leave()`, and recording there would let a number key decide the
+ending.
+
+⚠️ **`stats.allTimeAttacksCleared()` COUNTS AGAINST THE CONFIGURED STAGES**, not
+against what was played: a run that reached the end having skipped one has not
+cleared them all, where `every` over the recorded results would have called that
+a clean sweep. ⚠️ With TIME ATTACK switched off there is nothing to clear and
+that reads as cleared — the good ending must not be unreachable because a mode
+was disabled.
+
+### ⚠ N0868 — `CONFIG.THE_END.GOOD` / `LESSER`
+
+**THE TWO CARDS, AND THEY ARE CUT FILES RATHER THAN THE MASTERS.**
+`tools/build-the-end-cards.py` crops `batidao-the end-001/002.png` to the card
+and writes 1600px versions.
+
+⚠️⚠️ **THE MASTERS ARE 7016x5096 — A 143MB TEXTURE EACH.** The cards are drawn
+about 1040x562, so shipping the masters would hand a 256-512MB card two textures
+it can never use a tenth of, on a project whose perf history is exactly that
+thrash. ⚠️ `how: 'big'` would have been the lazy answer and is not free either:
+it caps at `bigTextureCap` 3200, still ~30MB apiece.
+
+⚠️ **AND THE CROP IS NOT TIDINESS.** Both pages are drawn on a transparent sheet
+with the card somewhere in the middle, and the margins differ (001's card starts
+109px from the left and 414 from the top; 002's 292 and 156). Uncropped, the game
+would centre the PAGE and not the CARD, so the two endings would sit in visibly
+different places for no reason the player can see.
+
+### ⚠ N0869 — `CONFIG.THE_END.hRel` / `yRel`
+
+**0.897 OF THE CANVAS HEIGHT, CENTRED** — 0.78 at first, then *"make the image
+bigger, so it takes a bigger part of the screen, maybe 15%"* the same day
+(0.78 x 1.15). Measured at 1280x720:
+
+    good card   (1.447:1)   935 x 646   side margin 173   top/bottom 37
+    lesser card (1.416:1)   915 x 646   side margin 183   top/bottom 37
+
+⚠️ **SIZED OFF HEIGHT, NOT WIDTH.** The cards are 1.447:1 and 1.416:1 against a
+1.78:1 frame, so height is what runs out first; driving this from a width would
+push the taller of the two off the top and bottom.
+
+⚠️ **AND `hRel` KEEPS THEM THE SAME HEIGHT, which is what reads as "the same
+card, changed".** The two masters are not the same shape, so matching their
+widths instead would make one visibly taller than the other.
+
+⚠️ **IT DELIBERATELY DOES NOT FILL THE FRAME.** The ending photograph still
+shows around it, which is what makes this a card laid on the ending rather than a
+new screen. ⚠️ **AT 0.897 THAT MARGIN IS DOWN TO 37px TOP AND BOTTOM**, so this
+is close to the limit of the idea: another 15% (1.03) would push the card off the
+top and bottom and the photograph would survive only at the sides.
+
+### ⚠ N0870 — `CONFIG.THE_END.liftMs` / `liftRel` / `liftFadeRel` / `fadeDelayMs` / `fadeMs`
+
+--- THE SWAP ---------------------------------------------------------
+*"bring the letters up, and swap them with one of the images."* The tally travels
+`liftRel` (0.62) of the canvas upward over `liftMs` (560), eased on the same
+cosine the credits roll uses, while the card fades in over `fadeMs` starting
+`fadeDelayMs` in.
+
+⚠️⚠️ **THE TALLY'S `alpha` TAKES ITS BLACK VEIL WITH IT, AND THAT IS WHY THE ASK
+WORKS AT ALL.** `hud.drawResults` fades `rgba(0,0,0,0.78)` by the same value as
+its text, so the letters going out UNCOVERS the photograph for the card to sit
+on. Nothing had to be arranged for the background to come back.
+
+⚠️ **`liftFadeRel` 0.65 MAKES IT GO OUT FASTER THAN IT TRAVELS**, so the letters
+are gone before they reach the top of the frame. Fading over the whole journey
+leaves a board still faintly readable while the card arrives, which is two
+things asking to be read at once.
+
+⚠️ **THE LIFT IS A `ctx.translate`, NOT A NEW ARGUMENT TO `drawResults`.** That
+function positions eleven rows, two columns and a prompt off `CONFIG.RESULTS`;
+threading an offset through all of it to move the whole thing is eleven chances
+to move one row by mistake.
+
+⚠️ **AND THE BOARD IS DRAWN AT ITS FINISHED TIME** (`hud.resultsRunS`) while it
+leaves — a tally still counting up as it slides off is a number the player is
+being shown and denied at once.
+
+### N0871 — `CONFIG.THE_END.pressDelayMs`
+
+700ms before the card answers a press — the same beat OPÇÕES, the credits and
+the game-over panel each buy themselves. The press that opened this card is long
+gone, but a held button repeats, and a screen that can be opened and closed by
+one long press reads as not opening at all.

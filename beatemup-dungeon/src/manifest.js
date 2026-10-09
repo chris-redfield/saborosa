@@ -242,6 +242,22 @@ function assetManifest() {
       out.push({ key: (T.keyCoin || 'coin_') + k, src: T.COIN_SHEETS[k], how: 'image' });
   }
 
+  /* THE TWO ENDING CARDS (2026-10-09). `image` rather than `big`, and that is a
+     decision the CUTTER makes possible: the masters are 7016x5096 -- a 143MB
+     texture each -- and tools/build-the-end-cards.py crops them to the card and
+     writes 1600px versions, so there is nothing left here to downscale.
+     ⚠️ `big` WOULD HAVE BEEN THE LAZY ANSWER AND IT IS NOT FREE: it caps at
+     `bigTextureCap` 3200, which is still ~30MB apiece for a card drawn 1040
+     wide, on a project whose perf history is a 256-512MB card thrashing.
+     ⚠️ BOTH ARE LISTED EVEN THOUGH ONE RUN SHOWS ONE. Which card comes up is a
+     fact about how the run went, decided long after boot, so neither can be
+     skipped -- and `package.sh` copies what the manifest names. */
+  if (CONFIG.THE_END && CONFIG.THE_END.on !== false) {
+    const E = CONFIG.THE_END;
+    if (E.GOOD) out.push({ key: 'theEndGood', src: E.GOOD, how: 'image' });
+    if (E.LESSER) out.push({ key: 'theEndLesser', src: E.LESSER, how: 'image' });
+  }
+
   /* The SABOROSA logo, for the front door. `image` rather than `big`: it is
      705x166 and drawn at 666 wide, so there is nothing to downscale. */
   if (CONFIG.LOGO && CONFIG.LOGO.on && CONFIG.LOGO.SHEET) {

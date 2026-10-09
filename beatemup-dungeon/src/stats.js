@@ -37,6 +37,43 @@ class Stats {
     this.time = 0;          // seconds of PLAY, not of end screens
     this._swing = null;     // the attack object last counted as a swing
     this._connected = null; // ...and the last one counted as having connected
+    /* HOW EACH TIME ATTACK WENT -- stage number -> did it finish COMPLETO.
+       ⚠️ IT LIVES HERE BECAUSE THIS IS THE RUN'S RECORD AND `toTitle` RESETS IT.
+       The minigame itself cannot hold it: `TimeAttack.reset()` clears `lost` and
+       `roundsCleared` on every entry, so by the time the second playing is over
+       the first one's result is gone. Nothing else survives a room change, two
+       fades and a boss. */
+    this.timeAttack = {};
+  }
+
+  /**
+   * Record how one playing of TIME ATTACK ended.
+   *
+   * ⚠️ `completo` IS THE MODE'S OWN VERDICT, not a re-derivation. It is the same
+   * test that decides which of the three words the last card shows (ABATIDO! /
+   * TEMPO! / COMPLETO), so the ending the player is given cannot disagree with
+   * the word they were shown.
+   */
+  noteTimeAttack(stageNo, completo) {
+    if (stageNo) this.timeAttack[stageNo] = !!completo;
+  }
+
+  /**
+   * Did the player clear EVERY time attack the game contains?
+   *
+   * ⚠️ IT COUNTS AGAINST THE CONFIGURED STAGES, not against what was played. A
+   * run that somehow reached the end having skipped one (a DEV jump, a stage
+   * switched off mid-session) has not cleared them all, and `every` over the
+   * recorded results would have called that a clean sweep. ⚠️ With TIME ATTACK
+   * switched off entirely there is nothing to clear, and that reads as cleared:
+   * the good ending should not be unreachable because a mode was disabled.
+   */
+  allTimeAttacksCleared() {
+    const T = CONFIG.TIME_ATTACK;
+    if (!T || T.on === false || !T.STAGES) return true;
+    const keys = Object.keys(T.STAGES);
+    if (!keys.length) return true;
+    return keys.every(k => this.timeAttack[k] === true);
   }
 
   /** Called every frame with the player's live hitbox (or null). */

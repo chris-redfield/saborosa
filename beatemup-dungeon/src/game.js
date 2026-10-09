@@ -58,6 +58,7 @@
      barrel on the street. Declared after `sheets` for the reason the comment on
      that line gives -- `const` is not hoisted. */
   const timeAttack = new TimeAttack(assets, input, sound, sheets);
+  const theEnd = new TheEnd(assets);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
   const cont = new Continue(assets);
@@ -892,6 +893,14 @@
          recurring bug and here it would look like the minigame hanging. */
       timeAttack.update(dt);
       if (timeAttack.isDone()) {
+        /* ⚠️ THE VERDICT IS TAKEN BEFORE `leave()`, AND ONLY ON THIS PATH.
+           `stats` is the only thing that survives to the ending -- the mode
+           clears `lost` and `roundsCleared` on its next entry, so the first
+           playing's result would be gone by the time the second one finished.
+           ⚠️ AND NOT IN THE DEV-JUMP BRANCH, which also calls `leave()`: that is
+           a minigame ABANDONED, not one that ended, and recording it would let a
+           number key decide which ending the run gets. */
+        stats.noteTimeAttack(timeAttack.stageNo, timeAttack.completo());
         timeAttack.leave();
         /* ⚠️ ON TO THE NEXT ROOM, WIN OR LOSE, AND NEVER BACK TO THIS ONE --
            *"after the time attack is over, I must go to the NEXT stage, not
@@ -1001,6 +1010,13 @@
          only thing happening is a slab rising into frame from below. */
       phaseT += dt;
       if (liftRide.update(dt, player, stage)) { phase = 'play'; phaseT = 0; }
+    } else if (phase === 'theend') {
+      /* THE CARD AFTER THE TALLY. Nothing else is ticked: the run is over, the
+         world is gone and `render()` is still drawing the ending photograph
+         because `endingShown` is true. ⚠️ THE CLOCK LIVES IN `TheEnd` and not in
+         `phaseT`, because the tally's lift and the card's fade are read off it
+         too -- one clock, so retiming either cannot pull them apart. */
+      theEnd.update(dt);
     } else if (phase === 'ending') {
       /* THE WON SCREEN. Nothing else is ticked: the fight is over, the crowd is
          gone and there is no world left to advance -- this is the one phase in
@@ -1207,7 +1223,49 @@
          the screen the game opens on -- so a completed run is bookended by it;
          a death goes straight to the title. `toTitle` owns which, and this only
          tells it which ending happened. */
+      /* ⚠️⚠️ THE WIN NOW HAS ONE MORE BEAT BEFORE THE FRONT DOOR. Asked
+         2026-10-09: *"instead of going back to the starting screen, he should be
+         presented to one of these screens... and then if the player presses a
+         button again, he goes back to the starting screen."* So a press on a
+         FINISHED tally hands to THE END, and the press after that does what this
+         press used to.
+         ⚠️ THE WIN ONLY. A death still goes straight to the title -- the card
+         says TIME SABOROSA or FIM, which are things to say about a run that was
+         completed, not about one that ran out of lives.
+         ⚠️ AND IT IS GATED ON `TheEnd.enabled()`, so `THE_END.on: false` or
+         missing art puts the old single-press dismissal back exactly, with
+         nothing to unwind. */
+      else if (phase === 'clear' && TheEnd.enabled()) {
+        /* ⚠️ THE VERDICT IS COMPUTED HERE, ONCE, AND HANDED OVER. `TheEnd` is
+           told which card to show and never asks why -- the run's facts live in
+           `stats` and the policy ("both minigames COMPLETO") belongs with them,
+           not in a screen whose job is to draw a picture. */
+        theEnd.reset(stats.allTimeAttacksCleared());
+        phase = 'theend';
+        phaseT = 0;
+        /* ⚠️⚠️ AND IT DOES **NOT** RETURN -- see the warning above, which this
+           branch broke on its first try. Everything below schedules the next
+           frame; returning here left `loop()` unscheduled, so the game stopped
+           dead on the tally. The symptom is cruel: the last painted frame stays
+           on screen and looks like a working screen that ignores input, while
+           `theEnd`'s clock never advances because nothing is ticking it.
+           ⚠️ FALLING THROUGH IS SAFE. The press was consumed by the `if` that
+           got us here, so THE END's own dismissal below reads `takeAnyPress()`
+           as false on this frame and cannot close the card it just opened. */
+      }
       else { toTitle(phase === 'clear' ? 'clear' : 'dead'); return; }
+    }
+
+    /* THE END's OWN DISMISSAL: the press that goes back to the front door.
+       ⚠️ IT IS A SECOND, SEPARATE BRANCH rather than another leg of the one
+       above, because that one is guarded by `overArmed || phase === 'clear'` and
+       this phase is neither. ⚠️ `armed()` is the same beat every other end
+       screen buys itself -- the press that OPENED this card is long gone, but a
+       held button repeats, and a screen that can be opened and closed by one
+       long press reads as not opening at all. */
+    if (phase === 'theend' && theEnd.armed() && input.takeAnyPress()) {
+      toTitle('clear');
+      return;
     }
 
     renderFrame(render);
@@ -1576,6 +1634,28 @@
       hud.drawResults(ctx, stats,
                       Math.max(boardSkip, phaseT - 0.45),
                       Math.min(1, phaseT / 0.6));
+    } else if (phase === 'theend') {
+      /* THE TALLY LEAVING, AND THE CARD ARRIVING, ON ONE CLOCK.
+         ⚠️ THE BOARD IS DRAWN AT ITS FINISHED TIME (`hud.resultsRunS`) rather
+         than at a clock that is still running: it is being taken AWAY, and a
+         tally still counting up as it slides off is a number the player is being
+         shown and denied at once.
+         ⚠️ THE LIFT IS A `translate`, NOT A NEW ARGUMENT TO `drawResults`. That
+         function positions eleven rows, two columns and a prompt off
+         `CONFIG.RESULTS`; threading an offset through all of it to move the
+         whole thing is eleven chances to move one row by mistake.
+         ⚠️ AND ITS `alpha` TAKES THE BLACK VEIL WITH IT -- `drawResults` fades
+         `rgba(0,0,0,0.78)` by the same value as its text -- which is what
+         UNCOVERS the ending photograph for the card to sit on. That is *"keep
+         the current screen background"*, and it is free rather than arranged. */
+      const ta = theEnd.tallyAlpha();
+      if (ta > 0) {
+        ctx.save();
+        ctx.translate(0, -theEnd.liftPx(CONFIG.GAME_H));
+        hud.drawResults(ctx, stats, hud.resultsRunS(stats), ta);
+        ctx.restore();
+      }
+      theEnd.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H);
     } else if (phase === 'continue') {
       /* OVER THE FIGHT, WITH A 30% VEIL UNDER IT -- and the veil is drawn by
          `Continue` rather than here, because it belongs UNDER the panel's own

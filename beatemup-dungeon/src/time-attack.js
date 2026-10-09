@@ -289,6 +289,24 @@ class TimeAttack {
   isDone() { return this.state === 'done'; }
 
   /**
+   * Did this playing end COMPLETO -- every round's quota met, plane intact?
+   *
+   * ⚠️ IT IS THE SAME TEST THE LAST CARD'S WORDING USES, in the same order:
+   * `lost` first, because a plane shot down on the very shot that met the quota
+   * is still a plane that was shot down. So the verdict handed to the ending
+   * cannot disagree with the word the player was just shown.
+   *
+   * ⚠️ READ IT BEFORE THE NEXT `enter()`, which is where `reset()` clears both
+   * fields. `leave()` deliberately does not -- it empties the field and stops
+   * the sounds, and the result has to outlive it by exactly one read.
+   */
+  completo() {
+    if (this.lost) return false;
+    const R = this._cfg().ROUNDS || [];
+    return R.length > 0 && this.roundsCleared >= R.length;
+  }
+
+  /**
    * The game paused, or resumed.
    *
    * ⚠️ THE PLATE HAS TO BE TOLD, AND IT IS THE ONLY BACKDROP IN THE GAME THAT
