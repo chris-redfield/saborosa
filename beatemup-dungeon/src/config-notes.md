@@ -11523,6 +11523,16 @@ CODE. Asked as two lines -- *"ABERTURA - COCO NHANHA"* and *"MENU (Opcoes)
 both. If they ever want to differ, that is a new key and a call in the menu
 branch, not a change here.
 
+⚠️⚠️ **"THE MENU NEVER STOPS THE TITLE'S MUSIC" STOPPED BEING TRUE ON
+2026-10-09.** The MUSICA screen (`N0852`) can start any of five tracks or
+stop the music outright, so `Title._toMenu()` now asks for `musicTitle` on
+every return to the menu. For OPCOES and the credits that call is a no-op
+exactly as described above; for the jukebox it is what puts this track back.
+
+⚠️ AND THIS TRACK IS NOW ALSO A ROW IN THAT LIST (`songCoco`), which is why
+the screen's "now playing" cue is read from `Sound` rather than remembered
+-- COCO NHA NHA is already playing the moment the list opens. See `N0859`.
+
 ⚠️ `mike-title.ogg` IS STILL IN THE FOLDER AND IS NOW SHIPPED BY NOTHING.
 manifest.js walks the constants, so dropping out of one drops it out of the
 build; it is left on disk because putting it back is this one line.
@@ -13223,3 +13233,245 @@ the same problem as the speed, not a second one.
 ⚠️ **IT IS A DECODE SAVING, NOT A COST.** The README's warning on the base
 `plateRate` — re-encode faster and play at 1.0 rather than shaving the number —
 is about raising it. This lowers it.
+
+## MÚSICA — the credits roll and the soundtrack screen  (2026-10-09)
+
+### ⚠ N0848 — `CONFIG.LETTERS.menuYRel` — *and the fourth item*
+
+⚠️⚠️ **IT IS THE MIDDLE OF THE FIRST THREE ITEMS, NOT OF THE LIST.**
+`_drawMenu` lays items out at `(i - 1) * gap` from here — an offset from the
+SECOND item — so when MÚSICA was added under SABOROSA on 2026-10-09 the other
+three did not move by a pixel and the composition that was already signed off
+was untouched. Re-centring on the list (`i - (n-1)/2`) is the obvious-looking
+change and it would have shifted all three up half a gap to make room.
+
+⚠️ **A FIFTH ITEM IS WHERE THAT STOPS BEING FREE.** At 0.68 with `menuGapRel`
+0.11 the fourth item's centre is already at 0.90 of the canvas; the next one
+would be off the bottom. Whoever adds it has to decide the layout rather than
+inherit this.
+
+### ⚠ N0849 — `CONFIG.LETTERS.credHoldMs` / `credRollMs`
+
+--- THE CREDITS ROLL -------------------------------------------------
+*"after clicking credits and the credits part fading in, roll the letters
+upward and show the first 2 rows"*, 2026-10-09. The screen fades up as it
+always did, the first credit sits for `credHoldMs`, then everything on it
+travels up over `credRollMs` and the music credit arrives from below.
+
+⚠️ **THE ROLL'S CLOCK STARTS WHERE THE HOLD ENDS**, measured off `stageT`
+minus the hold — so re-timing `menuFadeMs` or the hold cannot eat into the
+roll itself.
+
+⚠️ **EASED, NOT LINEAR** (a cosine, like everything else on this screen). A
+crawl at constant speed that then stops dead reads as the screen being
+yanked.
+
+### ⚠ N0850 — `CONFIG.LETTERS.credRollRel`
+
+**HOW FAR THE WHOLE COLUMN TRAVELS**, as a fraction of canvas height, and it
+is ONE number doing two jobs: it is how far the first credit goes UP, and it
+is how far below their resting places the music rows START. That is what
+keeps "just off the bottom" from being a second number that has to agree
+with this one.
+
+⚠️ **0.82 WAS SIZED AGAINST THE TALLEST FRAME, NOT PICKED.** At 720 it is
+590px. `credNames` is the big one — 311px in the pack, 210px drawn — so after
+the roll its centre is at 418−590 = −172 and its bottom edge at −67: off the
+top with 67px to spare. Shrink this and the names stop clearing the frame
+before anything else does.
+
+### ⚠ N0851 — `CONFIG.LETTERS.credMusicYRel` / `credSamuraioYRel`
+
+**WHERE THE MUSIC CREDIT COMES TO REST**, which is also what it is drawn one
+whole `credRollRel` BELOW until the roll has run.
+
+⚠️ **THEY ARE NOT `credTitleYRel`/`credNamesYRel` AND MUST NOT BE.** That pair
+spaces a heading over a three-line block, 0.26 of the canvas apart. This pair
+is ONE PHRASE ON TWO LINES — MÚSICA POR over SAMURAIO — and at the same
+spacing it would read as two separate credits. 0.38/0.50 is the phrase.
+
+### ⚠ N0852 — `CONFIG.JUKEBOX`
+
+--- THE SOUNDTRACK SCREEN --------------------------------------------
+*"add this 'music' letters to the menu, under credits. when the player clicks
+it, the music names appear, and the player can listen to the songs"*,
+2026-10-09. A fourth stage on the title screen, beside OPÇÕES and the
+credits, and it is the same photograph with different words on it.
+
+⚠️ **IT ADDS NO AUDIO TO THE BUILD.** Every track it plays is one the game
+already loads — `MUSIC_TRACK`, `TITLE_TRACK` and `MUSIC_TRACKS` — so this
+screen is a list and five `playMusic` calls. That is the whole reason it was
+cheap.
+
+⚠️ **AND IT IS THE ONLY DETOUR THAT CHANGES THE WORLD ON ITS WAY THROUGH.**
+OPÇÕES and the credits leave the music exactly as they found it; this one can
+leave any of five songs playing, or none. `Title._toMenu()` therefore puts
+`musicTitle` back, and that call is why it exists.
+
+### ⚠ N0853 — `CONFIG.JUKEBOX` — *the controls, and two wrong turns*
+
+**UP/DOWN MOVES. ATTACK (or RIGHT) PLAYS. LEFT STOPS. ANY OTHER PRESS LEAVES.**
+
+⚠️⚠️ **TWO DESIGNS WERE BUILT AROUND A CONSTRAINT THAT DOES NOT EXIST, AND
+THAT IS THE LESSON OF THIS SCREEN.**
+
+  * **v1** — up/down the cursor, **RIGHT to play**, any press leaves. Reasoned
+    out: `takeAnyPress` is the only way out of a title detour, so the press that
+    leaves cannot also be the press that plays; therefore the action goes on an
+    axis, like OPÇÕES. Every part of it worked — verified from inside the
+    running game — and the screen was unusable: *"jukebox doesn't work, I can't
+    select and change the songs"*, because the button a player presses is the
+    ACTION button and it exited.
+  * **v2** — the **cursor itself** plays, after a settle. Discoverable, needs no
+    prompt art, and wrong: *"when I place the cursor on top of a song it already
+    starts playing, it should play only if I pressed a key."*
+
+⚠️⚠️ **THE PREMISE OF v1 WAS FALSE.** `takeAnyPress()` is not the only thing a
+screen can ask of `Input` — **`takeAttack()` is a separate taker on the same
+object**, so "the attack button" and "any button" are distinguishable. Once they
+are, the action can be the action button and every OTHER button is still the
+exit. One line of input.js disproves the constraint that shaped two versions.
+**Check what the object can actually be asked before designing around what it
+cannot.**
+
+⚠️ **BOTH TAKERS MUST BE READ EVERY FRAME, BEFORE ANY BRANCH.** An attack press
+sets `_anyPress` as well as `_attackQueued`; leaving either unread spends it a
+frame later, which is the screen exiting one frame after it starts a song.
+
+⚠️ **IT WORKS ON A PAD** without a special case: the mapped `lift` button sets
+`_attackQueued` and every pad button sets `_anyPress`.
+
+⚠️⚠️ **AND THE PRESS THAT OPENS THE SCREEN HAS TO BE DROPPED** (`input.flush()`
+on entry). The first version of v3 played its FIRST ROW the instant the list
+appeared — *"when I enter the musica menu, it automatically selects the first
+music"* — because `_tickMenu` consumes `takeAnyPress()` but **not**
+`takeAttack()`, and one press of the attack button sets BOTH. So confirming
+MÚSICA left `_attackQueued` standing for the next screen to find, and the next
+screen had just started reading it as "play".
+
+⚠️ **THIS IS THE ONLY DETOUR THAT NEEDS THE FLUSH**, and only since the attack
+button became an action here. OPÇÕES and the credits read nothing but
+`takeAnyPress`, which the menu had already spent — and they additionally sit
+behind a `menuFadeMs` grace for this same class of bug, which is a timing guard
+where the flush is the actual fix. ⚠️ **A new taker on an existing screen means
+re-asking what the PREVIOUS screen left queued.**
+
+⚠️ **THE CONVENTIONAL ALTERNATIVE STILL NEEDS ART** — a drawn **VOLTAR** row to
+leave, instead of "any other press". That word is not on the artist's sheet; it
+was raised on 2026-10-09 as an optional extra.
+
+### ⚠ N0854 — `CONFIG.JUKEBOX.TRACKS`
+
+**ASSET KEY -> DRAWN NAME**, one row per song, in the order the ARTIST listed
+them on the sheet.
+
+⚠️ **THE ORDER IS THE ART'S, NOT THE GAME'S.** They are not in the order you
+hear them (title → street → desert → TIME ATTACK → library); they are in the
+order they were drawn. Reordering this table is one edit and no code if that
+is ever wanted.
+
+⚠️ **AND THE MAPPING IS A TABLE BECAUSE IT CANNOT BE DERIVED.** `SUCURI` names
+`Sucuri - Samuraio.mp3`; `COCO NHA NHA` names the TITLE theme, whose key is
+`musicTitle` and whose constant is `TITLE_TRACK`. No rule turns one into the
+other. (Compare `Letters.nameKey`, where a fighter's lettering IS derived —
+that works because the name is the key.)
+
+### ⚠ N0855 — `CONFIG.JUKEBOX.TRACKS` — *the two that are missing*
+
+⚠️⚠️ **TWO OF THE GAME'S SEVEN TRACKS ARE NOT ON THE SHEET AND SO CANNOT BE
+LISTED.** `Title._songs()` filters out any row the pack cannot letter, so a
+track with no drawing is DROPPED rather than typeset or drawn blank:
+
+  * **`musicEnding`** — `Pode Me Chamar - Rasteirinha.mp3`, the ZERAMENTO
+    song, the one you hear for beating the game. It belongs on the list.
+  * **`musicBoss`** — `audio/song-enmakun2011.mp3`, HIPÓLITO's theme. ⚠️ The
+    only music file that does not live in `soundtrack/`, and its name is not
+    one of the artist's titles — so whether it is even his is an open
+    question, never mind its lettering.
+
+Both were raised with the user on 2026-10-09 to pass to the artist.
+
+⚠️ **SO ADDING A SONG IS: draw it, run `tools/build-letter-pack.py`, add one
+line here.** No code. And the line can sit here BEFORE the art lands — the
+filter hides it — which is the point of filtering rather than asserting.
+
+### ⚠ N0856 — `CONFIG.JUKEBOX.titleYRel` / `rowYRel` / `rowGapRel`
+
+The heading and the five rows. `titleYRel` 0.17 is the title screen's own
+heading height; the rows run from 0.40 at 0.105 apart, which puts the last of
+five at 0.82.
+
+⚠️ **THE HEADING IS THE MENU ITEM'S OWN FRAME, DRAWN AT THE PACK'S FULL
+SCALE.** `menuMusic` is ONE FRAME WITH TWO ROLES — see `N0861`.
+
+### ⚠ N0857 — `CONFIG.JUKEBOX.rowMul`
+
+0.80. Five rows of a long phrase (`ARROCHA DA SERPENTE` is the widest in the
+pack after the title) want to be smaller than a menu item, or the list fills
+the frame.
+
+### ⚠ N0858 — `CONFIG.JUKEBOX.selectedMul`
+
+1.10, the same bump the menu uses, because it is the same gesture.
+
+### ⚠ N0859 — `CONFIG.JUKEBOX.restAlpha`
+
+--- THE TWO CUES, AND WHY THEY ARE TWO -------------------------------
+⚠️⚠️ **THE CURSOR IS A SIZE BUMP; PLAYING IS FULL ALPHA AGAINST THIS.** They
+have to be different cues because **a row can be both, and more importantly
+can be neither.** The row you are pointing at and the row you are hearing
+start out as the same row and stop being it the moment you move the cursor —
+so one highlight serving both would make the screen lie about one of them.
+⚠️ **AND THE CURSOR MOVING NO LONGER PLAYS** (`N0853`), which makes the two
+cues further apart, not closer: the row you point at is only the row you hear
+once you have pressed for it.
+
+⚠️ **AND "PLAYING" IS ASKED OF `Sound`, NOT REMEMBERED BY THE SCREEN.**
+`sound._wantedKey()` is what that object actually has playing. A flag kept on
+the title screen would be a second copy of the same fact, and the two part
+company immediately: COCO NHA NHA is ALSO the title theme, so it is already
+playing when the screen opens, before the player has pressed anything. A
+local flag would have opened this screen claiming silence. Verified in a
+shot: cursor on CUMBIA CORAZON, COCO NHA NHA lit.
+
+### ⚠ N0860 — `CONFIG.JUKEBOX.stopFadeSec`
+
+0.5, handed to `stopMusic` when LEFT is pressed. Longer than the 0.35 a track
+CHANGE uses, because stopping is a deliberate act and a half-second roll-off
+reads as one; 0.35 reads as the song being cut off.
+
+### ⚠ N0861 — `CONFIG.LETTERS.menuItemMul`
+
+--- ONE FRAME, TWO ROLES ---------------------------------------------
+⚠️⚠️ **A PER-ITEM CORRECTION FOR A FRAME DRAWN FOR A DIFFERENT JOB — NOT A
+LICENCE TO EVEN THE MENU UP.** `menuMusic` is the MÚSICA menu item AND the
+heading of the screen it opens, because the artist drew the word once, at
+HEADING size (to match OPÇÕES-as-a-heading). As a menu item it therefore
+arrived a third too big, which is what the user saw: *"the MUSICA letters are
+too big in the main screen... can you help us scale that to have the same
+size as the other menu items?"*
+
+⚠️ **IT IS SCOPED TO THE MENU DRAW.** The same frame still draws at the pack's
+own scale as the MÚSICA screen's heading, where heading size is correct. A
+correction inside `Letters.draw` would have shrunk both.
+
+### ⚠ N0862 — `CONFIG.LETTERS.menuItemMul.menuMusic` — *where 0.73 comes from*
+
+⚠️ **DERIVED FROM CAP HEIGHTS, NOT JUDGED BY EYE.** Median per-column ink
+extent in the packed atlas — the median, because most columns of an all-caps
+word span exactly cap-to-baseline and only the few under an accent or a
+cedilla run longer:
+
+    COMEÇAR    65.0      MÚSICA      89.0
+    OPÇÕES     64.5      optTitle    72.0   (what MÚSICA was drawn to match)
+    SABOROSA   54.0      credTitle   70.0
+
+64.75 / 89.0 = **0.73**.
+
+⚠️⚠️ **SABOROSA IS 54.0 AND IS DELIBERATELY NOT IN THAT AVERAGE.** The artist
+drew the three menu items at THREE sizes; SABOROSA being the small one is
+their drawing, not an error to correct, and this project's standing rule is
+never to rescale art against itself to even it out. "The same size as the
+other menu items" therefore means the pair that agree. Averaging all three
+would give 0.687 and would quietly take a decision about SABOROSA that nobody
+asked for.

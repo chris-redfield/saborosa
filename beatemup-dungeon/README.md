@@ -837,20 +837,30 @@ CONTINUE: {
 
 ## The hand-lettered front end
 
-Every word the game shows outside a fight is a drawing off one sheet
+Every word the game shows outside a fight is a drawing in one pack
 (`batidao-letters-game.png` + `-sprites.json`, cut by
 `tools/build-letter-pack.py`, drawn by `src/letters.js`).
+
+⚠️ **TWO SOURCE SHEETS SINCE 2026-10-09**, `batidao-letter-todos.png` and
+`batidao-letter-musica-002.png`, cut into that one pack. The pack has exactly
+ONE scale (off the `title` frame), so a second page only works if it was drawn
+at the same dpi — which was **measured, not assumed**: OPÇÕES as a heading is
+580px tall in the first sheet's source and MÚSICA as a heading is 593px in the
+second. **Run that comparison before adding a third sheet**; if it fails, that
+sheet needs its own pack rather than a fudge factor.
 
 | frame | where |
 |---|---|
 | `title` `subtitle` | the title screen, replacing the typed name and gloss |
-| `menuStart` `menuOptions` `menuCredits` | COMEÇAR / OPÇÕES / SABOROSA |
+| `menuStart` `menuOptions` `menuCredits` `menuMusic` | COMEÇAR / OPÇÕES / SABOROSA / MÚSICA |
 | `choose` | ESCOLHA SEU COCO, over the select |
 | `pickLEBRON` `pickIPANEIMA` | under the two coconuts |
 | `life0…life3` | one per life, under the player's name |
 | `nameLEBRON` … `nameMISTERSTOP` | under a fighter's health bar |
 | `optTitle` `optVolume` `optMusic` | the OPÇÕES screen |
 | `credTitle` `credNames` | the SABOROSA credits |
+| `credMusic` `credSamuraio` | MÚSICA POR / SAMURAIO, rolled up after them |
+| `songArrocha` … `songSucuri` | the five soundtrack titles on the MÚSICA screen |
 
 ```js
 LETTERS: {
@@ -858,6 +868,16 @@ LETTERS: {
   menuMul: 0.90,       // the menu, trimmed under that scale
   lifeMul: 0.80,       // …and the lives
   selectedMul: 1.10,   // …and the highlighted item, 10% up on its NEIGHBOURS
+  menuItemMul: { menuMusic: 0.73 },
+                       // ⚠️ ONE FRAME, TWO ROLES. MÚSICA is the menu item AND
+                       // the heading of the screen it opens, and the artist
+                       // drew it at HEADING size — so as a menu item it needs
+                       // bringing down to its neighbours. DERIVED from cap
+                       // heights (COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0),
+                       // scoped to the menu draw so the heading is untouched.
+                       // ⚠️ SABOROSA is 54.0 and is NOT in that average — the
+                       // artist drew the three at three sizes and that is
+                       // their drawing, not an error to even out.
   itemPop: 0.10,       // the tiny stamp on an item that is CHOSEN
   itemPopMs: 260,
   menuHoldMs: 300,     // …and the beat before the screen acts on the choice
@@ -4443,6 +4463,86 @@ reason.) The manifest gates the load on **either** consumer, so turning the game
 over panel off does not take the front door's backdrop with it.
 
 ## The title screen
+
+### The menu, the credits roll and MÚSICA  (2026-10-09)
+
+The title screen is **five stages of one photograph** — the name, the menu, and
+three detours that all return to it.
+
+```
+name     the title falls in, the four items rise under it
+options  OPÇÕES    two meters; up/down choose, left/right set
+credits  SABOROSA  ...then it ROLLS UP to MÚSICA POR SAMURAIO
+music    MÚSICA    the soundtrack; up/down choose, right plays, left stops
+```
+
+**The credits roll.** The screen fades up as it always did, the first credit sits
+for `LETTERS.credHoldMs` (1300), then the whole column travels up over
+`credRollMs` (1000) by `credRollRel` (0.82 of the canvas) — taking the names off
+the top and bringing MÚSICA POR / SAMURAIO up from below.
+
+⚠️ **One number does two jobs**: `credRollRel` is how far the first credit goes
+up *and* how far below their resting places the music rows start. That is what
+stops "just off the bottom" being a second number that has to agree with it.
+⚠️ **0.82 was sized against the tallest frame** — after the roll `credNames`'
+bottom edge sits at −67px. Shrink it and the names stop clearing the frame
+before anything else does.
+
+**MÚSICA — the jukebox.** `CONFIG.JUKEBOX`. A list of the soundtrack you can
+play from the title screen.
+
+| knob | what it does |
+|---|---|
+| `on` | `false` takes the item **off the menu**, not just out of the screen |
+| `TRACKS` | asset key → drawn name, **in the artist's sheet order**, not the order you hear them. ⚠️ A table because it cannot be derived: `SUCURI` names `Sucuri - Samuraio.mp3`, `COCO NHA NHA` names the key `musicTitle` |
+| `rowYRel` / `rowGapRel` / `rowMul` | the list: from 0.40, 0.105 apart, at 0.80 of the pack scale |
+| `selectedMul` | 1.10, the menu's own bump — this is the **cursor** |
+| `restAlpha` | 0.55 — everything that is **not playing**. Full alpha is the now-playing cue |
+| `stopFadeSec` | 0.5 on LEFT. Longer than a track *change*'s 0.35, because stopping is deliberate and should roll off rather than cut |
+
+**Controls:** up/down moves the cursor, **attack (or right) plays** the
+highlighted song, **left stops**, and **any other press leaves**.
+
+⚠⚠ **It took two wrong versions to get there, and the reason is worth keeping.**
+v1 put the action on an axis (right to play) because `takeAnyPress` is the only
+way out of a title detour, so the press that leaves could not also be the press
+that plays. Every part of v1 worked — verified from inside the running game —
+and the screen was unusable: *"I can't select and change the songs"*, because
+the button a player presses is the action button and it exited. v2 made the
+**cursor** play, which was discoverable and also wrong: *"it should play only if
+I pressed a key."*
+
+⚠️ **The premise of v1 was simply false.** `takeAttack()` is a **separate taker**
+from `takeAnyPress()` on the same `Input`, so "the attack button" and "any
+button" are distinguishable — and once they are, the action can be the action
+button while every other button stays the exit. Two designs were built around a
+constraint one line of `input.js` disproves.
+
+⚠️ **Both takers are read every frame before any branch**, because one attack
+press sets both; leaving either unread spends it a frame later, which is the
+screen exiting one frame after it starts a song. ⚠⚠ **And the press that OPENS
+the screen is flushed** — `_tickMenu` consumes `takeAnyPress` but not
+`takeAttack`, so without `input.flush()` on entry the list played its first row
+on arrival. A new taker on a screen means re-asking what the previous screen left
+queued.
+
+⚠️ **Two cues, and they must be two.** The cursor is a size bump; playing is full
+alpha. The row you point at and the row you hear are the same row only until you
+move. ⚠️ **And "playing" is asked of `Sound` (`_wantedKey()`), never remembered
+here** — COCO NHA NHA *is* the title theme, so it is already playing when the
+list opens, and a local flag would have had the screen claim silence.
+
+⚠️ **It adds no audio to the build.** All five tracks are ones the game already
+loads. ⚠️ **It is the only detour that changes the world on its way through** —
+it can leave any song playing, or none — which is why `Title._toMenu()` now asks
+for `musicTitle` on every return (a no-op for the other two detours).
+
+⚠️ **Two of the seven tracks are not on the sheet and so are not listed:**
+`musicEnding` (*Pode Me Chamar*, the ZERAMENTO song) and `musicBoss`
+(`song-enmakun2011.mp3`, HIPÓLITO's — the only music file outside `soundtrack/`,
+and not obviously one of the artist's titles). `Title._songs()` **drops** a track
+the pack cannot letter rather than typesetting it, so a `TRACKS` line can be
+added *before* its art lands and stay invisible until it does.
 
 ### The fruit select
 

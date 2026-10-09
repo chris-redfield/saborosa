@@ -1985,12 +1985,13 @@ const CONFIG = {
     titleYRel: 0.17,  // ⚠N0663 ⚠N0664
     subtitleYRel: 0.35,
     titleNudgePx: 24,  // ⚠N0665
-    menuYRel: 0.68,      // the middle of the three items  ⚠N0666
+    menuYRel: 0.68,      // the middle of the FIRST three items  ⚠N0666 ⚠N0848
     menuMul: 0.90,  // ⚠N0667
     itemPop: 0.10,  // ⚠N0668 ⚠N0669
     itemPopMs: 260,
     menuHoldMs: 300,  // ⚠N0670
     menuGapRel: 0.11,    // between item centres, as a fraction of canvas height
+    menuItemMul: { menuMusic: 0.657 },  // ⚠N0861 ⚠N0862
     selectedMul: 1.10,  // ⚠N0671
     menuFadeMs: 320,     // the items coming up once the name has landed
     chooseYRel: 0.11,  // ~N0672
@@ -2004,6 +2005,31 @@ const CONFIG = {
     optRowGapRel: 0.115,  // ⚠N0679
     credTitleYRel: 0.32,  // ~N0680
     credNamesYRel: 0.58,
+
+    // --- the credits ROLL (2026-10-09) ---------------------------------
+    credHoldMs: 1300,  // ⚠N0849
+    credRollMs: 1000,
+    credRollRel: 0.82,  // ⚠N0850
+    credMusicYRel: 0.38,  // ⚠N0851
+    credSamuraioYRel: 0.50,
+  },
+
+  JUKEBOX: {  // ⚠N0852 ⚠N0853
+    on: true,
+    TRACKS: [  // ⚠N0854 ⚠N0855
+      { key: 'music',           letter: 'songArrocha' },
+      { key: 'musicTitle',      letter: 'songCoco' },
+      { key: 'musicLevel3',     letter: 'songCumbia' },
+      { key: 'musicTimeAttack', letter: 'songDance' },
+      { key: 'musicDesert',     letter: 'songSucuri' },
+    ],
+    titleYRel: 0.17,  // ~N0856
+    rowYRel: 0.40,
+    rowGapRel: 0.105,
+    rowMul: 0.80,  // ~N0857
+    selectedMul: 1.10,  // ~N0858
+    restAlpha: 0.55,  // ⚠N0859
+    stopFadeSec: 0.5,  // ⚠N0860
   },
 
   OPTIONS: {  // ⚠N0681

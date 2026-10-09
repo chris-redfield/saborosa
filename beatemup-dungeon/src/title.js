@@ -40,9 +40,10 @@
  * cover-fit plate and a hand-off between two screens drawing the same picture:
  * a seam where the design has none.
  *
- * ⚠️ AND IT IS ALSO THE MENU, THE OPTIONS AND THE CREDITS (2026-09-01). Three
- * more screens joined it rather than three more files, for exactly the reason
- * the select did: they are the same photograph with different words on it. The
+ * ⚠️ AND IT IS ALSO THE MENU, THE OPTIONS, THE CREDITS (2026-09-01) AND THE
+ * SOUNDTRACK (2026-10-09). Four more screens joined it rather than four more
+ * files, for exactly the reason the select did: they are the same photograph
+ * with different words on it. The
  * title does not even re-drop coming back from them -- the drop is timed off
  * `t`, which never rewinds, so returning to `name` finds the name already
  * landed. A separate screen would have had to fake that.
@@ -51,14 +52,18 @@
  *
  *     name     the title falls in, then the three menu items fade up under it
  *     options  OPÇÕES: two meters, up/down to choose, left/right to set
- *     credits  SABOROSA: who made it
+ *     credits  SABOROSA: who made it, then it ROLLS UP to who made the music
+ *     music    MÚSICA: the soundtrack, up/down to choose, right to play
  *     lift     the name accelerates up and off the top
  *     ask      ESCOLHA SEU COCO falls in; the picture fades up; left/right pick
  *     chosen   the choice is held a beat, then the prompt lifts and the art fades
  *     walk     the chosen hero crosses, exactly as before
  *
- * ⚠️ `options` AND `credits` RETURN TO `name`, THEY DO NOT END ANYTHING. The
- * menu is the screen's resting state and everything else on it is a detour.
+ * ⚠️ `options`, `credits` AND `music` RETURN TO `name`, THEY DO NOT END
+ * ANYTHING. The menu is the screen's resting state and everything else on it is
+ * a detour. ⚠️ `music` IS THE ONLY ONE THAT CHANGES THE WORLD ON ITS WAY THROUGH
+ * -- it can leave a different song playing, or none -- which is why `_toMenu`
+ * puts the title's theme back.
  *
  * ⚠️ WITH `SELECT.on` FALSE THE MIDDLE THREE ARE SKIPPED and `name` hands
  * straight to `walk`. That is the old screen to the frame, and it is the
@@ -126,11 +131,13 @@ class Title {
     // the screen has to remember the last frame or one tap scrolls the list.
     this._heldL = false;
     this._heldR = false;
-    /* THE MENU. `menu` is which of COMEÇAR / OPÇÕES / SABOROSA is highlighted;
-       `optRow` is which meter the options screen is on. Both open at the top,
-       which is the item the player wants nine times out of ten. */
+    /* THE MENU. `menu` is which of COMEÇAR / OPÇÕES / SABOROSA / MÚSICA is
+       highlighted; `optRow` is which meter the options screen is on; `juke` is
+       which song the MÚSICA screen's cursor is on. All open at the top, which
+       is what the player wants nine times out of ten. */
     this.menu = 0;
     this.optRow = 0;
+    this.juke = 0;
     this._heldU = false;
     this._heldD = false;
     /* ms since the menu became answerable -- its own fade clock, so returning
@@ -146,7 +153,63 @@ class Title {
   }
 
   /** The three menu items, top to bottom. Order is the sheet's order. */
-  static MENU() { return ['menuStart', 'menuOptions', 'menuCredits']; }
+  /**
+   * THE MENU, IN ORDER DOWN THE SCREEN.
+   *
+   * ⚠️⚠️ MÚSICA WAS ADDED UNDER CREDITS (2026-10-09) AND THE OTHER THREE DID
+   * NOT MOVE A PIXEL. `_drawMenu` lays items out at `(i - 1) * gap` from
+   * `menuYRel` -- an offset from the SECOND item, not from the middle of the
+   * list -- so a fourth entry appears below the third and the composition that
+   * was already signed off is untouched. Re-centring the block on the list
+   * (`i - (n-1)/2`) is the obvious-looking change and it would have shifted all
+   * three of them up half a gap to make room for the new one.
+   *
+   * ⚠️ A FIFTH ITEM IS WHERE THAT STOPS BEING FREE: at `menuYRel` 0.68 and
+   * `menuGapRel` 0.11 the fourth item's centre is already at 0.90 of the
+   * canvas, so the next one would be off the bottom. Whoever adds it has to
+   * decide the layout properly rather than inheriting this.
+   */
+  static MENU() { return ['menuStart', 'menuOptions', 'menuCredits', 'menuMusic']; }
+
+  /**
+   * What each menu item DOES, by its pack key.
+   *
+   * ⚠️ A MAP AND NOT A PARALLEL ARRAY. `pending` used to be
+   * `['start','options','credits'][this.menu]` -- an index into one list used to
+   * read another, which is correct exactly as long as the two lists are the same
+   * length and in the same order. The moment the drawn list is FILTERED (see
+   * `_menu`) that stops being true and the cursor silently selects the wrong
+   * action. Keyed by the thing both lists already agree on.
+   */
+  static MENU_ACTION() {
+    return { menuStart: 'start', menuOptions: 'options',
+             menuCredits: 'credits', menuMusic: 'music' };
+  }
+
+  /**
+   * The menu as it is actually on screen: the declared order, minus any item
+   * the pack cannot letter.
+   *
+   * ⚠️ WITHOUT THIS FILTER A PACK THAT PREDATES AN ITEM GIVES A CURSOR ON AN
+   * INVISIBLE ROW. `_menuOn` gates on the three original keys -- it is the "is
+   * the hand-lettering up at all" test and must stay that -- so an older
+   * `batidao-letters` without `menuMusic` would turn the menu ON, draw three
+   * items, and still let the player scroll onto a fourth that draws nothing and
+   * opens a screen with no heading. Same bargain `_songs()` strikes for the
+   * soundtrack, and the same reason: the art decides the length of the list.
+   */
+  _menu() {
+    const L = this._art();
+    if (!L) return [];
+    /* ⚠️ `JUKEBOX.on: false` TAKES THE ITEM OFF THE MENU, not just out of the
+       screen. A switch that left MÚSICA sitting there opening an empty list
+       would be a knob that half works, which is worse than no knob -- and this
+       is the only place that can do it, because the item and the screen it
+       opens are the same decision. Read HERE and not in `_drawMenu`, so the
+       cursor cannot land on a row that is not drawn. */
+    const jukeOff = CONFIG.JUKEBOX && CONFIG.JUKEBOX.on === false;
+    return Title.MENU().filter(k => L.has(k) && !(jukeOff && k === 'menuMusic'));
+  }
 
   /** Is the hand-lettered pack up? Everything on this screen asks first. */
   _art() {
@@ -197,11 +260,13 @@ class Title {
       if (this.out >= (CONFIG.titleFadeOutMs || 600)) { this.done = true; return true; }
       return false;
     }
-    /* THE TWO DETOURS OWN THE INPUT WHILE THEY ARE UP, and they are checked
+    /* THE THREE DETOURS OWN THE INPUT WHILE THEY ARE UP, and they are checked
        BEFORE the select's branch below -- that branch claims every stage that is
        not `name` or `walk`, so an options screen added after it would have been
-       fed to `_tickSelect` and answered a question nobody asked. */
+       fed to `_tickSelect` and answered a question nobody asked.
+       ⚠️ A FOURTH DETOUR GOES HERE TOO, above that branch, for the same reason. */
     if (this.stage === 'options') { this._tickOptions(input); return false; }
+    if (this.stage === 'music') { this._tickMusic(input); return false; }
     if (this.stage === 'credits') {
       /* ⚠️ NOT UNTIL IT HAS BEEN UP A MOMENT. The press that OPENED the credits
          is gone by now, but a held button repeats, and a screen that can be
@@ -233,6 +298,32 @@ class Title {
       this.pending = null;
       if (act === 'options') { this.stage = 'options'; this.stageT = 0; return false; }
       if (act === 'credits') { this.stage = 'credits'; this.stageT = 0; return false; }
+      if (act === 'music') {
+        this.stage = 'music';
+        this.stageT = 0;
+        /* THE CURSOR STARTS AT THE TOP, every time the screen is opened. A
+           remembered row would be the only thing on this title screen that
+           carries state between visits. */
+        this.juke = 0;
+        /* ⚠️⚠️ AND THE PRESS THAT OPENED THE SCREEN IS DROPPED. Without this the
+           list played its FIRST ROW the instant it appeared -- *"when I enter
+           the musica menu, it automatically selects the first music"*.
+           ⚠️ BECAUSE `_tickMenu` CONSUMES `takeAnyPress()` BUT NOT
+           `takeAttack()`: both are set by one press of the attack button, so
+           confirming MÚSICA left `_attackQueued` standing, and the very first
+           frame of `_tickMusic` -- which now reads `takeAttack()` as "play" --
+           found a press that was aimed at the MENU.
+           ⚠️ THIS IS THE ONLY DETOUR THAT NEEDS IT, and only since the attack
+           button became this screen's action. OPÇÕES and the credits read
+           nothing but `takeAnyPress`, which the menu had already spent, and
+           they additionally sit behind a `menuFadeMs` grace for the same class
+           of bug -- a timing guard where this is the actual fix.
+           ⚠️ `flush()` AND NOT `takeAttack()`: dropping every queued press is
+           what "a new screen" means, and it leaves `_dirPrev` alone so a
+           direction still being held does not manufacture a fresh edge. */
+        if (input && input.flush) input.flush();
+        return false;
+      }
       this.go = true;      // COMEÇAR: the flag the any-press used to set
     }
     if (this.stage === 'name' && this._menuOn()) this._tickMenu(input);
@@ -315,7 +406,121 @@ class Title {
   }
 
   /** Back to the resting screen, from either detour. */
+  /** The jukebox's config block. */
+  _jcfg() { return CONFIG.JUKEBOX || {}; }
+
+  /**
+   * The songs the MÚSICA screen can play: the config list, minus anything the
+   * pack cannot letter.
+   *
+   * ⚠️⚠️ A TRACK WITH NO DRAWN NAME IS DROPPED, NOT TYPESET AND NOT DRAWN BLANK.
+   * Two of the game's seven tracks are not on the artist's sheet -- the
+   * ZERAMENTO song and HIPÓLITO's theme -- and the house rule for this whole
+   * front end is that every word outside a fight is hand-drawn. A missing row
+   * would be a selectable gap that plays a song with no title on it; filtering
+   * here means the list is exactly as long as the lettering allows.
+   *
+   * ⚠️ SO ADDING A SONG IS: draw it on the sheet, run the cutter, add one line
+   * to `JUKEBOX.TRACKS`. No code. And until the art lands, the line can sit in
+   * the config harmlessly -- this filter hides it.
+   */
+  _songs() {
+    const L = this._art();
+    const list = this._jcfg().TRACKS || [];
+    if (!L) return [];
+    return list.filter(t => t && t.letter && t.key && L.has(t.letter));
+  }
+
+  /**
+   * MÚSICA: move the cursor, PRESS to play, any other press leaves.
+   *
+   * ⚠️⚠️ THE ATTACK BUTTON PLAYS, AND GETTING HERE TOOK TWO WRONG TURNS WORTH
+   * WRITING DOWN.
+   *
+   *   v1  up/down the cursor, RIGHT to play, any press leaves. Reasoned from
+   *       "`takeAnyPress` is the only way out, so the press that leaves cannot
+   *       also be the press that plays -- put the action on an axis." Every
+   *       part of it worked and the screen was unusable: the button a player
+   *       presses is the ACTION button, and it exited.
+   *   v2  the cursor itself plays, after a settle. Discoverable, needs no
+   *       prompt -- and wrong: *"when I place the cursor on top of a song it
+   *       already starts playing, it should play only if I pressed a key."*
+   *
+   * ⚠️⚠️ **THE PREMISE OF v1 WAS SIMPLY FALSE, AND THAT IS THE LESSON.**
+   * `takeAnyPress()` is not the only thing this screen can ask. `takeAttack()`
+   * is a SEPARATE taker on the same object, so "the attack button" and "any
+   * button" are distinguishable -- and once they are, the action can be the
+   * action button and every OTHER button can still be the exit. Two designs
+   * were built around a constraint that one line of input.js disproves.
+   *
+   * SO: up/down moves. ATTACK (or RIGHT) plays the highlighted row. LEFT stops.
+   * Any other press -- jump, pickup, Enter, a stray key -- leaves, which is the
+   * `takeAnyPress` exit OPÇÕES and the credits use, intact.
+   *
+   * ⚠️ AND IT WORKS ON A PAD: the mapped `lift` button sets `_attackQueued`,
+   * and every pad button sets `_anyPress`, so play and leave land on the same
+   * two roles they do on the keyboard.
+   */
+  _tickMusic(input) {
+    const hit = this._vEdge(input);
+    const L = !!(input && input.left), R = !!(input && input.right);
+    const hitL = L && !this._heldL, hitR = R && !this._heldR;
+    this._heldL = L; this._heldR = R;
+    /* ⚠️⚠️ BOTH TAKERS ARE READ EVERY FRAME AND BEFORE ANY BRANCH, because the
+       attack press sets `_anyPress` TOO. Leaving either unread spends it on a
+       later frame -- which is this screen exiting one frame after it started a
+       song. Reading both and then deciding cannot do that. */
+    const atk = !!(input && input.takeAttack());
+    const press = !!(input && input.takeAnyPress());
+    const songs = this._songs();
+    const n = songs.length;
+    if (hit.u || hit.d) {
+      /* WRAPPING, like the menu, and for the same reason: five rows is short
+         enough that running off the end is a dead press. ⚠️ NO STAMP AND NO
+         SOUND -- moving the cursor is not acting on the row, which is the rule
+         the menu and OPÇÕES follow and the thing v2 got wrong. */
+      if (n) this.juke = (this.juke + (hit.d ? 1 : n - 1)) % n;
+      return;
+    }
+    if ((atk || hitR) && n) {
+      /* ⚠️ PLAY BY ASSET KEY, and every one of the five is ALREADY LOADED --
+         they are the game's own tracks, listed in the manifest as MUSIC_TRACK /
+         TITLE_TRACK / MUSIC_TRACKS. This screen adds no audio to the build,
+         which is the whole reason it is cheap.
+         ⚠️ AND IT RETURNS, so the `press` this attack also set cannot fall
+         through to the exit below. */
+      if (this.sound) this.sound.playMusic(songs[Math.min(this.juke, n - 1)].key);
+      this.itemPopT = 0;      // the stamp goes on the ACTION
+      return;
+    }
+    if (hitL) {
+      if (this.sound) this.sound.stopMusic(this._jcfg().stopFadeSec);
+      this.itemPopT = 0;
+      return;
+    }
+    if (press && this.stageT >= (CONFIG.LETTERS && CONFIG.LETTERS.menuFadeMs || 320)) {
+      this._toMenu();
+    }
+  }
+
   _toMenu() {
+    /* ⚠️ THE TITLE'S OWN SONG COMES BACK, AND THIS IS THE ONLY PLACE IT CAN.
+       The MÚSICA screen is the one detour that changes what is playing -- it
+       can start any of the five tracks, or stop the music outright -- and the
+       menu it returns to is not a room, so nothing downstream calls
+       `roomMusic()` to put things right.
+
+       ⚠️ UNCONDITIONAL, AND SAFE FOR THE OTHER TWO CALLERS. `playMusic` is a
+       no-op when the SAME key is already playing, so returning from OPÇÕES or
+       the credits -- which never touch the music -- costs nothing and reads
+       the same as it always did. It also correctly RESTARTS after the jukebox
+       stopped the music, where `wanted` is false and there is nothing to be a
+       no-op about.
+
+       ⚠️ GUARDED ON `TITLE_TRACK` the same way game.js's `titleMusic()` is: with
+       no title theme configured this screen is silent and must stay silent
+       rather than falling back to the fight's bed. */
+    if (this.sound && CONFIG.TITLE_TRACK) this.sound.playMusic('musicTitle');
     this.stage = 'name';
     this.stageT = 0;
     this.menuT = 0;              // answerable at once: nothing re-animates
@@ -357,7 +562,7 @@ class Title {
        TAKEN -- `takeAnyPress` is a queue, so leaving it unread spends it a frame
        later, on whatever screen the choice hands to. */
     if (this.pending) return;
-    const n = Title.MENU().length;
+    const n = this._menu().length;
     if (hit.u || hit.d) {
       /* WRAPPING, because three items is short enough that running off the end
          is a dead press rather than a boundary anyone wants to feel.
@@ -369,7 +574,11 @@ class Title {
     /* THE PRESS BUYS THE STAMP AND NOTHING ELSE; update() spends the choice once
        it has played. COMEÇAR still resolves to `go`, the flag the any-press used
        to set, so everything downstream is the path this screen already had. */
-    this.pending = ['start', 'options', 'credits'][this.menu];
+    /* ⚠️ RESOLVED THROUGH THE FILTERED LIST, so the cursor and the action
+       cannot disagree about which row is which. See `MENU_ACTION`. */
+    const keys = this._menu();
+    this.pending = Title.MENU_ACTION()[keys[Math.min(this.menu, keys.length - 1)]];
+    if (!this.pending) return;
     this.itemPopT = 0;
   }
 
@@ -1122,17 +1331,36 @@ class Title {
              + this._travel(H) * (1 - p)
              - this._bounce(this.t - this._landedAtMs());
     const gap = H * this._lcfg('menuGapRel', 0.11);
-    const keys = Title.MENU();
+    const keys = this._menu();
     /* THE MENU'S OWN TRIM, UNDER THE PACK'S ONE SCALE -- and the highlight
        MULTIPLIES it rather than replacing it, so the selected item stays 10%
        bigger than its neighbours whatever `menuMul` is set to. */
     const base = this._lcfg('menuMul', 1);
     const pop = this._itemPop();
+    /* ⚠️ A PER-ITEM CORRECTION FOR A FRAME DRAWN FOR A DIFFERENT ROLE, and it is
+       NOT a licence to even the menu up. MÚSICA is ONE FRAME DOING TWO JOBS --
+       the menu item and the heading of the screen it opens -- and the artist
+       drew it at HEADING size, to match OPÇÕES-as-a-heading. As a menu item it
+       therefore arrives a third too big, which is what the user saw.
+
+       ⚠️ DERIVED FROM CAP HEIGHTS, NOT JUDGED BY EYE. Median per-column ink
+       extent in the packed atlas: COMEÇAR 65.0, OPÇÕES 64.5, MÚSICA 89.0, so
+       64.75/89.0 = 0.73. ⚠️ SABOROSA IS 54.0 AND IS DELIBERATELY NOT IN THAT
+       AVERAGE -- the artist drew the three menu items at three sizes, and
+       SABOROSA being the small one is THEIR drawing, not an error to correct.
+       Matching the pair that agree is what "the same size as the other menu
+       items" means here.
+
+       ⚠️ AND IT IS SCOPED TO THE MENU. The same frame still draws at the pack's
+       own scale as the MÚSICA screen's heading, where heading size is right. A
+       correction in `Letters.draw` would have shrunk both. */
+    const per = this._lcfg('menuItemMul', null) || {};
     for (let i = 0; i < keys.length; i++) {
       const on = (i === this.menu);
+      const fix = per[keys[i]] != null ? per[keys[i]] : 1;
       L.draw(ctx, keys[i], W / 2, cy + (i - 1) * gap,
              { alpha: a,
-               mul: base * (on ? this._lcfg('selectedMul', 1.10) * pop : 1) });
+               mul: base * fix * (on ? this._lcfg('selectedMul', 1.10) * pop : 1) });
     }
   }
 
@@ -1170,13 +1398,100 @@ class Title {
   }
 
   /** SABOROSA, and who that is. */
+  /**
+   * SABOROSA: who made it -- and then who made the music.
+   *
+   * ⚠️ IT IS A COLUMN OF TWO CARDS THAT SCROLLS, NOT TWO SCREENS THAT SWAP.
+   * Asked for 2026-10-09: *"after clicking credits and the credits part fading
+   * in, roll the letters upward and show the first 2 rows"*. So: the first
+   * credit fades up and sits for `credHoldMs`, then everything on screen
+   * travels up by `credRollRel` of the canvas over `credRollMs` -- which takes
+   * the names off the top and brings MÚSICA POR / SAMURAIO up from below the
+   * bottom edge, where they have been waiting all along.
+   *
+   * ⚠️ THE SECOND CARD IS DRAWN FROM THE FIRST FRAME, OFF SCREEN. It is not
+   * spawned when the roll starts: both cards are always drawn, and the only
+   * thing that changes is the offset. A card that appeared at the moment it was
+   * needed would have to agree with the scroll about where "just off the bottom"
+   * is, which is one number in two places.
+   *
+   * ⚠️ AND THE ROLL IS EASED, NOT LINEAR. A credits crawl at constant speed that
+   * then stops dead reads as the screen being yanked; `_ease` here is the same
+   * cosine the rest of this screen moves on.
+   */
   _drawCredits(ctx, W, H) {
     const L = this._art();
     if (!L) return;
     const fade = this._lcfg('menuFadeMs', 320);
     const a = fade > 0 ? Math.min(1, this.stageT / fade) : 1;
-    L.draw(ctx, 'credTitle', W / 2, H * this._lcfg('credTitleYRel', 0.32), { alpha: a });
-    L.draw(ctx, 'credNames', W / 2, H * this._lcfg('credNamesYRel', 0.58), { alpha: a });
+
+    /* THE ROLL'S OWN CLOCK, which starts where the fade's ends. ⚠️ MEASURED FROM
+       THE END OF THE HOLD rather than from the stage opening, so re-timing the
+       fade or the hold cannot eat into the roll. */
+    const hold = this._lcfg('credHoldMs', 1300);
+    const rollMs = Math.max(1, this._lcfg('credRollMs', 1000));
+    const p = Math.max(0, Math.min(1, (this.stageT - hold) / rollMs));
+    const e = 0.5 - 0.5 * Math.cos(Math.PI * p);        // 0 -> 1, eased both ends
+    const dy = H * this._lcfg('credRollRel', 0.82) * e;
+
+    /* CARD 1: who made the game. It ends up above the top edge. */
+    L.draw(ctx, 'credTitle', W / 2,
+           H * this._lcfg('credTitleYRel', 0.32) - dy, { alpha: a });
+    L.draw(ctx, 'credNames', W / 2,
+           H * this._lcfg('credNamesYRel', 0.58) - dy, { alpha: a });
+
+    /* CARD 2: who made the music. Its `YRel`s are where it COMES TO REST, so it
+       is drawn one whole roll BELOW them until the roll has run.
+       ⚠️ IT TAKES THE SAME `a` AS THE FIRST CARD even though it is off screen
+       during the fade -- the alpha is the SCREEN arriving, not a card arriving,
+       and giving the second one its own would be a fade nobody can see. */
+    const roll = H * this._lcfg('credRollRel', 0.82);
+    L.draw(ctx, 'credMusic', W / 2,
+           H * this._lcfg('credMusicYRel', 0.38) + roll - dy, { alpha: a });
+    L.draw(ctx, 'credSamuraio', W / 2,
+           H * this._lcfg('credSamuraioYRel', 0.50) + roll - dy, { alpha: a });
+  }
+
+  /**
+   * MÚSICA: the heading, and the soundtrack as a list you can play.
+   *
+   * ⚠️ TWO CUES, AND THEY ARE INDEPENDENT BECAUSE A ROW CAN BE BOTH. The CURSOR
+   * is a scale bump (`selectedMul`, the menu's own idiom); PLAYING is full
+   * alpha against `restAlpha` for everything else. The row you are pointing at
+   * and the row you are hearing start out as the same row and stop being it the
+   * moment you move -- so one highlight serving both would make the screen lie
+   * about one of them.
+   *
+   * ⚠️ "PLAYING" IS ASKED OF `Sound`, NOT REMEMBERED HERE. `_wantedKey()` is
+   * what that object actually has playing; a flag kept on this screen would be a
+   * second copy of it, and the two would part company the first time anything
+   * else changed the track -- which, since COCO NHA NHA is also the title
+   * theme, is true before the player presses anything at all.
+   */
+  _drawMusic(ctx, W, H) {
+    const L = this._art();
+    if (!L) return;
+    const J = this._jcfg();
+    const fade = this._lcfg('menuFadeMs', 320);
+    const a = fade > 0 ? Math.min(1, this.stageT / fade) : 1;
+    L.draw(ctx, 'menuMusic', W / 2, H * (J.titleYRel != null ? J.titleYRel : 0.17),
+           { alpha: a });
+
+    const songs = this._songs();
+    const gap = H * (J.rowGapRel != null ? J.rowGapRel : 0.105);
+    const y0 = H * (J.rowYRel != null ? J.rowYRel : 0.40);
+    const base = J.rowMul != null ? J.rowMul : 0.80;
+    const selMul = J.selectedMul != null ? J.selectedMul : 1.10;
+    const rest = J.restAlpha != null ? J.restAlpha : 0.55;
+    const playing = (this.sound && this.sound._wantedKey) ? this.sound._wantedKey() : null;
+    const pop = this._itemPop();
+    for (let i = 0; i < songs.length; i++) {
+      const on = (i === this.juke);
+      const live = (songs[i].key === playing);
+      L.draw(ctx, songs[i].letter, W / 2, y0 + i * gap,
+             { alpha: a * (live ? 1 : rest),
+               mul: base * (on ? selMul * pop : 1) });
+    }
   }
 
   /**
@@ -1206,6 +1521,7 @@ class Title {
 
   _drawType(ctx, W, H) {
     if (this.stage === 'options') { this._drawOptions(ctx, W, H); return; }
+    if (this.stage === 'music') { this._drawMusic(ctx, W, H); return; }
     if (this.stage === 'credits') { this._drawCredits(ctx, W, H); return; }
     const ns = CONFIG.titleNameSize || 74;
     const ss = CONFIG.titleSubSize || 30;

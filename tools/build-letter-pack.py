@@ -1,13 +1,33 @@
 #!/usr/bin/env python3
-"""Cut the hand-lettered FRONT END out of `batidao-letter-todos.png`.
+"""Cut the hand-lettered FRONT END out of the artist's front-end sheets.
 
-WHAT IT IS. One sheet carrying every word the game shows outside a fight: the
+WHAT IT IS. One PACK carrying every word the game shows outside a fight: the
 title and its English gloss, the three menu items, the select prompt and the two
 coconut names, a row of four drawn coconuts for the lives, six fighter names for
 under the health bars, the options screen with its two meters, and the credits.
 Everything here used to be TYPE set in Futura, or did not exist.
 
-⚠️ CUT ON ROW BANDS -- the sheet is a stack of lines and a line is not one
+⚠️ TWO SOURCE SHEETS, ONE PACK (2026-10-09). `batidao-letter-todos.png` is the
+original delivery; `batidao-letter-musica-002.png` arrived later with the music
+credit and the soundtrack's titles on it. They are cut into the SAME atlas and
+the SAME json, and `SHEETS` below is the only place that knows there are two.
+
+⚠️⚠️ THAT IS ONLY LEGITIMATE BECAUSE THE TWO PAGES ARE THE SAME DPI, AND IT WAS
+MEASURED RATHER THAN ASSUMED. The pack has exactly one scale, derived in
+letters.js from the TITLE frame's width -- so a second page drawn at a different
+resolution would land every word on it at the wrong size, with nothing to say so.
+The pages are different SIZES (7016x15587 against 5096x7016), which is what made
+this worth checking. The test is a word whose ROLE already exists in the pack:
+
+    OPÇÕES as a screen heading (optTitle, from todos)   580 px tall in source
+    MÚSICA as a screen heading (band 2, from musica)    593 px tall in source
+
+Within 2%. The artist drew the new heading to match the old one, so one scale
+reproduces their intent on both pages. ⚠️ IF A THIRD SHEET EVER ARRIVES, RUN THAT
+COMPARISON BEFORE ADDING IT -- and if it fails, the sheet needs its own pack
+rather than a fudge factor here.
+
+⚠️ CUT ON ROW BANDS -- a sheet is a stack of lines and a line is not one
 connected component. Same call `build-beat-fundo-defs.py` and
 `build-gameover-words.py` make, for the same reason.
 
@@ -40,6 +60,9 @@ cuts[0] is the end of the word, so an empty meter is the word alone.
 them out: the title is 6815px wide and a fighter name is 830, and the game draws
 both at the same px-per-source ratio.
 
+⚠️ BAND INDICES ARE PER SHEET, so `PACK` rows carry which sheet they came from.
+A row's band number means nothing without it.
+
   python3 tools/build-letter-pack.py --dry-run
 """
 import argparse, json, os, sys
@@ -48,34 +71,63 @@ from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC  = os.path.join(ROOT, 'assets-v2/beatemup-dungeon/batidao-letter-todos.png')
-OUT  = os.path.join(ROOT, 'assets-v2/beatemup-dungeon/batidao-letters')
+ART  = os.path.join(ROOT, 'assets-v2/beatemup-dungeon')
+OUT  = os.path.join(ART, 'batidao-letters')
+
+# sheet tag -> file. ⚠️ ORDER IS THE ATLAS ORDER, so appending a sheet appends to
+# the bottom of the atlas and does not move a single existing frame.
+SHEETS = {
+    'todos':  os.path.join(ART, 'batidao-letter-todos.png'),
+    'musica': os.path.join(ART, 'batidao-letter-musica-002.png'),
+}
 
 MIN_BAND_H = 8      # 1px slivers under HORÁCIO are export dust, not lines
 MIN_PIECE_W = 20    # ...and the same for column pieces
 
-# key            band  rows      cols      what it is
+# key            sheet     band  rows      cols      what it is
 PACK = [
-    ('title',        0, None,     None),   # BATIDÃO DE CÔCO
-    ('subtitle',     1, None,     None),   # ( BIG COCONUT BASH )
-    ('menuStart',    2, (2, 0),   None),   # COMEÇAR
-    ('menuOptions',  2, (2, 1),   None),   # OPÇÕES
-    ('menuCredits',  3, None,     None),   # SABOROSA
-    ('choose',       4, (2, 0),   None),   # ESCOLHA SEU COCO
-    ('pickLEBRON',   4, (2, 1),   None),   # LEBRON, over the select art
-    ('pickIPANEIMA', 5, None,     None),
-    ('life',         6, None,     'each'), # four drawn coconuts -> life0..life3
-    ('nameIPANEIMA', 7, None,     None),   # the six under-the-bar names
-    ('nameLEBRON',   8, None,     None),
-    ('nameNARUTAO',  9, None,     None),
-    ('nameHIPOLITO', 10, None,    None),
-    ('nameHORACIO',  11, None,    None),
-    ('nameMISTERSTOP', 12, None,  None),
-    ('optTitle',     13, None,    None),   # OPÇÕES, as a screen heading
-    ('optVolume',    14, None,    'meter'),
-    ('optMusic',     15, None,    'meter'),
-    ('credTitle',    16, None,    None),   # SABOROSA
-    ('credNames',    17, None,    None),   # ...é Gabriel Góes e Christian Miranda
+    ('title',        'todos',   0, None,     None),   # BATIDÃO DE CÔCO
+    ('subtitle',     'todos',   1, None,     None),   # ( BIG COCONUT BASH )
+    ('menuStart',    'todos',   2, (2, 0),   None),   # COMEÇAR
+    ('menuOptions',  'todos',   2, (2, 1),   None),   # OPÇÕES
+    ('menuCredits',  'todos',   3, None,     None),   # SABOROSA
+    ('choose',       'todos',   4, (2, 0),   None),   # ESCOLHA SEU COCO
+    ('pickLEBRON',   'todos',   4, (2, 1),   None),   # LEBRON, over the select art
+    ('pickIPANEIMA', 'todos',   5, None,     None),
+    ('life',         'todos',   6, None,     'each'), # four coconuts -> life0..life3
+    ('nameIPANEIMA', 'todos',   7, None,     None),   # the six under-the-bar names
+    ('nameLEBRON',   'todos',   8, None,     None),
+    ('nameNARUTAO',  'todos',   9, None,     None),
+    ('nameHIPOLITO', 'todos',  10, None,     None),
+    ('nameHORACIO',  'todos',  11, None,     None),
+    ('nameMISTERSTOP', 'todos', 12, None,    None),
+    ('optTitle',     'todos',  13, None,     None),   # OPÇÕES, as a screen heading
+    ('optVolume',    'todos',  14, None,     'meter'),
+    ('optMusic',     'todos',  15, None,     'meter'),
+    ('credTitle',    'todos',  16, None,     None),   # SABOROSA
+    ('credNames',    'todos',  17, None,     None),   # ...é Gabriel Góes e Christian Miranda
+
+    # --- the music sheet (2026-10-09) ------------------------------------
+    # ⚠️ ITS FIRST TWO BANDS ARE ONE PHRASE ON TWO LINES and they are cut as
+    # two frames, not one: the credits screen rolls them in and draws each
+    # line at its own place, so a single frame would be an unsplittable block.
+    ('credMusic',    'musica',  0, None,     None),   # MÚSICA POR
+    ('credSamuraio', 'musica',  1, None,     None),   # SAMURAIO
+    # ⚠️ ONE FRAME, TWO ROLES -- the MÚSICA menu item AND the heading of the
+    # screen it opens. The artist drew it once; drawing it twice in the pack
+    # would be two frames that have to be kept identical by hand. (The todos
+    # sheet does carry SABOROSA twice, as `menuCredits` and `credTitle` --
+    # because the artist drew it twice, at two sizes.)
+    ('menuMusic',    'musica',  2, None,     None),   # MÚSICA
+    # The soundtrack, in the order the artist listed it. ⚠️ WHICH TRACK EACH
+    # ONE NAMES IS NOT DECIDED HERE -- see CONFIG.JUKEBOX. Two of the game's
+    # seven tracks are NOT on this sheet (the ZERAMENTO song and HIPÓLITO's
+    # theme) and so cannot be listed; asked of the artist 2026-10-09.
+    ('songArrocha',  'musica',  3, None,     None),   # ARROCHA DA SERPENTE
+    ('songCoco',     'musica',  4, None,     None),   # COCO NHA NHA
+    ('songCumbia',   'musica',  5, None,     None),   # CUMBIA CORAZON
+    ('songDance',    'musica',  6, None,     None),   # DANCE SABOROSA
+    ('songSucuri',   'musica',  7, None,     None),   # SUCURI
 ]
 BARS = 8            # meter bars per option row; asserted below
 
@@ -127,17 +179,14 @@ def tight(ink, im, x0, y0, x1, y1):
            (x0 + int(xs[0]), y0 + int(ys[0]))
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--src', default=SRC)
-    ap.add_argument('--out', default=OUT)
-    ap.add_argument('--scale', type=float, default=0.20,
-                    help='master px -> pack px. 0.20 puts the title at 1363px, '
-                         'wider than the game ever draws it.')
-    ap.add_argument('--dry-run', action='store_true')
-    a = ap.parse_args()
+def load(path):
+    """One source sheet as (image, ink mask, bands).
 
-    im = Image.open(a.src).convert('RGBA')
+    ⚠️ RUN PER SHEET, AND THE BANDS ARE THAT SHEET'S. `PACK`'s band numbers are
+    meaningless without knowing which sheet they index, which is why every row
+    of it carries a sheet tag.
+    """
+    im = Image.open(path).convert('RGBA')
     arr = np.array(im)
 
     # ⚠️ THE NEAR-WHITE PIXELS ARE ERASED, AND THE BUG THEY CAUSED IS WORTH
@@ -175,21 +224,41 @@ def main():
     #     turning a white matte black would put a dark fringe on every letter
     #     in the pack -- a regression across eighteen bands, to fix one line.
     #     Clearing alpha alone leaves the matte exactly as the artist left it.
+    # ⚠️ AND IT RUNS ON EVERY SHEET, not just the first one. That is the whole
+    # reason this lives in a per-sheet function: a second source page gets the
+    # same treatment without anybody remembering to ask for it.
     white = (arr[..., :3].astype(int).min(2) >= 235) & (arr[..., 3] > 0)
     if white.any():
-        print('erased %d visible near-white px (the ruled line off the master)'
-              % int(white.sum()))
+        print('%s: erased %d visible near-white px (the ruled line off the master)'
+              % (os.path.basename(path), int(white.sum())))
         arr[..., 3][white] = 0
         im = Image.fromarray(arr, 'RGBA')
 
     ink = (arr[..., 3] > 16) & (arr[..., :3].astype(int).sum(2) < 720)
     B = bands(ink)
-    print('bands: %d' % len(B))
+    print('%s: %d bands' % (os.path.basename(path), len(B)))
+    return im, ink, B
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--out', default=OUT)
+    ap.add_argument('--scale', type=float, default=0.20,
+                    help='master px -> pack px. 0.20 puts the title at 1363px, '
+                         'wider than the game ever draws it.')
+    ap.add_argument('--dry-run', action='store_true')
+    a = ap.parse_args()
+
+    SRC = {tag: load(path) for tag, path in SHEETS.items()}
 
     cut = []      # (key, PIL image, extra dict)
-    for key, bi, rows, cols in PACK:
+    for key, tag, bi, rows, cols in PACK:
+        if tag not in SRC:
+            sys.exit('%r names sheet %r, which is not in SHEETS.' % (key, tag))
+        im, ink, B = SRC[tag]
         if bi >= len(B):
-            sys.exit('band %d for %r does not exist -- the sheet changed.' % (bi, key))
+            sys.exit('band %d for %r does not exist in %s -- the sheet changed.'
+                     % (bi, key, tag))
         y0, y1 = B[bi]
         if rows:
             n, i = rows
