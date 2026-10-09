@@ -744,18 +744,28 @@
        2026-09-08 one of the keys opens the minigame, which is not a room. */
     const J = (CONFIG.DEV && CONFIG.DEV.JUMPS) || null;
     const target = (slot >= 0 && J && slot < J.length) ? J[slot] : (slot >= 0 ? slot : -1);
-    if (CONFIG.DEV && CONFIG.DEV.on && target === 'timeattack' && TimeAttack.enabled()) {
-      /* THE MINIGAME, FROM A NUMBER KEY. ⚠️ THE DESERT IS ENTERED FIRST and the
-         mode opened on top of it: the mode's exit is a room CHANGE -- it fades
-         to the room AFTER the one it was entered from -- so opening it with the
-         stage sitting anywhere else would fade into the wrong room. The desert
-         is found by its `timeAttackOnExit` flag, not by an index, so this
-         survives the rooms being reordered. */
+    /* ⚠️ WHICH MINIGAME A `'timeattack'` ENTRY MEANS. `'timeattack2'` is stage
+       2; bare `'timeattack'` is stage 1, so the entry this table carried before
+       there were two of them still means what it always meant. */
+    const taKey = (typeof target === 'string') && target.match(/^timeattack(\d*)$/);
+    const taJump = taKey ? (parseInt(taKey[1], 10) || 1) : 0;
+    if (CONFIG.DEV && CONFIG.DEV.on && taJump && TimeAttack.enabled()) {
+      /* THE MINIGAME, FROM A NUMBER KEY. ⚠️ ITS HOST ROOM IS ENTERED FIRST and
+         the mode opened on top of it: the mode's exit is a room CHANGE -- it
+         fades to the room AFTER the one it was entered from -- so opening it
+         with the stage sitting anywhere else would fade into the wrong room.
+         The host is found by its `timeAttackOnExit` STAGE NUMBER, not by an
+         index, so this survives the rooms being reordered. */
       crowd.clear();
       player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
       player.props = props;
       liftRide.reset();
-      let host = CONFIG.ROOMS.findIndex(r => r && r.timeAttackOnExit);
+      /* ⚠️ THE ROOM THAT HANDS OVER TO *THIS* MINIGAME, matched on the stage
+         number. It used to be the first room carrying the flag at all, which was
+         right while exactly one room carried it -- with two, that would have put
+         every TIME ATTACK jump in the street and faded stage 2's minigame into
+         the desert, one room short of where it belongs. */
+      let host = CONFIG.ROOMS.findIndex(r => timeAttackStageOf(r) === taJump);
       if (host < 0) host = 0;
       stage.enterRoom(host, player);
       props.enterRoom(stage.room(), player);
@@ -764,7 +774,7 @@
       vermes.enterRoom(stage.room());
       grade.enterRoom(stage.room(), stage);
       roomMusic();
-      timeAttack.enter(PlayerPick.i);
+      timeAttack.enter(PlayerPick.i, taJump);
       phase = 'timeattack';
       phaseT = 0;
       requestAnimationFrame(loop);
@@ -958,6 +968,9 @@
             sound.playMusic('musicEnding');
           }
         } else if (timeAttackDue()) {
+          /* ⚠️ THE STAGE IS ASKED FOR AGAIN rather than carried from the test:
+             `timeAttackDue()` is a pure read of the room that is still on
+             screen, and the room does not change until the fade below. */
           /* ⚠️ THE MINIGAME IS SPLICED INTO THE HANDOVER BETWEEN TWO ROOMS, and
              this is the only place it can be. The walk-out has finished, the
              room is done with, and the fade below is the room swap -- so this
@@ -965,7 +978,7 @@
              ⚠️ AFTER THE FIGHT AND AFTER THE WALK-OUT, both of which are
              untouched: *"the player should still beat the horacio boss, and
              leave the stage walking, like he did before."* */
-          timeAttack.enter(PlayerPick.i);
+          timeAttack.enter(PlayerPick.i, timeAttackDue());
           phase = 'timeattack';
         } else {
           phase = 'fade';
@@ -1323,18 +1336,31 @@
    * silent for no reason.
    */
   /**
-   * Is the room that is handing over the one the minigame plays out of?
+   * WHICH MINIGAME A ROOM HANDS OVER TO, or 0 for the rooms that just fade.
    *
    * ⚠️ ASKED OF THE ROOM, NOT OF A SEGMENT. Time Attack sits in the seam BETWEEN
-   * two rooms -- after HORÁCIO, after the walk-out, before the swap into
-   * HIPÓLITO's -- and a segment cannot express that: a segment only ever sits
+   * two rooms -- after the boss, after the walk-out, before the swap into the
+   * next room -- and a segment cannot express that: a segment only ever sits
    * between two other segments of the SAME room, which is what put the first
-   * version between the last arena and HORÁCIO.
+   * version between the last desert arena and HORÁCIO.
+   *
+   * ⚠️ IT IS A STAGE NUMBER NOW AND NOT A BOOLEAN. Two rooms carry the flag
+   * since 2026-10-09 -- the street hands to minigame 1, the desert to minigame 2
+   * -- and the number is a key into `CONFIG.TIME_ATTACK.STAGES`, so a room says
+   * WHICH minigame and not merely that there is one. 1-based deliberately: a
+   * 0 here would be falsy and the street's minigame would never open.
+   *
+   * ⚠️ `true` STILL MEANS STAGE 1, so an older config, or a room added in a
+   * hurry, keeps working instead of opening a mode with no backdrop.
    */
-  function timeAttackDue() {
-    const r = stage.room();
-    return !!(r && r.timeAttackOnExit && TimeAttack.enabled());
+  function timeAttackStageOf(r) {
+    if (!r || !TimeAttack.enabled()) return 0;
+    const n = r.timeAttackOnExit;
+    return n === true ? 1 : (n > 0 ? n : 0);
   }
+
+  /** The stage the room now on screen hands over to; 0 if it hands to nothing. */
+  function timeAttackDue() { return timeAttackStageOf(stage.room()); }
 
   function endBossMusic() {
     /* ⚠️ THIS USED TO BE GATED ON `VICTORY_STING.on`, WHICH WAS A BUG WAITING

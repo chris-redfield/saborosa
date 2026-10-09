@@ -177,7 +177,8 @@ function assetManifest() {
     out.push({ key: 'taWords', src: T + '-sprites.json', how: 'json' });
   }
 
-  /* TIME ATTACK -- the minigame between the desert and HORÁCIO. The PLANE art
+  /* TIME ATTACK -- the minigame, played TWICE: once as the street hands over
+     and once as the desert does. The PLANE art
      is NOT here: `TaPlane.load()` walks CHARACTERS x CH_FRAMES and builds its
      own keys, which is how Still Life has always loaded it. What the manifest
      needs is everything a BUILD has to copy, so the plate is listed here and the
@@ -188,7 +189,22 @@ function assetManifest() {
      AGAIN: the mode reads the one this game already loads, on purpose. */
   if (CONFIG.TIME_ATTACK && CONFIG.TIME_ATTACK.on !== false) {
     const T = CONFIG.TIME_ATTACK;
-    if (T.PLATE) out.push({ key: 'taPlate', src: T.PLATE, how: 'video' });
+    /* ONE PLATE PER STAGE. ⚠️ THE KEY IS THE STAGE'S OWN `plateKey` AND NOT
+       DERIVED FROM ITS NUMBER HERE: src/time-attack.js looks the element up by
+       that same field, so the two files read one source of truth instead of
+       both knowing a naming convention. A stage with no `PLATE` is skipped
+       rather than listed with an undefined source -- the loader would fetch the
+       string "undefined" and the mode would blit nothing, silently.
+       ⚠️ AND BOTH ARE PRELOADED AT BOOT, the way all four room plates are. That
+       is ~8MB of video for the two of them; they are the same kind of asset the
+       boot loader already waits on, and the alternative is a mode that opens on
+       a black frame while its backdrop downloads. */
+    const STAGES = T.STAGES || {};
+    for (const n of Object.keys(STAGES)) {
+      const st = STAGES[n];
+      if (!st || !st.PLATE) continue;
+      out.push({ key: st.plateKey || ('taPlate' + n), src: st.PLATE, how: 'video' });
+    }
     /* ⚠️ THE PLANE FRAMES ARE LISTED HERE EVEN THOUGH `TaPlane.load()` CAN
        FETCH THEM ITSELF, and that is the whole point. `package.sh` copies what
        the MANIFEST names; art loaded by a class at runtime is read straight out

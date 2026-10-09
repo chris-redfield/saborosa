@@ -69,6 +69,11 @@ class TimeAttack {
        that has no audio still gets a working minigame. */
     this.sound = sound || null;
     this.plane = null;      // built on the first enter(); see _cfg()
+    /* WHICH MINIGAME THIS IS, AND ITS MERGED CONFIG. Both are set by `enter()`;
+       until then `_cfg()` answers out of the bare base block, which is what
+       `load()` needs at boot and all it needs. */
+    this.cfg = null;
+    this.stageNo = 0;
     this.flies = [];
     this.coins = [];
     this.barrels = [];
@@ -76,12 +81,54 @@ class TimeAttack {
     this.reset();
   }
 
-  _cfg() { return CONFIG.TIME_ATTACK || {}; }
+  /**
+   * THE CONFIG FOR THE STAGE BEING PLAYED -- the base block with that stage's
+   * own keys laid over it.
+   *
+   * ⚠️ BUILT ONCE, IN `enter()`, AND CACHED. Every read in this mode and in all
+   * four entity classes comes through here, dozens of times a frame, so merging
+   * per call would be a merge per read. The fallback is the bare base block,
+   * which is what `load()` sees at boot -- before any stage has been chosen.
+   */
+  _cfg() { return this.cfg || CONFIG.TIME_ATTACK || {}; }
 
-  /** Is the mode switched on and does it have what it needs to run? */
+  /**
+   * One stage's config: `CONFIG.TIME_ATTACK` with `STAGES[n]` over the top.
+   *
+   * ⚠️ THE MERGE IS SHALLOW, AND THAT IS RIGHT FOR WHAT IS IN `STAGES` TODAY --
+   * a plate, a plate key, a `ROUNDS` array, two barrel numbers. Every one of
+   * them is a WHOLE value that a stage means to replace. ⚠️ BUT A STAGE THAT
+   * TRIED TO OVERRIDE ONE KEY INSIDE A SUB-BLOCK -- say `LETTER.scale` -- WOULD
+   * SILENTLY DROP THE REST OF THAT BLOCK, because `Object.assign` replaces
+   * `LETTER` wholesale. If that is ever wanted, this is the line to deepen.
+   *
+   * ⚠️ AN UNKNOWN STAGE FALLS BACK TO STAGE 1 rather than returning nothing: a
+   * room carrying a flag nobody wrote a stage for should play the first
+   * minigame, not open a mode with no rounds in it and no backdrop.
+   */
+  static stageCfg(stageNo) {
+    const T = CONFIG.TIME_ATTACK || {};
+    const S = T.STAGES || {};
+    return Object.assign({}, T, S[stageNo] || S[1] || {});
+  }
+
+  /**
+   * Is the mode switched on and does it have what it needs to run?
+   *
+   * ⚠️ ASKED OF THE STAGES AND NOT OF THE BASE BLOCK. `ROUNDS` used to live on
+   * `CONFIG.TIME_ATTACK` itself; it belongs to a stage now, so a test for
+   * `T.ROUNDS` here would be false for a perfectly good two-stage config and
+   * would switch the whole minigame off -- including the `enabled()` call that
+   * decides whether `manifest.js` even lists the plates.
+   */
   static enabled() {
     const T = CONFIG.TIME_ATTACK;
-    return !!(T && T.on !== false && T.ROUNDS && T.ROUNDS.length);
+    if (!T || T.on === false) return false;
+    const S = T.STAGES || {};
+    return Object.keys(S).some(k => {
+      const R = S[k].ROUNDS || T.ROUNDS;
+      return !!(R && R.length);
+    });
   }
 
   reset() {
@@ -155,8 +202,20 @@ class TimeAttack {
    * ⚠️ `charIdx` FOLLOWS THE PLAYER'S PACK rather than asking. The minigame
    * interrupts a fight, so a select screen here would be a menu in the middle
    * of a level; whoever they are flying is whoever they were punching with.
+   *
+   * ⚠️ `stageNo` IS THE MINIGAME'S OWN STAGE NUMBER -- 1 after the street, 2
+   * after the desert -- and it is a key into `CONFIG.TIME_ATTACK.STAGES`, NOT a
+   * `ROOMS` index. It is the room's `timeAttackOnExit` value, handed over by
+   * game.js. ⚠️ IT IS 1-BASED TO MATCH THE PLATE FILENAMES AND THE WAY THE TWO
+   * ARE TALKED ABOUT, and because 0 is falsy: a stage index that started at 0
+   * would make `if (room.timeAttackOnExit)` false for the first minigame in the
+   * game, which is exactly the bug this project has written down twice.
    */
-  enter(packIdx) {
+  enter(packIdx, stageNo) {
+    /* ⚠️ BEFORE `reset()` AND BEFORE ANY OTHER READ, because `_cfg()` answers
+       out of this from here on and everything below asks it something. */
+    this.cfg = TimeAttack.stageCfg(stageNo);
+    this.stageNo = stageNo;
     const c = this._cfg();
     this.reset();
     /* ⚠️⚠️ THE PLANE IS RE-ARMED, AND WITHOUT THIS THE ENTRANCE PLAYED ONCE PER
@@ -179,6 +238,13 @@ class TimeAttack {
        `dt` and the `worldW`: a contract about when state is built, which no
        signature states and which a copied class cannot carry with it. */
     if (this.plane) this.plane.reset();
+    /* ⚠️ AND IT IS HANDED THIS STAGE'S CONFIG. The plane is constructed ONCE, in
+       `load()` at boot (see the note there about not decoding its frames
+       twice), so it captured the bare base block before any stage existed.
+       Nothing in `STAGES` is a plane knob today and this line does nothing --
+       it is here so that the first time one is, it is not a silent half-change
+       where the mode reads the new number and the plane keeps the old one. */
+    if (this.plane) this.plane.cfg = c;
     /* RE-ENTRY INSURANCE. `reset()` clears the flags that DRIVE the loops but
        cannot stop a source that is already playing, and the DEV jump can open
        this mode while it is already open. */
@@ -264,14 +330,21 @@ class TimeAttack {
   _startVideo() {
     /* ⚠️ THE ELEMENT COMES FROM `Assets`, NOT FROM `createElement` HERE.
        `manifest.js` lists the plate as `how: 'video'`, which makes the boot
-       loader build it, preload it and store it under `taPlate` -- exactly what
+       loader build it, preload it and store it under this stage's `plateKey`
+       -- exactly what
        it does for the four level plates. Making a second one here would
        re-download 5.7MB on a machine that had already fetched it, and would
        hand back an element with no data on the frame the mode opens.
        ⚠️ It also gets `muted`/`playsInline` from that loader, which is the pair
        that lets it start with no user gesture; this mode opens mid-level, where
        there is no press to hang a play() on. */
-    this.video = this.assets.getDrawable('taPlate');
+    /* ⚠️ BY THE STAGE'S OWN KEY. One plate per stage, each listed in the
+       manifest under the `plateKey` its stage declares -- so this and
+       manifest.js read the SAME config field rather than both knowing a naming
+       convention. A stage whose key does not match its manifest entry gets no
+       element here and `_drawPlate` silently blits nothing, which is this
+       project's oldest video trap. */
+    this.video = this.assets.getDrawable(this._cfg().plateKey || 'taPlate');
     if (!this.video) return;
     /* ⚠️ `loadVideo` SETS `loop = false` -- it is written for plates that get
        SCRUBBED, which never reach their end. This one plays, and the plate is

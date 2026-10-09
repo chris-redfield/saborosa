@@ -6598,7 +6598,7 @@ states — so it is cut into its **own atlas** (`horacio-L4-game.png`, 1.1 MB,
 
 ---
 
-## TIME ATTACK — the minigame between the desert and HIPÓLITO
+## TIME ATTACK — the minigame, played twice
 
 Sonic 2's special stages, flown in Still Life's plane. `CONFIG.TIME_ATTACK`,
 `src/time-attack.js`, and three files ported from that game — `ta-plane.js`,
@@ -6608,14 +6608,27 @@ Sonic 2's special stages, flown in Still Life's plane. `CONFIG.TIME_ATTACK`,
 kill a fly     -> coinsPerFly toward this round's quota
 shoot a clock  -> clockAddMs back on the timer
 quota met      -> next round, which wants MORE
-timer out      -> the mode ends, he walks on to HORÁCIO
+timer out      -> the mode ends and the next ROOM fades in (never this one)
 ```
+
+**IT IS PLAYED TWICE** (2026-10-09). Stage 1 after the street, stage 2 after the
+desert, and the seam is the same in both: the boss dies, the player walks out,
+the minigame runs, the fade that was already coming lands in the next room.
+
+```
+street -> [TIME ATTACK 1] -> desert/HORÁCIO -> [TIME ATTACK 2] -> HIPÓLITO -> library
+```
+
+One block of knobs drives both. What differs lives in `STAGES`, and that is the
+backdrop and the rounds (plus two barrel numbers on stage 2).
 
 | knob | what it does |
 |---|---|
 | `on` | `false` removes it entirely |
-| `ROOMS[n].timeAttackOnExit` | which room plays it **as it hands over**. The desert's, so: HORÁCIO → walk-out → minigame → HIPÓLITO's room |
-| `ROUNDS` | `{coins, timeMs, flies, clocks}` per round — **the only untuned numbers in the block** |
+| `ROOMS[n].timeAttackOnExit` | which minigame a room plays **as it hands over**, as a **stage number**: `1` on the street, `2` on the desert. ⚠️ **1-based, not an index** — `0` is falsy and every test reads `if (room.timeAttackOnExit)`, so a 0th stage would silently never open. `true` still means stage 1 |
+| `STAGES` | **one block per playing**, holding only what differs: `PLATE`, `plateKey`, `ROUNDS`, and on stage 2 `barrelEveryMs`/`barrelMax`. Laid over the base block by `TimeAttack.stageCfg(n)`. ⚠️ **The merge is one level deep** — a stage that tried to override one key inside `LETTER` would replace the whole of `LETTER` and draw no words |
+| `STAGES[n].ROUNDS` | `{coins, timeMs, flies, clocks}` per round — **the only untuned numbers in the block, now in both stages**. Stage 1 is 8/14/22 coins, stage 2 picks up at 14/22/30. The clock stays 30 s in all six |
+| `STAGES[n].PLATE` / `plateKey` | the backdrop and the asset key it loads under. Stage 1 is the broken concrete (41.5 s loop), stage 2 the rubbish bags (**18.0 s**, and at its own `plateRate` of 1 that is ~18 s on screen against stage 1's ~21 s — it was ~9 s while the rate was shared). ⚠️ `plateKey` is read by **both** manifest.js and time-attack.js — one field, two readers, so the key cannot be changed in one place only |
 | `coinsPerFly` | what a fly is worth. At 1 the quota *is* a fly count |
 | `clockAddMs` | what shooting a clock buys |
 | `carryTime` | `true` carries leftover time into the next round (off: the quota rises and the clock does not — that *is* the difficulty curve) |
@@ -6629,7 +6642,7 @@ timer out      -> the mode ends, he walks on to HORÁCIO
 | `coinMinGapPx` / `coinSpawnTries` | **113** (1.35 × `coinSizePx`) / **40** — how far apart a new clock must land, centre to centre, and how many placements to try before taking the roomiest seen. ⚠️ Measured round the **torus** |
 | `coinSpeedVar` | **0** (2026-09-09, was 0.25) — see below: it is the half of "never overlapped" that spawn placement cannot deliver |
 | `musicKey` | **`musicTimeAttack`** (Cumbia Corazon, wired 2026-09-09). Unset falls back to whatever the room it was entered from left playing |
-| `plateRate` | **2** (2026-09-09) — how fast the background plays, as a multiple of normal. **Judged, not derived**: 1.2 was too subtle, **4 was refused on sight**, 2 is where it landed. A playback rate, not a re-encode; the wrap-crossfade scales with it, so the loop survives at any rate. ⚠️ It **is** a decode cost. If the mode drops frames, re-encode the plate faster and play it at 1.0 rather than shaving this number |
+| `plateRate` | **2** on stage 1, **1** on stage 2 (per-stage since 2026-10-09) — how fast the background plays, as a multiple of normal. ⚠️ **THE TWO PLATES ARE NOT THE SAME SPEED**: measured median pan is **1.00 px/frame** on the stones and **2.00** on the bags, so a shared rate ran stage 2 at double the on-screen speed `2` was ever judged against. `1` puts both at 2.0 px/frame — derived, not a new taste call, and it stretches stage 2's loop from ~9s back to the full 18.0s. **Recut a plate → re-measure and re-derive.** **Judged, not derived**: 1.2 was too subtle, **4 was refused on sight**, 2 is where it landed. A playback rate, not a re-encode; the wrap-crossfade scales with it, so the loop survives at any rate. ⚠️ It **is** a decode cost. If the mode drops frames, re-encode the plate faster and play it at 1.0 rather than shaving this number |
 | `planeEntry` / `planeEntryFromX` / `planeEntryMs` / `planeEntryHoldMs` | the fly-in from off the left edge: `true`, **−0.55** screen widths left of `startX`, over 1035 ms, then a 150 ms beat before the controls answer. Still Life's numbers. A **draw-only** offset — see below |
 
 ### The barrels (2026-09-18)
@@ -7044,15 +7057,21 @@ entry"* and *"fresh plane"* cannot drift apart. ⚠️ It does **not** touch
 band at the middle of the screen while the plane sits at `startY` 0.76 — so the
 fly-in is visible under it and finishes a beat after it lifts.
 
-> **DEV number keys** (`CONFIG.DEV.JUMPS`, key 1 = first entry):
-> `1` street · `2` desert/HORÁCIO · `3` **TIME ATTACK** · `4` HIPÓLITO · `5` the
-> library. ⚠️ **It is a table, not arithmetic.** The key used to *be* the room
-> index (`key - 1`, in input.js); the minigame is not a room, so any arithmetic
-> that made space for it would put a silent off-by-one between what a key is
-> called and what it opens. ⚠️ Key 3 **enters the desert first** and then opens
-> the mode, because the mode's exit is a room *change* — it fades to the room
-> after whichever one it was entered from. The desert is found by its
-> `timeAttackOnExit` flag, not an index, so reordering rooms cannot break it.
+> **DEV number keys** (`CONFIG.DEV.JUMPS`, key 1 = first entry), **renumbered
+> 2026-10-09** when there became two minigames — the table is in play order, so
+> everything after key 1 moved:
+> `1` street · `2` **TIME ATTACK 1** · `3` desert/HORÁCIO · `4` **TIME ATTACK 2**
+> · `5` HIPÓLITO · `6` the library. ⚠️ **It is a table, not arithmetic.** The key
+> used to *be* the room index (`key - 1`, in input.js); the minigame is not a
+> room, so any arithmetic that made space for it would put a silent off-by-one
+> between what a key is called and what it opens. ⚠️ A minigame key **enters
+> its host room first** and then opens the mode, because the mode's exit is a
+> room *change* — it fades to the room after whichever one it was entered from.
+> The host is found by matching `timeAttackOnExit` against the **stage number**,
+> not by an index, so reordering rooms cannot break it. ⚠️ **Matching on the
+> number is not tidiness**: the old code took the first room carrying the flag at
+> all, which with two of them would have opened every minigame in the street —
+> and then faded stage 2's into the desert, one room short.
 
 > **Hold C** for the debug view: fly boxes (cyan), clock boxes (yellow), the
 > plane's hitbox (green), the fly field and the spawn window, a one-line state

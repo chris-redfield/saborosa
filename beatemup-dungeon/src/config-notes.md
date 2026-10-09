@@ -228,13 +228,17 @@ HIPÓLITO a mid-game stage. Touch the order and fix this line FIRST.
 ### ⚠ N0009 — `CONFIG.DEV.JUMPS`
 
 ⚠️ WHAT EACH NUMBER KEY JUMPS TO, BY KEY -- 1 is the first entry. A number
-is a `ROOMS` index; the string `'timeattack'` opens the minigame instead.
+is a `ROOMS` index; a `'timeattack<N>'` string opens that minigame instead.
 Asked for 2026-09-08: *"create a key so I can access the time attack stage
 in dev mode, like add it to 3 ... so hipolito substage goes to 4, then
 stage 3 goes to 5."*
 
-    1  street        2  desert (HORÁCIO)   3  TIME ATTACK
-    4  HIPÓLITO      5  the library
+    1  street           2  TIME ATTACK 1   3  desert (HORÁCIO)
+    4  TIME ATTACK 2    5  HIPÓLITO        6  the library
+
+⚠️ REWRITTEN 2026-10-09, WHEN THERE BECAME TWO MINIGAMES -- and the table is
+in PLAY ORDER, so every key after the first one moved. The old 3/4/5 are now
+3/5/6.
 
 ⚠️ IT IS A TABLE BECAUSE THE KEYS AND THE ROOMS NO LONGER LINE UP. It used
 to be arithmetic -- `key - 1` WAS the room index, in input.js -- and the
@@ -242,12 +246,22 @@ minigame is not a room, so any arithmetic that made room for it would put
 a silent off-by-one between what a key is called and what it opens. A
 list says outright what each key does and is one edit when a room moves.
 
-⚠️ `'timeattack'` PUTS THE PLAYER IN THE DESERT FIRST and then opens the
-mode, because the mode's exit is a room CHANGE -- it fades to the room
-after whichever one it was entered from. Jumping straight into it from
-nowhere would fade into whatever room the stage happened to be sitting on.
-game.js finds the desert by its `timeAttackOnExit` flag rather than by an
-index, so this stays right if the rooms are ever reordered.
+⚠️ A `'timeattack<N>'` KEY PUTS THE PLAYER IN THAT MINIGAME'S HOST ROOM
+FIRST and then opens the mode on top of it, because the mode's exit is a
+room CHANGE -- it fades to the room after whichever one it was entered
+from. Jumping straight into it from nowhere would fade into whatever room
+the stage happened to be sitting on. game.js finds the host by matching
+`timeAttackOnExit` against the STAGE NUMBER rather than by an index, so
+this stays right if the rooms are ever reordered.
+
+⚠️⚠️ AND MATCHING ON THE NUMBER IS NOT TIDINESS. It used to find the first
+room carrying the flag AT ALL, which was correct while exactly one room
+did. With two, every TIME ATTACK key would have opened in the STREET --
+and stage 2's minigame would then have faded into the desert, one room
+short of where it belongs, which looks like a level-order bug and is not.
+
+⚠️ BARE `'timeattack'` STILL MEANS STAGE 1, so the entry this table
+carried before there were two of them means what it always meant.
 
 ### N0010 — `CONFIG.ASSET_BASE`
 
@@ -1230,6 +1244,11 @@ than by copying the street wholesale.
 ⚠️ IT PLAYS NOTHING. `music: false` — see below.
 
 ### ⚠ N0070 — `CONFIG.ROOMS[1].timeAttackOnExit`
+
+⚠️ **THIS IS NOW THE SECOND OF TWO.** Since 2026-10-09 the street carries the
+same flag and plays the minigame first; the value is a STAGE NUMBER rather than
+`true`. See `N0837` and `N0838`. Everything below is about the seam itself, which
+is the same seam in both rooms.
 
 ⚠️⚠️ TIME ATTACK PLAYS AS THIS ROOM HANDS OVER -- after HORÁCIO is
 beaten and after the walk-out, and before the fade into HIPÓLITO's
@@ -4665,11 +4684,16 @@ came across with it, read out of `flying-dungeon/src/config.js` rather than
 retyped. That is the whole reason this was cheap. **A number here that
 differs from that game's is a DECISION and is commented as one.**
 
-WHERE IT HAPPENS: `ROOMS[1].segments`, between the last desert arena and
-HORÁCIO -- *"this minigame should be between stage2 and horacio's
-substage"*. It is a segment `{kind:'timeattack'}`, which is how the desert
-already sequences its walks, arenas and its boss; `stage.js` returns the
-event and `game.js` runs it as a PHASE, the same shape the lift ride uses.
+WHERE IT HAPPENS: in the HANDOVER out of a room, which is a PHASE and not a
+segment -- a room raises it with `timeAttackOnExit` and `game.js` runs it
+after that room's walk-out, in the same shape the lift ride uses. ⚠️ IT IS
+NOT A SEGMENT, and the first version was: see `N0070` for the two
+complaints that cost.
+
+⚠️⚠️ AND IT HAPPENS **TWICE** SINCE 2026-10-09 -- once as the STREET hands
+over and once as the DESERT does, which is where it used to be the only
+time. One block of knobs still drives both; what differs between the two
+playings lives in `STAGES` (`N0839`), and that is the plate and the rounds.
 
 THE RULES, AS ASKED FOR -- Sonic 2's special stages:
   *"Varios rounds cada um vc precisa pegar mais moedas em comparacao ao
@@ -4700,11 +4724,14 @@ THE RULES, AS ASKED FOR -- Sonic 2's special stages:
     *"after the time attack is over, I must go to the NEXT stage"* holds
     for all three endings now, not two.
 
-THE BACKGROUND is `time-attack-1-plate.mp4`, cut by
-tools/build-time-attack-plate.py from the filmed stone orbit. ⚠️ IT LOOPS
-ON ITSELF -- the camera never returns to its start (measured; there IS no
-matching position in that footage) so it is trimmed to constant pan speed
-and wrap-crossfaded. Read that tool's header before recutting it.
+THE BACKGROUNDS are `time-attack-1-plate.mp4` (a pile of broken concrete)
+and `time-attack-2-plate.mp4` (a mountain of black rubbish bags), both cut
+by tools/build-time-attack-plate.py from hand-filmed orbits. ⚠️ THEY LOOP
+ON THEMSELVES -- in NEITHER clip does the camera return to its start
+(measured, both times; there IS no matching position in that footage) so
+each is trimmed to its moving part and wrap-crossfaded. Read that tool's
+header before recutting either, and `N0844` for what was different about
+the second one.
 ⚠️ AND IT IS A PLAIN `<video loop>`, NOT the game's `Backdrop`: that class
 scrubs a plate by CAMERA POSITION and this mode has no camera to scrub
 with. See src/time-attack.js.
@@ -4767,7 +4794,7 @@ This game has a history of running out of VRAM on old cards -- see
 PERFORMANCE.md -- and a duplicate atlas for the sake of a tidy prefix is
 exactly the wrong trade.
 
-### ⚠ N0292 — `CONFIG.TIME_ATTACK.ROUNDS`
+### ⚠ N0292 — `CONFIG.TIME_ATTACK.STAGES[1].ROUNDS`
 
 --- THE ROUNDS ------------------------------------------------------
 Sonic 2's shape: clear the quota and the next round wants more. `coins`
@@ -4782,6 +4809,11 @@ to it.
 ⚠️ THESE FIVE NUMBERS ARE THE ONLY UNTUNED THINGS IN THIS BLOCK. Everything
 else came from Still Life already balanced; this is new and has never been
 played. Expect to move it.
+
+⚠️ IT IS STAGE 1'S RAMP NOW AND NOT THE MODE'S -- it moved in under
+`STAGES[1]` on 2026-10-09, when a second minigame got a ramp of its own
+that starts where this one ends (`N0845`). The design above is shared by
+both; only the six numbers differ.
 
 ### ⚠ N0293 — `CONFIG.TIME_ATTACK.coinsPerFly`
 
@@ -12973,3 +13005,221 @@ the hit flash for the WHOLE CAST.
 `hurtMs / frames` precisely so the debris and the flash ended together — 260ms
 each. At 1.1 the burst is **236ms** and now finishes 24ms before the flash does.
 That is the cost of the ask, not an oversight; `speed: 1` puts them back in step.
+
+## TIME ATTACK, TWICE  (2026-10-09)
+
+### ⚠ N0837 — `CONFIG.ROOMS[0].timeAttackOnExit`
+
+⚠️⚠️ **THE STREET NOW HANDS OVER TO THE MINIGAME TOO**, and it is the FIRST of
+two. Asked 2026-10-09: *"I want to bring the time attack to stage 1 to stage 2,
+the current one, and then add the new one between stage 2 and hipolito's mini
+stage"* — so the one minigame that used to sit after the desert became two, one
+after each of the first two stages.
+
+⚠️ **NOTHING ABOUT THE STREET CHANGED TO ALLOW IT.** The splice is the ROOM
+HANDOVER (see `N0070`): the walk-out finishes, `game.js` opens the mode, and the
+mode's exit is the fade that walk-out was already heading into. The street leaves
+by WALKING OUT, exactly as the desert does, so the seam this needs already
+existed. ⚠️ **HIPÓLITO'S ROOM IS THE ONE PLACE THIS WOULD NOT WORK** — it leaves
+by LIFT (`exitByLift`), and that branch of `loop()` goes straight to `fade`
+without ever asking whether a minigame is due.
+
+A thing the reordering got for free: the street's boss is the **MOSCA**, and the
+minigame is about shooting **moscas**. Stage 1 ends on her and hands straight
+into a sky full of them.
+
+### ⚠ N0838 — `CONFIG.ROOMS[1].timeAttackOnExit` — *why it is a number*
+
+⚠️ **IT IS A STAGE NUMBER NOW, NOT `true`.** Two rooms carry this flag, so the
+room has to say WHICH minigame it hands to and not merely that it hands to one.
+The value is a key into `CONFIG.TIME_ATTACK.STAGES`.
+
+⚠️⚠️ **AND IT IS 1-BASED ON PURPOSE. A 0-BASED STAGE INDEX WOULD HAVE BEEN A
+BUG IN THE FIRST MINIGAME IN THE GAME**: every test of it reads
+`if (room.timeAttackOnExit)`, and `0` is falsy, so the street would have handed
+over to nothing while reading as correctly configured. This project has written
+that same trap down twice already. 1-based also means the number in this file is
+the number in the filename (`time-attack-2-plate.mp4`) and the number in the ask,
+with no conversion site anywhere to get backwards.
+
+⚠️ `true` **STILL MEANS STAGE 1** (`game.js: timeAttackStageOf`), so a room added
+in a hurry gets the first minigame rather than a mode with no backdrop in it.
+
+### ⚠ N0839 — `CONFIG.TIME_ATTACK.STAGES`
+
+--- THE TWO MINIGAMES ------------------------------------------------
+**ONE BLOCK PER PLAYING OF THE MODE, HOLDING ONLY WHAT DIFFERS.** Everything
+above and below this key is still shared by both: the plane, the gun, the flies,
+the coins, the lettering, the song, every barrel number that is not named here.
+A stage declares its backdrop and its rounds, and stage 2 declares two barrel
+numbers; `TimeAttack.stageCfg(n)` lays it over the base and `_cfg()` answers out
+of the result for the whole run.
+
+⚠️ **THE KEYS ARE THE STAGE NUMBERS**, `1` and `2`, and not array positions —
+see `N0838` for why counting from 0 was not an option.
+
+⚠️ **`ROUNDS` AND `PLATE` USED TO LIVE ON THE BASE BLOCK.** They moved in here,
+which is why `TimeAttack.enabled()` no longer tests `T.ROUNDS`: a test for a key
+that is now a stage's would have read a perfectly good two-stage config as "the
+minigame is switched off". That is a QUIET failure, not a loud one — `enabled()`
+stands in front of all three doors into the mode (the room handover, the DEV key,
+and `load()` building the plane), so both minigames would simply never happen,
+with every number in this block correct and both plates still sitting in the
+manifest where `package.sh` would faithfully copy them.
+
+### ⚠ N0840 — `CONFIG.TIME_ATTACK.STAGES` — *the merge is shallow*
+
+⚠️⚠️ **`stageCfg` IS ONE `Object.assign` DEEP, AND THAT IS RIGHT FOR WHAT IS IN
+HERE TODAY** — a string, a string, an array and two numbers, every one of them a
+WHOLE value the stage means to replace.
+
+⚠️ **IT IS WRONG THE MOMENT A STAGE WANTS ONE KEY INSIDE A SUB-BLOCK.** Writing
+`LETTER: { scale: 0.6 }` into a stage would not retune the lettering — it would
+replace `LETTER` entirely and take `SHEET`, `PUNCH`, `CLOCK_PUNCH` and the rest
+of it away with it, which lands as a mode drawing no words at all. If that is
+ever wanted, deepen the merge in `src/time-attack.js` first.
+
+### ⚠ N0841 — `CONFIG.TIME_ATTACK.STAGES[1]`
+
+**AFTER THE STREET.** The original minigame, unchanged: the stone plate and the
+8 / 14 / 22 ramp that was tuned in 2026-09-08 and judged in play since.
+
+⚠️ **IT IS THE FALLBACK FOR AN UNKNOWN STAGE NUMBER** (`stageCfg`), so this is
+the one entry that must always be complete.
+
+### ⚠ N0842 — `CONFIG.TIME_ATTACK.STAGES[1].plateKey`
+
+⚠️ **THE ASSET KEY ITS PLATE IS LOADED UNDER, AND IT IS DECLARED RATHER THAN
+DERIVED.** `manifest.js` lists the plate under this name and
+`src/time-attack.js` looks the `<video>` element up by it — two files reading ONE
+field, instead of both files knowing a naming convention and one of them being
+changed alone. A key that did not match its manifest entry would hand the mode
+nothing and `_drawPlate` would blit nothing, silently, which is this repo's
+oldest video bug.
+
+### ⚠ N0843 — `CONFIG.TIME_ATTACK.STAGES[2]`
+
+**AFTER THE DESERT** — where the minigame used to be, and the seam HORÁCIO's
+walk-out has always led into.
+
+### ⚠ N0844 — `CONFIG.TIME_ATTACK.STAGES[2].PLATE`
+
+--- THE SECOND BACKDROP ----------------------------------------------
+**A MOUNTAIN OF BLACK RUBBISH BAGS**, filmed the same way the stones were:
+`time-attack-2-background.mp4`, 848x478, 30fps, **25.06s** — half the length of
+the first clip's source.
+
+**CUT WITH THE SAME TOOL AND THE SAME RECIPE**, because the footage has the same
+two problems. Measured before anything was cut:
+
+    cruise pan            1.53 px/frame (the stones were ~1.00)
+    STILL                 the first 3.37s and the last 1.57s
+    closest later frame   1.122 at 10.67s = 2.4x a frame step
+
+⚠️ **SO THERE IS NO "SAME CAMERA POSITION" IN THIS CLIP EITHER** — 2.4x a frame
+step, where anything over ~1.6x reads as a jump. The wrap-crossfade is the only
+move; read `tools/build-time-attack-plate.py` before recutting.
+
+    python3 tools/build-time-attack-plate.py \
+      --src .../time-attack-2-background.mp4 \
+      --out .../time-attack-2-plate.mp4 --t0 4.4 --t1 23.2 --fade 0.8
+    -> 18.00s loop, 2.25 MB at crf 30 from 6.76 MB (-67%), no audio
+    -> wrap 0.447 vs adjacent 0.535 = 0.84x  SEAMLESS
+
+⚠️⚠️ **THE FADE IS 0.80s HERE AND 0.60s ON THE STONES, AND THAT IS THE ONE REAL
+DIFFERENCE BETWEEN THE TWO CUTS.** The ends of this clip do not match on SPEED:
+the camera is running at ~1.6 px/frame coming out of the head and has already
+decelerated to ~1.0 by the tail, on its way into the final stop. A wider
+dissolve eases that change THROUGH the seam instead of cutting on it. It is
+inside what the shot does anyway — the clip's own speed swings from 0.13 to 3.00
+— and `--verify` re-decodes the output rather than trusting any of that.
+
+⚠️ **ONE THING LEFT IN DELIBERATELY: A ~1s STALL AT 11.0-11.5s** (0.13 px/frame).
+The camera hesitates in the MIDDLE of the pan. The tool's stillness test only
+trims the ENDS, and cutting a hole out of the middle would need a second seam to
+close it. It stays until somebody's eye objects to it.
+
+⚠️ **THE LOOP IS 18.00s AGAINST THE STONES' 41.47s**, and `plateRate: 2` halves
+both — so this backdrop comes round every **~9s** on screen where stage 1's takes
+~21s. The source was half the length; there was nothing to cut that would have
+made it longer. If the repetition reads, the knob is `plateRate` on THIS STAGE
+(it is a per-stage override away) — but that number is also how fast the ground
+rushes past, which is a look and not a duration.
+
+**AND IT IS DARKER, BUT NOT BY AS MUCH AS IT LOOKS.** Measured over both plates
+at 1fps, 64x36 grey: mean luma **123 against the stones' 145**, p10 67/78, p90
+180/190 — the bags have enough specular highlight on them to hold the top of the
+range. The fly sprite's body is mean 82 with wing highlights to 255, so it reads
+against this about as well as it does against concrete. ⚠️ Not a thing to fix in
+advance; a thing to look at with the swarm in the air.
+
+### ⚠ N0845 — `CONFIG.TIME_ATTACK.STAGES[2].ROUNDS`
+
+⚠️ **THE RAMP CARRIES ON WHERE STAGE 1 STOPPED.** Asked 2026-10-09, choosing
+"harder — continue the ramp": stage 2's first round is stage 1's SECOND, and its
+last asks for 30.
+
+    stage 1    8 / 14 / 22 coins     4 / 5 / 6 flies    1 / 2 / 2 clocks
+    stage 2   14 / 22 / 30 coins     5 / 6 / 7 flies    2 / 2 / 3 clocks
+
+⚠️ **THE CLOCK IS STILL 30s A ROUND IN BOTH** — the quota rises and the time does
+not, which is the whole difficulty curve (`N0292`), and more time for more coins
+would be the same round six times.
+
+⚠️ **RODADA RESTARTS AT 01**, decided in the same breath: each minigame is its
+own self-contained bonus stage the way a Sonic special stage is. Nothing in the
+code counts across the two, and nothing should start to — the entry card, the HUD
+and the score are all per-playing.
+
+⚠️⚠️ **GUESSES, ALL SIX NUMBERS.** They are one step up a curve whose first half
+has been played and whose second half has not, and the flies are not the only
+thing in the air now — see `N0846`.
+
+### ⚠ N0846 — `CONFIG.TIME_ATTACK.STAGES[2].barrelEveryMs` / `barrelMax`
+
+⚠️ **THE ONLY OTHER THING STAGE 2 MAKES HARDER**: barrels every **1300ms** ± 700
+against 1700 ± 700, and **4** on screen at once against 3. Everything else about
+them — the speed, the spin, the scale, the health, the dark-barrel chance — is
+shared, because those were judged by eye in 2026-09-18 and are a look as much as
+a difficulty.
+
+⚠️⚠️ **AND THE 09-18 CADENCE WAS NEVER PLAYED EITHER.** `barrelEveryMs`,
+`barrelMax` and `barrelHardChance` were written down that day as STILL GUESSES —
+so this is a step up from a number nobody has judged. Tune stage 1's first; this
+one is `1700`/`3` away from being exactly stage 1 again.
+
+⚠️ **THE VARIANCE IS NOT OVERRIDDEN.** `barrelEveryVarMs` stays at 700, which is
+now more than half the gap — so stage 2's stream is not just faster, it is
+RELATIVELY more erratic. Deliberate: a tighter stream that was also more regular
+would read as a metronome.
+
+### ⚠ N0847 — `CONFIG.TIME_ATTACK.STAGES[2].plateRate`
+
+⚠️⚠️ **THE TWO PLATES ARE NOT THE SAME SPEED, SO THEY CANNOT SHARE A RATE.**
+*"its too fast, I want to adjust that"*, 2026-10-09 — and the cause was measured
+rather than guessed at. Median pan of each FINISHED plate, by phase correlation
+at 128px wide:
+
+    time-attack-1-plate.mp4   1.00 px/frame   (the stones)
+    time-attack-2-plate.mp4   2.00 px/frame   (the bags)
+
+**Exactly twice.** The second clip was simply filmed with a faster camera move.
+So at the shared `plateRate: 2` the bags rushed past at **4.0 px/frame on screen
+against the stones' 2.0** — double the speed that `2` was judged against in
+2026-09-09, when 1.2 was called too subtle and 4 was refused on sight. The mode
+was never retuned; the footage changed underneath it.
+
+**`1` PUTS THEM BACK IN STEP AT 2.0 px/frame EACH**, which is the approved feel
+and not a new taste call. ⚠️ Read that way the number is derived: it is
+`stage1.plateRate x (stage1 plate speed / stage2 plate speed)` = `2 x (1.00/2.00)`.
+**If either plate is ever recut, re-measure and re-derive — do not carry this 1.**
+
+⚠️ **AND IT FIXES THE REPETITION FOR FREE.** At rate 2 an 18.0s plate came round
+every 9.0s, against stage 1's 20.7s; at rate 1 it takes the full **18.0s**, which
+is within a couple of seconds of stage 1. That was flagged the day the plate was
+cut (`N0844`) as the thing most likely to be objected to, and it turned out to be
+the same problem as the speed, not a second one.
+
+⚠️ **IT IS A DECODE SAVING, NOT A COST.** The README's warning on the base
+`plateRate` — re-encode faster and play at 1.0 rather than shaving the number —
+is about raising it. This lowers it.

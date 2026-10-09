@@ -29,7 +29,7 @@ const CONFIG = {
     lives: 1,  // ⚠N0007
 
     startRoom: 0,  // ⚠N0008
-    JUMPS: [0, 1, 'timeattack', 2, 3],  // ⚠N0009
+    JUMPS: [0, 'timeattack1', 1, 'timeattack2', 2, 3],  // ⚠N0009
   },
 
   ASSET_BASE: '../assets/',  // ~N0010
@@ -142,6 +142,7 @@ const CONFIG = {
       name: 'street',
       plate: 'plate',
       startX: 220,
+      timeAttackOnExit: 1,  // ⚠N0837
       flies: true,  // ~N0055
       props: [  // ⚠N0056
         { kind: 'barrel',  x: 430, z: 110, drops: true, dropKind: 'bomb' },  // ⚠N0057 ⚠N0058
@@ -204,7 +205,7 @@ const CONFIG = {
       name: 'desert',
       plate: 'desertPlate',
       startX: 220,
-      timeAttackOnExit: true,  // ⚠N0070
+      timeAttackOnExit: 2,  // ⚠N0070 ⚠N0838
       music: 'musicDesert',  // ⚠N0071 ⚠N0072
       belt: { topY: 330, depth: 380 },  // ⚠N0073
       scenery: true,  // ~N0074
@@ -825,7 +826,6 @@ const CONFIG = {
     planeDir: 'time-attack/',
     planeFilePrefix: 'batidao-plane-',
     gunBase: 'v2:flying-dungeon/character-sheets/',
-    PLATE: 'v2:beatemup-dungeon/time-attack/time-attack-1-plate.mp4',
     FLY_SHEET:      'v2:flying-dungeon/enemy-sheets/saborosa-mosca.png',  // ~N0290
     FLY_DEAD_SHEET: 'v2:flying-dungeon/enemy-sheets/saborosa-mosca dead.png',
     COIN_SHEETS: { '01': 'v2:flying-dungeon/coin/saborosa-coin-time-01.webp' },
@@ -834,11 +834,29 @@ const CONFIG = {
     keyCoin:    'ta:coin_',
     keyBoom:    'boom',
 
-    ROUNDS: [  // ⚠N0292
-      { coins:  8, timeMs: 30000, flies: 4, clocks: 1 },
-      { coins: 14, timeMs: 30000, flies: 5, clocks: 2 },
-      { coins: 22, timeMs: 30000, flies: 6, clocks: 2 },
-    ],
+    STAGES: {  // ⚠N0839 ⚠N0840
+      1: {  // ⚠N0841
+        PLATE: 'v2:beatemup-dungeon/time-attack/time-attack-1-plate.mp4',
+        plateKey: 'taPlate1',  // ⚠N0842
+        ROUNDS: [  // ⚠N0292
+          { coins:  8, timeMs: 30000, flies: 4, clocks: 1 },
+          { coins: 14, timeMs: 30000, flies: 5, clocks: 2 },
+          { coins: 22, timeMs: 30000, flies: 6, clocks: 2 },
+        ],
+      },
+      2: {  // ⚠N0843
+        PLATE: 'v2:beatemup-dungeon/time-attack/time-attack-2-plate.mp4',  // ⚠N0844
+        plateKey: 'taPlate2',
+        ROUNDS: [  // ⚠N0845
+          { coins: 14, timeMs: 30000, flies: 5, clocks: 2 },
+          { coins: 22, timeMs: 30000, flies: 6, clocks: 2 },
+          { coins: 30, timeMs: 30000, flies: 7, clocks: 3 },
+        ],
+        plateRate: 1,  // ⚠N0847
+        barrelEveryMs: 1300,  // ⚠N0846
+        barrelMax: 4,
+      },
+    },
     coinsPerFly: 1,  // ⚠N0293
     quotaLabel: 'MOSCAS',  // ⚠N0294
     LETTER: {  // ⚠N0295 ⚠N0296
