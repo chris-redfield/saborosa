@@ -74,7 +74,50 @@ const LiftRide = {
   _lastCamX: null,
   _wasNoShadow: false,
 
+  /*
+     EVERY RIDER, NOT ONE (two-player mode, 2026-10-09).
+     ======================================================================
+     This file was a cutscene written around a rider it was handed. It now
+     drives the whole `Party` directly and takes no hero at all -- the same rule
+     the rest of the conversion follows: a routine that READS one hero keeps its
+     argument, a routine that WRITES positions asks the global party.
+
+     IT HAD TO BE ALL OF THEM AND NOT THE LEADER. A lift is the one beat in the
+     game with no walls and no input: the room is left by riding up out of it,
+     so a hero who is not on the lift is not merely out of frame, he is in a
+     room that no longer exists. Handing this the leader would have left the
+     second hero standing on the desert floor while the stage ended.
+
+     THE SPREAD IS THE SAME ONE EVERY DOOR USES (`TWO_PLAYER.spawnGapX`), laid
+     out ALONG the walk: each slot gets its own mark and its own place on the
+     slab, so the pair boards side by side instead of one inside the other. The
+     slab is `widthPx` wide and holds them easily.
+
+     A STEP ENDS WHEN EVERYBODY HAS FINISHED IT, never when the first one has.
+     That is the only structural change in the machine below -- `_everyone`
+     replaces an `if` on one body -- and with one hero it is that `if`.
+  */
   cfg() { return CONFIG.LIFT_RIDE || {}; },
+
+  /** The gap between riders, along the walk. */
+  _gap() { return (CONFIG.TWO_PLAYER || {}).spawnGapX || 150; },
+
+  /**
+   * WHERE A SLOT STANDS, given the place slot 0 stands.
+   *
+   * THE QUEUE FORMS TO THE RIGHT, because both walks here run LEFTWARDS -- to
+   * the mark and then onto the slab -- so the second hero is behind the first,
+   * which is to the right of him.
+   */
+  _slotX(base, slot) { return base + this._gap() * slot; },
+
+  /** True once `fn` is true of every hero in the run. The step gate. */
+  _everyone(fn) {
+    const l = Party.inPlay();
+    if (!l.length) return true;
+    for (const p of l) if (!fn(p)) return false;
+    return true;
+  },
   _n(k, d) { const v = this.cfg()[k]; return (v != null) ? v : d; },
 
   /** Per-room overrides live on the ROOM, because the marks are room geography. */
@@ -107,7 +150,7 @@ const LiftRide = {
    * to look identical every run, and a mark measured from the player would make
    * the elevator land somewhere new each time.
    */
-  startExit(player, stage) {
+  startExit(stage) {
     this.reset();
     this.active = true;
     this.mode = 'exit';
@@ -142,7 +185,7 @@ const LiftRide = {
        *"um elevador vai descer"*. Nothing is drawn off-screen; the cull in
        `draw` is the slab's own box. */
     this.rise = this._n('dropPx', 900);
-    this._grab(player);
+    Party.forEach(p => this._grab(p));
   },
 
   /**
@@ -160,7 +203,7 @@ const LiftRide = {
    * moment he has arrived. Stepping off the lift is PLAY, and play begins the
    * instant the ride hands back.
    */
-  startArrive(player, stage) {
+  startArrive(stage) {
     this.reset();
     this.active = true;
     this.mode = 'arrive';
@@ -187,9 +230,14 @@ const LiftRide = {
     const camX = (stage && stage.camX) || 0;
     this.liftX = camX + this._n('arriveScreenX', 640);
     this.markX = this.liftX;
-    if (player) player.x = this.liftX;
-    this._grab(player);
-    player.jumpY = this.rise;      // he comes up WITH it
+    /* THE WHOLE PARTY ARRIVES ON THE SLAB, each slot in its own place on it --
+       they left the last room standing side by side and they come up the same
+       way. */
+    Party.forEach((p, i) => {
+      p.x = this._slotX(this.liftX, i);
+      this._grab(p);
+      p.jumpY = this.rise;         // he comes up WITH it
+    });
     /* ⚠️ AND THE SHADOW GOES OFF **HERE**, NOT ON THE FIRST TICK OF THE CLIMB.
        `drawShadow` paints at `Belt.topY + z` -- the GROUND -- whatever `jumpY`
        says, which is exactly right for a jump and exactly wrong for a rider who
@@ -204,12 +252,17 @@ const LiftRide = {
        is SET UP, because the half-fade either side of that moment is painted
        and nothing is ticking. Anything the ride sets in its first `update()` is
        already too late. */
-    if (player) player.noShadow = true;
+    Party.forEach(p => { p.noShadow = true; });
   },
 
   /** Take the character. See the header for why the shadow goes too. */
   _grab(player) {
     if (!player) return;
+    /* ⚠️ ONE `_wasNoShadow` FOR THE WHOLE PARTY, and it is honest rather than
+       sloppy: a hero's shadow is suppressed by the ride and by nothing else
+       here, so every rider's remembered value is the same `false`. If a
+       character ever carries `noShadow` of its own into a lift, this becomes a
+       per-rider field and the restore in `_release` has to read it off him. */
     this._wasNoShadow = !!player.noShadow;
     player.facing = (this.mode === 'exit') ? 'left' : 'right';
     player.state = 'idle';
@@ -228,17 +281,19 @@ const LiftRide = {
    * the rider exactly where the ride left him and the reset happens at the room
    * swap instead, which is the blackest point of the fade. See `clearRider`.
    */
+  /* ⚠️ IT NO LONGER ENDS THE RIDE. It puts ONE rider down, and with two of them
+     the ride is over when the LAST one is -- so each caller sets `active` and
+     `step` itself, once, after its loop. Left in here, the ride would have
+     ended on the first hero released and the second would have been abandoned
+     mid-air with `update` no longer running. */
   _release(player, keepY) {
-    if (player) {
-      if (!keepY) {
-        player.jumpY = 0;
-        player.noShadow = this._wasNoShadow;
-      }
-      player.state = 'idle';
-      player.stateT = 0;
+    if (!player) return;
+    if (!keepY) {
+      player.jumpY = 0;
+      player.noShadow = this._wasNoShadow;
     }
-    this.active = false;
-    this.step = 'done';
+    player.state = 'idle';
+    player.stateT = 0;
   },
 
   /**
@@ -266,29 +321,37 @@ const LiftRide = {
    * Drive it. Returns TRUE on the frame the ride is over and the caller may
    * move on — the same contract `stage.update()` has with game.js.
    */
-  update(dt, player, stage) {
+  update(dt, stage) {
     if (!this.active) return true;
     this.t += dt;
     const ms = this.t * 1000;
 
-    if (this.mode === 'exit') return this._exit(dt, player, stage, ms);
-    return this._arrive(dt, player, stage, ms);
+    if (this.mode === 'exit') return this._exit(dt, stage, ms);
+    return this._arrive(dt, stage, ms);
   },
 
-  _exit(dt, player, stage, ms) {
+  _exit(dt, stage, ms) {
     const walkSpd = this._n('walkScale', 1);
 
     if (this.step === 'walk') {
       /* ⚠️ HE MAY ALREADY BE PAST IT. The boss can die anywhere in the room, so
          a walk that only ever went left would stall forever with him standing
          to the left of his own mark. Whichever side he is on, he goes TO it. */
-      const dir = (player.x > this.markX) ? -1 : 1;
-      player.scriptWalk(dt, dir);
-      const there = (dir < 0) ? (player.x <= this.markX) : (player.x >= this.markX);
-      if (there) {
-        player.x = this.markX;
-        player.facing = 'left';
-        this._to('descend', player);
+      /* EACH HERO WALKS TO HIS OWN MARK, and the step ends when the LAST of
+         them gets there. Ending it on the first would start the lift's descent
+         with the other still walking -- and since nothing in this phase takes
+         input, he would simply never arrive. */
+      Party.forEach((p, i) => {
+        const mark = this._slotX(this.markX, i);
+        if (p.liftThere) { p.scriptIdle(dt); return; }
+        const dir = (p.x > mark) ? -1 : 1;
+        p.scriptWalk(dt, dir);
+        const there = (dir < 0) ? (p.x <= mark) : (p.x >= mark);
+        if (there) { p.x = mark; p.facing = 'left'; p.liftThere = true; }
+      });
+      if (this._everyone(p => p.liftThere)) {
+        Party.forEach(p => { p.liftThere = false; });
+        this._to('descend');
       }
       return false;
     }
@@ -297,8 +360,8 @@ const LiftRide = {
       const dur = this._n('descendMs', 1500);
       const p = Math.min(1, ms / dur);
       this.rise = this._n('dropPx', 900) * (1 - this._easeOut(p));
-      player.scriptIdle(dt);
-      if (p >= 1) { this.rise = 0; this._to('board', player); }
+      Party.forEach(f => f.scriptIdle(dt));
+      if (p >= 1) { this.rise = 0; this._to('board'); }
       return false;
     }
 
@@ -307,39 +370,51 @@ const LiftRide = {
          middle of the slab IS `liftX`, because the pack is anchored on its front
          lip's CENTRE. So there is no half-width to add here, and adding one is
          the mistake this note exists to prevent. */
-      player.scriptWalk(dt, -1);
-      if (player.x <= this.liftX) {
-        player.x = this.liftX;
-        player.facing = 'right';     // he turns to face the room he is leaving
-        this._to('hold', player);
+      Party.forEach((p, i) => {
+        const spot = this._slotX(this.liftX, i);
+        if (p.liftThere) { p.scriptIdle(dt); return; }
+        p.scriptWalk(dt, -1);
+        if (p.x <= spot) {
+          p.x = spot;
+          p.facing = 'right';        // he turns to face the room he is leaving
+          p.liftThere = true;
+        }
+      });
+      if (this._everyone(p => p.liftThere)) {
+        Party.forEach(p => { p.liftThere = false; });
+        this._to('hold');
       }
       return false;
     }
 
     if (this.step === 'hold') {
-      player.scriptIdle(dt);
-      if (ms >= this._n('boardHoldMs', 420)) this._to('rise', player);
+      Party.forEach(p => p.scriptIdle(dt));
+      if (ms >= this._n('boardHoldMs', 420)) this._to('rise');
       return false;
     }
 
     // 'rise' -- *"o elevador sobe e a tela fica parada, até ele sumir da tela"*.
-    player.scriptIdle(dt);
     this.rise += this._n('risePxPerSec', 260) * dt;
-    player.jumpY = this.rise;
-    player.noShadow = true;
+    Party.forEach(p => {
+      p.scriptIdle(dt);
+      p.jumpY = this.rise;
+      p.noShadow = true;
+    });
     /* ⚠️ THE TEST IS THE SLAB, NOT THE RIDER. He stands ON it, so his feet leave
        the frame first and the platform is still crossing the top of the screen
        for another half-second after he has gone -- *"ele desaparece com o
        elevador"*, the two of them together. Ending on the player would cut to
        black with the lift still visible. */
     if (this.rise > CONFIG.GAME_H + this._n('exitPadPx', 260)) {
-      this._release(player, true);      // he stays up there -- see _release
+      Party.forEach(p => this._release(p, true));   // they stay up there
+      this.active = false;
+      this.step = 'done';
       return true;
     }
     return false;
   },
 
-  _arrive(dt, player, stage, ms) {
+  _arrive(dt, stage, ms) {
     if (this.step === 'climb') {
       /* ⚠️ LINEAR, AT THE EXIT'S OWN SPEED, AND THAT IS THE CONTINUATION. The
          first build eased this like the boss room's DESCENT and it was wrong
@@ -350,14 +425,20 @@ const LiftRide = {
          at that speed when the screen faded and he is still rising at it when
          it comes back. That is what "uma continuacao do movimento" means. */
       this.rise = Math.min(0, this.rise + this._n('risePxPerSec', 320) * dt);
-      player.jumpY = this.rise;
-      player.noShadow = true;
-      player.scriptIdle(dt);
+      Party.forEach(p => {
+        p.jumpY = this.rise;
+        p.noShadow = true;
+        p.scriptIdle(dt);
+      });
       if (this.rise >= 0) {
         this.rise = 0;
-        player.jumpY = 0;
-        player.noShadow = this._wasNoShadow;
-        this._release(player);
+        Party.forEach(p => {
+          p.jumpY = 0;
+          p.noShadow = this._wasNoShadow;
+          this._release(p);
+        });
+        this.active = false;
+        this.step = 'done';
         /* ⚠️ THE SLAB STAYS. Ending the ride used to stop drawing it, so the
            lift he was standing on BLINKED OUT under him. It is parked now:
            still painted at its world x, scrolling away with the camera like
@@ -371,10 +452,10 @@ const LiftRide = {
     return true;
   },
 
-  _to(step, player) {
+  _to(step) {
     this.step = step;
     this.t = 0;
-    if (player) { player.state = 'idle'; player.stateT = 0; }
+    Party.forEach(p => { p.state = 'idle'; p.stateT = 0; });
   },
 
   /**

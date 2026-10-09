@@ -23,31 +23,87 @@
  * the thing that moves.
  */
 const PlayerPick = {
-  i: 0,
+  /**
+   * ONE PICK PER PLAYER SLOT. `picks[0]` is P1's pack index, `picks[1]` is
+   * P2's. The defaults are not arbitrary: slot 0 starts on LEBRON and slot 1 on
+   * IPANEIMA, so a second player who drops in mid-fight without ever seeing the
+   * select screen still arrives as the character the first one is not.
+   *
+   * IT REPLACED A BARE `i`, AND THE ARRAY IS NOT A SECOND COPY OF IT. `i` was
+   * read directly from two places outside this file (the TIME ATTACK's plane
+   * art is keyed on the pick), so keeping `i` alongside `picks[0]` would have
+   * been exactly the copied-value shape the header above warns about -- the one
+   * screen that went on reading the stale field would show the wrong hero. The
+   * field is gone; `index(slot)` is the way to ask.
+   */
+  picks: [0, 1],
+
   list() {
     const l = CONFIG.PLAYER_PACKS;
     return (l && l.length) ? l : ['coconut'];
   },
-  /** The pack key to draw the hero with. Always a real one. */
-  kind() {
+
+  /** The pack INDEX a slot is on, wrapped into the real list. */
+  index(slot) {
     const l = this.list();
-    return l[this.i % l.length];
+    const k = this.picks[slot || 0];
+    return ((k == null ? 0 : k) % l.length + l.length) % l.length;
   },
-  /** Next character, wrapping. Returns the new kind. */
-  next() {
-    this.i = (this.i + 1) % this.list().length;
-    return this.kind();
+
+  /** The pack key to draw a slot's hero with. Always a real one. */
+  kind(slot) {
+    return this.list()[this.index(slot)];
   },
+
+  /** Next character for a slot, wrapping. Returns the new kind. */
+  next(slot) {
+    const s = slot || 0;
+    this.picks[s] = (this.index(s) + 1) % this.list().length;
+    return this.kind(s);
+  },
+
   /**
-   * Choose by index -- what the fruit select screen calls when the player
+   * Choose by index -- what the fruit select screen calls when a player
    * commits. Out-of-range is ignored rather than clamped: a select that has not
    * been answered must not silently mean "the first one", and every caller here
    * already knows whether it has a choice to spend.
+   *
+   * TWO PLAYERS MAY NOT HOLD THE SAME PACK, and this is where that is enforced
+   * rather than on the select screen. The two heroes are the same silhouette in
+   * two colourways; on screen, in a crowd, at this size, a pair of identical
+   * ones is unreadable, and the alternative -- a drawn 1/2 marker over each
+   * head, or a tint on one of them -- is art this game does not have. So a slot
+   * taking a pack SWAPS it with whoever was holding it, which keeps both picks
+   * valid without any caller having to know it happened.
+   *
+   * IT SWAPS RATHER THAN REFUSING on purpose. A refusal would leave the second
+   * cursor sitting on a portrait it can never confirm, with nothing on screen
+   * saying why.
    */
-  set(i) {
+  set(i, slot) {
     const l = this.list();
-    if (i >= 0 && i < l.length) this.i = i;
-    return this.kind();
+    const s = slot || 0;
+    if (i < 0 || i >= l.length) return this.kind(s);
+    const was = this.index(s);
+    for (let o = 0; o < this.picks.length; o++) {
+      if (o !== s && this.index(o) === i) this.picks[o] = was;
+    }
+    this.picks[s] = i;
+    return this.kind(s);
+  },
+
+  /** The pack index NO slot other than `slot` is holding -- what a mid-fight
+      joiner arrives as. Falls back to the next one along in a one-pack build. */
+  freeIndex(slot) {
+    const n = this.list().length;
+    for (let i = 0; i < n; i++) {
+      let taken = false;
+      for (let o = 0; o < this.picks.length; o++) {
+        if (o !== slot && this.index(o) === i) taken = true;
+      }
+      if (!taken) return i;
+    }
+    return (this.index(0) + 1) % n;
   },
 };
 
@@ -73,9 +129,26 @@ class Player extends Fighter {
     return CONFIG.playerLives != null ? CONFIG.playerLives : 3;
   }
 
-  constructor(x, z) {
-    super(PlayerPick.kind(), x, z, { hp: CONFIG.playerHealth, facing: 'right' });
+  /**
+   * `pickSlot` SAYS WHOSE CHARACTER TO WEAR AND NOTHING ELSE. It is the player
+   * number only in the sense that PlayerPick keeps one pick per number -- it is
+   * not stored, and this object does not learn its slot here.
+   *
+   * `Party.add` IS THE ONE WRITER OF `slot`, because the party list's INDEX is
+   * the player number and a second field holding the same integer is the
+   * copied-value shape this codebase keeps re-finding. Everything that needs to
+   * know which player this is (the HUD's bar, the input device) reads `slot`,
+   * which exists from the moment he is added.
+   */
+  constructor(x, z, pickSlot) {
+    super(PlayerPick.kind(pickSlot || 0), x, z, { hp: CONFIG.playerHealth, facing: 'right' });
     this.lives = this.fullLives();
+    /* OUT OF LIVES, WHICH IS NOT THE SAME AS DEAD -- see Party.inPlay. A dead
+       hero has a body on the floor and a revive coming; an `out` hero has spent
+       his last life and is waiting for a continue or for the run to end. In a
+       one-player run the two are a frame apart and the distinction is
+       invisible; in a two-player run it is the game-over rule. */
+    this.out = false;
 
     /* THE TWO COMBO STRINGS, built once. Both share the first four hits -- the
        art is literally the same drawings -- and differ only in the finisher, so

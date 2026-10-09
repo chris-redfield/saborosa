@@ -18,7 +18,24 @@
   ctx.imageSmoothingEnabled = true;
 
   const assets = new Assets();
-  const input = new Input(window);
+  /*
+     ONE INPUT PER PLAYER SLOT, BOTH BUILT AT BOOT. Slot 1 owns no device until
+     somebody joins, so it reads nothing and costs nothing -- building it up
+     front means a join is a change to the OWNERSHIP TABLE and not an object
+     appearing in the middle of a frame. See the header of input.js.
+  */
+  const inputs = [new Input(window, 0), new Input(window, 1)];
+  /*
+     `input` IS STILL THE NAME EVERY SCREEN USES, and it is now the pair read as
+     one: the title, the pause card, OPCOES, CONTINUE?, the game over panel and
+     the results board belong to the ROOM rather than to a player, and all of
+     them are dismissed by pressing anything. A second player who could not
+     unpause the game would be a bug with no visible cause.
+
+     THE FIGHT DOES NOT READ IT. Each hero is ticked with his own device through
+     `inputFor`; this is for the screens where there is one cursor.
+  */
+  const input = new InputGroup(inputs);
   /* Built early because Combat takes it: the resolver is where a blow is
      decided, so it is where the blow is heard. */
   const sound = new Sound(assets);
@@ -42,6 +59,11 @@
      because `sound` is built above for the whole game and the title screen is
      the only thing on it that changes a volume. */
   title.sound = sound;
+  /* THE PER-PLAYER DEVICES, handed to the title so the fruit select can tell
+     one pair of hands from the other -- the merged `input` it is updated with
+     cannot. Everything else on that screen is one cursor and still reads the
+     merged one. */
+  title.inputs = inputs;
   const ending = new Ending(assets, sheets);
   const gameOver = new GameOver(assets);
   /* The pause card's lettering and its shuffle bag. See pause.js: the pick is
@@ -58,6 +80,15 @@
      barrel on the street. Declared after `sheets` for the reason the comment on
      that line gives -- `const` is not hoisted. */
   const timeAttack = new TimeAttack(assets, input, sound, sheets);
+  /* THE PER-PLAYER DEVICES, FOR THE MINIGAME: two planes need two sticks. The
+     mode keeps the merged `input` for everything that belongs to the SCREEN
+     (the pause, the cards, the any-press) and reads this per plane.
+     ⚠️ IT HAS TO BE AFTER THE `const` ABOVE AND NOT BESIDE `title.inputs`, which
+     is where it was first written: `timeAttack` is declared twenty lines lower,
+     so touching it up there is a temporal-dead-zone ReferenceError -- thrown
+     while game.js is still being evaluated, so nothing boots at all and the
+     loading bar simply never goes away. */
+  timeAttack.inputs = inputs;
   const theEnd = new TheEnd(assets);
   /* The CONTINUE? countdown. Takes only `assets`: it draws three pictures over
      a world it never touches -- see the header of continue.js. */
@@ -103,7 +134,26 @@
      props and the mounds are -- it belongs to a ROOM, and the shell is what
      changes rooms. Nothing else in this file asks it anything. */
   const grade = new Grade();
-  let player = null;
+  /*
+     THERE IS NO `player` VARIABLE ANY MORE (two-player mode, 2026-10-09). The
+     heroes live in `Party`, a global singleton exactly as `Belt`, `Level3`,
+     `LiftRide` and `Elevador` already are, and this file is the only one that
+     had to learn there can be two of them -- because this file is the one that
+     decides WHICH hero every one-hero routine in the engine is handed.
+
+     THE TWO HELPERS BELOW (`lead`, `forwardDir`) ARE THAT DECISION, AND THEY
+     ARE THE WHOLE DESIGN. `lead()` is the camera, the scroll's end test, an
+     arena's spawn point, the GO prompt's anchor -- everything about the FRAME,
+     which belongs to whoever is driving it. `Party.targetFor` is what an enemy
+     goes for. Nothing else in the engine asks.
+
+     WITH ONE HERO EVERY ANSWER IS HIM, which is the property the conversion was
+     built to have: there is no `if (twoUp())` in the camera, the crowd, the
+     combat or the draw pass, because a party of one makes each question
+     degenerate to the answer it already had.
+  */
+  /** HOW MANY HEROES THE NEXT RUN STARTS WITH. Set by the front end. */
+  let wantPlayers = 1;
   let phase = 'boot';          /* boot | logo | title | play | outro | ending
                                   | fade | dead | continue | gameover | clear */
   /* WHAT THE WALK-OUT HANDS TO. The outro is the same beat either way -- he
@@ -136,6 +186,241 @@
      of a black field on a big monitor — exactly when a judge is looking
      hardest. Safe to uncap because this is drawn illustration scaled with
      smoothing on, not pixel art. */
+  /**
+   * WHICH WAY IS FORWARD, this frame.
+   *
+   * IT IS +1 EVERYWHERE IN THE GAME EXCEPT THE BOOKCASE'S SECOND SHELF, which
+   * is walked LEFT -- and that single exception is why "the hero in front"
+   * cannot be written as `max(x)`. Level3 already owns the answer for its own
+   * legs (it draws the GO arrow with it), so this asks rather than deciding.
+   */
+  function forwardDir() {
+    return Level3.owns(stage.room()) ? Level3.promptDir() : 1;
+  }
+
+  /**
+   * THE FRAME'S HERO: the one in front, in the leg's own direction.
+   *
+   * Everything about the SHOT is handed this and nothing else -- the camera
+   * follow, the scroll segment's end test, where an arena spawns its wave, what
+   * the GO prompt points away from. The camera follows the leader and the
+   * trailing hero is carried by the left-hand wall `Stage.bounds()` already
+   * draws; see Party.lead for why that choice and not the other one.
+   */
+  function lead() { return Party.lead(forwardDir()); }
+
+  /**
+   * THE DEVICE A HERO IS PLAYING ON -- his slot's own Input.
+   *
+   * IT IS A FUNCTION AND NOT A FIELD ON THE PLAYER, because the mapping from
+   * slot to hardware is not the hero's business and it CHANGES: a device is
+   * claimed the moment a second player joins, which can be mid-fight. A field
+   * set at construction would be the stale copy this codebase keeps re-finding.
+   */
+  function inputFor(p) {
+    return inputs[p && p.slot ? p.slot : 0] || inputs[0];
+  }
+
+  /**
+   * BUILD THE RUN'S HEROES. Four callers -- a fresh run and three DEV jumps --
+   * and it used to be the same three lines copied into each of them, which is
+   * exactly the shape that leaves one of them a pack behind.
+   *
+   * THE PACK COMES FROM THE SLOT, not from a shared pick: `new Player(x, z, i)`
+   * reads `PlayerPick.kind(i)`, and PlayerPick refuses to let two slots hold the
+   * same pack (see its `set`). So P2 is always the character P1 is not, with or
+   * without a trip through the select screen.
+   *
+   * `Party.place` AFTER THE LOOP, not inside it: every hero is built at the same
+   * spot and the party then spreads itself around it, which is the one piece of
+   * arithmetic that must not be written twice.
+   */
+  function buildParty() {
+    Party.reset();
+    const z = Belt.depth * CONFIG.playerStartZRel;
+    const n = playerCount();
+    /* ⚠️ THE HARDWARE IS RECONCILED WITH THE SLOTS, and forgetting it is what
+       made a second controller go dead for the rest of a run: device ownership
+       used to outlive the party, so a rebuild that produced ONE slot left a pad
+       belonging to a slot 1 that no longer existed -- unread by anybody, and
+       unjoinable, because `scanJoin` will not take a device somebody owns.
+       Every rebuild is a statement about who is playing, so it has to be one
+       about what they are playing ON. */
+    Input.releaseAbove(n);
+    for (let i = 0; i < n; i++) {
+      const p = new Player(220, z, i);
+      /* HOW A HERO FINDS WHAT IS WITHIN REACH. Handed over rather than looked
+         up, and now handed to each of them -- both can be carrying a barrel. */
+      p.props = props;
+      Party.add(p);
+    }
+    Party.place(220, z, 1);
+  }
+
+  /**
+   * HOW MANY HEROES THE NEXT RUN HAS.
+   *
+   * `TWO_PLAYER.on` IS A HARD FLOOR, and it is read here rather than at the
+   * door the second player comes in by, so that a build with the mode off is
+   * the one-player game on every code path rather than one that merely hides
+   * the join prompt.
+   */
+  function playerCount() {
+    const T = CONFIG.TWO_PLAYER || {};
+    if (T.on === false) return 1;
+    const d = CONFIG.DEV;
+    /* DEV: start a two-player run without going through the select screen. It
+       is the only way to reach the mode from a room jump, which is how every
+       fight in this game gets looked at. */
+    if (d && d.on && d.players > 1) return 2;
+    return Math.max(1, Math.min(2, wantPlayers || 1));
+  }
+
+  /**
+   * A HERO WHOSE DEATH ROW HAS FINISHED: spend a life, and either stand him
+   * back up where he fell or take him out of the run.
+   *
+   * `out` IS NOT `dead`, and the whole two-player game-over rule is that
+   * difference -- see Party.inPlay. A dead hero has a life left and a revive
+   * coming; an `out` hero has spent his last one and is waiting for a continue
+   * or for the run to end.
+   *
+   * IT STANDS HIM UP WHERE HE FELL, WITH THE FIGHT AS IT WAS. The crowd, the
+   * segment and the camera do not move -- he was the only thing that stopped.
+   */
+  function spendLife(p) {
+    if (!p || !p.dead) return;
+    p.lives--;
+    if (p.lives > 0) { p.revive(); return; }
+    p.out = true;
+  }
+
+  /**
+   * THE LONGEST DEATH STILL BEING WATCHED, over every slot.
+   *
+   * EVERY SLOT AND NOT THE IN-PLAY ONES: a hero who has just spent his last
+   * life is `out`, and his body is still falling over. The hold the whole
+   * screen waits on is the longest of them, so that the game-over card cannot
+   * fade up over a hero still in the air -- which is the one thing
+   * `deathHoldMs` exists to prevent.
+   */
+  function partyDeathLock() {
+    let t = 0;
+    for (const p of Party.list) if (p && p.dead) t = Math.max(t, p.deathLock(sheets));
+    return t;
+  }
+
+  /**
+   * THE DEATHS, resolved every play frame. Returns TRUE if the run has stopped
+   * and the 'dead' phase should take the screen.
+   *
+   * ONE HERO: unchanged from the line it replaced. He dies, nobody is left
+   * standing, the world freezes around the falling body and the phase machine
+   * does the rest.
+   *
+   * TWO HEROES: a death is NOT the end of the frame. His partner is still
+   * fighting, so the world keeps running, his body plays its row out in the
+   * ordinary update (see the note there), and when the row finishes he gets up
+   * or drops out -- right here, with nothing on screen stopping. Freezing the
+   * fight for the length of a death row would hand the survivor a free wave;
+   * `TWO_PLAYER.freezeOnDeath` is the switch for the other behaviour, and it
+   * routes through the same 'dead' phase so there is only one revive path.
+   */
+  function tickDeaths() {
+    if (!Party.anyAlive()) return true;
+    if ((CONFIG.TWO_PLAYER || {}).freezeOnDeath) {
+      for (const p of Party.list) if (p && p.dead) return true;
+      return false;
+    }
+    Party.forEach(p => { if (p.dead && p.deathLock(sheets) <= 0) spendLife(p); });
+    return false;
+  }
+
+  /**
+   * A SECOND PLAYER DROPPING IN MID-FIGHT, the way the cabinet games take a
+   * coin between waves -- asked for alongside the select-screen join:
+   * *"he joins on escolha sua fruta, but he can also drop in mid fight like
+   * classic beat em up games"*.
+   *
+   * IT IS THE SAME TWO STEPS EITHER WAY: claim a device, then put a hero on the
+   * floor. The select screen does them a few seconds earlier and with a
+   * character chosen; this does them with the character the first player did
+   * not take (PlayerPick.freeIndex), because there is no screen here to choose
+   * on and two identical heroes is the one outcome the pick exists to prevent.
+   *
+   * HE WALKS IN FROM THE BACK OF THE SHOT, not from where the leader is: a hero
+   * who appeared in the middle of a wave would be taking a hit before his
+   * player had touched the stick. `bounds()` gives the rear wall, which is the
+   * camera's own edge, so this is correct in a room that scrolls and in one
+   * that is penned.
+   *
+   * REJOINING IS THE SAME DOOR. A slot that has spent its last lives is `out`
+   * and keeps its device; pressing attack on it buys him back in, with
+   * `joinLives` rather than a full set. That is why this runs over the slots
+   * that already exist before it looks for a new device.
+   */
+  function tickJoin() {
+    const T = CONFIG.TWO_PLAYER || {};
+    if (T.on === false) return;
+    /* AN `out` SLOT ASKING TO COME BACK. Only while somebody is still playing:
+       once they are ALL out the run has ended and the CONTINUE screen owns the
+       question, which is a different beat with a different answer. */
+    if (Party.anyAlive()) {
+      for (const p of Party.list) {
+        if (!p || !p.out) continue;
+        if (!inputFor(p).takeAttack()) continue;
+        p.out = false;
+        p.lives = (T.joinLives != null) ? T.joinLives : p.fullLives();
+        p.revive();
+        placeJoiner(p);
+      }
+    }
+    if (!T.joinInPlay || Party.slots() >= 2) return;
+    const dev = Input.scanJoin(inputs[0]);
+    if (!dev) return;
+    Input.claim(dev, 1);
+    /* ⚠️ A MID-FIGHT JOIN IS A STATEMENT ABOUT THE RUN, NOT JUST ABOUT THIS
+       ROOM. `wantPlayers` is what `buildParty` asks when the party is rebuilt
+       -- by a restart, or by a DEV room jump -- so without this line a second
+       player who dropped in during a fight was silently dropped again by the
+       next rebuild, with his controller left claimed by a slot that no longer
+       existed. Two people are playing; the game should go on believing that. */
+    wantPlayers = 2;
+    /* THE CHARACTER THE FIRST PLAYER DID NOT TAKE, decided BEFORE the hero is
+       built: his constructor reads `PlayerPick.kind(slot)`, so a pick made
+       afterwards would arrive a whole run late. */
+    PlayerPick.set(PlayerPick.freeIndex(1), 1);
+    const p = new Player(220, Belt.depth * CONFIG.playerStartZRel, 1);
+    p.props = props;
+    p.lives = (T.joinLives != null) ? T.joinLives : p.fullLives();
+    Party.add(p);
+    placeJoiner(p);
+    /* THE JOIN PRESS IS SPENT. Without this the button that bought him in is
+       still queued on his own device and his first act is a punch at nothing --
+       and on a pad it is worse, because `scanJoin` reads a HELD button, so a
+       player who holds it for half a second would also have held the punch. */
+    inputFor(p).flush();
+  }
+
+  /**
+   * PUT A JOINING (or rejoining) HERO AT THE BACK OF THE SHOT and walk him in.
+   *
+   * THE WALK IS RIGHTWARD ONLY, and that is a limitation written down rather
+   * than hidden: `Player.enterWalk` faces him right and walks him to a mark,
+   * because every door in this game is walked through rightwards. The
+   * bookcase's second shelf runs LEFT, and there he is simply placed at the
+   * rear wall with no walk-in -- which is a room entered by LIFT anyway, so a
+   * join during it is already an odd moment rather than a common one.
+   */
+  function placeJoiner(p) {
+    const b = stage.bounds();
+    const d = forwardDir();
+    p.z = Belt.depth * CONFIG.playerStartZRel;
+    if (d < 0) { p.x = b.maxX - CONFIG.gateMarginX; return; }
+    p.x = b.minX + CONFIG.gateMarginX;
+    p.enterWalk((CONFIG.TWO_PLAYER || {}).joinWalkPx || 0);
+  }
+
   function fit() {
     const m = CONFIG.fitMarginPx;
     const sx = (window.innerWidth - m * 2) / CONFIG.GAME_W;
@@ -315,10 +600,19 @@
     if (!CONFIG.title) { start(); return; }   // no front screen to go back to
     stage.reset();
     crowd.clear();
-    props.clear(player);
+    props.clear();
     flies.clear();
     stats.reset();
-    player = null;
+    Party.reset();
+    /* THE RUN IS OVER, SO THE HARDWARE GOES BACK IN THE BOX. Slot 1's device is
+       handed to slot 0 again and the next run starts as a one-player one until
+       somebody joins -- which they do on the select screen, or in the fight.
+       ⚠️ IT IS HERE AND NOT IN `start()`, and the difference is load-bearing:
+       the second player joins on the SELECT SCREEN, which runs before `start()`
+       is called. Resetting there would throw his device away between choosing a
+       character and walking on with it. */
+    Input.resetOwners();
+    wantPlayers = 1;
     endingShown = false;
     outroTo = 'fade';
     boardSkip = 0;
@@ -497,7 +791,7 @@
        hanging in it and the player's shadow off. */
     liftRide.reset();
     crowd.clear();
-    props.clear(player);
+    props.clear();
     stats.reset();
     /* Cleared here TOO, not only in toTitle(): the title hands straight here,
        and so does the DEV room-jump, so this is the other way a run can begin. */
@@ -516,31 +810,27 @@
     paused = false;
     sound.setPaused(false);   // whatever route got here, the audio is running
     outroTo = 'fade';
-    player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
+    buildParty();
     /* DEV: start somewhere other than the beginning. Applied after the player
        exists, because entering a room places them at its own origin. */
     if (CONFIG.DEV && CONFIG.DEV.on && CONFIG.DEV.startRoom) {
-      stage.enterRoom(CONFIG.DEV.startRoom, player);
+      stage.enterRoom(CONFIG.DEV.startRoom);
     }
     /* HE WALKS ON RATHER THAN BEING THERE. ⚠️ AFTER the DEV jump, because
        `enterRoom` is what puts him on his mark and this backs him off WHEREVER
        that is -- read before the jump it would measure from the street's mark
        and walk him in from the wrong place. See CONFIG.playerEnterPx. */
-    player.enterWalk(CONFIG.playerEnterPx);
+    Party.forEach(p => p.enterWalk(CONFIG.playerEnterPx));
     /* ⚠️ AFTER the DEV jump, not before it: the props belong to whichever room
        the run is actually starting in, and laying out the street's barrels and
        then jumping to the boss room would leave them there. */
-    props.enterRoom(stage.room(), player);
+    props.enterRoom(stage.room());
     // Same rule, same reason: the flies belong to the room actually starting.
     flies.enterRoom(stage.room(), stage.camX);
     // ...and so does the ground it walks on. See CONFIG.SCENERY.
     scenery.enterRoom(stage.room());
     vermes.enterRoom(stage.room());
     grade.enterRoom(stage.room(), stage);
-    /* How the player finds what is within reach. Handed over rather than looked
-       up globally, so a Player built for the ending screen or a test has none
-       and simply cannot pick anything up. */
-    player.props = props;
     phase = 'play';
     phaseT = 0;
     boardSkip = 0;
@@ -694,8 +984,19 @@
        CONFIG.PLAYER_PACKS. Health, position, combo state and lives all carry
        across untouched, which is what makes this safe to do mid-punch. */
     if (input.takeSwap()) {
-      const k = PlayerPick.next();
-      if (player) player.kind = k;
+      /* NOT IN A TWO-PLAYER RUN, AND THE REASON IS THE FORCED-DISTINCT RULE
+         rather than any difficulty in swapping two heroes. The two slots may not
+         hold the same pack (see PlayerPick.set), and `next()` does not know
+         that -- so Tab would walk P1 straight onto P2's character and leave two
+         identical silhouettes in the same fight, which is the one thing the
+         character pick exists to prevent. If swapping with two of them is ever
+         wanted, the move is to swap the two slots WITH EACH OTHER, which keeps
+         both picks valid; it has never been asked for. */
+      if (!Party.twoUp()) {
+        const k = PlayerPick.next(0);
+        const p = Party.p1();
+        if (p) p.kind = k;
+      }
     }
 
     /* THE TITLE SCREEN. It sits above everything else in the loop because it is
@@ -730,7 +1031,10 @@
     if (phase === 'title') {
       const finished = title.update(dt, input);
       renderFrame(() => title.draw(ctx, CONFIG.GAME_W, CONFIG.GAME_H));
-      if (finished) { start(); return; }
+      /* HOW MANY WALKED OFF THE SELECT SCREEN. Read HERE and not inside
+         `start()`, because `start()` is also the restart and the DEV entry
+         points, which have no title screen to ask. */
+      if (finished) { wantPlayers = title.players || 1; start(); return; }
       requestAnimationFrame(loop);
       return;
     }
@@ -758,8 +1062,7 @@
          The host is found by its `timeAttackOnExit` STAGE NUMBER, not by an
          index, so this survives the rooms being reordered. */
       crowd.clear();
-      player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
-      player.props = props;
+      buildParty();
       liftRide.reset();
       /* ⚠️ THE ROOM THAT HANDS OVER TO *THIS* MINIGAME, matched on the stage
          number. It used to be the first room carrying the flag at all, which was
@@ -768,14 +1071,14 @@
          the desert, one room short of where it belongs. */
       let host = CONFIG.ROOMS.findIndex(r => timeAttackStageOf(r) === taJump);
       if (host < 0) host = 0;
-      stage.enterRoom(host, player);
-      props.enterRoom(stage.room(), player);
+      stage.enterRoom(host);
+      props.enterRoom(stage.room());
       flies.enterRoom(stage.room(), stage.camX);
       scenery.enterRoom(stage.room());
       vermes.enterRoom(stage.room());
       grade.enterRoom(stage.room(), stage);
       roomMusic();
-      timeAttack.enter(PlayerPick.i, taJump);
+      timeAttack.enter(PlayerPick.index(), taJump);
       phase = 'timeattack';
       phaseT = 0;
       requestAnimationFrame(loop);
@@ -788,8 +1091,7 @@
          that into the new room is how a shortcut starts producing bugs that
          only a shortcut can produce. */
       crowd.clear();
-      player = new Player(220, Belt.depth * CONFIG.playerStartZRel);
-      player.props = props;
+      buildParty();
       liftRide.reset();          // see start() -- a jump abandons any ride
       /* ⚠️ AND IT ABANDONS THE MINIGAME, WHICH IS THE ONLY THING IN THIS GAME
          THAT HOLDS A SOUND OPEN. This block runs BEFORE the phase branches, so
@@ -799,14 +1101,14 @@
          when the minigame was never running: leave() on a mode already `done`
          does nothing. */
       timeAttack.leave();
-      stage.enterRoom(jump, player);
+      stage.enterRoom(jump);
       /* AND HE WALKS IN HERE TOO, like the fade and like the start of a run.
          ⚠️ NOT ONLY FOR TIDINESS: the number keys are how a room gets LOOKED AT,
          so a jump that skipped the walk-on would be a shortcut that hides the
          one thing it was used to check. After `enterRoom` for the usual reason
          -- `enterWalk` backs him off the mark he has just been given. */
-      player.enterWalk(CONFIG.playerEnterPx);
-      props.enterRoom(stage.room(), player);
+      Party.forEach(p => p.enterWalk(CONFIG.playerEnterPx));
+      props.enterRoom(stage.room());
       flies.enterRoom(stage.room(), stage.camX);
       scenery.enterRoom(stage.room());
       vermes.enterRoom(stage.room());
@@ -862,7 +1164,7 @@
          ⚠️ AND NOT WHILE PAUSED -- the early return above already sees to that,
          which is right: the pause card draws the frame the player stopped on
          and easing him upward under it would be motion on a still screen. */
-      Elevador.tickRider(dt, player, stage.camX);
+      Party.forEach(p => Elevador.tickRider(dt, p, stage.camX));
       /* ⚠️ AND EVERYONE ELSE STANDING ON IT, WHICH IS NEW ON 2026-09-16 -- the
          bookcase's first lift drops an enemy onto the slab mid-ride, and an
          enemy the registry never saw is drawn `ELEVADOR.liftPx` (24px, a
@@ -945,11 +1247,18 @@
          only the player and the body that just died hangs in the air mid-fall
          for the whole walk-out. A dead enemy skips its own AI (`Enemy.update`
          guards on `dead`), so this advances the fall and nothing else. */
-      player.walkOut(dt);
-      crowd.update(dt, player, stage.bounds(), sheets);
+      Party.forEach(p => p.walkOut(dt));
+      crowd.update(dt, Party, stage.bounds(), sheets);
       combat.tick(dt);
       // Out of frame. Where it goes from here depends on why he was walking.
-      if (player.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad) {
+      /* THE LAST ONE OUT CLOSES THE DOOR. Every hero has to be off the edge,
+         not the leader -- the walk-out is scripted (`walkOut` drives them, there
+         is no input in this phase), so the trailing hero is always coming and
+         this is a wait rather than a gate that can hang. Measuring the leader
+         would fade the room with the second hero still visibly in it. */
+      const out = Party.inPlay().every(
+        p => p.groundX(stage.camX) > CONFIG.GAME_W + CONFIG.outroExitPad);
+      if (out) {
         phaseT = 0;
         if (outroTo === 'ending') {
           ending.reset();
@@ -987,7 +1296,7 @@
              ⚠️ AFTER THE FIGHT AND AFTER THE WALK-OUT, both of which are
              untouched: *"the player should still beat the horacio boss, and
              leave the stage walking, like he did before."* */
-          timeAttack.enter(PlayerPick.i, timeAttackDue());
+          timeAttack.enter(PlayerPick.index(), timeAttackDue());
           phase = 'timeattack';
         } else {
           phase = 'fade';
@@ -1000,8 +1309,11 @@
          parada"*), and the crowd is still ticked because the last body to fall
          is still falling when the fight is declared over. */
       phaseT += dt;
-      const done = liftRide.update(dt, player, stage);
-      crowd.update(dt, player, stage.bounds(), sheets);
+      /* THE WHOLE PARTY RIDES, and the ride takes no hero: LiftRide drives
+         `Party` itself now. See the header of lift-ride.js for why it had to be
+         everybody -- a room left by lift is a room that stops existing. */
+      const done = liftRide.update(dt, stage);
+      crowd.update(dt, Party, stage.bounds(), sheets);
       combat.tick(dt);
       if (done) { phase = 'fade'; phaseT = 0; faded = false; }
     } else if (phase === 'liftin') {
@@ -1009,7 +1321,7 @@
          ticked: the room has just been entered, its crowd is empty, and the
          only thing happening is a slab rising into frame from below. */
       phaseT += dt;
-      if (liftRide.update(dt, player, stage)) { phase = 'play'; phaseT = 0; }
+      if (liftRide.update(dt, stage)) { phase = 'play'; phaseT = 0; }
     } else if (phase === 'theend') {
       /* THE CARD AFTER THE TALLY. Nothing else is ticked: the run is over, the
          world is gone and `render()` is still drawing the ending photograph
@@ -1034,13 +1346,13 @@
       if (!faded && phaseT >= half) {
         faded = true;
         crowd.clear();
-        stage.enterRoom(stage.roomIndex + 1, player);
+        stage.enterRoom(stage.roomIndex + 1);
         /* ⚠️ PUT THE RIDER BACK ON THE FLOOR **HERE**, at the blackest point,
            and nowhere earlier. A room left by lift ends with the player 900px
            above it, and the fade DRAWS THE WORLD for its first half -- dropping
            him when the ride finished put him back on the ground in shot for
            ~450ms before the black. This is the one moment nothing is visible. */
-        liftRide.clearRider(player);
+        Party.forEach(p => liftRide.clearRider(p));
         /* HE WALKS INTO A NEW ROOM, exactly as he walks on at the start of a
            run -- asked for 2026-08-27, "the character should enter level 2 in
            the same way he did for level 1". He used to simply BE at the room's
@@ -1065,9 +1377,9 @@
            below still holds for every other room -- and for this one too, since
            the lift lands him on the mark `enterWalk` would have walked him to.
            The phase is picked up when the fade lifts; see `liftin`. */
-        if (stage.room() && stage.room().enterByLift) liftRide.startArrive(player, stage);
-        else player.enterWalk(CONFIG.playerEnterPx);
-        props.enterRoom(stage.room(), player);
+        if (stage.room() && stage.room().enterByLift) liftRide.startArrive(stage);
+        else Party.forEach(p => p.enterWalk(CONFIG.playerEnterPx));
+        props.enterRoom(stage.room());
         /* ⚠️ AT THE BLACKEST POINT WITH EVERYTHING ELSE. The street has flies
            and the boss room does not, so swapping them a moment early or late
            would show three of them blinking out over a room that is still
@@ -1097,7 +1409,12 @@
          exactly where it was hit -- while every enemy, killed in a world that
          was still running, was thrown backwards properly. Fixed 2026-08-24;
          `tickDeath` now moves the body too and needs the BOUNDS to clamp it. */
-      if (phase === 'dead') player.tickDeath(dt, stage.bounds());
+      /* EVERY BODY ON THE FLOOR, not one. In a two-player run this phase is
+         only reached once NOBODY is left standing, so there can be two of them
+         -- and the second one would hold on frame one of its death row while
+         the first played out, which is the exact bug the note above describes,
+         with two heroes instead of one. */
+      if (phase === 'dead') Party.forEach(p => p.tickDeath(dt, stage.bounds()));
     }
 
     /* NOTHING IS ACCEPTED UNTIL THE DEATH HAS BEEN SEEN. The row plays out and
@@ -1115,13 +1432,17 @@
 
        IT HAPPENS BY ITSELF EITHER WAY. A respawn that waited for a keypress
        would be a second thing to dismiss on top of the death animation. */
-    if (phase === 'dead' && player.deathLock(sheets) <= 0) {
-      player.lives--;
-      if (player.lives > 0) {
+    if (phase === 'dead' && partyDeathLock() <= 0) {
+      /* EVERY SLOT SPENDS ITS LAST LIFE HERE. Reaching this phase means nobody
+         is standing, so in a two-player run both are dead -- and a run is not
+         over while either of them still has a life, which is why the test below
+         is `Party.anyAlive()` after the spend rather than one hero's count.
+         With one hero this is the `lives--` it replaced. */
+      Party.forEach(spendLife);
+      if (Party.anyAlive()) {
         /* BACK INTO THE FIGHT, NOT INTO A FRESH ROOM. The crowd, the segment
            and the camera are exactly where they were -- he was the only thing
            that stopped, and the world froze around him while the body fell. */
-        player.revive();
         phase = 'play';
         phaseT = 0;
       } else if (CONFIG.CONTINUE && CONFIG.CONTINUE.on) {
@@ -1158,9 +1479,23 @@
            ⚠️ THE LIVES GO BACK FIRST. `revive()` puts a body back on its feet
            and says nothing about how many it has left; setting them after would
            work today and break the first time revive() learns to read them. */
-        player.lives = (CONFIG.CONTINUE.lives != null)
-          ? CONFIG.CONTINUE.lives : player.fullLives();
-        player.revive();
+        /* EVERY SLOT IS BOUGHT BACK, not just the one whose death ended the
+           run. Both ran out to get here -- see the note on the death
+           resolution -- and a continue that revived one of them would quietly
+           turn a two-player run into a one-player run at the first game over,
+           with the other hero's bar still on the HUD. */
+        /* `Party.list` AND NOT `Party.forEach`, AND THIS IS THE ONE PLACE THE
+           DIFFERENCE BITES. `forEach` skips a slot that is `out` -- which is
+           every slot here, by definition: the run only ends once they all are.
+           Written as a `forEach` this bought nobody back and the continue did
+           nothing at all. */
+        for (const p of Party.list) {
+          if (!p) continue;
+          p.lives = (CONFIG.CONTINUE.lives != null)
+            ? CONFIG.CONTINUE.lives : p.fullLives();
+          p.out = false;
+          p.revive();
+        }
         phase = 'play';
         phaseT = 0;
         input.flush();
@@ -1176,7 +1511,7 @@
       }
     }
 
-    const deathLock = (phase === 'dead') ? player.deathLock(sheets) : 0;
+    const deathLock = (phase === 'dead') ? partyDeathLock() : 0;
     // Is the CLEAR tally still counting up? Derived from the same clock the
     // board draws itself from, so the two can never disagree about it.
     const rolling = phase === 'clear'
@@ -1278,6 +1613,10 @@
        fades between rooms, the walk-out and every end screen are outside it. A
        clock started at boot would mostly measure how long the CLEAR board was
        left on screen. */
+    /* A SECOND PLAYER ARRIVING, OR AN OUT ONE BUYING BACK IN. First in the
+       frame, so a hero who joins this frame is ticked, hit and drawn this frame
+       rather than standing inert for one. */
+    tickJoin();
     stats.tick(dt);
     combat.tick(dt);
     backdrop.update(dt);
@@ -1293,26 +1632,52 @@
        that row is -- see Player._tickLongIdle. Nothing else in `update` reads
        it, and a Player built without one (a test, the ending screen) simply
        never gets bored. */
-    if (!Level3.tickBoarding(dt, player, stage.room())) player.update(dt, input, bounds, sheets);
-    crowd.update(dt, player, bounds, sheets);
-    if (stage.boss) stage.boss.update(dt, player, bounds);
+    /* EVERY HERO TICKS, EACH ON HIS OWN DEVICE. A hero who is DEAD ticks too
+       and that is not an oversight: `canAct()` is false for a corpse, so no
+       input reaches it, and `Fighter.update` is what plays the death row out --
+       which is exactly how an enemy's body falls. The frozen-world `tickDeath`
+       is for the phase where nothing else is running at all. */
+    Party.forEach(p => {
+      if (!Level3.tickBoarding(dt, p, stage.room())) p.update(dt, inputFor(p), bounds, sheets);
+    });
+    crowd.update(dt, Party, bounds, sheets);
+    if (stage.boss) {
+      /* WHO THE BOSS IS FIGHTING, HELD UNTIL THAT HERO IS DOWN. A boss is a
+         script seconds long that samples a position once per beat, so `keep` is
+         true -- see Party.targetFor, where both callers' reasons are written
+         down. It is stored on the boss as well as passed, so a cast already in
+         flight can read the hero it was aimed at. */
+      stage.boss.target = Party.targetFor(stage.boss, true);
+      stage.boss.update(dt, stage.boss.target, bounds);
+    }
 
     // Hits are resolved AFTER both sides have moved, so a punch and a step that
     // happen on the same frame are judged against where everyone ended up.
     /* ⚠️ PROPS ARE UPDATED BEFORE HITS ARE RESOLVED, like everything else that
        moves: a barrel in flight has to be where it actually is this frame
        before anything asks what it is touching. */
-    props.update(dt, player, crowd, combat, stage.bounds(), stage.boss);
-    combat.playerHits(player, crowd, stage.boss, props);
-    combat.crowdHits(crowd, player);
-    combat.bossHits(stage.boss, player);
+    props.update(dt, Party, crowd, combat, stage.bounds(), stage.boss);
+    /* THE THREE SWEEPS, ONCE PER HERO, AND THE ORDER INSIDE THE LOOP IS THE
+       ORDER THEY WERE IN. Running them per hero is safe -- and is what makes a
+       swing hit ONE of them -- because a live hitbox is spent the moment it
+       connects (`hitbox()` returns null once `hasHit`), so a mook's punch that
+       lands on the first hero cannot also land on the second. */
+    Party.forEach(p => {
+      combat.playerHits(p, crowd, stage.boss, props);
+      combat.crowdHits(crowd, p);
+      combat.bossHits(stage.boss, p);
+    });
 
     /* ⚠️ BEFORE stage.update, SO IT IS ASKED ABOUT THE WALLS THE PLAYER JUST
        WALKED INTO rather than the ones a segment change is about to install.
        Called every frame including during fights; `tryingBack` decides when it
        means anything. */
-    stage.tryingBack(dt, !!(input && input.left), player);
-    const ev = stage.update(dt, player, crowd);
+    /* EITHER HERO LEANING BACK RAISES THE PROMPT. It is a question about the
+       PLAYERS' intent and not about the frame, so it is the only thing here
+       that is an OR over the party rather than a question for the leader. */
+    const back = Party.alive().some(p => { const i = inputFor(p); return !!(i && i.left); });
+    stage.tryingBack(dt, back, lead());
+    const ev = stage.update(dt, lead(), crowd);
 
     /* AFTER the stage, so a boss that spawned or died THIS frame is already
        visible to it -- asked a frame early it would start her theme one frame
@@ -1336,7 +1701,7 @@
          that plays through it changes, which is why this is a branch here and
          not a second event. See src/lift-ride.js. */
       if (stage.room() && stage.room().exitByLift) {
-        liftRide.startExit(player, stage);
+        liftRide.startExit(stage);
         phase = 'liftout';
       } else {
         phase = 'outro'; outroTo = 'fade';
@@ -1349,7 +1714,10 @@
       endBossMusic();
     }
 
-    if (player.dead) { phase = 'dead'; phaseT = 0; endScreen(); }
+    /* THE DEATHS, RESOLVED LAST: after the hits that caused them, and after the
+       stage has had its say, so a hero who dies on the frame a room ends does
+       not lose the room event. */
+    if (tickDeaths()) { phase = 'dead'; phaseT = 0; endScreen(); }
   }
 
   /**
@@ -1569,9 +1937,11 @@
        the belt no longer overlaps him. That is the price of the exclusion list
        being a draw order (CONFIG.GRADE's note), not an oversight. If it reads
        wrong, the fix is a masked grade, not a second sort. */
-    if (heroOverGrade && player) player.draw(ctx, sheets, camX);
+    if (heroOverGrade) Party.forEach(p => p.draw(ctx, sheets, camX));
 
-    if (player) hud.drawPlayer(ctx, player, lifeBar);
+    /* ONE BAR PER HERO, in slot order -- the HUD puts P1's top left and P2's
+       top right off his `slot`. See Hud.drawPlayer. */
+    Party.forEach(p => hud.drawPlayer(ctx, p, lifeBar));
     for (const e of crowd.list) hud.drawEnemy(ctx, e, sheets, camX);
     /* The boss's bar: the SAME hand-drawn bar, top-centre and wider. Up only
        once it has arrived — a bar during the entrance would promise a fight
@@ -1616,7 +1986,7 @@
        resolver uses — see the header of debug.js. The boss is included so its
        contact box is visible on the same terms as everyone else's punch. */
     if (input.debug) {
-      const all = [player].concat(crowd.list).filter(Boolean);
+      const all = Party.inPlay().concat(crowd.list).filter(Boolean);
       if (stage.boss) all.push(stage.boss);
       debug.render(ctx, all, stage, backdrop, camX);
     }
@@ -1791,7 +2161,7 @@
        it in front of the man holding it over his head rather than behind his
        own face. Barrels and food answer the same tiny interface fighters do, so
        nothing here needs to know which is which. */
-    const all = [player].concat(crowd.list, props.all()).filter(Boolean);
+    const all = Party.inPlay().concat(crowd.list, props.all()).filter(Boolean);
     if (stage.boss) all.push(stage.boss);
     all.sort((a, b) => (a.sortZ != null ? a.sortZ : a.z) - (b.sortZ != null ? b.sortZ : b.z));
 
@@ -1808,6 +2178,7 @@
        would put a second copy of him in front of the mounds that are supposed to
        be covering him, which is the whole effect undone. */
     const behind = emergingBehind();
+    let dustDone = false;
     for (const f of all) {
       /* THE DIGGERS' DUST, IMMEDIATELY BEFORE THE PLAYER. Asked for 2026-09-01:
          *"should render on top of everything but the player, so it should appear
@@ -1830,8 +2201,14 @@
          fighter: the dust belongs to a hole in the world, not to the body that
          came out of it, which is the same reason `Emerge` keeps its own copy of
          the spot. */
-      if (f === player) {
-        drawEmergeDust(camX);
+      /* `f instanceof Player` AND NOT `f === player`: with two heroes the dust
+         is anchored to the FIRST of them in the z order, which is the furthest
+         from the camera -- "on top of everything but the player" means on top
+         of everything behind the heroes, and the rearmost hero's slot is where
+         that line is. `dustDone` is what keeps it to one burst; drawing it at
+         each hero would paint the pile twice. */
+      if (f instanceof Player) {
+        if (!dustDone) { dustDone = true; drawEmergeDust(camX); }
         /* ⚠️ AFTER THE DUST, NOT INSTEAD OF IT. The burst is anchored to the
            PLAYER'S SLOT in the z order rather than to the player, so holding
            his body back must not hold back the hole in the floor. */

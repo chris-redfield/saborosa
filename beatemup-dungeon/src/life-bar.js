@@ -56,9 +56,18 @@ class LifeBar {
 
     const dw = CONFIG.GAME_W * (L.wRel != null ? L.wRel : CONFIG.lifeBarWRel);
     const dh = dw * (CONFIG.BAR_CELL_H / CONFIG.BAR_CELL_W);
-    // `centre` is what a boss bar wants; a left edge is what the player's does.
+    /* `centre` is what a boss bar wants; a left edge is what the player's does;
+       `right` is P2's, and it is an inset from the RIGHT-HAND edge rather than
+       an x, because only this method knows how wide the bar came out. Handing a
+       caller `GAME_W - lifeBarLeft - dw` to compute would be the second place
+       that has to know `lifeBarWRel`.
+
+       THE DRAWING IS MOVED AND NOT MIRRORED. Every state of this bar is its own
+       hand-inked frame, filling from the BOTTOM and emptying from the TOP, so a
+       flipped copy would empty the wrong way -- see the header. */
     const x = L.centre ? Math.round((CONFIG.GAME_W - dw) / 2)
-                       : (L.left != null ? L.left : CONFIG.lifeBarLeft);
+            : (L.right != null ? Math.round(CONFIG.GAME_W - L.right - dw)
+            : (L.left != null ? L.left : CONFIG.lifeBarLeft));
     const y = L.top != null ? L.top : CONFIG.lifeBarTop;
 
     ctx.save();

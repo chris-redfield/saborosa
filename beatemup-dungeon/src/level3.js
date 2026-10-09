@@ -152,7 +152,7 @@ const Level3 = {
    * 1280-wide canvas by the tool; using the source-pixel figure here would run
    * the shot about 1.5x fast and read as the player sliding.
    */
-  enterRoom(room, player, stage) {
+  enterRoom(room, stage) {
     this.reset();
     const legs = this.legs();
     const C = this.cfg() || {};
@@ -296,7 +296,7 @@ const Level3 = {
        ⚠️ IT IS ONLY THIS ROOM BECAUSE IT IS THE ONLY ROOM WHOSE CAMERA DOES NOT
        START AT 0. Everywhere else `camX = 0` is already the right answer, so
        nothing was ever placed wrongly and nothing had to be corrected. */
-    this._place(player, stage);
+    this._place(stage);
   },
 
   /**
@@ -337,12 +337,16 @@ const Level3 = {
    * `platScreenX`, `standHalfRel` or `widthPx` far enough and that stops being
    * true, and a clamp to `bounds()` is what it would need.
    */
-  _place(player, stage, screenX) {
+  _place(stage) {
     const b = this._bands && this._bands[this.leg];
     if (!b) return;
     const L = this.current();
     const cam = (L && L.dir < 0) ? b.camHi : b.camLo;
-    if (player) player.x = (screenX != null) ? cam + screenX : b.from;
+    /* THE BAND'S OWN ARRIVAL POINT, with the party set back along the LEG'S
+       direction -- so on shelf 2, which is walked left, the second hero arrives
+       to the RIGHT of the first. `b.from` is a world x and this is the one
+       place in the room that knows how it relates to the walk. */
+    Party.placeX(b.from, (L && L.dir < 0) ? -1 : 1);
     this._camX = cam;
     /* ⚠️ THE FOLLOW BUDGET IS RE-SEEDED, NOT CARRIED ACROSS A BAND. The bands sit
        `bandGapPx` (4000) apart and this line is a TELEPORT, so a stale reference
@@ -352,6 +356,41 @@ const Level3 = {
        first frame of a leg means. */
     this._lastPx = null;
     if (stage) { stage.camX = this._camX; stage.camTarget = this._camX; }
+  },
+
+  /**
+   * THE LIFT'S HAND-OVER INTO A NEW BAND: move the camera to the new band and
+   * carry every rider with it, so NOTHING moves on screen.
+   *
+   * IT REPLACED `_place(player, stage, rodeTo)`, AND IT IS THE SAME ARITHMETIC
+   * SAID BETTER. The old line was `player.x = newCam + (player.x - oldCam)` --
+   * a screen offset read off one hero, taken across the seam and put back. With
+   * two riders there are two offsets, and the thing they have in common is the
+   * only thing that was ever really being computed: `newCam - oldCam`. So the
+   * shift is the camera's, everybody gets it, and each rider keeps his own
+   * screen x without anybody measuring it.
+   *
+   * THE WHOLE REASON THE SEAM EXISTS is in the note on `_place` above: the bands
+   * are `bandGapPx` apart, a rider may spend the ride walking anywhere in a
+   * 672px window, and arriving used to snap him up to 636px sideways on the
+   * frame the new shelf appeared.
+   *
+   * RETURNS THE SHIFT, because the crowd has to come too -- see `_carry`.
+   */
+  _handOver(stage) {
+    const b = this._bands && this._bands[this.leg];
+    if (!b) return 0;
+    const L = this.current();
+    const cam = (L && L.dir < 0) ? b.camHi : b.camLo;
+    const dx = cam - this._camX;
+    Party.shift(dx);
+    this._camX = cam;
+    /* THE FOLLOW BUDGET IS RE-SEEDED -- the same reason `_place` does it: this
+       is a teleport, and a stale reference would credit the follow with the
+       whole band gap on the new shelf's first frame. */
+    this._lastPx = null;
+    if (stage) { stage.camX = this._camX; stage.camTarget = this._camX; }
+    return dx;
   },
 
   /** The band the player is walking in, or the last one seen during a lift. */
@@ -504,7 +543,7 @@ const Level3 = {
              the walk is 1.0s, so reaching this means nobody is driving it. Put
              him on the mark and let the lift go rather than stranding the run. */
           const mark = this._boardMarkX();
-          if (player && mark != null) player.x = mark;
+          if (mark != null) Party.placeX(mark, this.promptDir());
           this._board = false;
         }
         return null;
@@ -541,7 +580,7 @@ const Level3 = {
       stage.camX = this._camX;
       stage.camTarget = this._camX;
       this._tickBoil(dt, true);
-      if (t >= 1) return this._nextLeg(stage, player, crowd);
+      if (t >= 1) return this._nextLeg(stage, crowd);
       return null;
     }
 
@@ -603,7 +642,7 @@ const Level3 = {
     const C2 = this.cfg() || {};
     const end = (C2.boardWalk !== false && b.gate != null) ? b.gate : b.to;
     const arrived = (L.dir < 0) ? (player.x <= end) : (player.x >= end);
-    if (arrived) return this._nextLeg(stage, player, crowd);
+    if (arrived) return this._nextLeg(stage, crowd);
     return null;
   },
 
@@ -662,21 +701,40 @@ const Level3 = {
        settle -- he and the lift are one object in world space by then, so only
        the background moves. `update` owns the flag; this owns the walk. */
     if (this._boardWalked) { player.scriptIdle(dt); return true; }
-    const dir = (player.x > mark) ? -1 : 1;
+    /* HIS OWN MARK. With two heroes the second boards a stride behind the
+       first, on the side he is walking FROM -- the same spread every door and
+       the boss room's lift use. One slab, two riders, neither inside the other.
+       ⚠️ THE OFFSET IS AGAINST THE WALK, which is why it is signed off `dir`
+       and not off the leg: a hero already past the mark walks back to it, and
+       the queue has to form behind whoever is leading rather than always to
+       the right. */
+    const gap = (CONFIG.TWO_PLAYER || {}).spawnGapX || 150;
+    const dir0 = (player.x > mark) ? -1 : 1;
+    const my = mark - dir0 * gap * (player.slot || 0);
+    const dir = (player.x > my) ? -1 : 1;
     player.scriptWalk(dt, dir);
-    const there = (dir < 0) ? (player.x <= mark) : (player.x >= mark);
-    if (there) { player.x = mark; this._boardWalked = true; }
+    const there = (dir < 0) ? (player.x <= my) : (player.x >= my);
+    if (there) {
+      player.x = my;
+      player.boardWalked = true;
+      /* ⚠️ THE LIFT WAITS FOR THE LAST OF THEM. `_boardWalked` is the ROOM's
+         flag -- `update()` reads it to let the ride begin -- so it may only go
+         true once every hero is standing on the slab. Setting it from the first
+         arrival would start the climb with the other still walking, and since
+         this hook owns the frame he takes no input to catch up with. */
+      this._boardWalked = Party.inPlay().every(p => p.boardWalked);
+      if (this._boardWalked) Party.forEach(p => { p.boardWalked = false; });
+    }
     return true;
   },
 
-  _nextLeg(stage, player, crowd) {
+  _nextLeg(stage, crowd) {
     /* ⚠️ READ BEFORE THE INCREMENT, because it is the leg being LEFT that says
        whether the player is standing on a lift right now. He is free to walk
        about up there -- bounds() closes the WALLS, it does not freeze the input
        -- so where he ends the ride is not where he boarded. See `_place`. */
     const leaving = this.current();
-    const rodeTo = (leaving && leaving.kind === 'lift' && player)
-                 ? (player.x - this._camX) : null;
+    const rode = !!(leaving && leaving.kind === 'lift');
     this.leg++;
     this.legT = 0;
     const L = this.current();
@@ -698,15 +756,27 @@ const Level3 = {
       const C = this.cfg() || {};
       this._board = (C.boardWalk !== false);
       this._boardWalked = false;
+      /* AND EACH HERO'S OWN "I am on the slab" FLAG. The room's flag above is
+         the AND of them (see tickBoarding), so one left standing from the last
+         lift would let the next one leave without him. */
+      Party.forEach(p => { p.boardWalked = false; });
       this._boardT = 0;
       return null;
     }
-    const wasX = player ? player.x : null;
-    this._place(player, stage, rodeTo);
-    /* WHOEVER IS STILL ON THEIR FEET COMES ALONG -- see `_carry`. After
-       `_place`, so it can read the delta off the player rather than recomputing
-       a band's arithmetic a second time. */
-    this._carry(crowd, player, wasX);
+    /* ARRIVING OFF A LIFT KEEPS EVERY RIDER WHERE HE IS ON SCREEN. The other
+       branch -- walking straight from one shelf onto the next, with no ride
+       between them -- seats the party at the new band's arrival point instead,
+       and NO LEG IN TODAY'S CONFIG TAKES IT: the bookcase alternates walk and
+       lift, and the first walk is placed by `enterRoom`. It is kept because a
+       shelf that handed to another shelf is a legal room and this is what it
+       would mean. */
+    const was = this._camX;
+    const dx = rode ? this._handOver(stage) : (this._place(stage), this._camX - was);
+    /* WHOEVER IS STILL ON THEIR FEET COMES ALONG -- see `_carry`. After the
+       placement, and now off the CAMERA's delta rather than off one hero's: on a
+       hand-over they are the same number, and on a fresh band the hero is being
+       teleported to an arrival point that has nothing to do with the crowd. */
+    this._carry(crowd, dx);
     return null;
   },
 
@@ -928,6 +998,9 @@ const Level3 = {
        line -- `lastPlayerX = null` at the lock -- and it is what makes the first
        frame after a fight cost ZERO: no distance is credited for ground covered
        while the camera was not following. */
+    /* SEE Stage._followCamera: the reference hero can change under the camera
+       when a leader dies, and the budget must not be credited with the gap. */
+    if (this._followRef !== player) { this._followRef = player; this._lastPx = null; }
     if (this._lastPx == null) this._lastPx = player.x;
     const moved = player.x - this._lastPx;
     this._lastPx = player.x;
@@ -1005,10 +1078,8 @@ const Level3 = {
    * fading on their own clock, and a body that stayed behind while the fight it
    * belonged to moved would be the same bug with a slower exit.
    */
-  _carry(crowd, player, wasX) {
-    if (!crowd || !player || wasX == null) return;
-    const dx = player.x - wasX;
-    if (!dx) return;
+  _carry(crowd, dx) {
+    if (!crowd || !dx) return;
     for (const e of crowd.list) e.x += dx;
   },
 

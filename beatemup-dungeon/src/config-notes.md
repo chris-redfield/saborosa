@@ -30,6 +30,7 @@ worse than a knob with no marker, because the next reader will go looking.
 - **THE LAYER STACK** — `N0029`
 - **THE LEVEL** — `N0052`
 - **LEVEL 3 — THE BOOKCASE (2026-08-27)** — `N0105`
+- **TWO PLAYERS** — `N0900`
 - **THE FIGHTERS** — `N0120`
 - **THE CLEAR BOARD** — `N0193`
 - **PROPS -- BARRELS AND FOOD** — `N0203`
@@ -1967,6 +1968,134 @@ arena locks.
 Above 1 the camera outruns them to re-frame the shot, which sounds tidy and
 reads as the player sliding backwards across the frame under their own
 feet. It was 1.8 and that was the complaint.
+
+## TWO PLAYERS
+
+`N0900` · `CONFIG.TWO_PLAYER`
+
+THE WHOLE MODE'S BLOCK. Everything about a second hero that is a NUMBER lives
+here; everything about one that is a DECISION lives in `src/party.js`, which is
+the object that answers "which of the two" for the camera, the crowd and the
+HUD.
+
+READ IT WITH `src/party.js` OPEN. The two files split along one line: this is
+how far apart they spawn and how many lives a joiner gets, that is who the
+camera follows and who an enemy goes for.
+
+### ⚠ N0907 — `CONFIG.DEV.players`
+
+START A TWO-PLAYER RUN WITHOUT GOING THROUGH THE SELECT SCREEN. 2 here and a
+DEV build begins with both heroes; 1 (or absent) is the ordinary game, where the
+number comes from the front end.
+
+⚠ IT IS THE ONLY WAY TO REACH THE MODE FROM A ROOM JUMP, which is how every
+fight in this game actually gets looked at: the number keys rebuild the party
+from scratch, and they do not pass through the fruit select where a second
+player would otherwise join.
+
+⚠ IT IS READ EVERY TIME THE PARTY IS BUILT, not once -- so it reaches a room
+jump and a restart, unlike `DEV.startRoom` and `DEV.lives`, which are read once
+and which the pause-SABOROSA toggle famously cannot change. Turning DEV mode off
+at run time therefore DOES drop the next run back to one player.
+
+⚠ `TWO_PLAYER.on: false` STILL WINS. The floor is checked first, so this
+cannot switch on a mode that the build has turned off.
+
+### N0901 — `CONFIG.TWO_PLAYER.on`
+
+IS THE MODE REACHABLE AT ALL. False and the fruit select never grows a second
+cursor and a second device can never drop in -- the game is the one-player game
+it was, on every code path, because every two-player branch in the engine is
+`Party.twoUp()` and a party that can never gain a slot never answers true.
+
+A KILL SWITCH AND NOT A TUNING KNOB. It exists because the mode touches the
+camera, the crowd's targeting and the death machine, and a build that needs to
+ship without it should not need a revert.
+
+### N0902 — `CONFIG.TWO_PLAYER.spawnGapX`
+
+HOW FAR BEHIND THE LEADER the second hero is placed at every door in the game,
+with `spawnGapZRel` setting him across the belt as well (a fraction of
+`Belt.depth`, so a shallow room keeps its proportions).
+
+BOTH NUMBERS EXIST BECAUSE ONE OF THEM IS NOT ENOUGH. Set back along the walk
+alone, the pair stand in a line and the rear hero is hidden behind the front
+one at the exact moment the player is looking for him -- the frame he walks in
+on. Set across the belt alone, they arrive abreast and neither is the leader.
+
+IT IS APPLIED IN THE LEG'S DIRECTION, not rightwards. The bookcase's second
+shelf is walked LEFT, so "behind" there is to the right; see `Party.place`.
+
+### N0903 — `CONFIG.TWO_PLAYER.joinInPlay`
+
+CAN A SECOND PLAYER DROP IN MID-FIGHT, the way the cabinet games take a coin
+between waves. False restricts joining to the fruit select, which is the other
+door in and the one where a character can actually be chosen.
+
+### ⚠ N0908 — `CONFIG.TWO_PLAYER.joinWindowMs`
+
+HOW RECENTLY THE FIRST PLAYER MUST HAVE TOUCHED A DIFFERENT DEVICE for a press
+on this one to count as a second player arriving. It is the whole of the join
+rule's tolerance; `Input.scanJoin` is where the rule itself is written down.
+
+⚠ IT EXISTS BECAUSE THERE IS NO JOIN BUTTON. Every word on the screens where
+somebody joins is hand-drawn, so a "PRESS START" prompt is art to be asked for
+rather than a line of code -- which means the game has to INFER that a second
+pair of hands has arrived, from the only evidence there is: somebody pressed a
+device while the first player's attention was demonstrably on another one.
+
+⚠ WHAT IT TRADES. Longer, and a player who put the keyboard down a while ago
+and picked up a controller joins a second player instead of switching devices.
+Shorter, and a genuine second player has to press within that window of the
+first one doing something, which on a select screen that has been sitting still
+is a join that does not happen. 5000 is long enough that any player who is
+actually playing qualifies, and short enough that a controller found in a drawer
+mid-run does not.
+
+⚠ THERE IS NO WAY TO UN-JOIN, so a false positive costs a whole second hero
+with his own life bar. If that is ever reported, this is the first knob, and the
+second is to stop inferring and ask the artist for a word.
+
+### N0904 — `CONFIG.TWO_PLAYER.joinLives`
+
+WHAT A MID-FIGHT JOINER ARRIVES WITH. Separate from `playerLives` on purpose:
+the full set is what a run STARTS with and is the number every fight is
+balanced against, and a player who joins on the last shelf of the last stage
+with a fresh three is being handed the end of somebody else's run.
+
+### N0905 — `CONFIG.TWO_PLAYER.freezeOnDeath`
+
+DOES ONE HERO DYING STOP THE WORLD.
+
+IN A ONE-PLAYER RUN IT ALWAYS DOES, and this knob cannot change that: the world
+freezing around a falling body is what the death animation is staged against
+(see the note in game.js -- the corpse is ticked while everything else holds),
+and there is nobody left to play.
+
+IN A TWO-PLAYER RUN THE DEFAULT IS FALSE, which is the whole point of a second
+hero: his partner is still fighting, and freezing the fight for the length of a
+death row would hand the survivor a free wave.
+
+### N0906 — `CONFIG.TWO_PLAYER.p2BarRight`
+
+P2'S LIFE BAR IS MIRRORED TO THE TOP RIGHT. The bar is a drawing and not a
+meter -- 23 hand-inked frames, filling from the bottom and emptying from the
+top -- so it is NOT flipped, only moved: a mirrored drawing would empty the
+wrong way.
+
+### N0909 — `CONFIG.TWO_PLAYER.taStartDX` / `taStartDY`
+
+WHERE THE SECOND PLANE STARTS IN TIME ATTACK, as an offset from
+`TIME_ATTACK.startX`/`startY` -- back and up, so the pair enters as two aircraft
+in formation rather than as one with a double exposure. Both are FRACTIONS OF
+THE CANVAS, like the two numbers they offset.
+
+⚠ UP AND NOT DOWN: the plane's own entrance flies it in from off the left
+edge, and the barrels come in along the lower band -- a second aircraft placed
+BELOW the first would spend every round in the busiest part of the screen.
+
+⚠ ONLY `taStartDX` CARRIES A MARKER; `taStartDY` is the same knob on the
+other axis and is documented here with it.
 
 ## THE FIGHTERS
 

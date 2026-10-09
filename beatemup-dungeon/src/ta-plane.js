@@ -56,6 +56,10 @@
  * Dependencies injected (assets store + config). No DOM, no globals.
  */
 class TaPlane {
+  /* `slot` IS ASSIGNED BY TimeAttack AFTER CONSTRUCTION, not taken here: the
+     planes are built once at boot (see TimeAttack.load -- their frames must not
+     be decoded twice) and which of them is being flown by whom is a fact about
+     a RUN. It is read by `reset`, which runs on every entry. */
   constructor(assets, cfg) {
     this.assets = assets;
     this.cfg = cfg;
@@ -86,8 +90,15 @@ class TaPlane {
     const cfg = this.cfg;
     this.pose = cfg.CH_REST;
     this.acc = 0;
-    this.x = cfg.startX;
-    this.y = cfg.startY;
+    /* WHICH PLAYER FLIES THIS ONE. `slot` is set by TimeAttack after it builds
+       the plane and is 0 unless there are two; every slot past the first starts
+       further back and lower, so the pair arrives as two aircraft rather than
+       one with a double-exposure. Both numbers are fractions of the canvas,
+       like `startX`/`startY` themselves. */
+    const T = (typeof CONFIG !== 'undefined' && CONFIG.TWO_PLAYER) || {};
+    const sl = this.slot || 0;
+    this.x = cfg.startX + (T.taStartDX != null ? T.taStartDX : -0.11) * sl;
+    this.y = cfg.startY + (T.taStartDY != null ? T.taStartDY : -0.17) * sl;
     this.flip = false;       // art faces right natively; flip when going left
     this.gunOn = false;
     this.gunCur = 0;

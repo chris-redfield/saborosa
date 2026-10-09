@@ -20,8 +20,220 @@
  * events; reading a fresh snapshot is the only way to see a press, so that call
  * IS the controller.
  */
+/*
+   TWO PLAYERS, TWO DEVICES (2026-10-09).
+   ======================================
+   One `Input` is now ONE PLAYER'S HANDS, not "the controls". Which physical
+   devices it reads is decided by an OWNERSHIP TABLE kept on the class
+   (`Input.OWNERS`), keyed by a device id: 'kb' for the keyboard, 'pad:0',
+   'pad:1', ... for each gamepad slot the browser reports.
+
+   SLOT 0 OWNS EVERYTHING THAT NOBODY ELSE HAS CLAIMED, and that is what keeps
+   the one-player game exactly as it was: with an empty table, `ownerOf` answers
+   0 for every device, so P1 reads the keyboard and every pad -- which is a
+   superset of the old behaviour (it read the keyboard and the FIRST pad) and
+   indistinguishable from it unless two pads are plugged in.
+
+   A SECOND PLAYER JOINS BY CLAIMING ONE DEVICE, and the rule for which is in
+   `scanJoin`: whatever is being pressed that P1 is demonstrably not playing on.
+   That covers both of the arrangements asked for -- two controllers, or one
+   player on the keyboard and one on a pad -- in either order, and without
+   anybody having to be told which is which.
+
+   WHY OWNERSHIP AND NOT TWO HARD-CODED KEY SETS. Splitting the keyboard (WASD
+   for one, the arrows for the other) is the obvious design and it is the wrong
+   one here: the ask was two controllers OR keyboard-and-controller, both halves
+   of the keyboard already drive P1 today, and every key in this file is bound
+   twice over (J/Z/Space all punch) precisely so a player does not have to learn
+   a layout. Taking half of that away from P1 to give it to a player who may
+   never join is a cost paid by the one-player game.
+*/
 class Input {
-  constructor(target) {
+  /** Device id -> player slot. A device missing from here belongs to slot 0. */
+  static ownerOf(id) {
+    const o = Input.OWNERS[id];
+    return (o == null) ? 0 : o;
+  }
+
+  /**
+   * Give a device to a slot.
+   *
+   * EVERY INSTANCE DROPS ITS HELD STATE, and that is not tidiness: the join
+   * press is made on a device slot 0 is at that moment still reading, so
+   * without this P1 keeps a direction or a button latched from the last frame
+   * before it changed hands -- the stuck-key bug, arriving by a new door.
+   */
+  static claim(id, slot) {
+    Input.OWNERS[id] = slot;
+    /* AND EVERY QUEUE IS DROPPED, NOT JUST THE HELD STATE -- see swallowHeld.
+       The press that bought the joiner in was read by slot 0 a moment earlier
+       (it owned the device until this line), so without this P1 answers the
+       join with a punch he did not throw. The cost is that P1 loses anything he
+       had queued on the frame somebody joined: one press, once per run. */
+    for (const i of Input.ALL) i.swallowHeld();
+  }
+
+  /** Hand every device back to slot 0 -- what the end of a run does. */
+  static resetOwners() {
+    Input.OWNERS = {};
+    for (const i of Input.ALL) i.releaseAll();
+  }
+
+  /**
+   * HAND BACK EVERY DEVICE OWNED BY A SLOT THAT NO LONGER EXISTS.
+   *
+   * ⚠️ THIS IS THE BUG THAT MADE A CONTROLLER GO DEAD FOR THE REST OF A RUN.
+   * Ownership lived longer than the party did: once P2 had joined, `pad:1` was
+   * his until the title screen -- but the party is REBUILT by a restart and by
+   * every DEV room jump, and a rebuild that produced one slot left the pad
+   * belonging to a slot 1 that did not exist. Nothing read it, so the second
+   * controller did nothing at all; and `scanJoin` refuses a device somebody
+   * owns, so it could not even be rejoined with. Reported as *"I cant join the
+   * game with player 2 at stage 2"*.
+   *
+   * SO EVERY REBUILD OF THE PARTY CALLS THIS. The rule it enforces is simply
+   * that a device cannot belong to a player who is not in the game.
+   */
+  static releaseAbove(slots) {
+    let changed = false;
+    for (const k of Object.keys(Input.OWNERS)) {
+      if (Input.OWNERS[k] >= slots) { delete Input.OWNERS[k]; changed = true; }
+    }
+    if (changed) for (const i of Input.ALL) i.releaseAll();
+  }
+
+  /**
+   * IS SOMEBODY ASKING TO JOIN? Returns the device id being pressed by a hand
+   * that is not slot 0's, or null.
+   *
+   * IT IS DECIDED BY WHAT P1 IS ACTUALLY PLAYING ON (`lastUsed`), not by what
+   * he COULD play on. Slot 0 nominally owns every device, so "an unowned device
+   * was pressed" would never be true and nobody could ever join; what is really
+   * being asked is "is there a second pair of hands here", and the evidence for
+   * that is a press on something the first pair is not touching.
+   *
+   * A PAD IS SCANNED RAW rather than through an Input, because no Input is
+   * reading it yet -- it belongs to slot 0, whose own poll would turn the join
+   * press into a punch. The keyboard cannot be scanned that way (there is no
+   * "is a key down" API), so `rawKeyT` is a timestamp written by a listener
+   * that exists for this and nothing else.
+   */
+  static scanJoin(p1, windowMs) {
+    /*
+       THE RULE: a device joins if it is being pressed, nobody owns it, and
+       SLOT 0 HAS USED A DIFFERENT DEVICE RECENTLY.
+       =======================================================================
+       Getting here took two wrong turns worth writing down, because both are
+       the obvious design and both are unimplementable.
+
+         v1  "an unowned device was pressed". False by construction: slot 0
+             owns every device nobody has claimed, which is the whole reason a
+             one-player run can be played on anything. Nothing is ever unowned,
+             so nobody could ever join.
+         v2  "a device P1 is not currently using was pressed". The joiner's own
+             press is what makes the device look like P1's -- slot 0 reads it
+             first, in its own poll or its own key handler, both of which run
+             before anything asks this question. Snapshotting the answer one
+             frame earlier does not help either: a key event arrives BEFORE the
+             poll that would take the snapshot, so the keyboard half failed
+             even when the pad half worked. (It did. The join fired for a pad
+             and not for a key, which is exactly the shape of bug that gets
+             shipped.)
+
+       SO THE EVIDENCE IS ELSEWHERE: not "is this device P1's" -- which the
+       press itself corrupts -- but "is P1's ATTENTION somewhere else". A player
+       who punched on the keyboard a second ago is not the player who has just
+       pressed a button on a pad. That question cannot be corrupted by the press
+       being asked about, because it is a question about a DIFFERENT device.
+
+       THE COST, STATED PLAINLY: a lone player who has been using the keyboard
+       and then picks up a controller joins a second player rather than
+       switching. There is no way to tell those two apart without a dedicated
+       JOIN button, and every word on the screens where this matters is
+       hand-drawn -- a "PRESS START" prompt is art, not a line of code. The
+       window (`TWO_PLAYER.joinWindowMs`) is what keeps it from firing for
+       somebody who put the keyboard down a minute ago.
+    */
+    if (!p1) return null;
+    const T = (typeof CONFIG !== 'undefined' && CONFIG.TWO_PLAYER) || {};
+    /*
+       `windowMs` OVERRIDES THE CONFIGURED WINDOW, and the fruit select passes
+       Infinity. THE WINDOW IS THERE TO CATCH A LONE PLAYER WHO PUT ONE DEVICE
+       DOWN AND PICKED ANOTHER UP, and that guess is only needed where the game
+       cannot already tell. On the select screen it CAN: that screen's entire
+       purpose is the question "who is playing", the first player is
+       demonstrably sitting in front of it, and a second pair of hands pressing
+       a button there means exactly one thing.
+
+       ⚠️ AND WITHOUT THE OVERRIDE THE SELECT JOIN BARELY WORKED. The window is
+       measured from the first player's last press, and on that screen he is
+       deliberately STILL -- he has chosen, and he is waiting. Five seconds of
+       looking at the picture was enough to close the door, and the join press
+       then fell through to the select itself and was read as HIS confirm, so
+       the screen advanced into a one-player run. Reported as *"I don't see
+       anything different in the player selection screen"*.
+    */
+    const win = (windowMs != null) ? windowMs
+              : ((T.joinWindowMs != null) ? T.joinWindowMs : 5000);
+    const can = (id) => Input.ownerOf(id) === 0 && p1.usedOther(id, win);
+    /* THE KEYBOARD. `rawKeyT` is written by one capture-phase listener that
+       exists for this and nothing else -- there is no "is a key down" API to
+       scan the way a pad can be scanned. */
+    if (Input.rawKeyT && (Input.now() - Input.rawKeyT) < 150 && can('kb')) return 'kb';
+    const pads = (typeof navigator !== 'undefined' && navigator.getGamepads)
+               ? navigator.getGamepads() : null;
+    if (pads) {
+      for (let i = 0; i < pads.length; i++) {
+        const g = pads[i];
+        if (!g) continue;
+        const id = 'pad:' + i;
+        if (!can(id)) continue;
+        /* BUTTONS ONLY, NEVER THE STICK. A controller lying on a desk with a
+           drifting analogue stick would otherwise join a player nobody asked
+           for, repeatedly, and there is no way to leave. */
+        const b = g.buttons || [];
+        for (let k = 0; k < b.length; k++) if (b[k] && b[k].pressed) return id;
+      }
+    }
+    return null;
+  }
+
+  /** Note that this player is on this device, now. */
+  _used(id) { this.lastUsed = id; this.usedAt[id] = Input.now(); }
+
+  /**
+   * HAS THIS PLAYER TOUCHED ANYTHING OTHER THAN `id` in the last `within` ms?
+   *
+   * THE ONE QUESTION THE JOIN RULE ASKS, and it is deliberately about the OTHER
+   * devices: the device being asked about has just been pressed by whoever is
+   * joining, so anything this object knows about IT is contaminated. See
+   * `scanJoin`.
+   */
+  usedOther(id, within) {
+    const now = Input.now();
+    for (const k in this.usedAt) {
+      if (k === id) continue;
+      if (now - this.usedAt[k] <= within) return true;
+    }
+    return false;
+  }
+
+  static now() {
+    return (typeof performance !== 'undefined') ? performance.now() : Date.now();
+  }
+
+  constructor(target, slot) {
+    /* WHICH PLAYER THIS IS. The ownership table is read against it on every
+       key event and every poll, so an instance with no devices simply produces
+       nothing -- which is what slot 1 is until somebody joins. */
+    this.slot = slot || 0;
+    /* WHAT THIS PLAYER LAST ACTUALLY TOUCHED, 'kb' or 'pad:N'. Written by the
+       key handler and by poll(). */
+    this.lastUsed = null;
+    /* WHEN THIS PLAYER LAST TOUCHED EACH DEVICE, by id. Read only by
+       `usedOther`, which is the whole of the join rule -- see `scanJoin`. */
+    this.usedAt = {};
+    Input.ALL.push(this);
     this.left = this.right = this.up = this.down = false;
     this.debug = false;              // hold C: boxes
     this._attackQueued = false;
@@ -85,11 +297,32 @@ class Input {
   }
 
   _bind(t) {
+    /* THE RAW KEY WATCHER, INSTALLED ONCE FOR THE WHOLE CLASS. It records only
+       WHEN a key was last pressed, on the capture phase so nothing can stop it,
+       and exists for exactly one caller: `scanJoin`, which has no other way to
+       ask whether a hand is on the keyboard. It is not input -- nothing reads
+       which key it was. */
+    if (!Input._rawBound && typeof window !== 'undefined') {
+      Input._rawBound = true;
+      window.addEventListener('keydown', e => {
+        if (!e.repeat) Input.rawKeyT = Input.now();
+      }, true);
+    }
     const MOVE = {
       ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
       ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
     };
     t.addEventListener('keydown', e => {
+      /* NOT MY KEYBOARD. Every instance binds its own listeners and this is
+         what makes them harmless: a slot that does not own the keyboard sees
+         every event and acts on none of them. Written as a guard rather than as
+         "bind the listeners only if you own it", because ownership CHANGES at
+         run time -- the second player joins mid-screen -- and a listener that
+         has to be added and removed as that happens is a second thing to keep
+         in step with the table. */
+      if (Input.ownerOf('kb') !== this.slot) return;
+      this.lastUsed = 'kb';
+      this.usedAt.kb = Input.now();
       /* THE TYPED CODE, AND IT HAS TO BE READ BEFORE EVERYTHING ELSE IN THIS
          HANDLER. Two of SABOROSA's letters are movement keys -- S is down and A
          is left -- and the MOVE branch below RETURNS, so recording anywhere
@@ -176,6 +409,7 @@ class Input {
       else { this._anyPress = true; }
     });
     t.addEventListener('keyup', e => {
+      if (Input.ownerOf('kb') !== this.slot) return;
       const m = MOVE[e.code];
       if (m) { e.preventDefault(); this._kb[m] = false; return; }
       if (e.code === 'KeyJ' || e.code === 'KeyZ' || e.code === 'Space') this._attackHeld = false;
@@ -251,6 +485,39 @@ class Input {
    * ⚠️ `_typed` IS NOT CLEARED, matching flush(): it is half-finished typing
    * that only the pause screen listens for, not an input state.
    */
+  /**
+   * SWALLOW WHATEVER IS BEING HELD RIGHT NOW, so that none of it can read as a
+   * fresh press on the frame after this one.
+   *
+   * WHY `releaseAll()` + `flush()` IS NOT ENOUGH, AND THIS IS THE BUG IT WAS
+   * WRITTEN FOR. A player joins by HOLDING a pad button -- `scanJoin` reads
+   * `buttons[k].pressed`, which is a level and not an edge, and a human press
+   * lasts a tenth of a second. `releaseAll()` clears `_padPrev`, which is the
+   * rising-edge memory; so on the very next poll the button is down, the memory
+   * says it was not, and the still-held join press is read as a NEW press. On
+   * the fruit select that confirmed the joiner's character for him in the same
+   * breath as joining -- he never got to choose.
+   *
+   * SO THE EDGE MEMORY IS RE-SEEDED FROM THE LIVE SNAPSHOT instead of cleared:
+   * a button that is down right now is recorded as already down, and the next
+   * press this player makes is the next time it goes down. Nothing is acted on
+   * here -- this is the opposite of a poll.
+   *
+   * THE KEYBOARD NEEDS NO EQUIVALENT: a held key only re-fires through OS
+   * autorepeat, and every queued edge in this file sits behind `if (e.repeat)
+   * return`.
+   */
+  swallowHeld() {
+    this.releaseAll();
+    this.flush();
+    for (const [gi, gp] of this._myPads()) {
+      const b = gp.buttons || [];
+      for (let i = 0; i < b.length; i++) {
+        this._padPrev[gi + ':' + i] = !!(b[i] && b[i].pressed);
+      }
+    }
+  }
+
   releaseAll() {
     this._kb.left = this._kb.right = this._kb.up = this._kb.down = false;
     this._pad.left = this._pad.right = this._pad.up = this._pad.down = false;
@@ -326,12 +593,27 @@ class Input {
       .catch(() => false);
   }
 
-  _firstPad() {
-    if (typeof navigator === 'undefined' || !navigator.getGamepads) return null;
+  /**
+   * EVERY PAD THIS SLOT OWNS, as [index, gamepad] pairs.
+   *
+   * IT REPLACED `_firstPad`, AND THE PLURAL IS THE POINT. The old version took
+   * the first pad the browser reported, which is right while there is one
+   * player and wrong the moment a second one claims pad 1 -- P1 would have gone
+   * on reading it as well, so both heroes would answer to the joiner's stick.
+   *
+   * SLOT 0 STILL GETS EVERY UNCLAIMED PAD, which is a superset of "the first
+   * one" and the reason a one-player run is unchanged: a pad nobody is holding
+   * contributes nothing to the merge.
+   */
+  _myPads() {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return [];
     const pads = navigator.getGamepads();
-    if (!pads) return null;
-    for (const p of pads) if (p) return p;
-    return null;
+    if (!pads) return [];
+    const out = [];
+    for (let i = 0; i < pads.length; i++) {
+      if (pads[i] && Input.ownerOf('pad:' + i) === this.slot) out.push([i, pads[i]]);
+    }
+    return out;
   }
 
   /* ⚠️ `document.hasFocus()` IS CONSULTED AS WELL AS THE FLAG, not instead of
@@ -377,8 +659,15 @@ class Input {
        ⚠️ AND IT ROUTES THROUGH THE EXISTING "no pad" BRANCH ON PURPOSE, which
        already clears `_padPrev` -- so the first press after coming back reads
        as a rising EDGE rather than being swallowed as already-held. */
-    const gp = this._shouldReadPad() ? this._firstPad() : null;
-    if (gp) {
+    /* EVERY PAD THIS SLOT OWNS, OR'd TOGETHER -- see `_myPads`. With one
+       player and one pad this loop runs once and is the code it replaced.
+       ⚠️ `_padPrev` IS KEYED BY PAD **AND** BUTTON ('1:0'), not by button
+       alone. Two pads both have a button 0, and a shared key would let one
+       pad's press mask the other's edge -- which with two players is one of
+       them silently losing a punch whenever the other presses the same face
+       button first. */
+    const mine = this._shouldReadPad() ? this._myPads() : [];
+    for (const [gi, gp] of mine) {
       const ax = this.moveAxis;
       let rx = gp.axes[ax.x] || 0, ry = gp.axes[ax.y] || 0;
       if (ax.invertX) rx = -rx;
@@ -387,12 +676,15 @@ class Input {
       else if (rx > this.deadzone) pad.right = true;
       if (ry < -this.deadzone) pad.up = true;
       else if (ry > this.deadzone) pad.down = true;
+      if (pad.left || pad.right || pad.up || pad.down) this._used('pad:' + gi);
 
       const btns = gp.buttons || [];
       for (let i = 0; i < btns.length; i++) {
         const down = !!(btns[i] && btns[i].pressed);
         const act = this.padMap[i];
-        if (down && !this._padPrev[i]) {
+        const pk = gi + ':' + i;
+        if (down) this._used('pad:' + gi);
+        if (down && !this._padPrev[pk]) {
           // Every button counts toward "press anything to continue", mapped or
           // not — a player hunting for the button to dismiss a screen should
           // not have to find the right one.
@@ -404,7 +696,7 @@ class Input {
              written (`pause: 9`) and nothing had ever read it. */
           else if (act === 'pause') this._pauseQueued = true;
         }
-        this._padPrev[i] = down;
+        this._padPrev[pk] = down;
         if (act === 'lift') padLift = padLift || down;
         if (act === 'pickup') padPickup = padPickup || down;
         if (!down) continue;
@@ -412,9 +704,11 @@ class Input {
           pad[act] = true;
         }
       }
-    } else {
-      this._padPrev = {};
     }
+    /* NO PAD TO READ -- unplugged, unowned, or the window is not focused. The
+       rising-edge memory is dropped so the first press after it comes back
+       reads as an edge rather than being swallowed as already-held. */
+    if (!mine.length) this._padPrev = {};
     this._padHeldLift = padLift;
     this._padHeldPickup = padPickup;
 
@@ -547,3 +841,101 @@ class Input {
    at least as long as the longest word `takeCheat` is asked about, and every
    character past that is just room to mistype. */
 Input.CHEAT_MAX = 32;
+
+/* THE DEVICE TABLE AND THE INSTANCE REGISTER. Both are per-CLASS rather than
+   per-instance because they are statements about the HARDWARE, which the
+   players share: "pad 1 belongs to slot 1" is not a fact slot 0 can be allowed
+   to hold a different opinion about. See the header. */
+Input.OWNERS = {};
+Input.ALL = [];
+/* WHEN A KEY WAS LAST PRESSED, by anybody, written by one capture-phase
+   listener and read only by `scanJoin`. Zero means "no key has ever been
+   pressed on this page", which is the honest starting answer. */
+Input.rawKeyT = 0;
+Input._rawBound = false;
+
+/**
+ * InputGroup -- several players' hands, read as one.
+ *
+ * WHAT IT IS FOR: everything OUTSIDE a fight. The title screen, the pause card,
+ * the options meters, CONTINUE?, the game over panel and the results board all
+ * belong to the room rather than to a player, and every one of them is
+ * dismissed by "press anything" -- so a second player sitting on a second pad
+ * being unable to unpause the game would be a bug with no visible cause.
+ *
+ * THE FIGHT DOES NOT USE IT. Each hero is ticked with his OWN Input (see
+ * `inputFor` in game.js); this is for the screens where there is one cursor.
+ *
+ * EVERY TAKER IS CALLED ON EVERY MEMBER, never short-circuited, and that is the
+ * one rule this class has. A queued press is a press the game owes an answer
+ * to: `a() || b()` would leave b's press standing, to be spent a frame later on
+ * whatever screen the first one handed to -- which is exactly the bug the
+ * MUSICA screen was built around (see Title._tickMusic).
+ */
+class InputGroup {
+  constructor(list) { this.list = list || []; }
+
+  /* The held directions, OR'd. Read as properties because that is how every
+     caller already reads an Input, and a getter keeps this a drop-in. */
+  get left()  { return this.list.some(i => i.left); }
+  get right() { return this.list.some(i => i.right); }
+  get up()    { return this.list.some(i => i.up); }
+  get down()  { return this.list.some(i => i.down); }
+  get debug() { return this.list.some(i => i.debug); }
+  get firing() { return this.list.some(i => i.firing); }
+
+  _any(fn) {
+    let out = false;
+    for (const i of this.list) if (fn(i)) out = true;   // never short-circuit
+    return out;
+  }
+  _all(fn) { for (const i of this.list) fn(i); }
+
+  poll() { this._all(i => i.poll()); }
+  flush() { this._all(i => i.flush()); }
+  releaseAll() { this._all(i => i.releaseAll()); }
+  applyMapping(cfg) { this._all(i => i.applyMapping(cfg)); }
+  loadMapping(url) {
+    /* ONE FETCH, APPLIED TO BOTH. Loading it per instance would ask the network
+       for the same file once per player, and the second answer would race the
+       first for no reason -- the mapping is a property of the pad profile, not
+       of who is holding it. */
+    const first = this.list[0];
+    if (!first) return Promise.resolve(false);
+    return first.loadMapping(url).then(ok => {
+      if (ok) for (let k = 1; k < this.list.length; k++) {
+        this.list[k].applyMapping({ deadzone: first.deadzone,
+                                    axes: { moveX: first.moveAxis.x, moveY: first.moveAxis.y,
+                                            invertX: first.moveAxis.invertX,
+                                            invertY: first.moveAxis.invertY },
+                                    gamepadMap: first.padMap });
+      }
+      return ok;
+    });
+  }
+
+  takeAttack()   { return this._any(i => i.takeAttack()); }
+  takeUpPress()  { return this._any(i => i.takeUpPress()); }
+  takeDownPress(){ return this._any(i => i.takeDownPress()); }
+  takeJump()     { return this._any(i => i.takeJump()); }
+  takePickup()   { return this._any(i => i.takePickup()); }
+  takeSpecial()  { return this._any(i => i.takeSpecial()); }
+  takePause()    { return this._any(i => i.takePause()); }
+  takeMute()     { return this._any(i => i.takeMute()); }
+  takeSwap()     { return this._any(i => i.takeSwap()); }
+  takeAnyPress() { return this._any(i => i.takeAnyPress()); }
+
+  /** A number key names a ROOM, so the merge is the first real answer rather
+      than a boolean -- but every member is still read, for the rule above. */
+  takeRoomJump() {
+    let out = -1;
+    for (const i of this.list) { const r = i.takeRoomJump(); if (out < 0) out = r; }
+    return out;
+  }
+
+  /* THE TYPED CHEAT IS THE KEYBOARD'S AND ONLY THE KEYBOARD'S, so it is asked
+     of whichever member owns it. Arming every member is harmless -- an instance
+     with no keyboard records nothing. */
+  armCheat(on) { this._all(i => i.armCheat(on)); }
+  takeCheat(word) { return this._any(i => i.takeCheat(word)); }
+}

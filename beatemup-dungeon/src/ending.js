@@ -116,13 +116,31 @@ class Ending {
     /* Facing RIGHT because he is walking right. `sheets.draw` mirrors against
        the pack's own native side, so this is the direction he travels and not
        an assumption about which way the art faces. */
-    if (this.phase === 'walk') {
-      const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.walk) || 124;
-      const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(), 'walk'));
-      const step = Math.floor(this.t * 1000 / ms) % n;
-      this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'walk', step, this.x, gy, { scale });
-    } else {
-      this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'victory', 0, this.x, gy, { scale });
+    /* WHOEVER FINISHED THE GAME WALKS IN. One hero in a one-player run, both of
+       them a stride apart in a two-player one -- the same `spawnGapX` the title
+       walk and every door in the game use, so the pair arrives here looking
+       like the pair that has been playing.
+       ⚠️ THE SLOT COUNT COMES FROM `Party`, not from a flag set when this
+       screen opened: by the time the ending runs, the party IS the answer to
+       "who played", including a hero who spent his last life on the last boss
+       and is still a slot.
+       ⚠️ AND THE ONE IN FRONT IS DRAWN LAST, which is the reverse of the loop
+       order -- the same countdown the title walk uses and for the same reason.
+       ⚠️ THEY SHARE ONE STEP AND ONE POSE. Two clocks a stride apart would read
+       as a hero and his echo rather than as two people arriving together. */
+    const slots = (typeof Party !== 'undefined' && Party.slots()) ? Party.slots() : 1;
+    const gap = (CONFIG.TWO_PLAYER || {}).spawnGapX || 150;
+    const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.walk) || 124;
+    const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(0), 'walk'));
+    const step = Math.floor(this.t * 1000 / ms) % n;
+    for (let sl = slots - 1; sl >= 0; sl--) {
+      const kind = PlayerPick.kind(sl);
+      const x = this.x - gap * sl;
+      if (this.phase === 'walk') {
+        this.sheets.draw(ctx, kind, 'right', 'walk', step, x, gy, { scale });
+      } else {
+        this.sheets.draw(ctx, kind, 'right', 'victory', 0, x, gy, { scale });
+      }
     }
   }
 }

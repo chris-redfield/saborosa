@@ -27,6 +27,7 @@ const CONFIG = {
     on: true,  // ⚠N0005
     punchDamage: 50,  // ⚠N0006
     lives: 1,  // ⚠N0007
+    players: 1,  // ⚠N0907
 
     startRoom: 0,  // ⚠N0008
     JUMPS: [0, 'timeattack1', 1, 'timeattack2', 2, 3],  // ⚠N0009
@@ -308,6 +309,22 @@ const CONFIG = {
   camEaseRate: 7,         // still used by the arena lock hand-over         // how quickly it closes the gap, 1/sec
   camLockEaseRate: 4,     // ...and when snapping to an arena lock (slower, so
                           // the lock reads as the world stopping, not a cut)
+
+  // --- Two players ---------------------------------------------------------
+  TWO_PLAYER: {  // ~N0900
+    on: true,  // ~N0901
+    spawnGapX: 150,  // ~N0902
+    spawnGapZRel: 0.18,
+    joinInPlay: true,  // ~N0903
+    joinWindowMs: 5000,  // ⚠N0908
+    joinLives: 3,  // ~N0904
+    joinWalkPx: 200,
+    joinInvulnS: 1.5,
+    freezeOnDeath: false,  // ~N0905
+    p2BarRight: true,  // ~N0906
+    taStartDX: -0.11,  // ~N0909
+    taStartDY: -0.17,
+  },
 
   PLAYER_PACKS: ['coconut', 'coconutStrong'],  // ~N0120 ~N0121
 

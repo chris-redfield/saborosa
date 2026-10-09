@@ -134,7 +134,24 @@ class Stage {
    * continuing a single world x. A room is a place, not a stretch of the same
    * street, and its plate is a different shot that starts at its own beginning.
    */
-  enterRoom(i, player) {
+  /*
+     THE `player` ARGUMENT IS GONE (two-player mode) AND WAS NOT REPLACED BY A
+     `party` ONE. This is the one method on Stage that WRITES to a hero rather
+     than reading one, and the rule the whole conversion follows is: a method
+     that READS one hero keeps its argument and game.js hands it the leader; a
+     method that WRITES positions asks the global `Party`, which is a singleton
+     exactly as `Belt`, `Level3`, `LiftRide` and `Elevador` already are here.
+
+     Threading a party through instead would have put the argument on six
+     methods that have no other use for it, including two in level3.js that are
+     four calls deep.
+
+     EVERY CALLER HAD TO BE CHANGED, because an extra argument is silently
+     ignored -- a missed `stage.enterRoom(n, player)` would place nobody and
+     read as the hero spawning wherever the last room left him. There are four,
+     all in game.js, plus the Level3 hand-off below.
+  */
+  enterRoom(i) {
     this.roomIndex = i;
     this.index = 0;
     this.camX = 0;
@@ -154,9 +171,13 @@ class Stage {
        380-deep desert instead of 228, which reads as the character standing too
        far up the picture and looks like a sprite-anchor bug. */
     Belt.set(r);
-    if (player && r) {
-      player.x = r.startX != null ? r.startX : 220;
-      player.z = Belt.depth * CONFIG.playerStartZRel;
+    if (r) {
+      /* ONE SPOT, AND THE PARTY SPREADS ITSELF AROUND IT. With one hero this is
+         exactly the two assignments it replaced; with two, the second is set
+         back along the walk and across the belt by Party.place, which is also
+         where the direction of "back" is decided. */
+      Party.place(r.startX != null ? r.startX : 220,
+                  Belt.depth * CONFIG.playerStartZRel, 1);
     }
     /* LEVEL 3 HOOK 2/5. AFTER the player is placed, because level3.js lays out
        its own world-x bands and moves him to the first one -- doing it earlier
@@ -167,7 +188,7 @@ class Stage {
        and wrong for this one, whose first band's camera starts at 220 -- and
        nothing corrected it until the first frame of play, which is after the
        fade has finished. See the note in Level3.enterRoom. */
-    if (Level3.owns(r)) Level3.enterRoom(r, player, this);
+    if (Level3.owns(r)) Level3.enterRoom(r, this);
   }
   isArena() {
     const s = this.segment();
@@ -833,6 +854,21 @@ class Stage {
   _followCamera(dt, player) {
     const focus = CONFIG.GAME_W * CONFIG.camFocusX;
     const px = player.x;
+    /* THE CAMERA CHANGED WHICH HERO IT IS FOLLOWING, so the budget is re-seeded
+       rather than carried (two-player mode).
+       `lead()` is `max(x)` along the walk, which is a CONTINUOUS function of
+       time while both heroes are on their feet -- they can overtake each other
+       all day and the reference moves smoothly, because at the moment they swap
+       they are in the same place. It is NOT continuous when the leader DIES:
+       he drops out of the pool and the reference jumps back to his partner, up
+       to a screen width behind. Carried, that frame credits the follow with the
+       whole gap, and in a room that allows reverse (the street does) the camera
+       sweeps left at the moment of a death -- which would read as the death
+       doing it.
+       SAME LINE, SAME REASON as the lock and the band hand-over: null means
+       "start from wherever he is", and the first frame after a change costs
+       zero. */
+    if (this.followRef !== player) { this.followRef = player; this.lastPlayerX = null; }
     if (this.lastPlayerX == null) this.lastPlayerX = px;
     /* ONLY WALKING FORWARD EARNS BUDGET. This was `Math.abs` and that was a
        bug: walking LEFT also earned it, so the camera crept right while the

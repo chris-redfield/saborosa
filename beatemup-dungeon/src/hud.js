@@ -138,8 +138,31 @@ class Hud {
    * finished thing and would quietly ship, whereas nothing at all is obviously
    * a missing asset.
    */
+  /*
+     P2'S PLATE IS THE SAME PLATE, MOVED TO THE OTHER CORNER (two-player mode).
+     It is keyed on the hero's `slot` and on nothing else, so this method still
+     draws exactly one hero and game.js calls it once per hero -- which is what
+     keeps "there is one bar" and "there are two bars" the same code.
+
+     THE INSIDE OF THE PLATE IS NOT MIRRORED, only its position: the name still
+     starts at the bar's left edge and the lives still end at its right. Those
+     two lines are what make the player's plate and a boss's read as one piece
+     of interface (see drawBoss), and a mirrored P2 would be a third
+     arrangement. If the pair looks wrong facing the same way, the change is one
+     `if` here and it is a judgement to make by eye, not from the code.
+
+     A HERO WHO IS OUT OF THE RUN STILL HAS NO BAR DRAWN, because game.js
+     iterates `Party.forEach`, which skips him. That is deliberate: an empty bar
+     is what frame 0 means, and frame 0 means DEAD -- a permanent empty plate in
+     the corner would read as a hero about to get up.
+  */
   drawPlayer(ctx, player, lifeBar) {
-    const box = lifeBar && lifeBar.render(ctx, Math.max(0, player.hp / player.maxHp));
+    const slot = player.slot || 0;
+    const T = CONFIG.TWO_PLAYER || {};
+    const layout = (slot > 0 && T.p2BarRight !== false)
+                 ? { right: CONFIG.lifeBarLeft } : null;
+    const box = lifeBar && lifeBar.render(ctx, Math.max(0, player.hp / player.maxHp),
+                                          layout);
     if (!box) return;
 
     ctx.save();

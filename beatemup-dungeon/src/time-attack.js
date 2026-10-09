@@ -170,6 +170,10 @@ class TimeAttack {
        with the game -- which is the one thing it exists to rule out. Null on
        every frame the gun is not firing, and cleared at the top of `_shoot`. */
     this.ray = null;
+    /* EVERY LIVE BEAM, one per plane that is holding its trigger. `ray` is the
+       first of them and is what the code that only ever knew about one beam
+       still reads. See `_shoot`. */
+    this.rays = [];
     /* IS THE BEAM ON A COIN RIGHT NOW -- the coin-hit loop's whole input, and
        nothing else reads it. Kept beside `ray` because it has exactly the same
        lifetime: recomputed by `_shoot()` every frame and false on every frame
@@ -191,9 +195,34 @@ class TimeAttack {
    * works in dev and is missing from the built game. That has shipped from this
    * repo before. Calling both would decode all twelve frames twice.
    */
+  /*
+     TWO PLANES (2026-10-09). `planes` is the list and `plane` is `planes[0]` --
+     every existing read of `this.plane` therefore still means player one, and
+     only the places that genuinely have to count were changed: the per-frame
+     update, the two collision sweeps, the beam, the death test, the render and
+     the health pips.
+
+     BOTH ARE BUILT AT BOOT, like the one before them, because the note below is
+     still the point: the frames are listed in manifest.js and must not be
+     decoded a second time. They SHARE the art -- a TaPlane is a position, a
+     pose and a wear counter over a sheet the Assets cache already holds -- so a
+     second one costs almost nothing, and building it only when a second player
+     turns up would mean a texture decode in the middle of a round.
+
+     HOW MANY ARE FLYING is decided per ENTRY, in `enter`, off the party.
+  */
   load() {
     if (!TimeAttack.enabled()) return;
-    this.plane = new TaPlane(this.assets, this._cfg());
+    this.planes = [new TaPlane(this.assets, this._cfg()),
+                   new TaPlane(this.assets, this._cfg())];
+    this.planes[1].slot = 1;
+    this.plane = this.planes[0];
+  }
+
+  /** The planes actually being flown this entry. One, or two. */
+  _live() {
+    const n = Math.max(1, Math.min((this.planes || []).length, this.nPlanes || 1));
+    return (this.planes || []).slice(0, n);
   }
 
   /**
@@ -237,21 +266,38 @@ class TimeAttack {
        ⚠️ SO THE LIFETIME IS THE BUG, NOT THE ANIMATION -- the same shape as the
        `dt` and the `worldW`: a contract about when state is built, which no
        signature states and which a copied class cannot carry with it. */
-    if (this.plane) this.plane.reset();
+    /* HOW MANY ARE FLYING, decided here and nowhere else: whoever is in the
+       party when the minigame opens. A hero who is out of lives is not in
+       `inPlay`, so he does not get a plane -- which is the same answer the
+       brawler gives about who is on screen. */
+    this.nPlanes = Math.max(1, Math.min(2, (typeof Party !== 'undefined')
+                                           ? (Party.inPlay().length || 1) : 1));
+    for (const pl of this._live()) pl.reset();
     /* ⚠️ AND IT IS HANDED THIS STAGE'S CONFIG. The plane is constructed ONCE, in
        `load()` at boot (see the note there about not decoding its frames
        twice), so it captured the bare base block before any stage existed.
        Nothing in `STAGES` is a plane knob today and this line does nothing --
        it is here so that the first time one is, it is not a silent half-change
        where the mode reads the new number and the plane keeps the old one. */
-    if (this.plane) this.plane.cfg = c;
+    for (const pl of this._live()) pl.cfg = c;
     /* RE-ENTRY INSURANCE. `reset()` clears the flags that DRIVE the loops but
        cannot stop a source that is already playing, and the DEV jump can open
        this mode while it is already open. */
     if (this.sound) this.sound.stopLoops();
     if (!this.plane) return;
-    this.plane.setCharacter(c.character != null ? c.character
-                            : (packIdx || 0) % (c.CHARACTERS || ['']).length);
+    /* EACH PLANE WEARS ITS OWN PILOT. Slot 0 takes the `packIdx` it was handed
+       -- which is P1's pick, and the only thing this method ever knew about who
+       is playing -- and every other slot asks `PlayerPick` for its own, exactly
+       as the brawler's heroes do. `CHARACTERS` here is the minigame's own list
+       (`['lebron', 'ipaneima']`) and it is in the same order as
+       `CONFIG.PLAYER_PACKS`, which is what makes one index serve both. */
+    const nch = (c.CHARACTERS || ['']).length;
+    this._live().forEach((pl, i) => {
+      const idx = (c.character != null) ? c.character
+                : (i === 0 ? (packIdx || 0)
+                           : ((typeof PlayerPick !== 'undefined') ? PlayerPick.index(i) : i));
+      pl.setCharacter(idx % nch);
+    });
     /* ⚠️ THE MODE'S OWN SONG, by KEY -- the `musicKey` idiom the bosses use.
        Coming OUT needs nothing: the exit is a room CHANGE, and `roomMusic()` on
        the far side of the fade starts the next room's track the way it does for
@@ -728,7 +774,7 @@ class TimeAttack {
     /* THE PLANE FLIES THROUGH EVERY BEAT, including the cards -- a plane that
        froze between rounds would read as the game hanging. It is only the CLOCK
        and the SHOOTING that are gated on `play`. */
-    if (this.plane) this.plane.update(dt, this._planeInput());
+    this._live().forEach((pl, i) => pl.update(dt, this._planeInput(i)));
 
     const live = this.state === 'play';
     if (live) {
@@ -768,7 +814,7 @@ class TimeAttack {
        the freeze caught it. `_populate` clears the list before a round, so what
        keeps moving here is only the tail of the round that just ended. */
     for (const b of this.barrels) b.update(dt);
-    if (live) this._shoot(); else { this.ray = null; this.coinBeam = false; }
+    if (live) this._shoot(); else { this.ray = null; this.rays = []; this.coinBeam = false; }
 
     /* THE TWO HELD SOUNDS, handed a boolean each and left to sort themselves
        out -- Sound.loop() no-ops unless the state flips, so calling it on every
@@ -809,15 +855,22 @@ class TimeAttack {
        ⚠️ `isAlive()`, not merely "in the list": a fly that has burst is still
        in `flies` until the cull below, and without this its corpse would go on
        hitting. */
-    if (live && this.plane && !this.plane.controlLocked) {
-      const pb = this.plane.hitBox(W, H);
+    /* ⚠️ ONE SWEEP PER PLANE, AND THE LABELLED BREAK IS NOW PER PLANE TOO --
+       that is what the loop below is for. "A frame in which three flies overlap
+       the plane is ONE hit" is a statement about ONE aircraft; shared between
+       two it would mean a fly that clipped the first plane could not also clip
+       the second, so a player would be flown through unharmed because his
+       partner was hit somewhere else on the screen. */
+    for (const pln of (live ? this._live() : [])) {
+    if (pln && !pln.controlLocked) {
+      const pb = pln.hitBox(W, H);
       if (pb) {
         swarm:
         for (const f of this.flies) {
           if (!f.isAlive()) continue;
           for (const b of f.boxes(0, 0, W)) {
             if (!TimeAttack._boxesOverlap(pb, b)) continue;
-            if (this.plane.hurt(c.flyTouchDamage == null ? 1 : c.flyTouchDamage)
+            if (pln.hurt(c.flyTouchDamage == null ? 1 : c.flyTouchDamage)
                 && this.sound) {
               /* THE MAIN GAME'S OWN VOICES, not new files: he makes the same
                  noise being hit here as he does on the street, and the same one
@@ -836,7 +889,7 @@ class TimeAttack {
                  down is a different event, it happens once, and it is the only
                  thing left announcing the end of a run out loud. If that should
                  go too it is the same flag with a second name. */
-              const dead = this.plane.isDead();
+              const dead = pln.isDead();
               if (dead) this.sound.play('playerDeath');
               else if (c.hitVoice !== false) this.sound.play('playerHit');
             }
@@ -844,6 +897,7 @@ class TimeAttack {
           }
         }
       }
+    }
     }
 
     /* ⚠️⚠️ THE BARRELS HURT, AND THEY BREAK ON HIM WHEN THEY DO (2026-09-18).
@@ -868,8 +922,15 @@ class TimeAttack {
        unbroken because the player was briefly invulnerable would look like a
        missing collision. The i-frames forgive the DAMAGE; they do not make him
        intangible. */
-    if (live && this.plane && !this.plane.controlLocked) {
-      const pb = this.plane.hitBox(W, H);
+    /* ONE SWEEP PER PLANE, the same split the fly block above makes, and with
+       one extra consequence worth stating: `took` is PER PLANE, so a barrel
+       that breaks on the first aircraft is already `isWhole() === false` by the
+       time the second is tested -- one barrel cannot hit both. That is the
+       right answer (it is a solid object; it broke) and it falls out of the
+       loop order rather than needing a rule. */
+    for (const pln of (live ? this._live() : [])) {
+    if (pln && !pln.controlLocked) {
+      const pb = pln.hitBox(W, H);
       if (pb) {
         let took = false;
         for (const b of this.barrels) {
@@ -879,14 +940,14 @@ class TimeAttack {
             b.smash();
             if (!took) {
               took = true;
-              if (this.plane.hurt(c.barrelDamage == null ? 1 : c.barrelDamage)
+              if (pln.hurt(c.barrelDamage == null ? 1 : c.barrelDamage)
                   && this.sound) {
                 /* THE SAME TWO VOICES AND THE SAME RULE AS THE FLY TOUCH: the
                    death REPLACES the hit rather than layering, and the hit
                    grunt is off in this mode only (`hitVoice: false`). Read the
                    fly block above for why both of those are what they are --
                    this is deliberately not a second policy. */
-                const dead = this.plane.isDead();
+                const dead = pln.isDead();
                 if (dead) this.sound.play('playerDeath');
                 else if (c.hitVoice !== false) this.sound.play('playerHit');
               }
@@ -896,6 +957,7 @@ class TimeAttack {
         }
       }
     }
+    }
 
     /* SHOT DOWN. ⚠️ A SEPARATE STATE, NOT STRAIGHT TO `out`, because the plane
        has to be SEEN to fall: `hurt()` starts the tumble on the fatal hit and
@@ -903,12 +965,22 @@ class TimeAttack {
        and the shooting (it is not `live`) while everything else keeps running.
        ⚠️ `fallDone()` carries its own `planeFallMaxMs` safety net, so this
        cannot hang on a mistuned gravity. */
-    if (this.state === 'play' && this.plane && this.plane.isDead()) {
+    /* ⚠️ EVERY PLANE, NOT THE FIRST ONE. With two players the round is over
+       when the LAST aircraft is shot down -- one player losing his does not end
+       his partner's round, which is the whole point of there being two. The
+       dead one keeps falling (the plane flies itself out of frame on real time)
+       while the survivor goes on shooting.
+       ⚠️ AND THE SURVIVOR GOES ON SHOOTING BECAUSE `live` IS STILL TRUE: the
+       state only changes here. A dead plane is `controlLocked`, so it takes no
+       input and cannot be hit again, which is what keeps it out of both sweeps
+       above without a second flag. */
+    const flying = this._live();
+    if (this.state === 'play' && flying.length && flying.every(pl => pl.isDead())) {
       this.state = 'down';
       this.stateT = 0;
       this.lost = true;
     }
-    if (this.state === 'down' && this.plane && this.plane.fallDone(H)) {
+    if (this.state === 'down' && flying.length && flying.every(pl => pl.fallDone(H))) {
       this.state = 'out';
       this.stateT = 0;
     }
@@ -923,8 +995,18 @@ class TimeAttack {
        THEM TOO: the swoosh answers the stick, so it must not sound on a frame
        the stick is being ignored -- the entrance flies the plane up the screen
        on its own and would otherwise swoosh all the way in. */
-    const upP = this.input.takeUpPress(), downP = this.input.takeDownPress();
-    if (this.sound && this.plane && !this.plane.controlLocked) {
+    /* ⚠️ BOTH EDGES ARE TAKEN FROM EVERY PLAYER, EVERY FRAME -- the note above
+       is about not banking a press, and it is twice as true with two of them.
+       `playExclusive` is the reason the sound is not per plane: two aircraft
+       climbing together is one swoosh, not two on top of each other. */
+    let upP = false, downP = false;
+    this._live().forEach((pl, i) => {
+      const inp = this._planeInput(i);
+      const u = inp.takeUpPress(), d = inp.takeDownPress();
+      if (pl.controlLocked) return;      // consumed, then dropped; see above
+      upP = upP || u; downP = downP || d;
+    });
+    if (this.sound) {
       if (upP) this.sound.playExclusive('up');
       if (downP) this.sound.playExclusive('down');
     }
@@ -982,7 +1064,16 @@ class TimeAttack {
    * the beat 'em up's Input already exposes under exactly those names -- one
    * more reason the port needed no adapter.
    */
-  _planeInput() { return this.input; }
+  /**
+   * THE DEVICE A PLANE IS FLOWN WITH.
+   *
+   * `inputs` IS HANDED OVER BY game.js and is the per-player array; without it
+   * -- a harness, or a build that never set it -- every plane falls back to the
+   * merged input, which is what this method returned when there was one plane.
+   */
+  _planeInput(i) {
+    return (this.inputs && this.inputs[i]) || this.input;
+  }
 
   /**
    * The hitscan beam, straight from Still Life: a thin line forward from the
@@ -998,16 +1089,35 @@ class TimeAttack {
    * ⚠️ THE BEAM PIERCES -- no early exit between targets, so one line can take a
    * fly and a clock at once. Deliberate over there and kept here.
    */
+  /*
+     ONE BEAM PER PLANE (two-player mode). The method is unchanged below the
+     preamble: it is now called once per aircraft that is holding its own
+     trigger, and everything it does -- the flies, the barrels, the coins -- is
+     already written against a single `ray`.
+
+     ⚠️ `rays` IS THE LIST THE OVERLAY DRAWS AND `ray` IS STILL THE FIRST OF
+     THEM, so nothing that only ever knew about one beam had to change.
+     ⚠️ AND `coinBeam` IS SHARED ON PURPOSE: it drives the held coin LOOP, which
+     is a sound. Two players holding beams on two coins is one sound, not two
+     stacked on top of each other -- the same reason the climb swoosh is
+     `playExclusive`.
+  */
   _shoot() {
-    const c = this._cfg();
     this.ray = null;
+    this.rays = [];
     this.coinBeam = false;
-    if (!this.input.firing || !this.plane || this.plane.controlLocked) return;
+    this._live().forEach((pl, i) => this._shootOne(pl, this._planeInput(i)));
+    this.ray = this.rays[0] || null;
+  }
+
+  _shootOne(plane, input) {
+    const c = this._cfg();
+    if (!input.firing || !plane || plane.controlLocked) return;
     const W = CONFIG.GAME_W, H = CONFIG.GAME_H;
-    const m = this.plane.muzzle(W, H);
+    const m = plane.muzzle(W, H);
     if (!m) return;
     const ray = { x: m.x, y: m.y, end: W };
-    this.ray = ray;                       // the overlay draws THIS one
+    this.rays.push(ray);
     const th = c.rayThickness || 14, dmg = c.rayDamage || 1;
 
     for (const f of this.flies) {
@@ -1174,7 +1284,10 @@ class TimeAttack {
        same reason: drawn at the tail of each barrel's own blit, one barrel's
        puff can be painted under the next barrel that happens to overlap it. */
     for (const b of this.barrels) b.renderBurst(ctx);
-    if (this.plane) this.plane.render(ctx, W, H, 0);
+    /* ⚠️ THE SECOND PLANE IS DRAWN FIRST, so the first player's aircraft is the
+       one on top where they overlap -- the same rule the heroes' walk-ons use. */
+    const flown = this._live();
+    for (let i = flown.length - 1; i >= 0; i--) flown[i].render(ctx, W, H, 0);
     if (this.input && this.input.debug) this._drawDebug(ctx, W, H);
     this._drawHud(ctx, W, H);
   }
@@ -1497,15 +1610,25 @@ class TimeAttack {
        plane are the same frame by construction. Spent pips are dimmed rather
        than dropped, so the total stays readable and the row does not resize as
        it empties. */
-    if (this.plane && (c.planeHealth || 0) > 0) {
-      const hp = this.plane.hp(), max = c.planeHealth;
-      const r = 7, gap = 21;
-      for (let i = 0; i < max; i++) {
-        ctx.beginPath();
-        ctx.arc(35 + i * gap, 68, r, 0, Math.PI * 2);
-        ctx.globalAlpha = i < hp ? 1 : 0.28;
-        ctx.fill();
-      }
+    /* ONE ROW PER PLANE, P2'S MIRRORED TO THE RIGHT-HAND CORNER -- the same
+       arrangement the brawler's two life bars use, and for the same reason:
+       each player looks at his own corner in both halves of the game.
+       ⚠️ THE ROW IS MIRRORED BY POSITION ONLY. The pips still fill from the
+       OUTSIDE edge inwards, so the row shortens toward the middle of the
+       screen on both sides; drawing P2's right-to-left as well would put his
+       last pip under the clock. */
+    if ((c.planeHealth || 0) > 0) {
+      this._live().forEach((pl, slot) => {
+        const hp = pl.hp(), max = c.planeHealth;
+        const r = 7, gap = 21;
+        for (let i = 0; i < max; i++) {
+          const x = slot ? (CONFIG.GAME_W - 35 - i * gap) : (35 + i * gap);
+          ctx.beginPath();
+          ctx.arc(x, 68, r, 0, Math.PI * 2);
+          ctx.globalAlpha = i < hp ? 1 : 0.28;
+          ctx.fill();
+        }
+      });
       ctx.globalAlpha = 1;
     }
 
@@ -1670,21 +1793,22 @@ class TimeAttack {
         ctx.fillText(String(b.hp), b.boxes()[0].x + 2, b.boxes()[0].y - 12);
       }
     }
-    if (this.plane && this.plane.hitBox) {
-      const pb = this.plane.hitBox(W, H);
+    for (const pl of this._live()) {
+      if (!pl || !pl.hitBox) continue;
+      const pb = pl.hitBox(W, H);
       if (pb) { ctx.strokeStyle = '#8ef58e'; ctx.strokeRect(pb.x, pb.y, pb.w, pb.h); }
     }
 
     /* THE SCANLINE. ⚠️ Drawn at `rayThickness` so what is on screen is the
        actual width the test uses -- a hairline here would say the beam is
        thinner than it is and send someone hunting a miss that never happened. */
-    if (this.ray) {
+    for (const r of (this.rays || [])) {
       ctx.strokeStyle = '#e94560';
       ctx.lineWidth = c.rayThickness || 14;
       ctx.globalAlpha = 0.55;
       ctx.beginPath();
-      ctx.moveTo(this.ray.x, this.ray.y);
-      ctx.lineTo(this.ray.end, this.ray.y);
+      ctx.moveTo(r.x, r.y);
+      ctx.lineTo(r.end, r.y);
       ctx.stroke();
       ctx.globalAlpha = 1;
     }

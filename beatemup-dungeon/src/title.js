@@ -128,6 +128,35 @@ class Title {
        here. */
     const dp = this._sel('defaultPick', 0);
     this.pick = (dp >= 0 && dp < PlayerPick.list().length) ? dp : -1;
+    /*
+       TWO PLAYERS ON THIS SCREEN (2026-10-09).
+       `pick` is still P1's and every read of it is unchanged; `pick2` is P2's,
+       and it is -1 until a second player joins. The pair is also held as
+       `picks` so the tick can loop over slots instead of branching -- the three
+       are kept in step by `_setPick`, which is the ONLY writer.
+
+       WHY A SECOND PLAYER NEEDS NO NEW ART, which is the whole reason the join
+       lives here. This screen has no cursor to duplicate: the highlight IS the
+       picture, two 'on'/'off' drawings per coconut, and a player who has taken
+       one simply lights it up. With two players, both are lit. That is the
+       feedback, and every word on this screen is hand-drawn so a "PRESS START"
+       prompt would have been art to ask for.
+
+       AND WITH TWO CHARACTERS THE SECOND CHOICE IS THE FIRST ONE'S COMPLEMENT.
+       The two slots may not hold the same pack (PlayerPick.set says why), so
+       moving either cursor pushes the other off -- unless that other has
+       already CONFIRMED, in which case the character is his and the move is
+       refused. A confirmed pick cannot be taken out from under a player.
+    */
+    this.picks = [this.pick, -1];
+    this.pick2 = -1;
+    this.locked = [false, false];
+    /** How many are playing. Read by game.js when this screen hands over. */
+    this.players = 1;
+    /** Per-slot edge memory for left/right -- the shared `_heldL`/`_heldR`
+        belong to the menu, the options and the jukebox, which are one cursor. */
+    this._heldLS = [false, false];
+    this._heldRS = [false, false];
     // Edge detection for left/right. `input.left`/`right` are HELD flags, so
     // the screen has to remember the last frame or one tap scrolls the list.
     this._heldL = false;
@@ -668,31 +697,126 @@ class Title {
       return;
     }
 
-    // --- 'ask': the question is up (or arriving) and the player may answer ---
-    const L = !!(input && input.left), R = !!(input && input.right);
-    const hitL = L && !this._heldL, hitR = R && !this._heldR;
-    this._heldL = L; this._heldR = R;
-    const press = !!(input && input.takeAnyPress());
-
     /* ⚠️ NOT UNTIL THE QUESTION HAS LANDED. Answering type that is still falling
        is the same complaint the walk-on had, and here it would also mean picking
        before the pictures have faded up -- a choice made blind. */
     if (this.stageT < this._askLandedMs()) return;
 
+    /* --- 'ask': the question is up and the players may answer ---------------
+       EACH SLOT IS READ ON ITS OWN DEVICE, which is what makes two cursors
+       possible at all -- the merged `input` this method is handed cannot tell
+       which pair of hands moved. It is still used for nothing here; see
+       `_inp`. */
+    this._tickJoin();
     const packs = PlayerPick.list();
-    if (hitL || hitR) {
-      /* LEFT AND RIGHT ARE POSITIONS IN THE PICTURE, not a cursor to be
-         scrolled. The two coconuts are drawn side by side, so left means the
-         first of `PLAYER_PACKS` and right means the last -- the same mapping
-         with three heroes would need the art redrawn anyway. */
-      this.pick = hitL ? 0 : packs.length - 1;
-      return;                              // the edge is spent; see the header
+    for (let sl = 0; sl < this.players; sl++) {
+      const inp = this._inp(sl);
+      const L = !!(inp && inp.left), R = !!(inp && inp.right);
+      const hitL = L && !this._heldLS[sl], hitR = R && !this._heldRS[sl];
+      this._heldLS[sl] = L; this._heldRS[sl] = R;
+      /* ⚠️ THE PRESS IS TAKEN EITHER WAY -- see the header. A queue left unread
+         is spent on the next frame instead, which is the same bug one frame
+         later and much harder to see. */
+      const press = !!(inp && inp.takeAnyPress());
+      if (hitL || hitR) {
+        /* LEFT AND RIGHT ARE POSITIONS IN THE PICTURE, not a cursor to be
+           scrolled. The two coconuts are drawn side by side, so left means the
+           first of `PLAYER_PACKS` and right means the last -- the same mapping
+           with three heroes would need the art redrawn anyway. */
+        this._setPick(sl, hitL ? 0 : packs.length - 1);
+        continue;                          // the edge is spent; see the header
+      }
+      if (press && this.picks[sl] >= 0) this.locked[sl] = true;
     }
-    if (press && this.pick >= 0) {
-      PlayerPick.set(this.pick);
-      this.stage = 'chosen';
-      this.stageT = 0;
+
+    /* NOBODY MOVES UNTIL EVERYBODY HAS ANSWERED. With one player this is the
+       `press && pick >= 0` it replaced. */
+    for (let sl = 0; sl < this.players; sl++) if (!this.locked[sl]) return;
+    for (let sl = 0; sl < this.players; sl++) PlayerPick.set(this.picks[sl], sl);
+    this.stage = 'chosen';
+    this.stageT = 0;
+  }
+
+  /** The Input a slot is playing on. Null (and therefore inert) until game.js
+      has handed the per-player devices over -- which is what keeps this screen
+      working in any harness that builds a Title with one merged input. */
+  _inp(slot) {
+    return (this.inputs && this.inputs[slot]) || null;
+  }
+
+  /**
+   * A SECOND PLAYER ARRIVING AT THE SELECT: claim the device being pressed and
+   * give him the character the first player is not on.
+   *
+   * THE JOIN PRESS IS NOT ALSO A CONFIRM. `Input.claim` drops every instance's
+   * held state and the new slot's queue is flushed, so the button that bought
+   * him in cannot also answer the question he has only just been asked -- which
+   * on a pad is the likely case, because `scanJoin` reads a HELD button.
+   */
+  _tickJoin() {
+    if (this.players >= 2) return;
+    const T = CONFIG.TWO_PLAYER || {};
+    if (T.on === false) return;
+    const inputs = this.inputs;
+    if (!inputs || !inputs[0] || !inputs[1]) return;
+    if (typeof Input === 'undefined' || !Input.scanJoin) return;
+    /* NO TIME WINDOW ON THIS SCREEN -- see Input.scanJoin. The first player is
+       by definition sitting in front of the question, so "has he touched
+       something else lately" is a guess the game does not need to make here,
+       and making it is what stopped the join working at all. */
+    const dev = Input.scanJoin(inputs[0], Infinity);
+    if (!dev) return;
+    Input.claim(dev, 1);
+    this.players = 2;
+    this._heldLS[1] = this._heldRS[1] = false;
+    this.locked[1] = false;
+    this._setPick(1, this._freeFor(1));
+    inputs[1].flush();
+  }
+
+  /** The first pack no OTHER slot is holding. */
+  _freeFor(slot) {
+    const n = PlayerPick.list().length;
+    for (let i = 0; i < n; i++) {
+      let taken = false;
+      for (let o = 0; o < this.picks.length; o++) {
+        if (o !== slot && this.picks[o] === i) taken = true;
+      }
+      if (!taken) return i;
     }
+    return 0;
+  }
+
+  /**
+   * ONE SLOT TAKES A CHARACTER, and it is the only writer of `picks` / `pick` /
+   * `pick2` -- three names for two values, kept in step here so that every
+   * existing read of `this.pick` goes on meaning P1.
+   *
+   * A CONFIRMED CHARACTER CANNOT BE TAKEN. The other player has answered and
+   * the screen has his answer; moving him would mean a player walking on as
+   * somebody he did not choose, which is worse than a cursor that refuses to
+   * move. An UNCONFIRMED one is pushed off, because the two slots may not hold
+   * the same pack.
+   */
+  _setPick(slot, i) {
+    if (!(i >= 0)) return;
+    for (let o = 0; o < this.picks.length; o++) {
+      if (o === slot || this.picks[o] !== i) continue;
+      if (this.locked[o]) return;                   // his, and he has said so
+      this.picks[o] = this._otherThan(i);
+    }
+    this.picks[slot] = i;
+    this.pick = this.picks[0];
+    this.pick2 = (this.players > 1) ? this.picks[1] : -1;
+  }
+
+  /** The pack that is not `i`. With two of them that is the whole answer; with
+      more it is the first other one, which is as much as the two-sided art can
+      express anyway. */
+  _otherThan(i) {
+    const n = PlayerPick.list().length;
+    for (let k = 0; k < n; k++) if (k !== i) return k;
+    return i;
   }
 
   /** ms into 'ask' when the question has finished falling and can be answered.
@@ -708,7 +832,14 @@ class Title {
     const W = CONFIG.GAME_W;
     const x0 = W * (CONFIG.titleWalkStartXRel != null ? CONFIG.titleWalkStartXRel : -0.12);
     const exit = W * (CONFIG.titleWalkExitXRel != null ? CONFIG.titleWalkExitXRel : 1.06);
-    return (exit - x0) / Math.max(1, CONFIG.titleWalkSpeed || 210) * 1000;
+    /* THE TRAILING HERO HAS TO GET OFF TOO. The exit is measured on the LEADER,
+       so with two of them the fade would start with the second one still a
+       stride inside the frame -- a hero cut in half by a dip to black on the
+       last screen before the game begins. The gap is the same one that draws
+       them, converted to time at the same speed. */
+    const gap = (this.players > 1)
+              ? ((CONFIG.TWO_PLAYER || {}).spawnGapX || 150) : 0;
+    return (exit - x0 + gap) / Math.max(1, CONFIG.titleWalkSpeed || 210) * 1000;
   }
 
   /** 0..1 through the name's fade-in. 1 once it is fully up. */
@@ -838,7 +969,7 @@ class Title {
     const gap = CONFIG.titleWalkRepeatMs || 0;
     if (gap > 0) t = t % (span + gap);
     if (t > span) return null;                  // gone, or waiting to come back
-    const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(), 'walk'));
+    const n = Math.max(1, this.sheets.poseLength(PlayerPick.kind(0), 'walk'));
     const ms = (CONFIG.POSE_MS && CONFIG.POSE_MS.walk) || 124;
     return {
       x: x0 + speed * t / 1000,
@@ -884,7 +1015,18 @@ class Title {
     if (!w) return;
     const gy = H * (CONFIG.titleWalkGroundYRel != null ? CONFIG.titleWalkGroundYRel : 0.93);
     const scale = CONFIG.titleWalkScale || 1;
-    this.sheets.draw(ctx, PlayerPick.kind(), 'right', 'walk', w.step, w.x, gy, { scale });
+    /* BOTH OF THEM WALK OFF, IN STEP AND A STRIDE APART. The second hero is set
+       back by the same `TWO_PLAYER.spawnGapX` every door in the game uses, so
+       the pair that leaves this screen is the pair that walks into the street.
+       ⚠️ THE ONE IN FRONT IS DRAWN LAST so he overlaps correctly, which is the
+       reverse of the loop order -- hence the countdown.
+       ⚠️ AND THE STEP IS SHARED. They are the same walk on the same clock; two
+       clocks a stride apart would read as one hero and his echo. */
+    const gap = (CONFIG.TWO_PLAYER || {}).spawnGapX || 150;
+    for (let sl = this.players - 1; sl >= 0; sl--) {
+      this.sheets.draw(ctx, PlayerPick.kind(sl), 'right', 'walk', w.step,
+                       w.x - gap * sl, gy, { scale });
+    }
   }
 
   /**
@@ -1086,7 +1228,10 @@ class Title {
     for (let i = 0; i < packs.length; i++) {
       const L = (S.LAYERS || {})[packs[i]];
       if (!L) return false;
-      const on = (this.pick === i);
+      /* LIT IF EITHER PLAYER IS ON IT. `pick2` is -1 in a one-player run, and
+         -1 can never equal a pack index, so this is the single-player test it
+         replaced with no branch on the mode. */
+      const on = (this.pick === i) || (this.pick2 === i);
       const img = this.assets.getDrawable('sel:' + packs[i] + ':' + (on ? 'on' : 'off'));
       if (!img) return false;
       layers.push({ img, L, on });
@@ -1540,7 +1685,7 @@ class Title {
          are asking the same kind of question and should answer it the same way.
          At `pick` -1 neither grows, which is the state where nobody is chosen. */
       L.draw(ctx, names[i], W / 2 + (i ? dx : -dx), y,
-             { alpha: a, mul: (this.pick === i) ? mul : 1 });
+             { alpha: a, mul: (this.pick === i || this.pick2 === i) ? mul : 1 });
     }
   }
 

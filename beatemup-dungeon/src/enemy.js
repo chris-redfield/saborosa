@@ -1162,7 +1162,44 @@ class Crowd {
      long that takes is a property of the drawings -- so the thing that decides
      when a body goes has to be able to ask them. Optional: without it the reaper
      falls back to the fade clock alone, which is what it always did. */
-  update(dt, player, bounds, sheets) {
+  /*
+     `party` REPLACED `player` (two-player mode). The crowd is the one place that
+     HAS to know there can be two heroes, because every enemy has to be fighting
+     exactly one of them -- and once each enemy carries its own target, nothing
+     in Enemy.update had to change at all: it still takes the single fighter it
+     always took, and in a one-player run that fighter is the only one there is.
+
+     THE TARGET IS CHOSEN ONCE PER FRAME, AT THE TOP, AND HELD FOR A SWING.
+     Everything below -- the attack token, the `ready` pick, each enemy's own
+     update -- reads `e.target` rather than a shared player, so "the closest
+     enemy to the player" became "the closest enemy to the hero IT is fighting",
+     which is the same sentence when there is one hero.
+
+     WHY THE TOKEN IS STILL ONE TOKEN FOR THE WHOLE CROWD, and not one per hero:
+     `maxAttackers` is a statement about how many things may be swinging at the
+     PLAYER at once, and it exists so a crowd takes turns instead of mobbing.
+     Two heroes standing together are one crowd's worth of pressure, and handing
+     each of them their own budget would double the swings landing in the same
+     square metre of floor. Splitting it per hero is the obvious-looking change
+     and it is how a two-player fight becomes unsurvivable; if the fights read
+     as too SOFT with two heroes, the knob to turn is `maxAttackers` itself.
+  */
+  update(dt, party, bounds, sheets) {
+    /* WHO EACH ENEMY IS FIGHTING. `busy` is the same test the token count uses
+       below -- committed to a swing -- and it is what stops a punch re-aiming
+       between its wind-up and its blow. See Party.targetFor. */
+    for (const e of this.list) {
+      const busy = e.ai === 'wind' || e.ai === 'combo' || e.ai === 'leap'
+                || e.ai === 'charge' || !!e.atk;
+      e.target = party.targetFor(e, busy);
+    }
+    /* THE FRAME'S REFERENCE HERO, for the two crowd-wide picks below. They ask
+       "which enemy is nearest the player" to decide who swings next, which is a
+       question about the crowd and not about any one enemy -- so it is measured
+       against the hero the crowd is closest to as a whole, which with one hero
+       is him and with two is whoever has walked into the middle of it. */
+    const player = party.lead(1);
+    if (!player) return;
     /* ===== THE ATTACK TOKEN =====================================================
        Count who is currently committed — winding up or mid-swing. If that is
        under the cap, hand the token to the CLOSEST eligible enemy that does not
@@ -1220,7 +1257,8 @@ class Crowd {
         if (e.dead || e.hasToken || e.ai === 'enter' || e.ai === 'gone') continue;
         if (e.ignoresToken) continue;          // see the note in the count above
         if (e.state === 'hurt' || e.state === 'down' || e.atk) continue;
-        const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
+        const t = e.target || player;
+        const d = Math.hypot(e.x - t.x, (e.z - t.z) * 2);
         if (d < bestD) { bestD = d; best = e; }
       }
       /* ⚠️ THE ONE PLACE A TURN BEGINS, which is why the enemy is TOLD about it
@@ -1269,13 +1307,14 @@ class Crowd {
       let readyD = Infinity;
       for (const e of this.list) {
         if (!eligible(e)) continue;
-        const d = Math.hypot(e.x - player.x, (e.z - player.z) * 2);
+        const t = e.target || player;
+        const d = Math.hypot(e.x - t.x, (e.z - t.z) * 2);
         if (d < readyD) { readyD = d; ready = e; }
       }
     }
     for (const e of this.list) e.ready = (e === ready);
 
-    for (const e of this.list) e.update(dt, player, bounds);
+    for (const e of this.list) e.update(dt, e.target || player, bounds);
 
     /* REAP THE BODIES THAT HAVE FINISHED FADING, and nothing before that.
        Corpses used to stay in this list forever at alpha 0, so the only thing

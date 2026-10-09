@@ -393,7 +393,12 @@ class Combat {
    * `hitIds` is what remembers; it is per-throw, not per-barrel, so a barrel
    * picked up and thrown twice starts fresh.
    */
-  propHits(prop, crowd, player, boss) {
+  /* THE `player` ARGUMENT IS GONE (2026-10-09). It was never read -- a thrown
+     barrel hits the crowd and a boss, and has never been able to hurt a hero --
+     and the two-player conversion was not going to hand it a party it would
+     also not read. If a prop is ever meant to hurt the thrower's partner, that
+     is a new rule and it goes in with its own note. */
+  propHits(prop, crowd, boss) {
     if (!prop || prop.state !== 'thrown') return;
     /* ⚠️ THE THROW IS COUNTED AS A SWING, ONCE, or accuracy goes over 100%.
        `hits` and `swings` are the two halves of one ratio (see stats.js), so a

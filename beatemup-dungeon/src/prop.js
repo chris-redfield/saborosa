@@ -648,10 +648,11 @@ class Pickup {
     this.claimT = 0;
   }
 
-  /* `player` is still passed by Props.update and is deliberately not read: the
-     food answers to whoever CLAIMED it, which is not necessarily whoever is
-     being updated, and reading the argument would be a second opinion about
-     the same thing. */
+  /* IT TAKES NO HERO AND NEVER DID READ THE ONE IT USED TO BE PASSED: the food
+     answers to whoever CLAIMED it, which is not necessarily whoever is being
+     updated, and reading an argument would be a second opinion about the same
+     thing. That is also why two players cost this class nothing -- the claim
+     already names a hero. */
   update(dt) {
     this.t += dt;
     if (this.taken || this.state !== 'taking') return;
@@ -966,8 +967,8 @@ class Props {
    * stuck in the carry pose, with the punch button throwing a barrel nobody can
    * see. The room owns its props; leaving one means losing it.
    */
-  enterRoom(room, player) {
-    this.clear(player);
+  enterRoom(room) {
+    this.clear();
     for (const p of (room && room.props) || []) {
       /* THE WHOLE PLACEMENT IS PASSED, not just its position: a barrel entry may
          carry `drops` / `dropKind` to overrule what is inside it. */
@@ -975,8 +976,20 @@ class Props {
     }
   }
 
-  clear(player) {
-    if (player) { player.carrying = null; player.liftTarget = null; }
+  /*
+     THE `player` ARGUMENT IS GONE (two-player mode): it asks the global `Party`
+     instead, by the rule the whole conversion follows -- a method that WRITES
+     to a hero asks the party, a method that READS one keeps its argument. Both
+     heroes can be holding a barrel when a room ends, so emptying one pair of
+     hands would have left the other carrying a prop belonging to a list that no
+     longer exists -- which is the bug the note above is about, arriving by a new
+     door.
+
+     IT IS SAFE BEFORE A RUN HAS STARTED. `Party.forEach` over an empty list does
+     nothing, which is what the old `if (player)` guard was for.
+  */
+  clear() {
+    Party.forEach(p => { p.carrying = null; p.liftTarget = null; });
     this.list = [];
   }
 
@@ -1039,7 +1052,7 @@ class Props {
    * the i-frames, the flinch and the stats all behave exactly as they do for a
    * punch. Nothing here knows what a bomb is except the numbers.
    */
-  _blast(bomb, player, crowd, combat) {
+  _blast(bomb, party, crowd, combat) {
     /* ⚠️ `cfg` IS A FIELD, NOT A METHOD. It was a method while Bomb was its own
        class; inheriting Prop brought Prop's `this.cfg = C` with it, and calling
        it would throw on the one frame a bomb goes off -- a crash reachable only
@@ -1053,7 +1066,11 @@ class Props {
       f.hurt(C.damage || 18, dx >= 0 ? 1 : -1, C.knockback || 380,
              C.lift || 150, C.knockdown !== false);
     };
-    hit(player);
+    /* EVERY HERO IN RANGE, not the one who is being updated. A bomb is the one
+       thing in this game that hits an area rather than a body, so it is also the
+       one place where two heroes standing together must both pay for it -- and
+       `hit` already refuses anybody who is not `vulnerable()`. */
+    if (party) party.forEach(hit);
     if (crowd) for (const e of crowd.list) hit(e);
     /* One freeze for the blast, however many it caught -- the same rule the
        sweep follows, and `combat` already takes the longest pending one. */
@@ -1106,23 +1123,36 @@ class Props {
     return out;
   }
 
-  update(dt, player, crowd, combat, bounds, boss) {
+  /*
+     `party` REPLACED `player`, AND ONLY ONE THING IN HERE ACTUALLY WANTED IT:
+     the bomb's blast, which has to catch both heroes. The other two uses were
+     already party-blind and it is worth writing down why, because it looks like
+     this method should be full of them:
+
+       the FOOD answers to whoever claimed it (`claimedBy`), so it never needed
+       to be told who is playing -- see the note on Pickup.update;
+       a THROWN PROP does not hurt a hero at all. `combat.propHits` takes a
+       `player` argument and has never read it: a barrel hits the crowd and a
+       boss. That argument is gone with this change rather than being handed a
+       party it would also not read.
+  */
+  update(dt, party, crowd, combat, bounds, boss) {
     for (const o of this.list) {
-      if (o instanceof Pickup) { o.update(dt, player); continue; }
+      if (o instanceof Pickup) { o.update(dt); continue; }
       o.update(dt, bounds);
       /* A BARREL IN THE AIR IS A WEAPON, and this is the only place in the game
          where the PLAYER damages something without having punched it. It goes
          through combat.propHits() rather than calling hurt() directly, so the
          blow gets the same impact burst, the same sound and the same stats as
          any other -- the resolver stays the one place a blow is decided. */
-      if (o.state === 'thrown' && combat) combat.propHits(o, crowd, player, boss);
+      if (o.state === 'thrown' && combat) combat.propHits(o, crowd, boss);
       /* ⚠️ DUCK-TYPED, NOT `instanceof Bomb`, AND THE ORDER MATTERS. A Bomb IS
          a Prop now, so it has already been through `update` and `propHits`
          above -- which is the point: it is thrown, it tumbles and it hits an
          enemy with the same code a barrel does. This is the one thing only a
          bomb answers, and it fires on the single frame the burst is armed
          however the smash was reached. */
-      if (o.takeBlast && o.takeBlast()) this._blast(o, player, crowd, combat);
+      if (o.takeBlast && o.takeBlast()) this._blast(o, party, crowd, combat);
       /* WHAT WAS INSIDE IT. Spawned on the frame it BREAKS rather than when the
          debris clears, so the chicken is revealed by the burst instead of
          appearing in a settled pile a beat later. */
