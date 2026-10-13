@@ -2097,6 +2097,65 @@ BELOW the first would spend every round in the busiest part of the screen.
 ⚠ ONLY `taStartDX` CARRIES A MARKER; `taStartDY` is the same knob on the
 other axis and is documented here with it.
 
+### N0910 — `CONFIG.TWO_PLAYER.p2Halo`
+
+HOW DARK P2'S HALO IS ON THE FRUIT SELECT, as a multiplier on the white ring
+the 'on' drawing is already wearing. 1 is the art as drawn (both players lit
+identically, which is what it did before); 0.70 is the shipping value. Set it
+to 1 to turn the whole thing off.
+
+⚠ IT WENT 0.52 -> 0.70 ON ITS FIRST PLAY -- *"the gray is too dark"*. 0.52
+reads as a shadow rather than as a second player's ring; 0.66 and 0.78 were
+rendered beside it and 0.78 is nearly white against that warm wall.
+
+WHAT IT IS FOR. With two players BOTH coconuts are lit, because each slot holds
+one and neither may hold the other's -- so the screen looked exactly the same
+whichever of them was on which, and swapping characters changed nothing on
+screen at all. *"they can never switch who they are selecting"* (2026-10-13).
+The ring is the only thing on this screen that can carry a player number
+without new lettering: P1 keeps the white one the artist drew, P2 gets a grey.
+
+⚠ ONLY THE RING MOVES, NEVER THE FIGURE. Dimming the whole drawing was tried
+first and reads as HALF-SELECTED -- the second player looks like he has not
+answered yet, which is the opposite of what the colour is saying. Both
+coconuts stay in their own colours; only the ring says whose is whose.
+
+⚠ IT IS A MULTIPLIER AND NOT A COLOUR because the ring is pure white in both
+packs (measured: mean 254.7 over 60-65k pixels). A colour would be a second
+decision about the palette; a multiplier is the same ring with the light
+turned down, and it survives the artist redrawing either coconut.
+
+### N0911 — `CONFIG.TWO_PLAYER.waitBreathe` / `waitBreatheMs`
+
+HOW A PLAYER WHO HAS NOT YET CONFIRMED BREATHES ON THE FRUIT SELECT: the swell
+as a fraction of the drawing (0.035 = 3.5%) and the period of one cycle.
+`waitBreathe: 0` turns it off. BOTH ARE TWO-PLAYER ONLY -- `_waitK` returns 1
+with one player, so the single-player select is the screen it always was.
+
+⚠ IT IS A BUG REPORT AND NOT A DECORATION. *"If I am player 2, I can't select
+the player, only player 1 can hit enter and enter the game"* (2026-10-13). P2's
+press always worked -- traced in the running game, it sets `locked[1]` exactly
+as P1's sets `locked[0]` -- but the screen waits for BOTH players and nothing on
+it moved, so an answer that had landed was indistinguishable from a dead button.
+The rule was right and it had no picture.
+
+⚠ THE ONE WHO HAS *NOT* ANSWERED IS THE ONE THAT MOVES. The thing still moving
+is the thing still being decided: a player who has pressed watches his own
+coconut go still, and can see at a glance who is being waited for. Marking the
+ANSWERED one says the same thing about the player who has already stopped
+looking at the screen.
+
+⚠ AND THE CONFIRM ITSELF IS THE SCREEN'S OWN STAMP (`SELECT.PUNCH`), struck off
+that player's clock rather than the stage's. The numbers are not duplicated --
+`_stampK` is the curve and `_waitK` and `_popK` are its two callers -- so
+retuning the board's stamp retunes a player's with it.
+
+⚠ IT ONLY EVER SWELLS. `(1 - cos)/2` rests at 0 and never goes negative: a
+breathe centred on the drawn size would spend half of every cycle SMALLER than
+the picture the artist handed over, beside a neighbour that is not. Same rule
+as every other scale in this game -- the art is drawn at the size it is drawn
+at.
+
 ## THE FIGHTERS
 
 `N0120` · `CONFIG.PLAYER_PACKS`

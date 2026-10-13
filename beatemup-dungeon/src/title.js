@@ -151,6 +151,12 @@ class Title {
     this.picks = [this.pick, -1];
     this.pick2 = -1;
     this.locked = [false, false];
+    /* MS SINCE EACH SLOT CONFIRMED; -1 until he has. A CLOCK AND NOT A SECOND
+       BOOLEAN beside `locked`, for the reason `out` and `walkT` above already
+       give: the only thing it is read for is the stamp that plays when a player
+       answers, and one value with one meaning cannot fall out of step with
+       itself. See `_waitK`. */
+    this.lockT = [-1, -1];
     /** How many are playing. Read by game.js when this screen hands over. */
     this.players = 1;
     /** Per-slot edge memory for left/right -- the shared `_heldL`/`_heldR`
@@ -276,6 +282,13 @@ class Title {
   update(dt, input) {
     this.t += dt * 1000;
     this.stageT += dt * 1000;
+    /* EACH CONFIRMED PLAYER'S OWN CLOCK. Up here with `t` and `stageT` rather
+       than inside `_tickSelect`, because that method returns early in three
+       places and a stamp that stopped moving on the frame the last player
+       answered is exactly the kind of thing nobody notices. */
+    for (let s = 0; s < this.lockT.length; s++) {
+      if (this.lockT[s] >= 0) this.lockT[s] += dt * 1000;
+    }
     /* THE MENU'S OWN CLOCK, STARTED WHEN THE NAME LANDS. It is not `stageT` and
        not an offset off `t`: coming back from the options screen the items have
        to fade up again, and only a clock that can be restarted does that. -1 is
@@ -726,7 +739,14 @@ class Title {
         this._setPick(sl, hitL ? 0 : packs.length - 1);
         continue;                          // the edge is spent; see the header
       }
-      if (press && this.picks[sl] >= 0) this.locked[sl] = true;
+      /* ⚠️ THE CLOCK STARTS ON THE EDGE INTO `locked`, NOT ON EVERY PRESS.
+         A second press while he waits for his partner would otherwise restart
+         his stamp, so the screen would punch his coconut every time he asked
+         why nothing was happening -- which is precisely when he will press. */
+      if (press && this.picks[sl] >= 0 && !this.locked[sl]) {
+        this.locked[sl] = true;
+        this.lockT[sl] = 0;
+      }
     }
 
     /* NOBODY MOVES UNTIL EVERYBODY HAS ANSWERED. With one player this is the
@@ -1078,10 +1098,28 @@ class Title {
   }
 
   /** The punch block, or null when nothing is being punched. */
-  _punch() {
+  /** The stamp's numbers, whatever the stage is doing. ONE READ SITE, because
+      there are two readers now: the board's stamp below and a single player's
+      in `_waitK`, and a second copy of this lookup is how one of them would go
+      on stamping after `PUNCH.on` was turned off. */
+  _punchCfg() {
     const P = (CONFIG.SELECT && CONFIG.SELECT.PUNCH) || null;
-    if (!P || P.on === false || this.stage !== 'chosen') return null;
-    return P;
+    return (!P || P.on === false) ? null : P;
+  }
+
+  _punch() {
+    return (this.stage === 'chosen') ? this._punchCfg() : null;
+  }
+
+  /** The stamp as a function of ms SINCE IT WAS STRUCK, so the board and a
+      player can both swell with it off their own clocks -- the same rule
+      `_bounce` already follows, and for the same reason: two things stamping on
+      one screen with different physics read as two different objects. */
+  _stampK(P, t) {
+    const ms = P.stampMs != null ? P.stampMs : 400;
+    if (ms <= 0) return 1;
+    const p = Math.min(1, t / ms);
+    return 1 + (P.pop != null ? P.pop : 0.25) * (1 - this._easeOutBack(p));
   }
 
   /**
@@ -1103,11 +1141,48 @@ class Title {
    */
   _popK() {
     const P = this._punch();
-    if (!P) return 1;
-    const ms = P.stampMs != null ? P.stampMs : 400;
-    if (ms <= 0) return 1;
-    const p = Math.min(1, this.stageT / ms);
-    return 1 + (P.pop != null ? P.pop : 0.25) * (1 - this._easeOutBack(p));
+    return P ? this._stampK(P, this.stageT) : 1;
+  }
+
+  /**
+   * ONE PLAYER'S OWN SWELL WHILE THE SCREEN IS STILL ASKING: breathing until he
+   * answers, a stamp the moment he does. 1 in a one-player run and 1 off the
+   * `ask` beat, so neither the single-player screen nor the board's own stamp
+   * is touched by any of this.
+   *
+   * ⚠️ WHY IT EXISTS AT ALL -- and it is a bug report, not a decoration.
+   * *"If I am player 2, I can't select the player, only player 1 can hit enter
+   * and enter the game"* (2026-10-13). His press ALWAYS WORKED: traced in the
+   * running game, a press on P2's device sets `locked[1]` exactly as P1's sets
+   * `locked[0]`. The screen then waits for the other player and NOTHING ON IT
+   * MOVES -- so the answer that landed was indistinguishable from a dead
+   * button, and the game appeared to start on P1's press alone because his was
+   * simply the second one. **The rule was right and it had no picture.**
+   *
+   * ⚠️ THE BREATHE IS ON THE ONE WHO HAS *NOT* ANSWERED, which is the way round
+   * that makes the screen legible: the thing still moving is the thing still
+   * being decided, so a player who has pressed sees his own coconut go still
+   * and can see at a glance who is being waited for. Marking the ANSWERED one
+   * instead would say the same thing and say it about the player who has
+   * already stopped looking.
+   *
+   * ⚠️ AND IT ONLY EVER SWELLS -- `(1 - cos)/2` is 0 at rest, never negative.
+   * The art is drawn at the size it is drawn at ([[wire_art_as_drawn]]); a
+   * breathe centred on the drawn size would spend half its cycle smaller than
+   * the picture the artist handed over, next to a neighbour that is not.
+   */
+  _waitK(slot) {
+    if (this.players < 2 || !(slot >= 0) || this.stage !== 'ask') return 1;
+    const t = this.lockT[slot];
+    if (t >= 0) {
+      const P = this._punchCfg();
+      return P ? this._stampK(P, t) : 1;
+    }
+    const T = CONFIG.TWO_PLAYER || {};
+    const amp = T.waitBreathe != null ? T.waitBreathe : 0.035;
+    const ms = T.waitBreatheMs != null ? T.waitBreatheMs : 1100;
+    if (!(amp > 0) || !(ms > 0)) return 1;
+    return 1 + amp * 0.5 * (1 - Math.cos(this.stageT / ms * Math.PI * 2));
   }
 
   /** The shake offset in px, decaying linearly, or null once it is spent. */
@@ -1232,12 +1307,29 @@ class Title {
          -1 can never equal a pack index, so this is the single-player test it
          replaced with no branch on the mode. */
       const on = (this.pick === i) || (this.pick2 === i);
-      const img = this.assets.getDrawable('sel:' + packs[i] + ':' + (on ? 'on' : 'off'));
+      /* WHOSE LAYER IT IS -- the slot standing on it, or -1 for the coconut
+         nobody has. P1 wins a tie by construction: `pick2` is -1 in a
+         one-player run and the two slots may not hold the same pack, so the
+         only way they can agree is a bug upstream, and reading it as P1's is
+         the harmless half of that. */
+      const slot = (this.pick === i) ? 0 : (this.pick2 === i) ? 1 : -1;
+      let img = this.assets.getDrawable('sel:' + packs[i] + ':' + (on ? 'on' : 'off'));
       if (!img) return false;
-      layers.push({ img, L, on });
+      /* WHOSE HIGHLIGHT IT IS. P1 keeps the ring the artist drew; P2's is
+         turned down, which is the only thing on this screen that can say
+         "player two" without new lettering. */
+      if (slot === 1) img = this._p2Art(packs[i], img);
+      /* ⚠️ SAMPLED ONCE, HERE, because it is read twice -- by the sort below
+         and by the draw -- and a function of `stageT` asked twice in one frame
+         is a value that can disagree with itself. */
+      layers.push({ img, L, on, slot, k: this._waitK(slot) });
     }
-    // The picked one last; see the header.
-    layers.sort((p, q) => (p.on ? 1 : 0) - (q.on ? 1 : 0));
+    /* The picked one last; see the header. ⚠️ AND WITH TWO PLAYERS BOTH ARE
+       PICKED, so the tie is broken by who is BIGGER: the header's rule is that
+       the one that is SWELLING has to be on top, or the neighbour it is growing
+       into clips it -- and now that a confirm stamps one coconut on its own,
+       that is a real frame and not a theoretical one. */
+    layers.sort((p, q) => (p.on ? 1 : 0) - (q.on ? 1 : 0) || p.k - q.k);
     const pop = this._popK();
     for (const l of layers) {
       const iw = l.img.width || l.img.naturalWidth, ih = l.img.height || l.img.naturalHeight;
@@ -1246,7 +1338,10 @@ class Title {
       const bw = base * iw / ih;
       const cy = H * this._sel('artYRel', 0.60) + this._selNudge();
       const x0 = (W - bw) / 2, y0 = cy - base / 2;
-      const m = l.on ? pop : 1;
+      /* ⚠️ THE TWO SWELLS MULTIPLY AND THEY NEVER OVERLAP. `pop` belongs to
+         the whole board on the `chosen` beat; `_waitK` belongs to one player
+         while the screen is still asking, and returns 1 off that beat. */
+      const m = l.on ? pop * l.k : 1;
       // The figure's centre on screen, and the layer swollen about it.
       const fx = x0 + bw * (l.L.cxRel != null ? l.L.cxRel : 0.5);
       const fy = y0 + base * (l.L.cyRel != null ? l.L.cyRel : 0.5);
@@ -1258,6 +1353,63 @@ class Title {
       ctx.restore();
     }
     return true;
+  }
+
+  /**
+   * P2'S LIT COCONUT: the same drawing with its white ring turned down.
+   *
+   * WHY THE SCREEN NEEDED THIS AT ALL. Both slots are lit at once and neither
+   * may hold the other's character, so with two players BOTH coconuts wear the
+   * highlight -- and the screen then looks identical whichever of them is on
+   * which. Pressing left swapped the two picks and changed nothing on screen,
+   * so the swap was invisible and the players could not tell who they were.
+   * [[N0910]]
+   *
+   * ⚠️ THE RING IS CUT OUT WITH THE 'OFF' DRAWING, NOT WITH A COLOUR TEST.
+   * The ring is pure white, but so is most of the hat -- a white-pixel filter
+   * would bleach the hat too. The two layer files are the same figure with and
+   * without the ring, which makes the 'off' silhouette an exact mask for
+   * everything that is NOT the ring (measured: 7-10 stray pixels out of 1.3M).
+   * Hence the four steps, which are the only way to say "clip to the inverse of
+   * an image's alpha" in a 2d context:
+   *
+   *     1. the lit drawing              on
+   *     2. destination-out  off          -> only the ring is left
+   *     3. source-in        grey fill    -> the ring, recoloured, edges intact
+   *     4. destination-over on           -> the figure slid back underneath
+   *
+   * ⚠️ BUILT ONCE PER PACK AND ONLY IN A TWO-PLAYER RUN. `_drawLayers` asks
+   * for it only when `pick2` is set, so one player never pays the canvas; two
+   * players pay for at most `PLAYER_PACKS.length` of them, and they survive a
+   * swap so that moving the cursor is not a 5MB allocation per press.
+   *
+   * ⚠️ AND IT FALLS BACK TO THE DRAWING UNCHANGED, never to nothing. A missing
+   * 'off' layer or a knob of 1 costs the player number, not the highlight --
+   * this is the screen the player has to get through to reach the game.
+   */
+  _p2Art(key, on) {
+    const k = (CONFIG.TWO_PLAYER || {}).p2Halo;
+    if (!(k >= 0) || k >= 1) return on;
+    const off = this.assets.getDrawable('sel:' + key + ':off');
+    if (!off) return on;
+    const hit = (this._p2Art$ || (this._p2Art$ = {}))[key];
+    if (hit && hit.on === on && hit.k === k) return hit.cv;
+    const w = on.width || on.naturalWidth, h = on.height || on.naturalHeight;
+    if (!w || !h) return on;
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const c = cv.getContext('2d');
+    c.drawImage(on, 0, 0, w, h);
+    c.globalCompositeOperation = 'destination-out';
+    c.drawImage(off, 0, 0, w, h);
+    c.globalCompositeOperation = 'source-in';
+    const v = Math.round(255 * k);
+    c.fillStyle = 'rgb(' + v + ',' + v + ',' + v + ')';
+    c.fillRect(0, 0, w, h);
+    c.globalCompositeOperation = 'destination-over';
+    c.drawImage(on, 0, 0, w, h);
+    this._p2Art$[key] = { on, k, cv };
+    return cv;
   }
 
   _drawArt(ctx, W, H) {

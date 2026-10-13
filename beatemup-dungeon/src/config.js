@@ -324,6 +324,9 @@ const CONFIG = {
     p2BarRight: true,  // ~N0906
     taStartDX: -0.11,  // ~N0909
     taStartDY: -0.17,
+    p2Halo: 0.70,  // ~N0910
+    waitBreathe: 0.035,  // ~N0911
+    waitBreatheMs: 1100,
   },
 
   PLAYER_PACKS: ['coconut', 'coconutStrong'],  // ~N0120 ~N0121
